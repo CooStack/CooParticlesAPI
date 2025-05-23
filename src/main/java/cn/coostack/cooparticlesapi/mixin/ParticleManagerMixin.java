@@ -61,6 +61,7 @@ public abstract class ParticleManagerMixin {
     @Unique
     private void onEvict(Particle p) {
         // 这是原版 bug，但本模组会放大这个问题所以有必要修复一下
+        // 判断 isAlive 以保证幂等性（其他模组可能注入类似方法）
         if (p.isAlive()) {
             p.markDead();
             p.getGroup().ifPresent(group -> addTo(group, -1));
