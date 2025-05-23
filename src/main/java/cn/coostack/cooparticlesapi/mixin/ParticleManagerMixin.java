@@ -33,8 +33,6 @@ public abstract class ParticleManagerMixin {
     @Shadow
     protected abstract void addTo(ParticleGroup group, int count);
 
-    @Shadow private Queue<EmitterParticle> newEmitterParticles;
-
     @Redirect(method = "tick", at = @At(value = "INVOKE", target = "Ljava/util/Queue;poll()Ljava/lang/Object;"))
     public Object changeMaxParticles(Queue<Object> queue) {
         // 不需要判断 EnabledParticleCountInject 了，已在注入时判断，关这个一般都是因为会注入失败，所以不用担心
@@ -58,7 +56,6 @@ public abstract class ParticleManagerMixin {
     public void clearParticles(CallbackInfo ci) {
         particles.values().forEach(q -> q.forEach(this::onEvict));
         newParticles.forEach(this::onEvict);
-        newEmitterParticles.forEach(this::onEvict);
     }
 
     @Unique
