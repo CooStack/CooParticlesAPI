@@ -9,15 +9,20 @@ import cn.coostack.cooparticlesapi.network.particle.emitters.impl.ExplodeClassPa
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.FireClassParticleEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.LightningClassParticleEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.PhysicsParticleEmitters
+import cn.coostack.cooparticlesapi.network.particle.emitters.impl.PresetTestEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.type.EmittersShootTypes
+import cn.coostack.cooparticlesapi.network.particle.style.ParticleStyleManager
 import cn.coostack.cooparticlesapi.particles.impl.ControlableCloudEffect
 import cn.coostack.cooparticlesapi.particles.impl.TestEndRodEffect
+import cn.coostack.cooparticlesapi.test.particle.style.RomaMagicTestStyle
+import cn.coostack.cooparticlesapi.test.particle.style.RotateTestStyle
 import cn.coostack.cooparticlesapi.utils.CameraUtil
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import net.minecraft.client.particle.ParticleTextureSheet
 import net.minecraft.entity.player.PlayerEntity
 import net.minecraft.item.Item
 import net.minecraft.item.ItemStack
+import net.minecraft.server.world.ServerWorld
 import net.minecraft.util.Hand
 import net.minecraft.util.TypedActionResult
 import net.minecraft.world.World
@@ -29,13 +34,37 @@ class TestParticleItem(settings: Settings) : Item(settings) {
         if (world.isClient) {
             return TypedActionResult.success(user.getStackInHand(hand))
         }
-        testLightning(world, user)
+        testRotate(world, user)
 //        CameraUtil.startShakeCamera(240, 0.25)
 //        testFire(world, user)
         // 线性阻力
         return super.use(world, user, hand)
     }
 
+    private fun testRotate(world: World, user: PlayerEntity) {
+        val style = RotateTestStyle(user.uuid)
+        ParticleStyleManager.spawnStyle(world as ServerWorld, user.pos, style)
+    }
+
+    private fun testRomaCircle(world: World, user: PlayerEntity) {
+        val style = RomaMagicTestStyle()
+        ParticleStyleManager.spawnStyle(world as ServerWorld, user.pos, style)
+    }
+
+    private fun testPresets(world: World, user: PlayerEntity) {
+        val example = PresetTestEmitters(user.eyePos, world)
+            .also {
+                it.maxTick = 240
+                it.templateData.apply {
+                    textureSheet = ParticleTextureSheet.PARTICLE_SHEET_TRANSLUCENT
+                    color = Math3DUtil.colorOf(100, 100, 210)
+                    effect = TestEndRodEffect(uuid)
+                    size = 0.1f
+                }
+            }
+
+        ParticleEmittersManager.spawnEmitters(example)
+    }
 
     private fun testDefend(world: World, user: PlayerEntity) {
         val example = DefendClassParticleEmitters(user.uuid, user.eyePos, world)
@@ -87,17 +116,16 @@ class TestParticleItem(settings: Settings) : Item(settings) {
             user.uuid, user.eyePos, world
         ).also {
             it.maxTick = 120
-            it.fireSize = 1.0
-            it.fireForce = 0.5
+            it.fireSize = 0.4
+            it.fireForce = 0.01
             it.templateData.apply {
-                maxAge = 60
+                maxAge = 20
                 textureSheet = ParticleTextureSheet.PARTICLE_SHEET_TRANSLUCENT
                 color = Math3DUtil.colorOf(255, 255, 255)
-                effect = ControlableCloudEffect(uuid)
+                effect = TestEndRodEffect(uuid)
             }
         }
         ParticleEmittersManager.spawnEmitters(example)
-
     }
 
 

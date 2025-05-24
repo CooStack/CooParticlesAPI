@@ -6,6 +6,7 @@ import com.google.common.collect.EvictingQueue;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleManager;
 import net.minecraft.client.particle.ParticleTextureSheet;
+import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
@@ -16,9 +17,11 @@ import java.util.Queue;
 
 @Mixin(ParticleManager.class)
 public abstract class ParticleManagerMixin {
+    @Final
     @Shadow
     private Map<ParticleTextureSheet, Queue<Particle>> particles;
 
+    @Final
     @Shadow
     private Queue<Particle> newParticles;
 

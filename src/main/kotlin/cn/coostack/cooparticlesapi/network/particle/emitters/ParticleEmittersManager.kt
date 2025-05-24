@@ -8,6 +8,7 @@ import cn.coostack.cooparticlesapi.network.particle.emitters.impl.ExplodeClassPa
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.FireClassParticleEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.LightningClassParticleEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.PhysicsParticleEmitters
+import cn.coostack.cooparticlesapi.network.particle.emitters.impl.PresetTestEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.SimpleParticleEmitters
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking
 import net.minecraft.network.RegistryByteBuf
@@ -38,16 +39,9 @@ object ParticleEmittersManager {
     }
 
 
-    init {
-        register(PhysicsParticleEmitters.ID, PhysicsParticleEmitters.CODEC)
-        register(SimpleParticleEmitters.ID, SimpleParticleEmitters.CODEC)
-        register(ExampleClassParticleEmitters.ID, ExampleClassParticleEmitters.CODEC)
-        register(FireClassParticleEmitters.ID, FireClassParticleEmitters.CODEC)
-        register(ExplodeClassParticleEmitters.ID, ExplodeClassParticleEmitters.CODEC)
-        register(LightningClassParticleEmitters.ID, LightningClassParticleEmitters.CODEC)
-        register(DefendClassParticleEmitters.ID, DefendClassParticleEmitters.CODEC)
-    }
-
+    /**
+     * 在客户端执行
+     */
     fun register(
         id: String,
         codec: PacketCodec<RegistryByteBuf, ParticleEmitters>
@@ -62,6 +56,7 @@ object ParticleEmittersManager {
         if (emitters.world!!.isClient) return
         serverEmitters[emitters.uuid] = emitters
         emitters.start()
+        updateClientVisible(emitters)
     }
 
     fun createOrChangeClient(emitters: ParticleEmitters, viewWorld: World) {
@@ -176,5 +171,16 @@ object ParticleEmittersManager {
         ServerPlayNetworking.send(player, packet)
     }
 
+
+    internal fun init() {
+        register(PhysicsParticleEmitters.ID, PhysicsParticleEmitters.CODEC)
+        register(SimpleParticleEmitters.ID, SimpleParticleEmitters.CODEC)
+        register(ExampleClassParticleEmitters.ID, ExampleClassParticleEmitters.CODEC)
+        register(FireClassParticleEmitters.ID, FireClassParticleEmitters.CODEC)
+        register(ExplodeClassParticleEmitters.ID, ExplodeClassParticleEmitters.CODEC)
+        register(LightningClassParticleEmitters.ID, LightningClassParticleEmitters.CODEC)
+        register(DefendClassParticleEmitters.ID, DefendClassParticleEmitters.CODEC)
+        register(PresetTestEmitters.ID, PresetTestEmitters.CODEC)
+    }
 
 }

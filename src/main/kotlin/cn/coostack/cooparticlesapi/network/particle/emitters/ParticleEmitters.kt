@@ -14,11 +14,19 @@ import java.util.UUID
  *
  * -> 不固定数量的ParticleStyleData
  * -> 方便输入的
+ *
+ *
+ * TODO BUGS 当maxTick = 1时 会有概率不显示 (应该是tick == maxTick的状态优先被同步过去了)
  */
 interface ParticleEmitters {
     var pos: Vec3d
     var world: World?
     var tick: Int
+
+    /**
+     * 当maxTick == -1时
+     * 代表此粒子不会由生命周期控制
+     */
     var maxTick: Int
     var delay: Int
     var uuid: UUID

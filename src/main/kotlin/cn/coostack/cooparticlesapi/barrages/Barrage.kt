@@ -23,6 +23,8 @@ interface Barrage {
      */
     val bindControl: ServerControler<*>
 
+    fun hit(result: BarrageHitResult)
+
     /**
      * @param result 击中的目标
      */

@@ -33,6 +33,9 @@ object ParticleStyleManager {
     private val registerBuilders =
         HashMap<Class<out ParticleGroupStyle>, ParticleStyleProvider>()
 
+    /**
+     * 在ClientModInitializer 注册ParticleStyle 用于服务器同步
+     */
     fun register(
         type: Class<out ParticleGroupStyle>,
         provider: ParticleStyleProvider

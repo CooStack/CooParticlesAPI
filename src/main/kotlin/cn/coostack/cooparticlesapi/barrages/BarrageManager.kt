@@ -11,7 +11,6 @@ import net.minecraft.util.math.Box
 object BarrageManager {
     private val barrages = ConcurrentHashMultiset.create<Barrage>()
 
-
     fun collectClipBarrages(world: ServerWorld, box: Box): List<Barrage> {
         return barrages.filter {
             it.valid && world == it.world && !it.noclip() && (box.contains(it.loc) || box.intersects(it.hitBox.ofBox(it.loc)))

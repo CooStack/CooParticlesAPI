@@ -5,6 +5,7 @@ import cn.coostack.cooparticlesapi.network.particle.style.SequencedParticleStyle
 import cn.coostack.cooparticlesapi.particles.control.group.ControlableParticleGroup
 import cn.coostack.cooparticlesapi.particles.control.group.SequencedParticleGroup
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
+import cn.coostack.cooparticlesapi.utils.MathPresets
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import net.minecraft.util.math.BlockPos
 import net.minecraft.util.math.Vec3d
@@ -49,6 +50,10 @@ class PointsBuilder {
         points.onEach { handler.invoke(it) }
         return this
     }
+
+    fun withPreset(handler: MathPresets.() -> Collection<RelativeLocation>): PointsBuilder = addPoints(
+        handler(MathPresets)
+    )
 
     fun addPoints(enter: Collection<RelativeLocation>): PointsBuilder {
         points.addAll(enter)
@@ -217,6 +222,11 @@ class PointsBuilder {
 
     fun rotateTo(to: RelativeLocation): PointsBuilder {
         Math3DUtil.rotatePointsToPoint(points, to, axis)
+        return this
+    }
+
+    fun rotateToWithAngle(to: RelativeLocation): PointsBuilder {
+        Math3DUtil.rotatePointsToWithAngle(points, to, axis)
         return this
     }
 

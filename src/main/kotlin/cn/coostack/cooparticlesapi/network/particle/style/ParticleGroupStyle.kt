@@ -43,7 +43,7 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
         }
 
     /**
-     * 自动发包到客户端
+     * 自动发包同步到客户端
      * 可能会占据大量带宽
      */
     var autoToggle = false

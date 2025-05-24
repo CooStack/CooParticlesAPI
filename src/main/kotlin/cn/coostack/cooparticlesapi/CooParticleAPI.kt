@@ -101,8 +101,14 @@ object CooParticleAPI : ModInitializer {
     private fun testEntity() {
         CooParticleEntities.init()
 
-        FabricDefaultAttributeRegistry.register(CooParticleEntities.TEST_ENTITY, TestEntity.createDefaultMobAttributes())
-        FabricDefaultAttributeRegistry.register(CooParticleEntities.TEST_PLAYER_ENTITY, TestPlayerEntity.createDefaultMobAttributes())
+        FabricDefaultAttributeRegistry.register(
+            CooParticleEntities.TEST_ENTITY,
+            TestEntity.createDefaultMobAttributes()
+        )
+        FabricDefaultAttributeRegistry.register(
+            CooParticleEntities.TEST_PLAYER_ENTITY,
+            TestPlayerEntity.createDefaultMobAttributes()
+        )
 
     }
 }

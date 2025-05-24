@@ -15,6 +15,7 @@ import net.minecraft.network.codec.PacketCodec
 import net.minecraft.util.math.Vec3d
 import net.minecraft.world.World
 import java.util.UUID
+import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.random.Random
 import kotlin.random.nextInt
@@ -28,7 +29,7 @@ class FireClassParticleEmitters(var player: UUID, pos: Vec3d, world: World?) : C
         airDensity = PhysicConstant.SEA_AIR_DENSITY
 //        mass = 1000.0
         wind = GlobalWindDirection(
-            Vec3d(0.0, fireForce * 5, 0.0)
+            Vec3d(0.0, fireForce * 6, 0.0)
         )
             .loadEmitters(this)
     }
@@ -58,28 +59,36 @@ class FireClassParticleEmitters(var player: UUID, pos: Vec3d, world: World?) : C
     }
 
     override fun doTick() {
-        val player = world!!.getPlayerByUuid(player)!!
-        pos = player.eyePos
-        val size = wind.direction.length()
-        wind.direction = player.rotationVector.normalize().multiply(size)
+//        val player = world!!.getPlayerByUuid(player) ?: return
+//        pos = player.eyePos
+//        val size = wind.direction.length()
+//        wind.direction = player.rotationVector.normalize().multiply(size)
     }
 
     override fun genParticles(): Map<ControlableParticleData, RelativeLocation> {
         val velocityList = PointsBuilder()
             .addRoundShape(fireSize, 0.25, 10, (120 * fireSize).roundToInt())
-            .pointsOnEach { it.y += 1.0 }
-            .rotateTo(
-                world!!.getPlayerByUuid(player)!!.rotationVector
-            )
+            .pointsOnEach { it.y += 6.0 }
+//            .rotateTo(
+//                world!!.getPlayerByUuid(player)!!.rotationVector
+//            )
             .create()
         val res = HashMap<ControlableParticleData, RelativeLocation>()
         val random = Random(System.currentTimeMillis())
-        val count = random.nextInt(20, 120)
-        for (i in 0 until count) {
-            val it = velocityList.random()
-            res[templateData.clone().apply {
-                this.velocity = it.normalize().multiply(fireForce).toVector()
-            }] = RelativeLocation()
+        // 0.0 - 2.0
+        val step = 1.0
+        var current = step
+        while (current < 5.0) {
+            val minCount = (5 * current).roundToInt()
+            val maxCount = (10 * current).roundToInt()
+            val count = random.nextInt(minCount, maxCount)
+            for (i in 0 until count) {
+                val it = velocityList.random()
+                res[templateData.clone().apply {
+                    this.velocity = it.normalize().multiply(fireForce).toVector()
+                }] = RelativeLocation(0.0, current, 0.0)
+            }
+            current += step
         }
         return res
     }
@@ -98,13 +107,24 @@ class FireClassParticleEmitters(var player: UUID, pos: Vec3d, world: World?) : C
                 random.nextDouble(-fireForce, fireForce)
             ).normalize().multiply(0.25)
         )
+//        data.alpha = 0f
         data.color = Math3DUtil.colorOf(
-            random.nextInt(200,255),
-            random.nextInt(200,255),
-            random.nextInt(200,255),
+            random.nextInt(210, 255),
+            random.nextInt(100, 120),
+            random.nextInt(100, 120),
         )
+        val alphaBezier = Math3DUtil.generateBezierCurve(
+            RelativeLocation(data.maxAge.toDouble(), 0.0, 0.0),
+            RelativeLocation(0.0, 1.0, 0.0),
+            RelativeLocation(-data.maxAge.toDouble(), 1.0, 0.0),
+            data.maxAge
+
+        )
+        val size = alphaBezier.size
         controler.addPreTickAction {
             updatePhysics(controler.particle.pos, data)
+//            val index = currentAge.coerceIn(0, size - 1)
+//            particleAlpha = alphaBezier[index].y.toFloat()
         }
     }
 

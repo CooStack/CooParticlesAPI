@@ -195,7 +195,7 @@ class PhysicsParticleEmitters(
         if (cancelled || !playing) {
             return
         }
-        if (tick++ > maxTick) {
+        if (tick++ >= maxTick && maxTick != -1) {
             stop()
         }
         offset = Vec3d(
@@ -281,7 +281,7 @@ class PhysicsParticleEmitters(
             Vec3d.ZERO
         }
         val windForce = WindDirections.handleWindForce(
-            wind,pos,
+            wind, pos,
             airDensity, DRAG_COEFFICIENT, CROSS_SECTIONAL_AREA, v
         )
 

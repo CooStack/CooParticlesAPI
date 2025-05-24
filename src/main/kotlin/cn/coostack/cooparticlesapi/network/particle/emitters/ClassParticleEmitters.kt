@@ -37,7 +37,6 @@ abstract class ClassParticleEmitters(
     var gravity: Double = 0.0
 
     companion object {
-
         fun encodeBase(data: ClassParticleEmitters, buf: RegistryByteBuf) {
             buf.writeVec3d(data.pos)
             buf.writeInt(data.tick)
@@ -123,7 +122,7 @@ abstract class ClassParticleEmitters(
         if (cancelled || !playing) {
             return
         }
-        if (tick++ > maxTick) {
+        if (tick++ >= maxTick && maxTick != -1) {
             stop()
         }
 

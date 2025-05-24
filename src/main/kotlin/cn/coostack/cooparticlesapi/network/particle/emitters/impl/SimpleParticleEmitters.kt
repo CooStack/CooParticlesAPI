@@ -143,7 +143,7 @@ class SimpleParticleEmitters(
         if (cancelled || !playing) {
             return
         }
-        if (tick++ > maxTick) {
+        if (tick++ >= maxTick && maxTick != -1) {
             stop()
         }
         world ?: return

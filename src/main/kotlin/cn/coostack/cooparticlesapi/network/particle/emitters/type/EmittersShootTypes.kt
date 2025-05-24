@@ -24,6 +24,15 @@ object EmittersShootTypes {
     @JvmStatic
     fun line(dir: Vec3d, step: Double): EmittersShootType = LineEmittersShootType(dir, step)
 
+    /**
+     * @param xe 粒子生成 x 相对于发射器的位置偏移量表达式
+     * @param ye 粒子生成 y 相对于发射器的位置偏移量表达式
+     * @param ze 粒子生成 z 相对于发射器的位置偏移量表达式
+     *
+     * @param dxe 粒子生成时 初始速度向量x表达式
+     * @param dye 粒子生成时 初始速度向量y表达式
+     * @param dze 粒子生成时 初始速度向量z表达式
+     */
     @JvmStatic
     fun math(
         xe: String,

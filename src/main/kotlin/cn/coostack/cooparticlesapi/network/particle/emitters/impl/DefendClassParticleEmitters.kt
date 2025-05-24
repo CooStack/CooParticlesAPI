@@ -25,7 +25,7 @@ class DefendClassParticleEmitters(var player: UUID, pos: Vec3d, world: World?) :
     var templateData = ControlableParticleData()
 
     companion object {
-        const val ID = "fire-class-particle-emitters"
+        const val ID = "defend-class-particle-emitters"
 
         @JvmStatic
         val CODEC = PacketCodec.ofStatic<RegistryByteBuf, ParticleEmitters>(

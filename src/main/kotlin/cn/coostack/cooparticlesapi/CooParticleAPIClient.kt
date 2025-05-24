@@ -12,11 +12,8 @@ import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersMan
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleStyleManager
 import cn.coostack.cooparticlesapi.particles.CooModParticles
 import cn.coostack.cooparticlesapi.particles.control.group.ClientParticleGroupManager
-import cn.coostack.cooparticlesapi.particles.impl.ControlableCloudEffect
 import cn.coostack.cooparticlesapi.particles.impl.ControlableCloudParticle
-import cn.coostack.cooparticlesapi.particles.impl.ControlableEnchantmentEffect
 import cn.coostack.cooparticlesapi.particles.impl.ControlableEnchantmentParticle
-import cn.coostack.cooparticlesapi.particles.impl.ControlableFireworkEffect
 import cn.coostack.cooparticlesapi.particles.impl.ControlableFireworkParticle
 import cn.coostack.cooparticlesapi.particles.impl.ControlableFlashParticle
 import cn.coostack.cooparticlesapi.particles.impl.TestEndRodParticle
@@ -33,6 +30,8 @@ import cn.coostack.cooparticlesapi.test.particle.client.SequencedMagicCircleClie
 import cn.coostack.cooparticlesapi.test.particle.client.TestGroupClient
 import cn.coostack.cooparticlesapi.test.particle.style.ExampleSequencedStyle
 import cn.coostack.cooparticlesapi.test.particle.style.ExampleStyle
+import cn.coostack.cooparticlesapi.test.particle.style.RomaMagicTestStyle
+import cn.coostack.cooparticlesapi.test.particle.style.RotateTestStyle
 import net.fabricmc.api.ClientModInitializer
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientWorldEvents
@@ -44,7 +43,7 @@ import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry
 object CooParticleAPIClient : ClientModInitializer {
 
     override fun onInitializeClient() {
-        particleGroupPacketListener()
+        loadParticleGroupPacketListener()
         ClientTickEvents.START_WORLD_TICK.register {
             ClientParticleGroupManager.doClientTick()
             ParticleStyleManager.doTickClient()
@@ -88,12 +87,15 @@ object CooParticleAPIClient : ClientModInitializer {
 
         ParticleStyleManager.register(ExampleStyle::class.java, ExampleStyle.Provider())
         ParticleStyleManager.register(ExampleSequencedStyle::class.java, ExampleSequencedStyle.Provider())
+        ParticleStyleManager.register(RomaMagicTestStyle::class.java, RomaMagicTestStyle.Provider())
+        ParticleStyleManager.register(RotateTestStyle::class.java, RotateTestStyle.Provider())
         CooModParticles.reg()
+        ParticleEmittersManager.init()
         testEntity()
     }
 
 
-    private fun particleGroupPacketListener() {
+    private fun loadParticleGroupPacketListener() {
         ClientPlayNetworking.registerGlobalReceiver(
             PacketParticleGroupS2C.payloadID,
             ClientParticleGroupPacketHandler

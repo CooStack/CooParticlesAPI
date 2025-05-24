@@ -108,7 +108,7 @@ abstract class AbstractBarrage(
     /**
      * 判定barrage已经攻击到实体或者触发方块/液体时执行
      */
-    fun hit(result: BarrageHitResult) {
+    override fun hit(result: BarrageHitResult) {
         onHit(result)
         val timeoutHit = options.maxLivingTick <= currentTick && options.maxLivingTick != -1
         if (options.acrossable && !timeoutHit) {
