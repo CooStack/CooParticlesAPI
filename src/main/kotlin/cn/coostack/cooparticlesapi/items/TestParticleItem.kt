@@ -32,9 +32,9 @@ class TestParticleItem(settings: Settings) : Item(settings) {
         if (world.isClient) {
             return TypedActionResult.success(user.getStackInHand(hand))
         }
-        testRotate(world, user)
+//        testRotate(world, user)
 //        CameraUtil.startShakeCamera(240, 0.25)
-//        testRomaCircle(world, user)
+        testRomaCircle(world, user)
 
         // 线性阻力
         return super.use(world, user, hand)

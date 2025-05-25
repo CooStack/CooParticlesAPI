@@ -105,6 +105,14 @@ class PointsBuilder {
         Math3DUtil.getCircleXZ(r, count)
     )
 
+    fun addHalfCircle(r: Double, count: Int): PointsBuilder = addWith {
+        getHalfCircleXZ(r, count)
+    }
+
+    fun addHalfCircle(r: Double, count: Int, rotate: Double): PointsBuilder = addWith {
+        getHalfCircleXZ(r, count, rotate)
+    }
+
     fun addBall(r: Double, countPow: Int): PointsBuilder = addPoints(
         Math3DUtil.getBallLocations(r, countPow)
     )

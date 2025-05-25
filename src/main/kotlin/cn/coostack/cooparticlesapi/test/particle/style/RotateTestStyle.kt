@@ -89,14 +89,6 @@ class RotateTestStyle(val player: UUID, uuid: UUID = UUID.randomUUID()) :
     }
 
 
-    fun rotateParticlesToPoint(yaw: Double, pitch: Double) {
-        Math3DUtil.rotatePointsToWithAngle(
-            particleLocations.values.toList(), yaw, pitch, axis
-        )
-        Math3DUtil.rotatePointsToWithAngle(listOf(axis), yaw, pitch, axis)
-        toggleRelative()
-    }
-
     override fun writePacketArgs(): Map<String, ParticleControlerDataBuffer<*>> {
         return mapOf("player" to ParticleControlerDataBuffers.uuid(player))
     }

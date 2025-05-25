@@ -138,6 +138,28 @@ object Math3DUtil {
     }
 
     /**
+     * @param count 点的个数
+     * @return 在xz平面上的半圆的点
+     */
+    fun getHalfCircleXZ(r: Double, count: Int, rotate: Double = 0.0): List<RelativeLocation> {
+        val res = ArrayList<RelativeLocation>()
+        val step = PI / count
+        var radius = 0.0
+        repeat(count) {
+            res.add(
+                RelativeLocation(
+                    r * cos(radius), 0.0, r * sin(radius),
+                )
+            )
+            radius += step
+        }
+        if (rotate != 0.0) {
+            rotateAsAxis(res, RelativeLocation.yAxis(), rotate)
+        }
+        return res
+    }
+
+    /**
      * 生成以 r为半径的圆的 内接正n边形
      * @param n 多边形的边数 必须大于等于3
      * @param edgeCount 每一条边的点的个数
@@ -396,10 +418,10 @@ object Math3DUtil {
         val toa = toPoint.normalize()
         val toYaw = getYawFromLocation(toa)
         val toPitch = getPitchFromLocation(toa)
-//        return shape
-        // 先给点转回去
+        // 先让图形面向Z轴
         q.rotateY(axisYaw)
             .rotateLocalX(axisPitch)
+        // 后再转回目标点
         val toQ = Quaterniond()
             .rotateY(-toYaw)
             .rotateX(-toPitch)
@@ -407,38 +429,6 @@ object Math3DUtil {
             val vector = Vector3d(it.x, it.y, it.z)
             vector.rotate(q)
             vector.rotate(toQ)
-            it.x = vector.x
-            it.y = vector.y
-            it.z = vector.z
-        }
-    }
-
-
-    /**
-     * 旋转到对应的yaw和pitch 上
-     *
-     * TODO 莫名其妙的旋转错误
-     *
-     */
-    fun rotatePointsToWithAngle(
-        shape: List<RelativeLocation>,
-        yaw: Double,
-        pitch: Double,
-        axis: RelativeLocation
-    ): List<RelativeLocation> {
-        val axisYaw = getYawFromLocation(axis.normalize())
-        val axisPitch = getPitchFromLocation(axis.normalize())
-//
-        val deltaYaw = yaw - axisYaw
-        val deltaPitch = pitch - axisPitch
-
-        Vector3d(axis.x, axis.y, axis.z)
-        val q = Quaterniond()
-            .rotateY(-deltaYaw)
-            .rotateLocalX(deltaPitch)
-        return shape.onEach {
-            val vector = Vector3d(it.x, it.y, it.z)
-            q.transform(vector)
             it.x = vector.x
             it.y = vector.y
             it.z = vector.z

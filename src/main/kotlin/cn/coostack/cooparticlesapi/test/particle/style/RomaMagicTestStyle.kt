@@ -37,8 +37,10 @@ class RomaMagicTestStyle(uuid: UUID = UUID.randomUUID()) :
                                         val yaw = Math3DUtil.getYawFromLocation(rel.toVector())
                                         r.addAll(
                                             PointsBuilder().withPreset { withRomaNumber(index + 1, 1.0) }
-                                                .rotateAsAxis(PI / 2, RelativeLocation.xAxis())
-                                                .rotateAsAxis(-yaw, RelativeLocation.yAxis())
+                                                .rotateAsAxis(PI)
+                                                .rotateTo(rel)
+//                                                .rotateAsAxis(PI / 2, RelativeLocation.xAxis())
+//                                                .rotateAsAxis(-yaw, RelativeLocation.yAxis())
 //                                                .rotateToWithAngle(
 //                                                    rel
 //                                                )
@@ -103,17 +105,22 @@ class RomaMagicTestStyle(uuid: UUID = UUID.randomUUID()) :
                     ) {
                         StyleData {
                             ParticleDisplayer.withSingle(TestEndRodEffect(it))
+                        }.withParticleHandler {
+                            colorOfRGB(0,0,0)
                         }
                     }.appendBuilder(
                         PointsBuilder()
-                            .addBezierCurve(
-                                RelativeLocation(6.0, 0.0, 0.0),
-                                RelativeLocation(3.0, 3.5, 0.0),
-                                RelativeLocation(-3.0, -3.5, 0.0),
-                                120
-                            )
-                            .pointsOnEach { p -> p.x -= 3.0 }
-                            .rotateAsAxis(PI / 2, RelativeLocation.xAxis())
+                            .addHalfCircle(1.5, 120)
+//                            .addBezierCurve(
+//                                RelativeLocation(6.0, 0.0, 0.0),
+//                                RelativeLocation(3.0, 3.5, 0.0),
+//                                RelativeLocation(-3.0, -3.5, 0.0),
+//                                120
+//                            )
+                            .pointsOnEach { p -> p.x += 3.0 }
+                            .addHalfCircle(1.5, 120, PI)
+                            .pointsOnEach { p -> p.x -= 1.5 }
+//                            .rotateAsAxis(PI / 2, RelativeLocation.xAxis())
                     ) {
                         StyleData {
                             ParticleDisplayer.withSingle(TestEndRodEffect(it))
