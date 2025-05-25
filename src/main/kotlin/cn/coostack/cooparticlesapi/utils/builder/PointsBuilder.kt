@@ -225,11 +225,6 @@ class PointsBuilder {
         return this
     }
 
-    fun rotateToWithAngle(to: RelativeLocation): PointsBuilder {
-        Math3DUtil.rotatePointsToWithAngle(points, to, axis)
-        return this
-    }
-
     fun rotateTo(to: Vec3d): PointsBuilder {
         Math3DUtil.rotatePointsToPoint(points, RelativeLocation.Companion.of(to), axis)
         return this

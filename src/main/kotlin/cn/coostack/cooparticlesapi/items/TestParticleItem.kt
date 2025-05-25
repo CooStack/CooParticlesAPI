@@ -16,7 +16,6 @@ import cn.coostack.cooparticlesapi.particles.impl.ControlableCloudEffect
 import cn.coostack.cooparticlesapi.particles.impl.TestEndRodEffect
 import cn.coostack.cooparticlesapi.test.particle.style.RomaMagicTestStyle
 import cn.coostack.cooparticlesapi.test.particle.style.RotateTestStyle
-import cn.coostack.cooparticlesapi.utils.CameraUtil
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import net.minecraft.client.particle.ParticleTextureSheet
 import net.minecraft.entity.player.PlayerEntity
@@ -26,7 +25,6 @@ import net.minecraft.server.world.ServerWorld
 import net.minecraft.util.Hand
 import net.minecraft.util.TypedActionResult
 import net.minecraft.world.World
-import kotlin.math.PI
 
 class TestParticleItem(settings: Settings) : Item(settings) {
 
@@ -36,7 +34,8 @@ class TestParticleItem(settings: Settings) : Item(settings) {
         }
         testRotate(world, user)
 //        CameraUtil.startShakeCamera(240, 0.25)
-//        testFire(world, user)
+//        testRomaCircle(world, user)
+
         // 线性阻力
         return super.use(world, user, hand)
     }
@@ -112,20 +111,20 @@ class TestParticleItem(settings: Settings) : Item(settings) {
     }
 
     private fun testFire(world: World, user: PlayerEntity) {
-        val example = FireClassParticleEmitters(
-            user.uuid, user.eyePos, world
+        val part1 = FireClassParticleEmitters(
+            user.uuid, user.eyePos.add(0.0, -0.5, 0.0), world
         ).also {
-            it.maxTick = 120
-            it.fireSize = 0.4
-            it.fireForce = 0.01
+            it.maxTick = -1
             it.templateData.apply {
-                maxAge = 20
+                maxAge = 30
                 textureSheet = ParticleTextureSheet.PARTICLE_SHEET_TRANSLUCENT
                 color = Math3DUtil.colorOf(255, 255, 255)
                 effect = TestEndRodEffect(uuid)
             }
         }
-        ParticleEmittersManager.spawnEmitters(example)
+//        ParticleEmittersManager.spawnEmitters(example)
+
+        ParticleEmittersManager.spawnEmitters(part1)
     }
 
 

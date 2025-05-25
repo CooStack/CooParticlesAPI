@@ -176,11 +176,11 @@ object ParticleEmittersManager {
         register(PhysicsParticleEmitters.ID, PhysicsParticleEmitters.CODEC)
         register(SimpleParticleEmitters.ID, SimpleParticleEmitters.CODEC)
         register(ExampleClassParticleEmitters.ID, ExampleClassParticleEmitters.CODEC)
-        register(FireClassParticleEmitters.ID, FireClassParticleEmitters.CODEC)
         register(ExplodeClassParticleEmitters.ID, ExplodeClassParticleEmitters.CODEC)
         register(LightningClassParticleEmitters.ID, LightningClassParticleEmitters.CODEC)
         register(DefendClassParticleEmitters.ID, DefendClassParticleEmitters.CODEC)
         register(PresetTestEmitters.ID, PresetTestEmitters.CODEC)
+        register(FireClassParticleEmitters.ID, FireClassParticleEmitters.CODEC)
     }
 
 }

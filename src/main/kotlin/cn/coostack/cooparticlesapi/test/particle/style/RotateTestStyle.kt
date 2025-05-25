@@ -62,6 +62,7 @@ class RotateTestStyle(val player: UUID, uuid: UUID = UUID.randomUUID()) :
     }
 
     override fun onDisplay() {
+        axis = RelativeLocation.yAxis()
 //        var x = -PI
 //        var y = -PI
         addPreTickAction {
@@ -82,18 +83,11 @@ class RotateTestStyle(val player: UUID, uuid: UUID = UUID.randomUUID()) :
             val loc = player.pos
             val relativize = pos.relativize(loc)
             rotateParticlesToPoint(
-                RelativeLocation.of(player.rotationVector)
+                RelativeLocation.of(relativize)
             )
         }
     }
 
-    override fun rotateParticlesToPoint(to: RelativeLocation) {
-        Math3DUtil.rotatePointsToWithAngle(
-            particleLocations.values.toList(), to, axis
-        )
-        axis = to
-        toggleRelative()
-    }
 
     fun rotateParticlesToPoint(yaw: Double, pitch: Double) {
         Math3DUtil.rotatePointsToWithAngle(

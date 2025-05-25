@@ -1,6 +1,9 @@
 package cn.coostack.cooparticlesapi.utils
 
+import kotlin.math.ceil
 import kotlin.math.cos
+import kotlin.math.pow
+import kotlin.math.round
 import kotlin.math.sin
 
 class RotationMatrix private constructor(
@@ -43,9 +46,10 @@ class RotationMatrix private constructor(
         val x = point.x
         val y = point.y
         val z = point.z
-        point.x = matrix[0][0] * x + matrix[0][1] * y + matrix[0][2] * z
-        point.y = matrix[1][0] * x + matrix[1][1] * y + matrix[1][2] * z
-        point.z = matrix[2][0] * x + matrix[2][1] * y + matrix[2][2] * z
+        point.x = (matrix[0][0] * x + matrix[0][1] * y + matrix[0][2] * z)
+        point.y = (matrix[1][0] * x + matrix[1][1] * y + matrix[1][2] * z)
+        point.z = (matrix[2][0] * x + matrix[2][1] * y + matrix[2][2] * z)
         return point
     }
+
 }

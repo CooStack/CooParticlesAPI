@@ -87,7 +87,7 @@ class RomaMagicTestStyle(uuid: UUID = UUID.randomUUID()) :
                             .addCircle(0.5, 120)
                             .pointsOnEach {
                                 it.x += 1.5
-                                it.z += 1.5
+//                                it.z += 1.5
                             }
                     ) {
                         StyleData {
@@ -98,7 +98,7 @@ class RomaMagicTestStyle(uuid: UUID = UUID.randomUUID()) :
                             .addCircle(0.5, 120)
                             .pointsOnEach {
                                 it.x -= 1.5
-                                it.z -= 1.5
+//                                it.z -= 1.5
                             }
                     ) {
                         StyleData {
@@ -108,8 +108,8 @@ class RomaMagicTestStyle(uuid: UUID = UUID.randomUUID()) :
                         PointsBuilder()
                             .addBezierCurve(
                                 RelativeLocation(6.0, 0.0, 0.0),
-                                RelativeLocation(3.0, 3.0, 0.0),
-                                RelativeLocation(-3.0, -3.0, 0.0),
+                                RelativeLocation(3.0, 3.5, 0.0),
+                                RelativeLocation(-3.0, -3.5, 0.0),
                                 120
                             )
                             .pointsOnEach { p -> p.x -= 3.0 }

@@ -1,10 +1,12 @@
 package cn.coostack.cooparticlesapi.utils
 
 import net.minecraft.util.math.Vec3d
+import org.joml.Matrix4d
+import org.joml.Matrix4f
 import org.joml.Quaterniond
-import org.joml.Quaternionf
 import org.joml.Vector3d
 import org.joml.Vector3f
+import org.joml.Vector4d
 import java.util.ArrayList
 import kotlin.math.*
 import kotlin.random.Random
@@ -18,6 +20,7 @@ object Math3DUtil {
     fun colorOf(r: Int, g: Int, b: Int): Vector3f {
         return Vector3f(r.toFloat() / 255, g.toFloat() / 255, b.toFloat() / 255)
     }
+
 
     /**
      * 闪电
@@ -376,27 +379,40 @@ object Math3DUtil {
      * 让图形的对称轴指向某个点(图形跟着转变)
      */
     fun rotatePointsToPoint(
-        locList: List<RelativeLocation>,
+        shape: List<RelativeLocation>,
         toPoint: RelativeLocation,
         axis: RelativeLocation
     ): List<RelativeLocation> {
         // 同向共线
         if (axis.cross(toPoint).length() in -1e-5..1e-5 && axis.dot(toPoint) > 0) {
-            return locList
+            return shape
         }
-        // 计算旋转角度
-        // 首先，将目标点（toPoint）和当前轴（axis）都归一化
-        val normalizedAxis = axis.normalize()
-        val normalizedToPoint = toPoint.normalize()
+        val q = Quaterniond()
+        // 差值
+        val na = axis.normalize()
+        val axisYaw = getYawFromLocation(na)
+        val axisPitch = getPitchFromLocation(na)
 
-        // 计算两个向量之间的夹角
-        val angle = acos(normalizedAxis.dot(normalizedToPoint))
-
-        // 计算旋转轴，它是当前轴和目标点的叉乘
-        val rotationAxis = normalizedAxis.cross(normalizedToPoint).normalize()
-        // 使用rotateAsAxis函数旋转locList
-        return rotateAsAxis(locList, rotationAxis, angle)
+        val toa = toPoint.normalize()
+        val toYaw = getYawFromLocation(toa)
+        val toPitch = getPitchFromLocation(toa)
+//        return shape
+        // 先给点转回去
+        q.rotateY(axisYaw)
+            .rotateLocalX(axisPitch)
+        val toQ = Quaterniond()
+            .rotateY(-toYaw)
+            .rotateX(-toPitch)
+        return shape.onEach {
+            val vector = Vector3d(it.x, it.y, it.z)
+            vector.rotate(q)
+            vector.rotate(toQ)
+            it.x = vector.x
+            it.y = vector.y
+            it.z = vector.z
+        }
     }
+
 
     /**
      * 旋转到对应的yaw和pitch 上
@@ -410,41 +426,24 @@ object Math3DUtil {
         pitch: Double,
         axis: RelativeLocation
     ): List<RelativeLocation> {
-        val axisYaw = getYawFromLocation(axis)
-        val axisPitch = getPitchFromLocation(axis)
-        val yawDelta = (yaw - axisYaw)
-        val pitchDelta = -(pitch - axisPitch).coerceIn(
-            -PI / 2, PI / 2
-        )
+        val axisYaw = getYawFromLocation(axis.normalize())
+        val axisPitch = getPitchFromLocation(axis.normalize())
+//
+        val deltaYaw = yaw - axisYaw
+        val deltaPitch = pitch - axisPitch
+
+        Vector3d(axis.x, axis.y, axis.z)
         val q = Quaterniond()
-        q.rotationXYZ(
-            -pitchDelta,
-            yawDelta,
-            0.0
-        )
-        shape.onEach {
-            val v = Vector3d(it.x,it.y,it.z)
-            v.rotate(q)
-            it.x = v.x
-            it.y = v.y
-            it.z = v.z
+            .rotateY(-deltaYaw)
+            .rotateLocalX(deltaPitch)
+        return shape.onEach {
+            val vector = Vector3d(it.x, it.y, it.z)
+            q.transform(vector)
+            it.x = vector.x
+            it.y = vector.y
+            it.z = vector.z
         }
-        return shape
     }
-
-    /**
-     * 旋转到对应的yaw和pitch 上
-     */
-    fun rotatePointsToWithAngle(
-        shape: List<RelativeLocation>,
-        to: RelativeLocation,
-        axis: RelativeLocation
-    ): List<RelativeLocation> {
-        val toYaw = getYawFromLocation(to)
-        val toPitch = getPitchFromLocation(to)
-        return rotatePointsToWithAngle(shape, toYaw, toPitch, axis)
-    }
-
 
     /**
      * 让图形的对称轴指向某个点(图形跟着转变)
@@ -489,13 +488,13 @@ object Math3DUtil {
     }
 
     fun getYawFromLocation(loc: RelativeLocation): Double {
-        return atan2(loc.z, loc.x)
+        return atan2(-loc.x, loc.z)
     }
 
     fun getPitchFromLocation(v: RelativeLocation): Double {
-        val length = v.length()
-        if (length == 0.0) return 0.0
-        return asin(v.y / length)
+//        val length = v.length()
+//        if (length == 0.0) return 0.0
+        return atan2(v.y, sqrt(v.x.pow(2) + v.z.pow(2)))
     }
 
     fun getPitchFromLocation(v: Vec3d): Double {
