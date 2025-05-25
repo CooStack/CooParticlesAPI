@@ -642,3 +642,454 @@ class ExampleStyle(val bindPlayer: UUID, uuid: UUID = UUID.randomUUID()) :
     }
 }
 ```
+
+# 粒子样式Helper 使用规范
+- 所有的Helper必须在构造函数中执行loadControler方法
+- 否则会出现应用失败的BUG (原因未知)
+
+# 粒子发射器
+## 前言
+- 由于前面的所有示例均指向一个有限粒子个数的样式
+为了更好的实现 例如爆炸, 冲击波, 火焰等粒子效果
+特地抽象出此类
+###  此粒子发射器主要有3个类用于实现功能
+- SimpleParticleEmitters
+- PhysicsParticleEmitters
+- ClassParticleEmitters
+#### 这三个类对应的3个不同的实现方法
+首先讲下前两个类
+#### SimpleParticleEmitters
+```kotlin
+/**
+ * 粒子发射器位置偏移量表达式 提供t作为参数 t 生成时间 int类型
+ */
+    var evalEmittersXWithT = "0"
+    var evalEmittersYWithT = "0"
+    var evalEmittersZWithT = "0"
+
+    /**
+     * 提供了多种预设
+     * box 箱子发射器
+     * point 点发射器
+     * math 数学轨迹发射器
+     */
+    var shootType = EmittersShootTypes.point()
+    private var bufferX = Expression(evalEmittersXWithT)
+    private var bufferY = Expression(evalEmittersYWithT)
+    private var bufferZ = Expression(evalEmittersZWithT)
+    var offset = Vec3d(0.0, 0.0, 0.0)
+    /**
+     * 每tick生成粒子个数
+     */
+    var count = 1
+    /**
+     * 每tick实际生成的粒子个数会受此影响 随机范围(0 .. countRandom)
+     */
+    var countRandom = 0
+```
+#### 构建方法
+```kotlin
+val emitters = SimpleParticleEmitters(位置,服务器世界,粒子信息)
+val emitters = PhysicsParticleEmitters(位置,服务器世界,粒子信息)
+```
+#### 粒子信息同步
+- 为了能够更方便的在服务器之间同步粒子属性
+- 构建了ControlableParticleData类
+- 如果你的ParticleEffect有其他的属性
+- 可以继承此类并且重写PacketCodec解析器
+```kotlin
+/**
+ * 此类可以修改的属性
+ */
+// UUID不建议修改
+var uuid = UUID.randomUUID()
+var velocity: Vec3d = Vec3d.ZERO
+var size = 0.2f
+var color = Vector3f(1f, 1f, 1f)
+var alpha = 1f
+var age = 0
+var maxAge = 120
+// 粒子可见范围(未测试)
+var visibleRange = 128f
+// 当你想要修改成其他Effect时(只支持ControlableParticleEffect 实现一个可控制粒子详细见 TestEndRodEffect的实现方式)
+var effect: ControlableParticleEffect = TestEndRodEffect(uuid)
+var textureSheet = ParticleTextureSheet.PARTICLE_SHEET_TRANSLUCENT
+/**
+ * 粒子移动速度 在SimpleParticleEmitter和PhysicsParticleEmitter中应用
+ */
+var speed = 1.0
+```
+#### PhysicsParticleEmitters
+- 此类提供了一些基本物理参数 重力, 空气密度, 质量, 风向
+
+```kotlin
+/**
+ * 重力加速度 时间单位是tick
+ */
+var gravity = 0.0
+/**
+ * 空气密度
+ */
+var airDensity = 0.0
+/**
+ * 风力方向
+ */
+var wind: WindDirection = GlobalWindDirection(Vec3d.ZERO)
+/**
+ * 质量
+ * 单位 g
+ */
+var mass = 1.0
+```
+在世界中启用emitter的发射
+```kotlin
+ParticleEmittersManager.spawnEmitters(emitter)
+```
+修改emitter的属性
+```kotlin
+var pos: Vec3d // 发射器的位置
+var world: World? // 发射器所处的世界 (在构建生成时不能传入null 可null是因为在序列化的时候不用传入世界信息)
+var tick: Int // 生成时间 tick
+/**
+ * 当maxTick == -1时
+ * 代表此粒子不会由生命周期控制
+ * 粒子生命周期
+ */
+var maxTick: Int
+// 发射延时 (每一次发射后都会延迟delay)
+var delay: Int
+// 发射器唯一标识符 不建议修改
+var uuid: UUID
+// 如果设置为true则会导致发射器失效
+var cancelled: Boolean
+// 是否已经在世界中生成
+var playing: Boolean
+```
+#### 注意
+- 修改发射器属性只在服务器环境修改
+- 每一个tick都会自动同步发射器属性给所有可视客户端
+
+#### ClassParticleEmitters
+- 这个类是一个抽象类 其实就是给开发者(我)偷懒写表达式用的
+- 可以按照自定义的规则生成粒子
+```kotlin
+abstract class ClassParticleEmitters(
+    override var pos: Vec3d,
+    override var world: World?,
+) : ParticleEmitters {
+    override var tick: Int = 0
+    override var maxTick: Int = 120
+    override var delay: Int = 0
+    override var uuid: UUID = UUID.randomUUID()
+    override var cancelled: Boolean = false
+    override var playing: Boolean = false
+    var airDensity = 0.0
+    var gravity: Double = 0.0
+
+    companion object {
+        fun encodeBase(data: ClassParticleEmitters, buf: RegistryByteBuf) {
+            buf.writeVec3d(data.pos)
+            buf.writeInt(data.tick)
+            buf.writeInt(data.maxTick)
+            buf.writeInt(data.delay)
+            buf.writeUuid(data.uuid)
+            buf.writeBoolean(data.cancelled)
+            buf.writeBoolean(data.playing)
+            buf.writeDouble(data.gravity)
+            buf.writeDouble(data.airDensity)
+            buf.writeDouble(data.mass)
+            buf.writeString(data.wind.getID())
+            data.wind.getCodec().encode(buf, data.wind)
+        }
+
+        /**
+         * 写法
+         * 先在codec的 decode方法中 创建此对象
+         * 然后将buf和container 传入此方法
+         * 然后继续decode自己的参数
+         */
+        fun decodeBase(container: ClassParticleEmitters, buf: RegistryByteBuf) {
+            val pos = buf.readVec3d()
+            val tick = buf.readInt()
+            val maxTick = buf.readInt()
+            val delay = buf.readInt()
+            val uuid = buf.readUuid()
+            val canceled = buf.readBoolean()
+            val playing = buf.readBoolean()
+            val gravity = buf.readDouble()
+            val airDensity = buf.readDouble()
+            val mass = buf.readDouble()
+            val id = buf.readString()
+            val wind = WindDirections.getCodecFromID(id)
+                .decode(buf)
+            container.apply {
+                this.pos = pos
+                this.tick = tick
+                this.maxTick = maxTick
+                this.delay = delay
+                this.uuid = uuid
+                this.cancelled = canceled
+                this.airDensity = airDensity
+                this.gravity = gravity
+                this.mass = mass
+                this.playing = playing
+                this.airDensity = airDensity
+                this.wind = wind
+            }
+
+        }
+
+    }
+
+    /**
+     * 风力方向
+     */
+    var wind: WindDirection = GlobalWindDirection(Vec3d.ZERO).also {
+        it.loadEmitters(this)
+    }
+
+    /**
+     * 质量
+     * 单位 g
+     */
+    var mass: Double = 1.0
+    override fun start() {
+        if (playing) return
+        playing = true
+        if (world?.isClient == false) {
+            ParticleEmittersManager.updateEmitters(this)
+        }
+    }
+
+    override fun stop() {
+        cancelled = true
+        if (world?.isClient == false) {
+            ParticleEmittersManager.updateEmitters(this)
+        }
+    }
+
+    override fun tick() {
+        if (cancelled || !playing) {
+            return
+        }
+        if (tick++ >= maxTick && maxTick != -1) {
+            stop()
+        }
+
+        world ?: return
+        doTick()
+        if (!world!!.isClient) {
+            return
+        }
+
+        if (tick % max(1, delay) == 0) {
+            // 执行粒子变更操作
+            // 生成新粒子
+            spawnParticle()
+        }
+    }
+
+    override fun spawnParticle() {
+        if (!world!!.isClient) {
+            return
+        }
+        val world = world as ClientWorld
+        // 生成粒子样式
+        genParticles().forEach {
+            spawnParticle(world, pos.add(it.value.toVector()), it.key)
+        }
+    }
+
+    /**
+     * 服务器和客户端都会执行此方法
+     * 判断服务器清使用 if(!world!!.isClient)
+     */
+    abstract fun doTick()
+
+    /**
+     * 粒子样式生成器
+     */
+    abstract fun genParticles(): Map<ControlableParticleData, RelativeLocation>
+
+    /**
+     * 如若要修改粒子的位置, 速度 属性
+     * 请直接修改 ControlableParticleData
+     * @param data 用于操作单个粒子属性的类
+     * 执行tick方法请使用
+     * controler.addPreTickAction
+     */
+    abstract fun singleParticleAction(
+        controler: ParticleControler,
+        data: ControlableParticleData,
+        spawnPos: Vec3d,
+        spawnWorld: World
+    )
+
+    private fun spawnParticle(world: ClientWorld, pos: Vec3d, data: ControlableParticleData) {
+        val effect = data.effect
+        effect.controlUUID = data.uuid
+        val displayer = ParticleDisplayer.withSingle(effect)
+        val control = ControlParticleManager.createControl(effect.controlUUID)
+        control.initInvoker = {
+            this.size = data.size
+            this.color = data.color
+            this.currentAge = data.age
+            this.maxAge = data.maxAge
+            this.textureSheet = data.textureSheet
+            this.particleAlpha = data.alpha
+        }
+        singleParticleAction(control, data, pos, world)
+        control.addPreTickAction {
+            // 模拟粒子运动 速度
+            teleportTo(
+                this.pos.add(data.velocity)
+            )
+            if (currentAge++ >= maxAge) {
+                markDead()
+            }
+        }
+        displayer.display(pos, world)
+    }
+
+    protected fun updatePhysics(pos: Vec3d, data: ControlableParticleData) {
+        val m = mass / 1000
+        val v = data.velocity
+        val speed = v.length()
+        val gravityForce = Vec3d(0.0, -m * gravity, 0.0)
+        val airResistanceForce = if (speed > 0.01) {
+            val dragMagnitude = 0.5 * airDensity * DRAG_COEFFICIENT *
+                    CROSS_SECTIONAL_AREA * speed.pow(2) * 0.05
+            v.normalize().multiply(-dragMagnitude)
+        } else {
+            Vec3d.ZERO
+        }
+        val windForce = WindDirections.handleWindForce(
+            wind, pos,
+            airDensity, DRAG_COEFFICIENT, CROSS_SECTIONAL_AREA, v
+        )
+
+        val a = gravityForce
+            .add(airResistanceForce)
+            .add(windForce)
+            .multiply(1.0 / m)
+
+        data.velocity = v.add(a)
+    }
+
+
+    /**
+     * 可选重写
+     * 但是重写请注意一定要记得调用super.update() 也就是这里的方法
+     * 或者你愿意复制一段一模一样的
+     * 要不然会出现更新失败的问题
+     * 
+     * 实现注意事项
+     * 如果你写的ClassParticleEmitters 存在一些新的参数
+     * 并且在使用的过程中可能会在外部发生改变
+     * 那么就必须在update里实现赋值
+     * 输入参数 emitters 接受到更新后生成的emitters (输入的参数只起到参数传输的作用)
+     */
+    override fun update(emitters: ParticleEmitters) {
+        if (emitters !is ClassParticleEmitters) return
+        this.pos = emitters.pos
+        this.world = emitters.world
+        this.tick = emitters.tick
+        this.maxTick = emitters.maxTick
+        this.delay = emitters.delay
+        this.uuid = emitters.uuid
+        this.cancelled = emitters.cancelled
+        this.playing = emitters.playing
+    }
+}
+```
+
+#### 实现示例
+```kotlin
+class ExampleClassParticleEmitters(pos: Vec3d, world: World?) : ClassParticleEmitters(pos, world) {
+    var moveDirection = Vec3d.ZERO
+    var templateData = ControlableParticleData()
+
+    companion object {
+        // 必须提供发射器ID 用于序列化使用
+        const val ID = "example-class-particle-emitters"
+
+        @JvmStatic
+        // 构建自己的CODEC 用于同步自己写的数据
+        val CODEC = PacketCodec.ofStatic<RegistryByteBuf, ParticleEmitters>(
+            { buf, data ->
+                data as ExampleClassParticleEmitters
+                // 请务必调用此方法(来源ClassParticleEmitters) 用于同步父类的参数
+                encodeBase(data, buf)
+                buf.writeVec3d(data.moveDirection)
+                ControlableParticleData.PACKET_CODEC.encode(buf, data.templateData)
+            }, {
+                val instance = ExampleClassParticleEmitters(Vec3d.ZERO, null)
+                // 请务必调用此方法(来源ClassParticleEmitters) 反序列化父类的参数
+                decodeBase(instance, it)
+                instance.moveDirection = it.readVec3d()
+                instance.templateData = ControlableParticleData.PACKET_CODEC.decode(it)
+                instance
+            }
+        )
+    }
+    
+    // 自己 发射器tick
+    override fun doTick() {
+        pos = pos.add(moveDirection)
+    }
+
+    /**
+     * 每delay tick后会调用此方法
+     * delay是ParticleEmitters提供的参数 和上面的意义相同
+     * 获取粒子生成的位置
+     */
+    override fun genParticles(): Map<ControlableParticleData, RelativeLocation> {
+        return PointsBuilder()
+            .addBall(2.0, 20)
+            .create().associateBy {
+                // 复制输入的粒子数据
+                templateData.clone()
+                    .apply {
+                        // 对粒子初速度进行修改 (类似球的收缩)
+                        this.velocity = it.normalize().multiplyClone(-0.1).toVector()
+                    }
+            }
+    }
+
+    override fun singleParticleAction(
+        controler: ParticleControler,
+        data: ControlableParticleData,
+        spawnPos: Vec3d,
+        spawnWorld: World
+    ) {
+        // 每生成一个粒子就会执行此方法
+        // 如果要给粒子单体设置某些运动方式
+        // 或者不透明度, 颜色的变化
+        // 请使用 controler.addPreTickAction 设置每tick的粒子变化方法
+        // 对data的修改也会同步应用到粒子上
+        // spawnPos是首次生成的位置
+        // spawnWorld是首次生成的世界(不会改变)
+    }
+
+    override fun update(emitters: ParticleEmitters) {
+        super.update(emitters)
+        if (emitters !is ExampleClassParticleEmitters) {
+            return
+        }
+        this.templateData = emitters.templateData
+        this.moveDirection = emitters.moveDirection
+    }
+
+    override fun getEmittersID(): String {
+        return ID
+    }
+
+    override fun getCodec(): PacketCodec<RegistryByteBuf, ParticleEmitters> {
+        return CODEC
+    }
+}
+```
+实现完成后 不要忘记注册
+```kotlin
+ParticleEmittersManager.register(ExampleClassParticleEmitters.ID,ExampleClassParticleEmitters.CODEC)
+```

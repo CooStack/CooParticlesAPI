@@ -49,6 +49,7 @@ class ExampleClassParticleEmitters(pos: Vec3d, world: World?) : ClassParticleEmi
                     }
             }
     }
+
     override fun singleParticleAction(
         controler: ParticleControler,
         data: ControlableParticleData,
@@ -59,6 +60,14 @@ class ExampleClassParticleEmitters(pos: Vec3d, world: World?) : ClassParticleEmi
 
     }
 
+    override fun update(emitters: ParticleEmitters) {
+        super.update(emitters)
+        if (emitters !is ExampleClassParticleEmitters) {
+            return
+        }
+        this.templateData = emitters.templateData
+        this.moveDirection = emitters.moveDirection
+    }
 
     override fun getEmittersID(): String {
         return ID
