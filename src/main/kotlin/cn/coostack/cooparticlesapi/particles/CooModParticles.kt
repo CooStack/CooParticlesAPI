@@ -26,24 +26,6 @@ import net.minecraft.util.Identifier
 
 object CooModParticles {
 
-    @JvmField
-    val GLOWING_PARTICLE_SHEET = object : ParticleTextureSheet {
-        override fun begin(
-            tessellator: Tessellator,
-            textureManager: TextureManager
-        ): BufferBuilder? {
-            RenderSystem.depthMask(false)
-            RenderSystem.enableBlend()
-            RenderSystem.blendFunc(GlStateManager.SrcFactor.SRC_ALPHA, GlStateManager.DstFactor.ONE)
-            RenderSystem.setShaderTexture(0, SpriteAtlasTexture.PARTICLE_ATLAS_TEXTURE)
-            return tessellator.begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR_LIGHT);
-        }
-
-        override fun toString(): String {
-            return "GLOWING_PARTICLE_SHEET"
-        }
-    }
-
 
     fun reg() {}
     val testEndRod: ParticleType<TestEndRodEffect> = register(
