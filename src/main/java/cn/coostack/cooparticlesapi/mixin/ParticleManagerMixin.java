@@ -3,7 +3,6 @@ package cn.coostack.cooparticlesapi.mixin;
 
 import cn.coostack.cooparticlesapi.config.APIConfigManager;
 import com.google.common.collect.EvictingQueue;
-import net.minecraft.client.particle.EmitterParticle;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleManager;
 import net.minecraft.client.particle.ParticleTextureSheet;
@@ -42,12 +41,12 @@ public abstract class ParticleManagerMixin {
             Queue<Particle> queue1 = particles.computeIfAbsent(particle.getType(),
                     sheet -> EvictingQueue.create(limit));
             // limit 在程序生命周期内不会改变，这里可以直接判断
-            if (queue1.size() < limit) {
-                queue1.add(particle);
-            } else {
+            if (queue1.size() == limit) {
                 // 这样驱逐队列就没用了但是可以避免内存泄漏
-                onEvict(particle);
+                Particle poll = queue1.poll();
+                if (poll != null) onEvict(poll);
             }
+            queue1.add(particle);
         }
         return null;
     }

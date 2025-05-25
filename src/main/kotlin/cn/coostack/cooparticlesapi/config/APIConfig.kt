@@ -1,5 +1,7 @@
 package cn.coostack.cooparticlesapi.config
 
+import kotlin.math.max
+
 class APIConfig {
     /**
      * 是否启用ParticleManagerMixin 对粒子数量上限进行修改
@@ -12,4 +14,5 @@ class APIConfig {
      * 原版上限为65536
      */
     var particleCountLimit = 65536
+        get() = max(field, 1)
 }
