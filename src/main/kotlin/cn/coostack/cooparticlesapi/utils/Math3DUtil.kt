@@ -28,15 +28,31 @@ object Math3DUtil {
     fun getLightningEffectNodes(
         start: RelativeLocation, end: RelativeLocation, counts: Int
     ): List<RelativeLocation> {
+        val len = end.distance(start)
+        val offsetStep = len / 4
+        return getLightningEffectNodes(start, end, counts, offsetStep)
+    }
+
+    fun getLightningEffectNodes(
+        start: RelativeLocation, end: RelativeLocation, counts: Int, offsetRange: Double
+    ): List<RelativeLocation> {
+        val res = mutableListOf(start)
+        res.addAll(getLightningNodes(start, end, counts, offsetRange))
+        res.add(end)
+        return res
+    }
+
+
+    private fun getLightningNodes(
+        start: RelativeLocation, end: RelativeLocation, counts: Int, offsetRange: Double
+    ): List<RelativeLocation> {
         // 二分 start - > end 位置
         // 先获取中点
         val mid = start + (end - start).multiply(0.5)
         // 让中点进行偏移
-        val len = end.distance(start)
-        val offsetStep = len / 4
-        mid.x += random.nextDouble(-offsetStep, offsetStep)
-        mid.y += random.nextDouble(-offsetStep, offsetStep)
-        mid.z += random.nextDouble(-offsetStep, offsetStep)
+        mid.x += random.nextDouble(-offsetRange, offsetRange)
+        mid.y += random.nextDouble(-offsetRange, offsetRange)
+        mid.z += random.nextDouble(-offsetRange, offsetRange)
         val res = mutableListOf(mid)
         if (counts <= 1) {
             return res
@@ -44,7 +60,7 @@ object Math3DUtil {
         val left = getLightningEffectNodes(start, mid, counts - 1)
         val right = getLightningEffectNodes(mid, end, counts - 1)
         // 合并点集合
-        return left + right
+        return left + res + right
     }
 
     /**
@@ -53,6 +69,25 @@ object Math3DUtil {
      */
     fun getLightningEffectPoints(end: RelativeLocation, counts: Int, preLineCount: Int): List<RelativeLocation> {
         val nodes = getLightningEffectNodes(RelativeLocation(), end, counts)
+        val res = ArrayList<RelativeLocation>()
+        var i = 0
+        while (i < nodes.size - 1) {
+            val current = nodes[i]
+            val next = nodes[i + 1]
+            // 连线
+            res.addAll(getLineLocations(current, next, preLineCount))
+            i++
+        }
+        return res
+    }
+
+    fun getLightningEffectPoints(
+        end: RelativeLocation,
+        counts: Int,
+        preLineCount: Int,
+        offsetRange: Double
+    ): List<RelativeLocation> {
+        val nodes = getLightningEffectNodes(RelativeLocation(), end, counts, offsetRange)
         val res = ArrayList<RelativeLocation>()
         var i = 0
         while (i < nodes.size - 1) {

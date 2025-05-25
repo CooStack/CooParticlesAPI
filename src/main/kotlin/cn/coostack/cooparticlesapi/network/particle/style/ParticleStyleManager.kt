@@ -4,6 +4,8 @@ import cn.coostack.cooparticlesapi.CooParticleAPI
 import cn.coostack.cooparticlesapi.network.buffer.ParticleControlerDataBuffers
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleStyleS2C
 import cn.coostack.cooparticlesapi.particles.control.ControlType
+import net.fabricmc.api.EnvType
+import net.fabricmc.api.Environment
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking
 import net.minecraft.server.network.ServerPlayerEntity
 import net.minecraft.text.Text
@@ -206,4 +208,11 @@ object ParticleStyleManager {
                 *style.writePacketArgs().map { entry -> entry.key to entry.value }.toTypedArray()
             )
         )
+
+    @Environment(EnvType.CLIENT)
+    fun clearAllVisible() {
+        clientViewStyles.onEach {
+            it.value.remove()
+        }.clear()
+    }
 }

@@ -10,6 +10,8 @@ import cn.coostack.cooparticlesapi.network.particle.emitters.impl.LightningClass
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.PhysicsParticleEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.PresetTestEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.SimpleParticleEmitters
+import net.fabricmc.api.EnvType
+import net.fabricmc.api.Environment
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking
 import net.minecraft.network.RegistryByteBuf
 import net.minecraft.network.codec.PacketCodec
@@ -160,6 +162,12 @@ object ParticleEmittersManager {
             PacketParticleEmittersS2C.PacketType.CHANGE_OR_CREATE
         )
         ServerPlayNetworking.send(player, packet)
+    }
+
+    @Environment(EnvType.CLIENT)
+    fun clearAllVisible() {
+        clientEmitters.onEach { it.value.cancelled = true }
+            .clear()
     }
 
     private fun removeView(player: ServerPlayerEntity, emitters: ParticleEmitters) {

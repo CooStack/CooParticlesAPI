@@ -198,6 +198,34 @@ class PointsBuilder {
         getLightningEffectNodes(start, end, count)
     }
 
+    fun addLightningNodes(end: RelativeLocation, count: Int, offsetRange: Double): PointsBuilder = addWith {
+        getLightningEffectNodes(RelativeLocation(), end, count, offsetRange)
+    }
+
+    fun addLightningNodes(
+        start: RelativeLocation,
+        end: RelativeLocation,
+        count: Int,
+        offsetRange: Double
+    ): PointsBuilder = addWith {
+        getLightningEffectNodes(start, end, count, offsetRange)
+    }
+
+    fun addLightningPoints(end: RelativeLocation, count: Int, preLineCount: Int, offsetRange: Double): PointsBuilder =
+        addWith {
+            getLightningEffectPoints(end, count, preLineCount, offsetRange)
+        }
+
+    fun addLightningPoints(
+        start: RelativeLocation,
+        end: RelativeLocation,
+        count: Int,
+        preLineCount: Int,
+        offsetRange: Double
+    ): PointsBuilder = addWith {
+        getLightningEffectPoints(end, count, preLineCount, offsetRange).onEach { it.add(start) }
+    }
+
     fun addLightningPoints(end: RelativeLocation, count: Int, preLineCount: Int): PointsBuilder = addWith {
         getLightningEffectPoints(end, count, preLineCount)
     }

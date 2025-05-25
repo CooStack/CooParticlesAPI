@@ -35,6 +35,7 @@ import cn.coostack.cooparticlesapi.test.particle.style.RotateTestStyle
 import net.fabricmc.api.ClientModInitializer
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientWorldEvents
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
 import net.fabricmc.fabric.api.client.particle.v1.ParticleFactoryRegistry
 import net.fabricmc.fabric.api.client.rendering.v1.EntityModelLayerRegistry
@@ -44,14 +45,7 @@ object CooParticleAPIClient : ClientModInitializer {
 
     override fun onInitializeClient() {
         loadParticleGroupPacketListener()
-        ClientTickEvents.START_WORLD_TICK.register {
-            ClientParticleGroupManager.doClientTick()
-            ParticleStyleManager.doTickClient()
-            ParticleEmittersManager.doTickClient()
-        }
-        ClientWorldEvents.AfterClientWorldChange { _, _ ->
-            ClientParticleGroupManager.clearAllVisible()
-        }
+        registerClientEvents()
         ParticleFactoryRegistry.getInstance()
             .register(CooModParticles.testEndRod, ParticleFactoryRegistry.PendingParticleFactory {
                 return@PendingParticleFactory TestEndRodParticle.Factory(it)
@@ -114,6 +108,24 @@ object CooParticleAPIClient : ClientModInitializer {
         )
     }
 
+
+    private fun registerClientEvents() {
+        ClientPlayConnectionEvents.DISCONNECT.register { _, event ->
+            ParticleEmittersManager.clientEmitters.clear()
+            ParticleStyleManager.clearAllVisible()
+            ClientParticleGroupManager.clearAllVisible()
+        }
+        ClientTickEvents.START_WORLD_TICK.register {
+            ClientParticleGroupManager.doClientTick()
+            ParticleStyleManager.doTickClient()
+            ParticleEmittersManager.doTickClient()
+        }
+        ClientWorldEvents.AfterClientWorldChange { _, _ ->
+            ParticleEmittersManager.clientEmitters.clear()
+            ParticleStyleManager.clearAllVisible()
+            ClientParticleGroupManager.clearAllVisible()
+        }
+    }
 
     private fun testEntity() {
         EntityModelLayerRegistry.registerModelLayer(
