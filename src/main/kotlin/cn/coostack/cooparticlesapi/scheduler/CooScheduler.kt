@@ -1,9 +1,11 @@
 package cn.coostack.cooparticlesapi.scheduler
 
+import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.math.sin
 
 class CooScheduler {
-    internal val ticks = HashSet<TickRunnable>()
+    internal val ticks = ConcurrentLinkedQueue<TickRunnable>()
+    internal val taskQueue = ConcurrentLinkedQueue<TickRunnable>()
     internal fun doTick() {
         val iterator = ticks.iterator()
         while (iterator.hasNext()) {
@@ -13,6 +15,8 @@ class CooScheduler {
                 iterator.remove()
             }
         }
+        ticks.addAll(taskQueue)
+        taskQueue.clear()
     }
 
     /**
@@ -22,7 +26,7 @@ class CooScheduler {
         val tick = TickRunnable(runnable)
         tick.singleDelay = delay
         tick.loop()
-        ticks.add(tick)
+        taskQueue.add(tick)
         return tick
     }
 
@@ -32,7 +36,7 @@ class CooScheduler {
     fun runTask(delay: Int, runnable: Runnable): TickRunnable {
         val tick = TickRunnable(runnable)
         tick.singleDelay = delay
-        ticks.add(tick)
+        taskQueue.add(tick)
         return tick
     }
 
@@ -44,7 +48,7 @@ class CooScheduler {
         val tick = TickRunnable(runnable)
         tick.maxTick = maxLoopTick
         tick.loopTimer()
-        ticks.add(tick)
+        taskQueue.add(tick)
         return tick
     }
 
@@ -59,7 +63,7 @@ class CooScheduler {
         tick.maxTick = maxLoopTick
         tick.singleDelay = preDelay
         tick.loopTimer()
-        ticks.add(tick)
+        taskQueue.add(tick)
         return tick
     }
 
