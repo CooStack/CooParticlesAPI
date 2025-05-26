@@ -8,6 +8,7 @@ import cn.coostack.cooparticlesapi.network.particle.emitters.impl.ExplodeClassPa
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.FireClassParticleEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.LightningClassParticleEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.PhysicsParticleEmitters
+import cn.coostack.cooparticlesapi.network.particle.emitters.impl.PresetLaserEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.PresetTestEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.SimpleParticleEmitters
 import net.fabricmc.api.EnvType
@@ -189,6 +190,7 @@ object ParticleEmittersManager {
         register(DefendClassParticleEmitters.ID, DefendClassParticleEmitters.CODEC)
         register(PresetTestEmitters.ID, PresetTestEmitters.CODEC)
         register(FireClassParticleEmitters.ID, FireClassParticleEmitters.CODEC)
+        register(PresetLaserEmitters.ID, PresetLaserEmitters.CODEC)
     }
 
 }
