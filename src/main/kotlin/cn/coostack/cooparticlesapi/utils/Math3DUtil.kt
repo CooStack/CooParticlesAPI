@@ -90,7 +90,7 @@ object Math3DUtil {
         if (counts <= 1) {
             return res
         }
-        val nextOffsetRange = currentOffsetRange * attenuation
+        val nextOffsetRange = (currentOffsetRange * attenuation).coerceAtLeast(0.01)
         val left = getLightningNodesAttenuation(start, mid, counts - 1, nextOffsetRange, attenuation)
         val right = getLightningNodesAttenuation(mid, end, counts - 1, nextOffsetRange, attenuation)
         // 合并点集合
