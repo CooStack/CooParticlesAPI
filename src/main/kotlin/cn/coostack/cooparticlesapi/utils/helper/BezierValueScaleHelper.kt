@@ -70,7 +70,7 @@ abstract class BezierValueScaleHelper(
         if (isZero()) {
             return
         }
-        val value = bezierPoints[current--].y
+        val value = bezierPoints[max(0, --current)].y
         scale(minScale + value)
     }
 }
