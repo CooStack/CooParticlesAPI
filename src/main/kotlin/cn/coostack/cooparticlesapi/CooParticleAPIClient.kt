@@ -120,7 +120,7 @@ object CooParticleAPIClient : ClientModInitializer {
             ParticleStyleManager.doTickClient()
             ParticleEmittersManager.doTickClient()
         }
-        ClientWorldEvents.AfterClientWorldChange { _, _ ->
+        ClientWorldEvents.AFTER_CLIENT_WORLD_CHANGE.register { _, _ ->
             ParticleEmittersManager.clientEmitters.clear()
             ParticleStyleManager.clearAllVisible()
             ClientParticleGroupManager.clearAllVisible()
