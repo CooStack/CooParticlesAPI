@@ -1,12 +1,9 @@
 package cn.coostack.cooparticlesapi.utils
 
 import net.minecraft.util.math.Vec3d
-import org.joml.Matrix4d
-import org.joml.Matrix4f
 import org.joml.Quaterniond
 import org.joml.Vector3d
 import org.joml.Vector3f
-import org.joml.Vector4d
 import java.util.ArrayList
 import kotlin.math.*
 import kotlin.random.Random
@@ -42,25 +39,68 @@ object Math3DUtil {
         return res
     }
 
-
-    private fun getLightningNodes(
-        start: RelativeLocation, end: RelativeLocation, counts: Int, offsetRange: Double
+    /**
+     * @param maxOffsetRange 第一次二分时的随机范围
+     * @param attenuation 随着二分的进行, 二分的随机范围衰减 这一次是上一次的 attenuation倍
+     */
+    fun getLightningNodesEffectAttenuation(
+        start: RelativeLocation,
+        end: RelativeLocation,
+        counts: Int,
+        maxOffsetRange: Double,
+        attenuation: Double
     ): List<RelativeLocation> {
+        val res = mutableListOf(start)
+        res.addAll(getLightningNodesAttenuation(start, end, counts, maxOffsetRange, attenuation))
+        res.add(end)
+        return res
+    }
+
+    /**
+     * @param maxOffsetRange 第一次二分时的随机范围
+     * @param attenuation 随着二分的进行, 二分的随机范围衰减 这一次是上一次的 attenuation倍
+     */
+    fun getLightningEffectAttenuationPoints(
+        start: RelativeLocation,
+        end: RelativeLocation,
+        counts: Int,
+        maxOffsetRange: Double,
+        attenuation: Double,
+        preLineCount: Int
+    ): List<RelativeLocation> {
+        return connectLineWithNodes(
+            getLightningNodesEffectAttenuation(start, end, counts, maxOffsetRange, attenuation),
+            preLineCount
+        )
+    }
+
+
+    private fun getLightningNodesAttenuation(
+        start: RelativeLocation, end: RelativeLocation, counts: Int, currentOffsetRange: Double, attenuation: Double
+    ): List<RelativeLocation> {
+        require(attenuation in 0.01..1.0)
         // 二分 start - > end 位置
         // 先获取中点
         val mid = start + (end - start).multiply(0.5)
         // 让中点进行偏移
-        mid.x += random.nextDouble(-offsetRange, offsetRange)
-        mid.y += random.nextDouble(-offsetRange, offsetRange)
-        mid.z += random.nextDouble(-offsetRange, offsetRange)
+        mid.x += random.nextDouble(-currentOffsetRange, currentOffsetRange)
+        mid.y += random.nextDouble(-currentOffsetRange, currentOffsetRange)
+        mid.z += random.nextDouble(-currentOffsetRange, currentOffsetRange)
         val res = mutableListOf(mid)
         if (counts <= 1) {
             return res
         }
-        val left = getLightningEffectNodes(start, mid, counts - 1)
-        val right = getLightningEffectNodes(mid, end, counts - 1)
+        val nextOffsetRange = currentOffsetRange * attenuation
+        val left = getLightningNodesAttenuation(start, mid, counts - 1, nextOffsetRange, attenuation)
+        val right = getLightningNodesAttenuation(mid, end, counts - 1, nextOffsetRange, attenuation)
         // 合并点集合
         return left + res + right
+    }
+
+    private fun getLightningNodes(
+        start: RelativeLocation, end: RelativeLocation, counts: Int, offsetRange: Double
+    ): List<RelativeLocation> {
+        return getLightningNodesAttenuation(start, end, counts, offsetRange, 1.0)
     }
 
     /**
@@ -88,6 +128,10 @@ object Math3DUtil {
         offsetRange: Double
     ): List<RelativeLocation> {
         val nodes = getLightningEffectNodes(RelativeLocation(), end, counts, offsetRange)
+        return connectLineWithNodes(nodes, preLineCount)
+    }
+
+    fun connectLineWithNodes(nodes: List<RelativeLocation>, preLineCount: Int): List<RelativeLocation> {
         val res = ArrayList<RelativeLocation>()
         var i = 0
         while (i < nodes.size - 1) {

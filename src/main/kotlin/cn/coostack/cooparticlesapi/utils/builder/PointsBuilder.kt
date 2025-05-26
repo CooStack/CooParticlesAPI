@@ -189,6 +189,38 @@ class PointsBuilder {
         Math3DUtil.getLineLocations(origin.toVector(), direction.toVector(), step, count)
     )
 
+    fun addLightningNodesAttenuation(
+        start: RelativeLocation, end: RelativeLocation, counts: Int, maxOffset: Double, attenuation: Double
+    ): PointsBuilder = addWith {
+        this.getLightningNodesEffectAttenuation(start, end, counts, maxOffset, attenuation)
+    }
+
+    fun addLightningNodesAttenuation(
+        end: RelativeLocation, counts: Int, maxOffset: Double, attenuation: Double
+    ): PointsBuilder = addWith {
+        this.getLightningNodesEffectAttenuation(RelativeLocation(), end, counts, maxOffset, attenuation)
+    }
+
+    fun addLightningAttenuationPoints(
+        start: RelativeLocation,
+        end: RelativeLocation,
+        counts: Int,
+        maxOffset: Double,
+        attenuation: Double,
+        preLineCount: Int
+    ): PointsBuilder = addWith {
+        this.getLightningEffectAttenuationPoints(start, end, counts, maxOffset, attenuation, preLineCount)
+    }
+
+    fun addLightningAttenuationPoints(
+        end: RelativeLocation,
+        counts: Int,
+        maxOffset: Double,
+        attenuation: Double,
+        preLineCount: Int
+    ): PointsBuilder = addWith {
+        this.getLightningEffectAttenuationPoints(RelativeLocation(), end, counts, maxOffset, attenuation, preLineCount)
+    }
 
     fun addLightningNodes(end: RelativeLocation, count: Int): PointsBuilder = addWith {
         getLightningEffectNodes(RelativeLocation(), end, count)
