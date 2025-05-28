@@ -10,6 +10,7 @@ import cn.coostack.cooparticlesapi.network.particle.emitters.impl.FireClassParti
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.LightningClassParticleEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.PhysicsParticleEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.PresetTestEmitters
+import cn.coostack.cooparticlesapi.network.particle.emitters.impl.SimpleParticleEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.type.EmittersShootTypes
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleStyleManager
 import cn.coostack.cooparticlesapi.particles.impl.ControlableCloudEffect
@@ -32,12 +33,18 @@ class TestParticleItem(settings: Settings) : Item(settings) {
         if (world.isClient) {
             return TypedActionResult.success(user.getStackInHand(hand))
         }
-//        testRotate(world, user)
+        testRotate(world, user)
 //        CameraUtil.startShakeCamera(240, 0.25)
-        testRomaCircle(world, user)
-
+//        testRomaCircle(world, user)
         // 线性阻力
         return super.use(world, user, hand)
+    }
+
+    private fun testLargeParticles(world: World, user: PlayerEntity) {
+        val emitters = SimpleParticleEmitters(user.eyePos, world, ControlableParticleData())
+        emitters.count = 4096
+
+        ParticleEmittersManager.spawnEmitters(emitters)
     }
 
     private fun testRotate(world: World, user: PlayerEntity) {

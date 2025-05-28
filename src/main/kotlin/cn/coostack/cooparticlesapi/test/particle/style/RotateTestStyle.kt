@@ -28,6 +28,7 @@ class RotateTestStyle(val player: UUID, uuid: UUID = UUID.randomUUID()) :
 
     override fun getCurrentFrames(): Map<StyleData, RelativeLocation> {
         return PointsBuilder()
+            .addBall(5.0,200)
             .addLine(
                 RelativeLocation(0.0, -2.0, 0.0),
                 RelativeLocation(0.0, 4.0, 0.0),

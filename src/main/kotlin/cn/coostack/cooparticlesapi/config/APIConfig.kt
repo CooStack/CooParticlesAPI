@@ -15,4 +15,10 @@ class APIConfig {
      */
     var particleCountLimit = 65536
         get() = max(field, 1)
+
+    /**
+     * Math3DUtil的 threadPool最大线程数
+     */
+    var calculateThreadCount = 4
+        get() = max(field, 1)
 }

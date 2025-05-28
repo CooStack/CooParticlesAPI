@@ -32,6 +32,7 @@ import cn.coostack.cooparticlesapi.test.particle.style.ExampleSequencedStyle
 import cn.coostack.cooparticlesapi.test.particle.style.ExampleStyle
 import cn.coostack.cooparticlesapi.test.particle.style.RomaMagicTestStyle
 import cn.coostack.cooparticlesapi.test.particle.style.RotateTestStyle
+import cn.coostack.cooparticlesapi.utils.ParticleAsyncRenderHelper
 import net.fabricmc.api.ClientModInitializer
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientWorldEvents
@@ -114,16 +115,19 @@ object CooParticleAPIClient : ClientModInitializer {
             ParticleEmittersManager.clientEmitters.clear()
             ParticleStyleManager.clearAllVisible()
             ClientParticleGroupManager.clearAllVisible()
+            ParticleAsyncRenderHelper.close()
         }
         ClientTickEvents.START_WORLD_TICK.register {
             ClientParticleGroupManager.doClientTick()
             ParticleStyleManager.doTickClient()
             ParticleEmittersManager.doTickClient()
+            ParticleAsyncRenderHelper.reloadIfClosed()
         }
         ClientWorldEvents.AFTER_CLIENT_WORLD_CHANGE.register { _, _ ->
             ParticleEmittersManager.clientEmitters.clear()
             ParticleStyleManager.clearAllVisible()
             ClientParticleGroupManager.clearAllVisible()
+            ParticleAsyncRenderHelper.reloadIfClosed()
         }
     }
 

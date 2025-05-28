@@ -1,15 +1,21 @@
 package cn.coostack.cooparticlesapi.utils
 
+import cn.coostack.cooparticlesapi.config.APIConfig
+import cn.coostack.cooparticlesapi.config.APIConfigManager
 import net.minecraft.util.math.Vec3d
 import org.joml.Quaterniond
 import org.joml.Vector3d
 import org.joml.Vector3f
 import java.util.ArrayList
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.Executors
+import java.util.concurrent.FutureTask
 import kotlin.math.*
 import kotlin.random.Random
 
 object Math3DUtil {
     private val random = Random(System.currentTimeMillis())
+    private val threadPool = Executors.newFixedThreadPool(APIConfigManager.getConfig().calculateThreadCount)
 
     /**
      * 将RGB值转换为Minecraft粒子使用的 rgb值(/255)
@@ -470,8 +476,16 @@ object Math3DUtil {
      * @param angle 角度 输入一个弧度制角度
      */
     fun rotateAsAxis(locList: List<RelativeLocation>, axis: RelativeLocation, angle: Double): List<RelativeLocation> {
+        val q = Quaterniond()
+        q.rotateAxis(angle, Vector3d(axis.x, axis.y, axis.z))
+        val temp = Vector3d(0.0, 0.0, 0.0)
         for (loc in locList) {
-            RotationMatrix.fromAxisAngle(axis, angle).applyTo(loc)
+//            RotationMatrix.fromAxisAngle(axis, angle).applyTo(loc)
+            temp.set(loc.x, loc.y, loc.z)
+            temp.rotate(q)
+            loc.x = temp.x
+            loc.y = temp.y
+            loc.z = temp.z
         }
         return locList
     }
@@ -484,10 +498,39 @@ object Math3DUtil {
         toPoint: RelativeLocation,
         axis: RelativeLocation
     ): List<RelativeLocation> {
+        return rotatePointsToPointAsync(shape, toPoint, axis, 10)
+    }
+
+    /**
+     * 让图形的对称轴指向某个点(图形跟着转变)
+     *
+     * 使用多线程并发修改shape的值 (FutureTask)
+     */
+    fun rotatePointsToPointAsync(
+        shape: List<RelativeLocation>,
+        toPoint: RelativeLocation,
+        axis: RelativeLocation,
+        threads: Int
+    ): List<RelativeLocation> {
+        val copy = CopyOnWriteArrayList(shape)
         // 同向共线
         if (axis.cross(toPoint).length() in -1e-5..1e-5 && axis.dot(toPoint) > 0) {
             return shape
         }
+        if (copy.isEmpty()) return shape
+        var actualThreads = threads
+        if (threads >= copy.size) {
+            actualThreads = copy.size
+        }
+        // 计算每一个线程处理的点的平均个数
+        val taskPreThreadCount = copy.size / actualThreads
+        var notHandledTaskCount = copy.size % actualThreads
+        // 划分索引范围 从0开始
+        // 索引计算规则如下 从0开始 到 taskPreThreadCount + n 结束 左闭右开
+        // 下一个thread就是 taskPreThreadCount + n 开始 n一般为1或者0
+        var currentIndex = 0
+
+        // 计算旋转四元数
         val q = Quaterniond()
         // 差值
         val na = axis.normalize()
@@ -504,14 +547,36 @@ object Math3DUtil {
         val toQ = Quaterniond()
             .rotateY(-toYaw)
             .rotateX(-toPitch)
-        return shape.onEach {
-            val vector = Vector3d(it.x, it.y, it.z)
-            vector.rotate(q)
-            vector.rotate(toQ)
-            it.x = vector.x
-            it.y = vector.y
-            it.z = vector.z
+
+        // 开始分配旋转任务
+        val tasks = ArrayList<FutureTask<Unit>>()
+        repeat(actualThreads) {
+            var next = currentIndex + taskPreThreadCount // 取到  taskHandledIndexStart ..< next
+            if (notHandledTaskCount > 0) {
+                next++
+                notHandledTaskCount--
+            }
+            val taskHandledIndexStart = currentIndex
+            currentIndex = next
+            // 创建任务
+            val vector = Vector3d(0.0, 0.0, 0.0)
+            val task = FutureTask {
+                for (i in taskHandledIndexStart..<next) {
+                    val it = copy[i]
+                    // 复用节约内存
+                    vector.set(it.x, it.y, it.z)
+                    vector.rotate(q)
+                    vector.rotate(toQ)
+                    it.x = vector.x
+                    it.y = vector.y
+                    it.z = vector.z
+                }
+            }
+            threadPool.submit(task)
+            tasks.add(task)
         }
+        tasks.forEach { it.get() }
+        return shape
     }
 
     /**
