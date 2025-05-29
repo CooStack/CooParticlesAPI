@@ -6,7 +6,9 @@ import com.google.common.base.Predicate
 import net.minecraft.entity.LivingEntity
 import net.minecraft.server.world.ServerWorld
 import net.minecraft.util.math.BlockPos
+import net.minecraft.util.math.ChunkPos
 import net.minecraft.util.math.Vec3d
+import net.minecraft.world.chunk.Chunk
 import kotlin.math.max
 
 abstract class AbstractBarrage(
@@ -67,18 +69,20 @@ abstract class AbstractBarrage(
         }
         var hit = false
         val blockPos = BlockPos.ofFloored(loc)
-        val block = world.getBlockState(blockPos)
         val result = BarrageHitResult()
-        if (!block.isAir) {
-            val shape = block.getCollisionShape(world, blockPos)
-            if (block.isLiquid) {
-                if (!options.acrossLiquid) {
+        if (world.shouldTick(blockPos) && world.isPosLoaded(blockPos.x, blockPos.z)) {
+            val block = world.getBlockState(blockPos)
+            if (!block.isAir) {
+                val shape = block.getCollisionShape(world, blockPos)
+                if (block.isLiquid) {
+                    if (!options.acrossLiquid) {
+                        result.hitBlockState = block
+                        hit = true
+                    }
+                } else if (!options.acrossBlock && (!shape.isEmpty || !options.acrossEmptyCollectionShape)) {
                     result.hitBlockState = block
                     hit = true
                 }
-            } else if (!options.acrossBlock && (!shape.isEmpty || !options.acrossEmptyCollectionShape)) {
-                result.hitBlockState = block
-                hit = true
             }
         }
 

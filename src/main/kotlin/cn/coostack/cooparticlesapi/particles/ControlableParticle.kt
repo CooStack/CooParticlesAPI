@@ -348,8 +348,6 @@ abstract class ControlableParticle(
         )
         // 构建顶点几何
         val light = this.getBrightness(tickDelta)
-
-
         setParticleTexture(vertexConsumer, q, x, y, z, tickDelta, light)
     }
 

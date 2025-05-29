@@ -35,7 +35,7 @@ public class ParticleManagerRenderMixin {
                                          @Local(argsOnly = true) Camera camera,
                                          @Local(argsOnly = true) float tickDelta,
                                          @Local(ordinal = 0) ParticleTextureSheet sheet) {
-        Object[] array = queue.toArray();
+        Particle[] array = queue.toArray(new Particle[0]);
         // 异步调用...
         ParticleAsyncRenderHelper.INSTANCE
                 .renderParticlesAsync(array, instance, textureManager, camera, tickDelta);

@@ -1,6 +1,15 @@
 package cn.coostack.cooparticlesapi.utils
 
 import cn.coostack.cooparticlesapi.config.APIConfigManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.newFixedThreadPoolContext
+import kotlinx.coroutines.runBlocking
 import net.minecraft.client.particle.Particle
 import net.minecraft.client.particle.ParticleTextureSheet
 import net.minecraft.client.render.BufferBuilder
@@ -22,8 +31,7 @@ object ParticleAsyncRenderHelper {
     val threadCount: Int
         get() = APIConfigManager.getConfig().calculateThreadCount
     private var threadPool = Executors.newFixedThreadPool(threadCount)
-
-
+    private var scope = CoroutineScope(newFixedThreadPoolContext(threadCount, "particle-async"))
     fun close() {
         threadPool.shutdownNow()
     }
@@ -59,7 +67,8 @@ object ParticleAsyncRenderHelper {
         // 索引计算规则如下 从0开始 到 taskPreThreadCount + n 结束 左闭右开
         // 下一个thread就是 taskPreThreadCount + n 开始 n一般为1或者0
         var currentIndex = 0
-        val tasks = ArrayList<FutureTask<BufferBuilder?>>()
+//        val tasks = ArrayList<FutureTask<BufferBuilder?>>()
+        val tasks = ArrayList<Deferred<BufferBuilder>>()
         repeat(actualThreads) {
             val tessellator = Tessellator.getInstance()
             var next = currentIndex + taskPreThreadCount // 取到  taskHandledIndexStart ..< next
@@ -73,17 +82,28 @@ object ParticleAsyncRenderHelper {
             // 复用子数组 taskHandledIndexStart - next
             val array = particles.sliceArray(taskHandledIndexStart..<next)
             // 创建任务
-            val task = submitParticlesRender(
-                array, builder, camera, tickDelta
-            )
-            task ?: return@repeat
-            tasks.add(task)
+
+            val job = scope.async {
+                submitParticlesRender(array, builder, camera, tickDelta)
+            }
+            tasks.add(job)
+//            val task = submitParticlesRender(
+//                array, builder, camera, tickDelta
+//            )
+//            task ?: return@repeat
+//            tasks.add(task)
         }
-        tasks.forEach {
-            val builder = it.get() ?: return@forEach
-            val built = builder.endNullable() ?: return@forEach
-            BufferRenderer.drawWithGlobalProgram(built)
+        runBlocking {
+            tasks.awaitAll().forEach { builder ->
+                val built = builder.endNullable() ?: return@forEach
+                BufferRenderer.drawWithGlobalProgram(built)
+            }
         }
+//        tasks.forEach {
+//            val builder = it.get() ?: return@forEach
+//            val built = builder.endNullable() ?: return@forEach
+//            BufferRenderer.drawWithGlobalProgram(built)
+//        }
     }
 
     fun submitParticlesRender(
@@ -91,16 +111,28 @@ object ParticleAsyncRenderHelper {
         builder: BufferBuilder,
         camera: Camera,
         tickDelta: Float
-    ): FutureTask<BufferBuilder?>? {
-        val task = FutureTask {
-            particles.forEach { particle ->
-                render(particle, builder, camera, tickDelta)
-            }
-            return@FutureTask builder
+    ): BufferBuilder {
+        particles.forEach { particle ->
+            render(particle, builder, camera, tickDelta)
         }
-        threadPool.submit(task)
-        return task
+        return builder
     }
+
+//    fun submitParticlesRender(
+//        particles: Array<out Any>,
+//        builder: BufferBuilder,
+//        camera: Camera,
+//        tickDelta: Float
+//    ): FutureTask<BufferBuilder?>? {
+//        val task = FutureTask {
+//            particles.forEach { particle ->
+//                render(particle, builder, camera, tickDelta)
+//            }
+//            return@FutureTask builder
+//        }
+//        threadPool.submit(task)
+//        return task
+//    }
 
     // 渲染一个粒子
     fun render(p: Any, builder: BufferBuilder, camera: Camera, tickDelta: Float) {
