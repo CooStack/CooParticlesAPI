@@ -1,15 +1,16 @@
 package cn.coostack.cooparticlesapi.network.particle.emitters.type
 
 import cn.coostack.cooparticlesapi.barrages.HitBox
+import net.minecraft.network.PacketByteBuf
 import net.minecraft.network.RegistryByteBuf
 import net.minecraft.network.codec.PacketCodec
 import net.minecraft.util.math.Vec3d
 
 object EmittersShootTypes {
 
-    private val types = HashMap<String, PacketCodec<RegistryByteBuf, EmittersShootType>>()
+    private val types = HashMap<String, PacketCodec<PacketByteBuf, EmittersShootType>>()
 
-    fun register(id: String, codec: PacketCodec<RegistryByteBuf, EmittersShootType>) {
+    fun register(id: String, codec: PacketCodec<PacketByteBuf, EmittersShootType>) {
         types[id] = codec
     }
 

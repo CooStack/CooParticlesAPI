@@ -6,6 +6,7 @@ import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmitters
 import cn.coostack.cooparticlesapi.particles.control.ParticleControler
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import cn.coostack.cooparticlesapi.utils.builder.PointsBuilder
+import net.minecraft.network.PacketByteBuf
 import net.minecraft.network.RegistryByteBuf
 import net.minecraft.network.codec.PacketCodec
 import net.minecraft.util.math.Vec3d
@@ -19,7 +20,7 @@ class ExampleClassParticleEmitters(pos: Vec3d, world: World?) : ClassParticleEmi
         const val ID = "example-class-particle-emitters"
 
         @JvmStatic
-        val CODEC = PacketCodec.ofStatic<RegistryByteBuf, ParticleEmitters>(
+        val CODEC = PacketCodec.ofStatic<PacketByteBuf, ParticleEmitters>(
             { buf, data ->
                 data as ExampleClassParticleEmitters
                 encodeBase(data, buf)
@@ -73,7 +74,7 @@ class ExampleClassParticleEmitters(pos: Vec3d, world: World?) : ClassParticleEmi
         return ID
     }
 
-    override fun getCodec(): PacketCodec<RegistryByteBuf, ParticleEmitters> {
+    override fun getCodec(): PacketCodec<PacketByteBuf, ParticleEmitters> {
         return CODEC
     }
 }

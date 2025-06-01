@@ -20,19 +20,25 @@ object CameraUtil {
     fun startShakeCamera(
         tick: Int, amplitude: Double
     ) {
-        val random = Random((System.currentTimeMillis()))
+        var currentAmplitude = amplitude
+        val decreaseStep = amplitude / tick
+        val random = Random(System.currentTimeMillis())
         CooParticleAPI.scheduler.runTaskTimerMaxTick(tick) {
-//            currentYawOffset = random.nextDouble(-amplitude, amplitude).toFloat()
-//            currentPitchOffset = random.nextDouble(-amplitude, amplitude).toFloat()
-            this.currentXOffset = random.nextDouble(-amplitude, amplitude)
-            this.currentYOffset = random.nextDouble(-amplitude, amplitude)
-            this.currentZOffset = random.nextDouble(-amplitude, amplitude)
+            currentXOffset = currentAmplitude * random.nextDouble(-0.5, 0.5)
+            currentYOffset = currentAmplitude * random.nextDouble(-0.5, 0.5)
+            currentZOffset = currentAmplitude * random.nextDouble(-0.5, 0.5)
+
+            currentYawOffset = (currentAmplitude * random.nextDouble(-2.0, 2.0)).toFloat()
+            currentPitchOffset = (currentAmplitude * random.nextDouble(-2.0, 2.0)).toFloat()
+            currentAmplitude -= decreaseStep
         }.setFinishCallback {
-            this.currentYawOffset = 0f
-            this.currentPitchOffset = 0f
-            this.currentXOffset = 0.0
-            this.currentYOffset = 0.0
-            this.currentZOffset = 0.0
+            currentYawOffset = 0f
+            currentPitchOffset = 0f
+            currentXOffset = 0.0
+            currentYOffset = 0.0
+            currentZOffset = 0.0
         }
     }
+
+
 }

@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi.network.particle.emitters
 
+import net.minecraft.network.PacketByteBuf
 import net.minecraft.network.RegistryByteBuf
 import net.minecraft.network.codec.PacketCodec
 import net.minecraft.util.math.Vec3d
@@ -22,7 +23,6 @@ interface ParticleEmitters {
     var pos: Vec3d
     var world: World?
     var tick: Int
-
     /**
      * 当maxTick == -1时
      * 代表此粒子不会由生命周期控制
@@ -57,5 +57,5 @@ interface ParticleEmitters {
      * 编解码器
      * 编码粒子信息, 当前位置
      */
-    fun getCodec(): PacketCodec<RegistryByteBuf, ParticleEmitters>
+    fun getCodec(): PacketCodec<PacketByteBuf, ParticleEmitters>
 }

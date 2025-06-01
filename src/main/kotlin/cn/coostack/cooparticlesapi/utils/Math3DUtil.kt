@@ -2,6 +2,13 @@ package cn.coostack.cooparticlesapi.utils
 
 import cn.coostack.cooparticlesapi.config.APIConfig
 import cn.coostack.cooparticlesapi.config.APIConfigManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.newFixedThreadPoolContext
+import kotlinx.coroutines.runBlocking
 import net.minecraft.util.math.Vec3d
 import org.joml.Quaterniond
 import org.joml.Vector3d
@@ -15,7 +22,14 @@ import kotlin.random.Random
 
 object Math3DUtil {
     private val random = Random(System.currentTimeMillis())
-    private val threadPool = Executors.newFixedThreadPool(APIConfigManager.getConfig().calculateThreadCount)
+
+    @OptIn(DelicateCoroutinesApi::class)
+    private val scope = CoroutineScope(
+        newFixedThreadPoolContext(
+            APIConfigManager.getConfig().calculateThreadCount,
+            "Math3DUtil-ThreadPool"
+        )
+    )
 
     /**
      * 将RGB值转换为Minecraft粒子使用的 rgb值(/255)
@@ -476,18 +490,60 @@ object Math3DUtil {
      * @param angle 角度 输入一个弧度制角度
      */
     fun rotateAsAxis(locList: List<RelativeLocation>, axis: RelativeLocation, angle: Double): List<RelativeLocation> {
+        return rotateAsAxisAsync(locList, axis, angle, APIConfigManager.getConfig().calculateThreadCount)
+    }
+
+    /**
+     * 向量图形绕轴旋转N度
+     * @param angle 角度 输入一个弧度制角度
+     */
+    fun rotateAsAxisAsync(
+        shape: List<RelativeLocation>,
+        axis: RelativeLocation,
+        angle: Double,
+        threads: Int
+    ): List<RelativeLocation> {
+        val copy = CopyOnWriteArrayList(shape)
+        if (copy.isEmpty()) return shape
+        var actualThreads = threads
+        if (threads >= copy.size) {
+            actualThreads = copy.size
+        }
+        // 计算每一个线程处理的点的平均个数
+        val taskPreThreadCount = copy.size / actualThreads
+        var notHandledTaskCount = copy.size % actualThreads
+        // 划分索引范围 从0开始
+        // 索引计算规则如下 从0开始 到 taskPreThreadCount + n 结束 左闭右开
+        // 下一个thread就是 taskPreThreadCount + n 开始 n一般为1或者0
+        var currentIndex = 0
         val q = Quaterniond()
         q.rotateAxis(angle, Vector3d(axis.x, axis.y, axis.z))
-        val temp = Vector3d(0.0, 0.0, 0.0)
-        for (loc in locList) {
-//            RotationMatrix.fromAxisAngle(axis, angle).applyTo(loc)
-            temp.set(loc.x, loc.y, loc.z)
-            temp.rotate(q)
-            loc.x = temp.x
-            loc.y = temp.y
-            loc.z = temp.z
+        val tasks = ArrayList<Deferred<Unit>>()
+        repeat(actualThreads) {
+            var next = currentIndex + taskPreThreadCount // 取到  taskHandledIndexStart ..< next
+            if (notHandledTaskCount > 0) {
+                next++
+                notHandledTaskCount--
+            }
+            val taskHandledIndexStart = currentIndex
+            currentIndex = next
+            // 创建任务
+            val vector = Vector3d(0.0, 0.0, 0.0)
+            val job = scope.async {
+                for (i in taskHandledIndexStart..<next) {
+                    val it = copy[i]
+                    // 复用节约内存
+                    vector.set(it.x, it.y, it.z)
+                    vector.rotate(q)
+                    it.x = vector.x
+                    it.y = vector.y
+                    it.z = vector.z
+                }
+            }
+            tasks.add(job)
         }
-        return locList
+        runBlocking { tasks.awaitAll() }
+        return shape
     }
 
     /**
@@ -498,7 +554,7 @@ object Math3DUtil {
         toPoint: RelativeLocation,
         axis: RelativeLocation
     ): List<RelativeLocation> {
-        return rotatePointsToPointAsync(shape, toPoint, axis, 10)
+        return rotatePointsToPointAsync(shape, toPoint, axis, APIConfigManager.getConfig().calculateThreadCount)
     }
 
     /**
@@ -542,14 +598,15 @@ object Math3DUtil {
         val toPitch = getPitchFromLocation(toa)
         // 先让图形面向Z轴
         q.rotateY(axisYaw)
-            .rotateLocalX(axisPitch)
+            .rotateLocalX(
+                axisPitch)
         // 后再转回目标点
         val toQ = Quaterniond()
             .rotateY(-toYaw)
             .rotateX(-toPitch)
 
         // 开始分配旋转任务
-        val tasks = ArrayList<FutureTask<Unit>>()
+        val tasks = ArrayList<Deferred<Unit>>()
         repeat(actualThreads) {
             var next = currentIndex + taskPreThreadCount // 取到  taskHandledIndexStart ..< next
             if (notHandledTaskCount > 0) {
@@ -560,7 +617,7 @@ object Math3DUtil {
             currentIndex = next
             // 创建任务
             val vector = Vector3d(0.0, 0.0, 0.0)
-            val task = FutureTask {
+            val job = scope.async {
                 for (i in taskHandledIndexStart..<next) {
                     val it = copy[i]
                     // 复用节约内存
@@ -572,10 +629,9 @@ object Math3DUtil {
                     it.z = vector.z
                 }
             }
-            threadPool.submit(task)
-            tasks.add(task)
+            tasks.add(job)
         }
-        tasks.forEach { it.get() }
+        runBlocking { tasks.awaitAll() }
         return shape
     }
 

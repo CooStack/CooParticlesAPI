@@ -9,6 +9,7 @@ import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import cn.coostack.cooparticlesapi.utils.builder.PointsBuilder
 import cn.coostack.cooparticlesapi.utils.helper.emitters.LinearResistanceHelper
+import net.minecraft.network.PacketByteBuf
 import net.minecraft.network.RegistryByteBuf
 import net.minecraft.network.codec.PacketCodec
 import net.minecraft.util.math.Vec3d
@@ -24,7 +25,7 @@ class LightningClassParticleEmitters(pos: Vec3d, world: World?) : ClassParticleE
         const val ID = "lightning-class-particle-emitters"
 
         @JvmStatic
-        val CODEC = PacketCodec.ofStatic<RegistryByteBuf, ParticleEmitters>(
+        val CODEC = PacketCodec.ofStatic<PacketByteBuf, ParticleEmitters>(
             { buf, data ->
                 data as LightningClassParticleEmitters
                 encodeBase(data, buf)
@@ -67,7 +68,7 @@ class LightningClassParticleEmitters(pos: Vec3d, world: World?) : ClassParticleE
         return ID
     }
 
-    override fun getCodec(): PacketCodec<RegistryByteBuf, ParticleEmitters> {
+    override fun getCodec(): PacketCodec<PacketByteBuf, ParticleEmitters> {
         return CODEC
     }
 }

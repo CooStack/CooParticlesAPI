@@ -2,6 +2,7 @@ package cn.coostack.cooparticlesapi.network.particle.emitters.type
 
 import cn.coostack.cooparticlesapi.CooParticleAPI
 import com.ezylang.evalex.Expression
+import net.minecraft.network.PacketByteBuf
 import net.minecraft.network.RegistryByteBuf
 import net.minecraft.network.codec.PacketCodec
 import net.minecraft.util.math.Vec3d
@@ -30,7 +31,7 @@ import java.util.concurrent.FutureTask
 class MathEmittersShootType : EmittersShootType {
     companion object {
         @JvmStatic
-        val CODEC = PacketCodec.ofStatic<RegistryByteBuf, EmittersShootType>(
+        val CODEC = PacketCodec.ofStatic<PacketByteBuf, EmittersShootType>(
             { buf, type ->
                 type as MathEmittersShootType
                 buf.writeString(type.x)
@@ -117,7 +118,7 @@ class MathEmittersShootType : EmittersShootType {
         return ID
     }
 
-    override fun getCodec(): PacketCodec<RegistryByteBuf, EmittersShootType> {
+    override fun getCodec(): PacketCodec<PacketByteBuf, EmittersShootType> {
         return CODEC
     }
 

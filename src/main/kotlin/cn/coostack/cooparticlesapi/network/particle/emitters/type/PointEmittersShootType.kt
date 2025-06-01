@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi.network.particle.emitters.type
 
+import net.minecraft.network.PacketByteBuf
 import net.minecraft.network.RegistryByteBuf
 import net.minecraft.network.codec.PacketCodec
 import net.minecraft.util.math.Vec3d
@@ -9,8 +10,8 @@ class PointEmittersShootType : EmittersShootType {
     val random = Random(System.currentTimeMillis())
     companion object {
         @JvmStatic
-        val CODEC: PacketCodec<RegistryByteBuf, EmittersShootType> =
-            PacketCodec.ofStatic<RegistryByteBuf, EmittersShootType>(
+        val CODEC: PacketCodec<PacketByteBuf, EmittersShootType> =
+            PacketCodec.ofStatic<PacketByteBuf, EmittersShootType>(
                 { b, p -> }, {
                     PointEmittersShootType()
                 }
@@ -22,7 +23,7 @@ class PointEmittersShootType : EmittersShootType {
         return ID
     }
 
-    override fun getCodec(): PacketCodec<RegistryByteBuf, EmittersShootType> {
+    override fun getCodec(): PacketCodec<PacketByteBuf, EmittersShootType> {
         return CODEC
     }
 

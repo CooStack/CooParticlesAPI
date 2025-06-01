@@ -13,18 +13,23 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(Camera.class)
 public abstract class CooParticleCameraMixin {
-    @Shadow private float yaw;
+    @Shadow
+    private float yaw;
 
-    @Shadow private float pitch;
+    @Shadow
+    private float pitch;
 
 
-    @Shadow protected abstract void setRotation(float yaw, float pitch);
+    @Shadow
+    protected abstract void setRotation(float yaw, float pitch);
 
-    @Shadow protected abstract void setPos(double x, double y, double z);
+    @Shadow
+    protected abstract void setPos(double x, double y, double z);
 
-    @Shadow private Vec3d pos;
+    @Shadow
+    private Vec3d pos;
 
-    @Inject(method = "update", at=@At("TAIL"))
+    @Inject(method = "update", at = @At("TAIL"))
     private void onUpdate(CallbackInfo ci) {
 //        float newYaw = yaw + CameraUtil.INSTANCE.getCurrentYawOffset();
 //        float newPitch = pitch + CameraUtil.INSTANCE.getCurrentPitchOffset();
@@ -32,7 +37,6 @@ public abstract class CooParticleCameraMixin {
         double x = pos.getX() + CameraUtil.INSTANCE.getCurrentXOffset();
         double y = pos.getY() + CameraUtil.INSTANCE.getCurrentYOffset();
         double z = pos.getZ() + CameraUtil.INSTANCE.getCurrentZOffset();
-        setPos(x,y,z);
+        setPos(x, y, z);
     }
-
 }

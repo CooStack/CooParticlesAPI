@@ -12,6 +12,7 @@ import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
 import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
 import com.ezylang.evalex.Expression
 import net.minecraft.client.world.ClientWorld
+import net.minecraft.network.PacketByteBuf
 import net.minecraft.network.RegistryByteBuf
 import net.minecraft.network.codec.PacketCodec
 import net.minecraft.util.math.Vec3d
@@ -92,8 +93,8 @@ class PhysicsParticleEmitters(
         @Deprecated("use PhysicContent")
         const val CROSS_SECTIONAL_AREA = PhysicConstant.CROSS_SECTIONAL_AREA
         val ID = "physics-emitters"
-        val CODEC: PacketCodec<RegistryByteBuf, ParticleEmitters> =
-            PacketCodec.ofStatic<RegistryByteBuf, ParticleEmitters>(
+        val CODEC: PacketCodec<PacketByteBuf, ParticleEmitters> =
+            PacketCodec.ofStatic<PacketByteBuf, ParticleEmitters>(
                 { buf, data ->
                     data as PhysicsParticleEmitters
                     buf.writeInt(data.count)
@@ -197,6 +198,7 @@ class PhysicsParticleEmitters(
         }
         if (tick++ >= maxTick && maxTick != -1) {
             stop()
+            return
         }
         offset = Vec3d(
             bufferX
@@ -280,6 +282,10 @@ class PhysicsParticleEmitters(
         } else {
             Vec3d.ZERO
         }
+        if (!wind.hasLoadedEmitters()){
+            wind.loadEmitters(this)
+        }
+
         val windForce = WindDirections.handleWindForce(
             wind, pos,
             airDensity, DRAG_COEFFICIENT, CROSS_SECTIONAL_AREA, v
@@ -304,7 +310,7 @@ class PhysicsParticleEmitters(
         this.pos = emitters.pos
     }
 
-    override fun getCodec(): PacketCodec<RegistryByteBuf, ParticleEmitters> {
+    override fun getCodec(): PacketCodec<PacketByteBuf, ParticleEmitters> {
         return CODEC
     }
 }

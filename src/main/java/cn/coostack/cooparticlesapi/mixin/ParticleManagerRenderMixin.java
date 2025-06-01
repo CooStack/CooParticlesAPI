@@ -21,9 +21,8 @@ import java.util.Queue;
 
 /**
  * TODO
- * 异步生成BuiltBuffer时
- * 在主线程draw会导致 buffer no longer valid的异常
- * 原理未知
+ * 100%崩端 提示非法访问内存
+ * 原因未知
  */
 @Mixin(ParticleManager.class)
 public class ParticleManagerRenderMixin {

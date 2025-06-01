@@ -4,6 +4,7 @@ import cn.coostack.cooparticlesapi.barrages.HitBox
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmitters
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import com.ezylang.evalex.Expression
+import net.minecraft.network.PacketByteBuf
 import net.minecraft.network.RegistryByteBuf
 import net.minecraft.network.codec.PacketCodec
 import net.minecraft.util.math.Vec3d
@@ -25,7 +26,7 @@ class BoxWindDirection(
 
     companion object {
         @JvmStatic
-        val CODEC = PacketCodec.ofStatic<RegistryByteBuf, WindDirection>(
+        val CODEC = PacketCodec.ofStatic<PacketByteBuf, WindDirection>(
             { buf, data ->
                 data as BoxWindDirection
                 buf.writeVec3d(data.direction)
@@ -64,9 +65,13 @@ class BoxWindDirection(
         return ID
     }
 
+    override fun hasLoadedEmitters(): Boolean {
+        return emitters != null
+    }
+
     override fun getWind(particlePos: Vec3d): Vec3d {
         if (relative) {
-            val pos = emitters!!.pos
+            val pos = emitters?.pos ?: return direction
             val dir = pos.relativize(particlePos)
             val express = Expression(windSpeedExpress)
                 .with("l", dir.length())
@@ -82,7 +87,7 @@ class BoxWindDirection(
         return ofBox.contains(pos)
     }
 
-    override fun getCodec(): PacketCodec<RegistryByteBuf, WindDirection> {
+    override fun getCodec(): PacketCodec<PacketByteBuf, WindDirection> {
         return CODEC
     }
 }

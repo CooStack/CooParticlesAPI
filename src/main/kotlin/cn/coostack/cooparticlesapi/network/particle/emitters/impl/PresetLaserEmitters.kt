@@ -7,6 +7,7 @@ import cn.coostack.cooparticlesapi.particles.control.ParticleControler
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import cn.coostack.cooparticlesapi.utils.builder.PointsBuilder
 import net.minecraft.client.particle.ParticleTextureSheet
+import net.minecraft.network.PacketByteBuf
 import net.minecraft.network.RegistryByteBuf
 import net.minecraft.network.codec.PacketCodec
 import net.minecraft.util.math.Vec3d
@@ -106,7 +107,7 @@ class PresetLaserEmitters(pos: Vec3d, world: World?) : ClassParticleEmitters(pos
         const val ID = "coo-particles-api-preset-laser-emitters"
 
         @JvmStatic
-        val CODEC = PacketCodec.ofStatic<RegistryByteBuf, ParticleEmitters>(
+        val CODEC = PacketCodec.ofStatic<PacketByteBuf, ParticleEmitters>(
             { buf, data ->
                 data as PresetLaserEmitters
                 buf.writeVec3d(data.targetPoint)
@@ -247,7 +248,7 @@ class PresetLaserEmitters(pos: Vec3d, world: World?) : ClassParticleEmitters(pos
         this.markDeadWhenArriveMaxScale = emitters.markDeadWhenArriveMaxScale
     }
 
-    override fun getCodec(): PacketCodec<RegistryByteBuf, ParticleEmitters> {
+    override fun getCodec(): PacketCodec<PacketByteBuf, ParticleEmitters> {
         return CODEC
     }
 }

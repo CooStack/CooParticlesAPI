@@ -4,6 +4,7 @@ import cn.coostack.cooparticlesapi.particles.ControlableParticleEffect
 import cn.coostack.cooparticlesapi.particles.ControlableParticleEffectManager
 import cn.coostack.cooparticlesapi.particles.impl.TestEndRodEffect
 import net.minecraft.client.particle.ParticleTextureSheet
+import net.minecraft.network.PacketByteBuf
 import net.minecraft.network.RegistryByteBuf
 import net.minecraft.network.codec.PacketCodec
 import net.minecraft.util.math.Vec3d
@@ -13,11 +14,11 @@ import java.util.UUID
 open class ControlableParticleData {
     companion object {
         @JvmStatic
-        val PACKET_CODEC = PacketCodec.ofStatic<RegistryByteBuf, ControlableParticleData>(
+        val PACKET_CODEC = PacketCodec.ofStatic<PacketByteBuf, ControlableParticleData>(
             ::encode, ::decode
         )
 
-        private fun encode(buf: RegistryByteBuf, data: ControlableParticleData) {
+        private fun encode(buf: PacketByteBuf, data: ControlableParticleData) {
             buf.writeUuid(data.uuid)
             buf.writeVec3d(data.velocity)
             buf.writeFloat(data.size)
@@ -36,7 +37,7 @@ open class ControlableParticleData {
         }
 
         private fun decode(
-            buf: RegistryByteBuf,
+            buf: PacketByteBuf,
         ): ControlableParticleData {
             val uuid = buf.readUuid()
             val velocity = buf.readVec3d()
@@ -98,7 +99,7 @@ open class ControlableParticleData {
         }
     }
 
-    open fun getCodec(): PacketCodec<RegistryByteBuf, out ControlableParticleData> {
+    open fun getCodec(): PacketCodec<PacketByteBuf, out ControlableParticleData> {
         return PACKET_CODEC
     }
 

@@ -5,14 +5,14 @@ import cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind.Wi
 import cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind.WindDirections
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.PhysicsParticleEmitters.Companion.CROSS_SECTIONAL_AREA
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.PhysicsParticleEmitters.Companion.DRAG_COEFFICIENT
-import cn.coostack.cooparticlesapi.particles.ControlableParticle
 import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
 import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
 import cn.coostack.cooparticlesapi.particles.control.ParticleControler
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
+import io.netty.buffer.Unpooled
 import net.minecraft.client.world.ClientWorld
+import net.minecraft.network.PacketByteBuf
 import net.minecraft.network.RegistryByteBuf
-import net.minecraft.network.codec.PacketCodec
 import net.minecraft.util.math.Vec3d
 import net.minecraft.world.World
 import java.util.UUID
@@ -37,7 +37,7 @@ abstract class ClassParticleEmitters(
     var gravity: Double = 0.0
 
     companion object {
-        fun encodeBase(data: ClassParticleEmitters, buf: RegistryByteBuf) {
+        fun encodeBase(data: ClassParticleEmitters, buf: PacketByteBuf) {
             buf.writeVec3d(data.pos)
             buf.writeInt(data.tick)
             buf.writeInt(data.maxTick)
@@ -58,7 +58,7 @@ abstract class ClassParticleEmitters(
          * 然后将buf和container 传入此方法
          * 然后继续decode自己的参数
          */
-        fun decodeBase(container: ClassParticleEmitters, buf: RegistryByteBuf) {
+        fun decodeBase(container: ClassParticleEmitters, buf: PacketByteBuf) {
             val pos = buf.readVec3d()
             val tick = buf.readInt()
             val maxTick = buf.readInt()
@@ -122,20 +122,24 @@ abstract class ClassParticleEmitters(
         if (cancelled || !playing) {
             return
         }
-        if (tick++ >= maxTick && maxTick != -1) {
-            stop()
-        }
 
         world ?: return
         doTick()
         if (!world!!.isClient) {
+            increaseTick()
             return
         }
-
         if (tick % max(1, delay) == 0) {
             // 执行粒子变更操作
             // 生成新粒子
             spawnParticle()
+        }
+        increaseTick()
+    }
+
+    private fun increaseTick() {
+        if (++tick >= maxTick && maxTick != -1) {
+            stop()
         }
     }
 
@@ -213,6 +217,12 @@ abstract class ClassParticleEmitters(
         } else {
             Vec3d.ZERO
         }
+
+        if (!wind.hasLoadedEmitters()) {
+            wind.loadEmitters(this)
+        }
+
+
         val windForce = WindDirections.handleWindForce(
             wind, pos,
             airDensity, DRAG_COEFFICIENT, CROSS_SECTIONAL_AREA, v

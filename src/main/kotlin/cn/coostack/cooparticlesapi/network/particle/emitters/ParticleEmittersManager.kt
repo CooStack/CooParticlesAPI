@@ -11,9 +11,11 @@ import cn.coostack.cooparticlesapi.network.particle.emitters.impl.PhysicsParticl
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.PresetLaserEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.PresetTestEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.SimpleParticleEmitters
+import io.netty.buffer.Unpooled
 import net.fabricmc.api.EnvType
 import net.fabricmc.api.Environment
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking
+import net.minecraft.network.PacketByteBuf
 import net.minecraft.network.RegistryByteBuf
 import net.minecraft.network.codec.PacketCodec
 import net.minecraft.server.network.ServerPlayerEntity
@@ -24,7 +26,7 @@ import java.util.concurrent.ConcurrentHashMap
 
 object ParticleEmittersManager {
     // 已经start的 emitters
-    val emittersCodec = HashMap<String, PacketCodec<RegistryByteBuf, ParticleEmitters>>()
+    val emittersCodec = HashMap<String, PacketCodec<PacketByteBuf, ParticleEmitters>>()
 
     /**
      * 服务器拥有
@@ -37,7 +39,7 @@ object ParticleEmittersManager {
      */
     val clientEmitters = ConcurrentHashMap<UUID, ParticleEmitters>()
 
-    internal fun getCodecFromID(id: String): PacketCodec<RegistryByteBuf, ParticleEmitters>? {
+    internal fun getCodecFromID(id: String): PacketCodec<PacketByteBuf, ParticleEmitters>? {
         return emittersCodec[id]
     }
 
@@ -47,8 +49,8 @@ object ParticleEmittersManager {
      */
     fun register(
         id: String,
-        codec: PacketCodec<RegistryByteBuf, ParticleEmitters>
-    ): PacketCodec<RegistryByteBuf, ParticleEmitters> {
+        codec: PacketCodec<PacketByteBuf, ParticleEmitters>
+    ): PacketCodec<PacketByteBuf, ParticleEmitters> {
         emittersCodec[id] = codec
         return codec
     }
@@ -83,8 +85,8 @@ object ParticleEmittersManager {
         while (iterator.hasNext()) {
             val emitter = iterator.next()
             val emitters = emitter.value
-            emitters.tick()
             updateClientVisible(emitter.value)
+            emitters.tick()
             if (emitter.value.cancelled) {
                 filterVisiblePlayer(emitters).forEach {
                     val player = emitters.world!!.getPlayerByUuid(it) ?: return@forEach
@@ -138,8 +140,10 @@ object ParticleEmittersManager {
     fun updateEmitters(emitters: ParticleEmitters) {
         filterVisiblePlayer(emitters).forEach {
             val player = emitters.world!!.getPlayerByUuid(it) ?: return@forEach
+            val buf = PacketByteBuf(Unpooled.buffer())
+            emitters.getCodec().encode(buf, emitters)
             val packet = PacketParticleEmittersS2C(
-                emitters,
+                buf,
                 emitters.getEmittersID(),
                 PacketParticleEmittersS2C.PacketType.CHANGE_OR_CREATE
             )
@@ -148,8 +152,10 @@ object ParticleEmittersManager {
     }
 
     fun sendChange(emitters: ParticleEmitters, to: ServerPlayerEntity) {
+        val buf = PacketByteBuf(Unpooled.buffer())
+        emitters.getCodec().encode(buf, emitters)
         val packet = PacketParticleEmittersS2C(
-            emitters,
+            buf,
             emitters.getEmittersID(),
             PacketParticleEmittersS2C.PacketType.CHANGE_OR_CREATE
         )
@@ -157,8 +163,10 @@ object ParticleEmittersManager {
     }
 
     private fun addView(player: ServerPlayerEntity, emitters: ParticleEmitters) {
+        val buf = PacketByteBuf(Unpooled.buffer())
+        emitters.getCodec().encode(buf, emitters)
         val packet = PacketParticleEmittersS2C(
-            emitters,
+            buf,
             emitters.getEmittersID(),
             PacketParticleEmittersS2C.PacketType.CHANGE_OR_CREATE
         )
@@ -172,8 +180,10 @@ object ParticleEmittersManager {
     }
 
     private fun removeView(player: ServerPlayerEntity, emitters: ParticleEmitters) {
+        val buf = PacketByteBuf(Unpooled.buffer())
+        emitters.getCodec().encode(buf, emitters)
         val packet = PacketParticleEmittersS2C(
-            emitters,
+            buf,
             emitters.getEmittersID(),
             PacketParticleEmittersS2C.PacketType.REMOVE
         )

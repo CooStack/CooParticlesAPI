@@ -4,6 +4,7 @@ import cn.coostack.cooparticlesapi.CooParticleAPI
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersManager
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry
+import net.minecraft.network.PacketByteBuf
 import net.minecraft.network.RegistryByteBuf
 import net.minecraft.network.codec.PacketCodec
 import net.minecraft.network.packet.CustomPayload
@@ -11,12 +12,11 @@ import net.minecraft.util.Identifier
 import java.util.UUID
 
 class PacketParticleEmittersS2C(
-    val emitter: ParticleEmitters,
+    val emitterBuf: PacketByteBuf,
     val emitterID: String,
     val type: PacketType
 ) :
     CustomPayload {
-
     enum class PacketType(val id: Int) {
         CHANGE_OR_CREATE(0),
         REMOVE(1);
@@ -36,17 +36,16 @@ class PacketParticleEmittersS2C(
     companion object {
         private val identifierID = Identifier.of(CooParticleAPI.MOD_ID, "particle_emitters")
         val payloadID = CustomPayload.Id<PacketParticleEmittersS2C>(identifierID)
-        private val CODEC: PacketCodec<RegistryByteBuf, PacketParticleEmittersS2C> =
+        private val CODEC: PacketCodec<PacketByteBuf, PacketParticleEmittersS2C> =
             CustomPayload.codecOf({ packet, buf ->
                 buf.writeInt(packet.type.id)
                 buf.writeString(packet.emitterID)
-                packet.emitter.getCodec().encode(buf, packet.emitter)
+                buf.writeBytes(packet.emitterBuf)
             }, { buf ->
                 val packetTypeID = buf.readInt()
                 val emitterID = buf.readString()
-                val codec = ParticleEmittersManager.getCodecFromID(emitterID)!!
-                val emitter = codec.decode(buf)
-                PacketParticleEmittersS2C(emitter, emitterID, PacketType.fromID(packetTypeID))
+                val emitterBuf = buf.readBytes(buf.readableBytes())
+                PacketParticleEmittersS2C(PacketByteBuf(emitterBuf), emitterID, PacketType.fromID(packetTypeID))
             })
 
         fun init() {

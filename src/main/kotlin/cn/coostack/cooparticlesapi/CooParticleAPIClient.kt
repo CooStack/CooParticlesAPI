@@ -115,19 +115,16 @@ object CooParticleAPIClient : ClientModInitializer {
             ParticleEmittersManager.clientEmitters.clear()
             ParticleStyleManager.clearAllVisible()
             ClientParticleGroupManager.clearAllVisible()
-            ParticleAsyncRenderHelper.close()
         }
         ClientTickEvents.START_WORLD_TICK.register {
             ClientParticleGroupManager.doClientTick()
             ParticleStyleManager.doTickClient()
             ParticleEmittersManager.doTickClient()
-            ParticleAsyncRenderHelper.reloadIfClosed()
         }
         ClientWorldEvents.AFTER_CLIENT_WORLD_CHANGE.register { _, _ ->
             ParticleEmittersManager.clientEmitters.clear()
             ParticleStyleManager.clearAllVisible()
             ClientParticleGroupManager.clearAllVisible()
-            ParticleAsyncRenderHelper.reloadIfClosed()
         }
     }
 

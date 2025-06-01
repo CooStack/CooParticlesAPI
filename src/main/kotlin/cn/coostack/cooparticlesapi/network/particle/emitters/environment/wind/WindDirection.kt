@@ -1,6 +1,7 @@
 package cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind
 
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmitters
+import net.minecraft.network.PacketByteBuf
 import net.minecraft.network.RegistryByteBuf
 import net.minecraft.network.codec.PacketCodec
 import net.minecraft.util.math.Vec3d
@@ -27,6 +28,8 @@ interface WindDirection {
 
     fun loadEmitters(emitters: ParticleEmitters): WindDirection
 
+    fun hasLoadedEmitters(): Boolean
+
     fun getID(): String
     /**
      * 获得当前位置的风速向量
@@ -37,5 +40,5 @@ interface WindDirection {
      */
     fun inRange(pos: Vec3d): Boolean
 
-    fun getCodec(): PacketCodec<RegistryByteBuf, WindDirection>
+    fun getCodec(): PacketCodec<PacketByteBuf, WindDirection>
 }

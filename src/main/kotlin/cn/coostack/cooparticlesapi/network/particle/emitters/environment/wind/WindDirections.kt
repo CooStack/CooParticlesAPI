@@ -1,12 +1,13 @@
 package cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind
 
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
+import net.minecraft.network.PacketByteBuf
 import net.minecraft.network.RegistryByteBuf
 import net.minecraft.network.codec.PacketCodec
 import net.minecraft.util.math.Vec3d
 
 object WindDirections {
-    private val packets = HashMap<String, PacketCodec<RegistryByteBuf, WindDirection>>()
+    private val packets = HashMap<String, PacketCodec<PacketByteBuf, WindDirection>>()
 
     val GLOBAL = register("global", GlobalWindDirection.CODEC)
 
@@ -41,14 +42,14 @@ object WindDirections {
         }
     }
 
-    fun getCodecFromID(id: String): PacketCodec<RegistryByteBuf, WindDirection> {
+    fun getCodecFromID(id: String): PacketCodec<PacketByteBuf, WindDirection> {
         return packets[id]!!
     }
 
     fun register(
         id: String,
-        codec: PacketCodec<RegistryByteBuf, WindDirection>
-    ): PacketCodec<RegistryByteBuf, WindDirection> {
+        codec: PacketCodec<PacketByteBuf, WindDirection>
+    ): PacketCodec<PacketByteBuf, WindDirection> {
         packets[id] = codec
         return codec
     }

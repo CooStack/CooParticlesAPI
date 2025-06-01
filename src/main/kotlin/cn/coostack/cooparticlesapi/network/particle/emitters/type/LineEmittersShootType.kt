@@ -1,6 +1,7 @@
 package cn.coostack.cooparticlesapi.network.particle.emitters.type
 
 import cn.coostack.cooparticlesapi.barrages.HitBox
+import net.minecraft.network.PacketByteBuf
 import net.minecraft.network.RegistryByteBuf
 import net.minecraft.network.codec.PacketCodec
 import net.minecraft.util.math.Vec3d
@@ -8,8 +9,8 @@ import net.minecraft.util.math.Vec3d
 class LineEmittersShootType(val dir: Vec3d, val step: Double) : EmittersShootType {
     companion object {
         @JvmStatic
-        val CODEC: PacketCodec<RegistryByteBuf, EmittersShootType> =
-            PacketCodec.ofStatic<RegistryByteBuf, EmittersShootType>(
+        val CODEC: PacketCodec<PacketByteBuf, EmittersShootType> =
+            PacketCodec.ofStatic<PacketByteBuf, EmittersShootType>(
                 { buf, type ->
                     type as LineEmittersShootType
                     buf.writeVec3d(type.dir)
@@ -28,7 +29,7 @@ class LineEmittersShootType(val dir: Vec3d, val step: Double) : EmittersShootTyp
         return ID
     }
 
-    override fun getCodec(): PacketCodec<RegistryByteBuf, EmittersShootType> {
+    override fun getCodec(): PacketCodec<PacketByteBuf, EmittersShootType> {
         return CODEC
     }
 

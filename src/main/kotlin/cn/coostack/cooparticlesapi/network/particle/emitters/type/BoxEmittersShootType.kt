@@ -1,6 +1,7 @@
 package cn.coostack.cooparticlesapi.network.particle.emitters.type
 
 import cn.coostack.cooparticlesapi.barrages.HitBox
+import net.minecraft.network.PacketByteBuf
 import net.minecraft.network.RegistryByteBuf
 import net.minecraft.network.codec.PacketCodec
 import net.minecraft.util.math.Vec3d
@@ -9,8 +10,8 @@ import kotlin.random.Random
 class BoxEmittersShootType(val box: HitBox) : EmittersShootType {
     companion object {
         @JvmStatic
-        val CODEC: PacketCodec<RegistryByteBuf, EmittersShootType> =
-            PacketCodec.ofStatic<RegistryByteBuf, EmittersShootType>(
+        val CODEC: PacketCodec<PacketByteBuf, EmittersShootType> =
+            PacketCodec.ofStatic<PacketByteBuf, EmittersShootType>(
                 { buf, type ->
                     type as BoxEmittersShootType
                     val box = type.box
@@ -40,7 +41,7 @@ class BoxEmittersShootType(val box: HitBox) : EmittersShootType {
         return ID
     }
 
-    override fun getCodec(): PacketCodec<RegistryByteBuf, EmittersShootType> {
+    override fun getCodec(): PacketCodec<PacketByteBuf, EmittersShootType> {
         return CODEC
     }
 

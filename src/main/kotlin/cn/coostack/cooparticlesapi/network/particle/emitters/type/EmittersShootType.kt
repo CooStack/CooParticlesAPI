@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi.network.particle.emitters.type
 
+import net.minecraft.network.PacketByteBuf
 import net.minecraft.network.RegistryByteBuf
 import net.minecraft.network.codec.PacketCodec
 import net.minecraft.util.math.Vec3d
@@ -13,7 +14,7 @@ interface EmittersShootType {
     /**
      * 用于序列化发射类型
      */
-    fun getCodec(): PacketCodec<RegistryByteBuf, EmittersShootType>
+    fun getCodec(): PacketCodec<PacketByteBuf, EmittersShootType>
 
     /**
      * 获取生成粒子的位置

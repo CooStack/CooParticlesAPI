@@ -26,23 +26,14 @@ import java.util.Arrays
 import java.util.concurrent.Executors
 import java.util.concurrent.FutureTask
 
+/**
+ * TODO 会导致游戏奔溃
+ */
 object ParticleAsyncRenderHelper {
     @JvmStatic
     val threadCount: Int
         get() = APIConfigManager.getConfig().calculateThreadCount
-    private var threadPool = Executors.newFixedThreadPool(threadCount)
     private var scope = CoroutineScope(newFixedThreadPoolContext(threadCount, "particle-async"))
-    fun close() {
-        threadPool.shutdownNow()
-    }
-
-    fun reloadIfClosed() {
-        if (!threadPool.isShutdown) {
-            return
-        }
-        threadPool = Executors.newFixedThreadPool(threadCount)
-    }
-
     /**
      * 异步渲染粒子
      * TODO 会因为非法访问内存导致崩溃(原因未知)
@@ -67,7 +58,6 @@ object ParticleAsyncRenderHelper {
         // 索引计算规则如下 从0开始 到 taskPreThreadCount + n 结束 左闭右开
         // 下一个thread就是 taskPreThreadCount + n 开始 n一般为1或者0
         var currentIndex = 0
-//        val tasks = ArrayList<FutureTask<BufferBuilder?>>()
         val tasks = ArrayList<Deferred<BufferBuilder>>()
         repeat(actualThreads) {
             val tessellator = Tessellator.getInstance()
@@ -87,11 +77,6 @@ object ParticleAsyncRenderHelper {
                 submitParticlesRender(array, builder, camera, tickDelta)
             }
             tasks.add(job)
-//            val task = submitParticlesRender(
-//                array, builder, camera, tickDelta
-//            )
-//            task ?: return@repeat
-//            tasks.add(task)
         }
         runBlocking {
             tasks.awaitAll().forEach { builder ->
@@ -99,11 +84,6 @@ object ParticleAsyncRenderHelper {
                 BufferRenderer.drawWithGlobalProgram(built)
             }
         }
-//        tasks.forEach {
-//            val builder = it.get() ?: return@forEach
-//            val built = builder.endNullable() ?: return@forEach
-//            BufferRenderer.drawWithGlobalProgram(built)
-//        }
     }
 
     fun submitParticlesRender(
@@ -117,22 +97,6 @@ object ParticleAsyncRenderHelper {
         }
         return builder
     }
-
-//    fun submitParticlesRender(
-//        particles: Array<out Any>,
-//        builder: BufferBuilder,
-//        camera: Camera,
-//        tickDelta: Float
-//    ): FutureTask<BufferBuilder?>? {
-//        val task = FutureTask {
-//            particles.forEach { particle ->
-//                render(particle, builder, camera, tickDelta)
-//            }
-//            return@FutureTask builder
-//        }
-//        threadPool.submit(task)
-//        return task
-//    }
 
     // 渲染一个粒子
     fun render(p: Any, builder: BufferBuilder, camera: Camera, tickDelta: Float) {

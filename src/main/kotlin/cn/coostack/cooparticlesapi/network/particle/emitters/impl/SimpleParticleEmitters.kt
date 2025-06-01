@@ -8,6 +8,7 @@ import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
 import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
 import com.ezylang.evalex.Expression
 import net.minecraft.client.world.ClientWorld
+import net.minecraft.network.PacketByteBuf
 import net.minecraft.network.RegistryByteBuf
 import net.minecraft.network.codec.PacketCodec
 import net.minecraft.util.math.Vec3d
@@ -66,8 +67,8 @@ class SimpleParticleEmitters(
 
     companion object {
         val ID = "simple-emitters"
-        val CODEC: PacketCodec<RegistryByteBuf, ParticleEmitters> =
-            PacketCodec.ofStatic<RegistryByteBuf, ParticleEmitters>(
+        val CODEC: PacketCodec<PacketByteBuf, ParticleEmitters> =
+            PacketCodec.ofStatic<PacketByteBuf, ParticleEmitters>(
                 { buf, data ->
                     data as SimpleParticleEmitters
                     buf.writeInt(data.count)
@@ -145,6 +146,7 @@ class SimpleParticleEmitters(
         }
         if (tick++ >= maxTick && maxTick != -1) {
             stop()
+            return
         }
         world ?: return
         offset = Vec3d(
@@ -222,7 +224,7 @@ class SimpleParticleEmitters(
         this.pos = emitters.pos
     }
 
-    override fun getCodec(): PacketCodec<RegistryByteBuf, ParticleEmitters> {
+    override fun getCodec(): PacketCodec<PacketByteBuf, ParticleEmitters> {
         return CODEC
     }
 }

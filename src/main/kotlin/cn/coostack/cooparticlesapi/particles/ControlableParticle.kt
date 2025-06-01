@@ -12,6 +12,7 @@ import net.minecraft.client.render.Camera
 import net.minecraft.client.render.LightmapTextureManager
 import net.minecraft.client.render.VertexConsumer
 import net.minecraft.client.world.ClientWorld
+import net.minecraft.util.math.BlockPos
 import net.minecraft.util.math.Box
 import net.minecraft.util.math.MathHelper
 import net.minecraft.util.math.Vec3d
@@ -34,6 +35,19 @@ abstract class ControlableParticle(
     val faceToCamera: Boolean = true
 ) : SpriteBillboardParticle(world, pos.x, pos.y, pos.z, velocity.x, velocity.y, velocity.z) {
     val controler: ParticleControler = ControlParticleManager.getControl(controlUUID)!!
+
+    /**
+     * 粒子亮度
+     * 设置为-1则为环境亮度
+     */
+    var light = 15
+        set(value) {
+            if (value == -1) {
+                field = value
+                return
+            }
+            field = value.coerceIn(0, 15)
+        }
 
     /**
      * 粒子渲染类型
@@ -446,7 +460,11 @@ abstract class ControlableParticle(
      * 在黑夜里粒子也会很亮
      */
     override fun getBrightness(tint: Float): Int {
-        return LightmapTextureManager.MAX_LIGHT_COORDINATE
+        return if (light == -1) {
+            world.getLightLevel(BlockPos.ofFloored(pos))
+        } else {
+            LightmapTextureManager.getBlockLightCoordinates(light)
+        }
     }
 
 }
