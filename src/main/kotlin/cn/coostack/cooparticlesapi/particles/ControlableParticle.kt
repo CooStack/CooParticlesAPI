@@ -463,7 +463,7 @@ abstract class ControlableParticle(
         return if (light == -1) {
             world.getLightLevel(BlockPos.ofFloored(pos))
         } else {
-            LightmapTextureManager.getBlockLightCoordinates(light)
+            LightmapTextureManager.pack(light,light)
         }
     }
 
