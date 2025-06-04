@@ -5,8 +5,7 @@ import net.fabricmc.api.EnvType
 import net.fabricmc.api.Environment
 import kotlin.random.Random
 
-@Environment(EnvType.CLIENT)
-object CameraUtil {
+object ClientCameraUtil {
     var currentYawOffset = 0f
     var currentPitchOffset = 0f
 
@@ -27,7 +26,6 @@ object CameraUtil {
             currentXOffset = currentAmplitude * random.nextDouble(-0.5, 0.5)
             currentYOffset = currentAmplitude * random.nextDouble(-0.5, 0.5)
             currentZOffset = currentAmplitude * random.nextDouble(-0.5, 0.5)
-
             currentYawOffset = (currentAmplitude * random.nextDouble(-2.0, 2.0)).toFloat()
             currentPitchOffset = (currentAmplitude * random.nextDouble(-2.0, 2.0)).toFloat()
             currentAmplitude -= decreaseStep
@@ -39,6 +37,4 @@ object CameraUtil {
             currentZOffset = 0.0
         }
     }
-
-
 }

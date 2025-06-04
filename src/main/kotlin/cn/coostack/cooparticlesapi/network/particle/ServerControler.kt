@@ -21,5 +21,4 @@ interface ServerControler<T> {
     fun remove()
 
     fun getValue(): T
-
 }

@@ -20,10 +20,6 @@ class TestStyleItem : Item(Settings()) {
         }
         val style = ExampleSequencedStyle(user.uuid)
         ParticleStyleManager.spawnStyle(world, user.pos, style)
-//        CooParticleAPI.scheduler.runTask(30) {
-//            style.angleSpeed += PI / 72
-//            style.changeStyles()
-//        }
         return res
     }
 }

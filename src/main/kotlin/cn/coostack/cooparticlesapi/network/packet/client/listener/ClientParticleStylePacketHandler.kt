@@ -87,6 +87,7 @@ object ClientParticleStylePacketHandler : ClientPlayNetworking.PlayPayloadHandle
         style.axis = RelativeLocation.of(args["axis"]!!.loadedValue as Vec3d)
         style.scale = args["scale"]!!.loadedValue as Double
         val world = MinecraftClient.getInstance().world
+        style.readPacketArgs(args)
         ParticleStyleManager.spawnStyle(world!!, pos, style)
     }
 

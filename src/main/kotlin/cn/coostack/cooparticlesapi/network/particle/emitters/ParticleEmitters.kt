@@ -1,5 +1,9 @@
 package cn.coostack.cooparticlesapi.network.particle.emitters
 
+import cn.coostack.cooparticlesapi.network.particle.ServerControler
+import cn.coostack.cooparticlesapi.network.particle.emitters.event.ParticleEvent
+import cn.coostack.cooparticlesapi.network.particle.emitters.event.ParticleEventHandler
+import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import net.minecraft.network.PacketByteBuf
 import net.minecraft.network.RegistryByteBuf
 import net.minecraft.network.codec.PacketCodec
@@ -19,10 +23,11 @@ import java.util.UUID
  *
  * TODO BUGS 当maxTick = 1时 会有概率不显示 (应该是tick == maxTick的状态优先被同步过去了)
  */
-interface ParticleEmitters {
+interface ParticleEmitters : ServerControler<ParticleEmitters> {
     var pos: Vec3d
     var world: World?
     var tick: Int
+
     /**
      * 当maxTick == -1时
      * 代表此粒子不会由生命周期控制
@@ -32,6 +37,13 @@ interface ParticleEmitters {
     var uuid: UUID
     var cancelled: Boolean
     var playing: Boolean
+
+    /**
+     * @param innerClass 是否在类内添加
+     * 在类内添加的event handler不会参与codec传输
+     */
+    fun addEventHandler(handler: ParticleEventHandler, innerClass: Boolean)
+
     fun getEmittersID(): String
 
     /**
@@ -58,4 +70,30 @@ interface ParticleEmitters {
      * 编码粒子信息, 当前位置
      */
     fun getCodec(): PacketCodec<PacketByteBuf, ParticleEmitters>
+
+    override fun getValue(): ParticleEmitters {
+        return this
+    }
+
+    override fun remove() {
+        cancelled = true
+    }
+
+    override fun rotateParticlesAsAxis(angle: Double) {
+    }
+
+    override fun rotateParticlesToPoint(to: RelativeLocation) {
+    }
+
+    override fun rotateToWithAngle(to: RelativeLocation, angle: Double) {
+    }
+
+    override fun teleportTo(to: Vec3d) {
+        pos = to
+    }
+
+    override fun teleportTo(x: Double, y: Double, z: Double) {
+        teleportTo(Vec3d(x, y, z))
+    }
+
 }

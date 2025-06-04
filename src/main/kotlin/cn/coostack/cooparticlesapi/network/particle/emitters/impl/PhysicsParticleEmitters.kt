@@ -7,18 +7,31 @@ import cn.coostack.cooparticlesapi.network.particle.emitters.PhysicConstant
 import cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind.GlobalWindDirection
 import cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind.WindDirection
 import cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind.WindDirections
+import cn.coostack.cooparticlesapi.network.particle.emitters.event.ParticleEvent
+import cn.coostack.cooparticlesapi.network.particle.emitters.event.ParticleEventHandler
+import cn.coostack.cooparticlesapi.network.particle.emitters.event.ParticleEventHandlerManager
+import cn.coostack.cooparticlesapi.network.particle.emitters.event.ParticleHitEntityEvent
+import cn.coostack.cooparticlesapi.network.particle.emitters.event.ParticleOnGroundEvent
+import cn.coostack.cooparticlesapi.network.particle.emitters.event.ParticleOnLiquidEvent
 import cn.coostack.cooparticlesapi.network.particle.emitters.type.EmittersShootTypes
 import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
 import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
 import com.ezylang.evalex.Expression
 import net.minecraft.client.world.ClientWorld
+import net.minecraft.entity.Entity
 import net.minecraft.network.PacketByteBuf
 import net.minecraft.network.RegistryByteBuf
 import net.minecraft.network.codec.PacketCodec
+import net.minecraft.util.math.BlockPos
 import net.minecraft.util.math.Vec3d
 import net.minecraft.world.World
 import java.util.Random
+import java.util.SortedMap
+import java.util.TreeMap
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.collections.forEach
+import kotlin.collections.set
 import kotlin.math.max
 import kotlin.math.pow
 
@@ -35,6 +48,43 @@ class PhysicsParticleEmitters(
     override var playing: Boolean = false
     override fun getEmittersID(): String {
         return ID
+    }
+
+    val handlerList = ConcurrentHashMap<String, SortedMap<ParticleEventHandler, Boolean>>()
+
+    override fun addEventHandler(handler: ParticleEventHandler, innerClass: Boolean) {
+        val handlerID = handler.getHandlerID()
+        if (!ParticleEventHandlerManager.hasRegister(handlerID)) {
+            ParticleEventHandlerManager.register(handler)
+        }
+        val eventID = handler.getTargetEventID()
+        val handlerList = handlerList.getOrPut(eventID) { TreeMap() }
+        handlerList[handler] = innerClass
+    }
+
+    private fun addEventHandlerList(list: MutableList<ParticleEventHandler>) {
+        val dirtyLists = HashMap<String, MutableList<ParticleEventHandler>>()
+        list.forEach { handler ->
+            val handlerID = handler.getHandlerID()
+            if (!ParticleEventHandlerManager.hasRegister(handlerID)) {
+                ParticleEventHandlerManager.register(handler)
+            }
+            val eventID = handler.getTargetEventID()
+            val handlerList = handlerList.getOrPut(eventID) { TreeMap() }
+            handlerList[handler] = false
+        }
+        dirtyLists.forEach {
+            it.value.sortBy { it -> it.getPriority() }
+        }
+    }
+
+    private fun collectEventHandles(): List<ParticleEventHandler> {
+        return handlerList.flatMap {
+            // 保留innerClass为false的
+            it.value.filter { it ->
+                !it.value
+            }.keys
+        }
     }
 
     var shootType = EmittersShootTypes.point()
@@ -97,6 +147,12 @@ class PhysicsParticleEmitters(
             PacketCodec.ofStatic<PacketByteBuf, ParticleEmitters>(
                 { buf, data ->
                     data as PhysicsParticleEmitters
+                    val handles = data.collectEventHandles()
+                    buf.writeInt(handles.size)
+                    handles.forEach {
+                        val id = it.getHandlerID()
+                        buf.writeString(id)
+                    }
                     buf.writeInt(data.count)
                     buf.writeInt(data.countRandom)
                     buf.writeVec3d(data.pos)
@@ -122,6 +178,13 @@ class PhysicsParticleEmitters(
                         data.templateData
                     )
                 }, {
+                    val handlerCount = it.readInt()
+                    val handlerList = ArrayList<ParticleEventHandler>()
+                    repeat(handlerCount) { index ->
+                        val handleID = it.readString()
+                        val handler = ParticleEventHandlerManager.getHandlerById(handleID)!!
+                        handlerList.add(handler)
+                    }
                     val count = it.readInt()
                     val countRandom = it.readInt()
                     val pos = it.readVec3d()
@@ -258,6 +321,94 @@ class PhysicsParticleEmitters(
             this.particleAlpha = data.alpha
         }
         control.addPreTickAction {
+            if (minecraftTick) return@addPreTickAction
+            val blockPos = BlockPos.ofFloored(pos)
+            if (!world.chunkManager.isChunkLoaded(blockPos.x shr 4, blockPos.y shr 4)) {
+                return@addPreTickAction
+            }
+            // 判断onGround
+            val adjust = Entity.adjustMovementForCollisions(
+                null,
+                Vec3d(data.velocity.x, data.velocity.y, data.velocity.z),
+                bounding,
+                world,
+                listOf()
+            )
+            onTheGround = adjust.y != data.velocity.y && data.velocity.y < 0.0
+        }
+
+        // 事件层
+        control.addPreTickAction {
+            // 针对 ParticleHitEntityEvent
+            val hitEntityHandlers = handlerList[ParticleHitEntityEvent.EVENT_ID] ?: return@addPreTickAction
+            if (hitEntityHandlers.isEmpty()) return@addPreTickAction
+            // 判断事件触发
+            val entities = world.getOtherEntities(null, this.bounding) { true }
+            if (entities.isEmpty()) return@addPreTickAction
+            val first = entities.first()
+            val event = ParticleHitEntityEvent(this, data, first)
+            for ((handler, _) in hitEntityHandlers) {
+                if (handler.getTargetEventID() != ParticleHitEntityEvent.EVENT_ID) {
+                    continue
+                }
+                handler.handle(event)
+                if (event.canceled) {
+                    break
+                }
+            }
+        }
+
+        control.addPreTickAction {
+            // 针对 ParticleOnGroundEvent
+            val hitEntityHandlers = handlerList[ParticleOnGroundEvent.EVENT_ID] ?: return@addPreTickAction
+            if (hitEntityHandlers.isEmpty()) return@addPreTickAction
+            // 判断事件触发
+            if (!this.onTheGround) {
+                return@addPreTickAction
+            }
+            val event = ParticleOnGroundEvent(this, data, BlockPos.ofFloored(this.pos))
+            for ((handler, _) in hitEntityHandlers) {
+                if (handler.getTargetEventID() != ParticleOnGroundEvent.EVENT_ID) {
+                    continue
+                }
+                handler.handle(event)
+                if (event.canceled) {
+                    break
+                }
+            }
+        }
+
+        control.addPreTickAction {
+            // 针对 ParticleOnLiquidEvent
+            val hitEntityHandlers = handlerList[ParticleOnLiquidEvent.EVENT_ID] ?: return@addPreTickAction
+            if (hitEntityHandlers.isEmpty()) return@addPreTickAction
+            // 判断事件触发
+            val blockPos = BlockPos.ofFloored(this.pos)
+            // 更新前上一个位置
+            val beforeLiquid = (control.bufferedData["cross_liquid"] as? Boolean) ?: false
+            // 判断现在的位置是不是液体
+            if (!world.shouldTickBlockPos(blockPos)) {
+                return@addPreTickAction
+            }
+            val state = world.getBlockState(blockPos)
+            val currentLiquid = state.isLiquid
+            control.bufferedData["cross_liquid"] = currentLiquid
+            if (beforeLiquid || !currentLiquid) {
+                return@addPreTickAction
+            }
+            // 前一个tick不是液体 当前tick是液体则触发事件
+            val event = ParticleOnLiquidEvent(this, data, blockPos)
+            for ((handler, _) in hitEntityHandlers) {
+                if (handler.getTargetEventID() != ParticleOnLiquidEvent.EVENT_ID) {
+                    continue
+                }
+                handler.handle(event)
+                if (event.canceled) {
+                    break
+                }
+            }
+        }
+        control.addPreTickAction {
             // 模拟粒子运动 速度
             teleportTo(
                 this.pos.add(data.velocity)
@@ -282,7 +433,7 @@ class PhysicsParticleEmitters(
         } else {
             Vec3d.ZERO
         }
-        if (!wind.hasLoadedEmitters()){
+        if (!wind.hasLoadedEmitters()) {
             wind.loadEmitters(this)
         }
 
@@ -307,6 +458,7 @@ class PhysicsParticleEmitters(
         this.playing = emitters.playing
         this.cancelled = emitters.cancelled
         this.templateData = emitters.templateData
+        this.handlerList.putAll(emitters.handlerList)
         this.pos = emitters.pos
     }
 

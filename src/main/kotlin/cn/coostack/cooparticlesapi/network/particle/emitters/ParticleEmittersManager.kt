@@ -11,6 +11,7 @@ import cn.coostack.cooparticlesapi.network.particle.emitters.impl.PhysicsParticl
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.PresetLaserEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.PresetTestEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.SimpleParticleEmitters
+import cn.coostack.cooparticlesapi.test.particle.emitter.TestEventEmitter
 import io.netty.buffer.Unpooled
 import net.fabricmc.api.EnvType
 import net.fabricmc.api.Environment
@@ -55,6 +56,13 @@ object ParticleEmittersManager {
         return codec
     }
 
+
+    fun addEmitters(emitters: ParticleEmitters) {
+        if (emitters.world == null) return
+        if (!emitters.world!!.isClient) return
+        clientEmitters[emitters.uuid] = emitters
+        emitters.start()
+    }
 
     fun spawnEmitters(emitters: ParticleEmitters) {
         if (emitters.world == null) return
@@ -201,6 +209,7 @@ object ParticleEmittersManager {
         register(PresetTestEmitters.ID, PresetTestEmitters.CODEC)
         register(FireClassParticleEmitters.ID, FireClassParticleEmitters.CODEC)
         register(PresetLaserEmitters.ID, PresetLaserEmitters.CODEC)
+        register(TestEventEmitter.ID, TestEventEmitter.CODEC)
     }
 
 }

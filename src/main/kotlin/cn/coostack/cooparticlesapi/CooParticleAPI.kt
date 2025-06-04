@@ -4,6 +4,7 @@ import cn.coostack.cooparticlesapi.barrages.BarrageManager
 import cn.coostack.cooparticlesapi.config.APIConfigManager
 import cn.coostack.cooparticlesapi.items.CooItems
 import cn.coostack.cooparticlesapi.items.group.CooItemGroup
+import cn.coostack.cooparticlesapi.network.packet.PacketCameraShakeS2C
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleEmittersS2C
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleGroupS2C
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleS2C
@@ -95,6 +96,7 @@ object CooParticleAPI : ModInitializer {
         PacketParticleS2C.init()
         PacketParticleStyleS2C.init()
         PacketParticleEmittersS2C.init()
+        PacketCameraShakeS2C.init()
         WindDirections.init()
         testEntity()
     }

@@ -1,9 +1,11 @@
 package cn.coostack.cooparticlesapi
 
+import cn.coostack.cooparticlesapi.network.packet.PacketCameraShakeS2C
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleEmittersS2C
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleGroupS2C
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleS2C
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleStyleS2C
+import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientCameraShakeHandler
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientParticleEmittersPacketHandler
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientParticleGroupPacketHandler
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientParticlePacketHandler
@@ -106,6 +108,10 @@ object CooParticleAPIClient : ClientModInitializer {
         ClientPlayNetworking.registerGlobalReceiver(
             PacketParticleS2C.payloadID,
             ClientParticlePacketHandler
+        )
+        ClientPlayNetworking.registerGlobalReceiver(
+            PacketCameraShakeS2C.payloadID,
+            ClientCameraShakeHandler
         )
     }
 

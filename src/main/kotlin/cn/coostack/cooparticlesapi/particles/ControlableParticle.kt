@@ -12,6 +12,7 @@ import net.minecraft.client.render.Camera
 import net.minecraft.client.render.LightmapTextureManager
 import net.minecraft.client.render.VertexConsumer
 import net.minecraft.client.world.ClientWorld
+import net.minecraft.entity.Entity
 import net.minecraft.util.math.BlockPos
 import net.minecraft.util.math.Box
 import net.minecraft.util.math.MathHelper
@@ -37,6 +38,12 @@ abstract class ControlableParticle(
     val controler: ParticleControler = ControlParticleManager.getControl(controlUUID)!!
 
     /**
+     * 穿过液体的标记
+     * 用于适配 ParticleOnLiquidEvent
+     */
+    internal var crossLiquid = false
+
+    /**
      * 粒子亮度
      * 设置为-1则为环境亮度
      */
@@ -60,6 +67,12 @@ abstract class ControlableParticle(
      * 是否调用 net.minecraft.client.particle.Particle中的tick方法
      */
     var minecraftTick: Boolean = false
+
+    /**
+     * @see world
+     */
+    val clientWorld: ClientWorld
+        get() = world
 
     /**
      * @see x
@@ -463,7 +476,7 @@ abstract class ControlableParticle(
         return if (light == -1) {
             world.getLightLevel(BlockPos.ofFloored(pos))
         } else {
-            LightmapTextureManager.pack(light,light)
+            LightmapTextureManager.pack(light, light)
         }
     }
 
