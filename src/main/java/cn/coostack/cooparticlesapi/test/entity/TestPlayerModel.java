@@ -64,7 +64,7 @@ public class TestPlayerModel extends SinglePartEntityModel<TestPlayerEntity> {
         this.updateAnimation(entity.getIdleState(),
                 TestPlayerEntityAnimation.INSTANCE.getIDLE(), ageInTicks, 1f);
         this.updateAnimation(entity.getAttack(),
-                TestPlayerEntityAnimation.INSTANCE.getPUNCH(), ageInTicks,1f);
+                TestPlayerEntityAnimation.INSTANCE.getPUNCH(), ageInTicks, 1f);
     }
 
     private void setHead(float yaw, float pitch) {

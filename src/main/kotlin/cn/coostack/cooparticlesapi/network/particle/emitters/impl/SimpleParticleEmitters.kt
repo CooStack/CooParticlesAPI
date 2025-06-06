@@ -266,19 +266,22 @@ class SimpleParticleEmitters(
         }
         control.addPreTickAction {
             if (minecraftTick) return@addPreTickAction
-            // 判断onGround
-            val blockPos = BlockPos.ofFloored(pos)
-            if (!world.chunkManager.isChunkLoaded(blockPos.x shr 4, blockPos.y shr 4)) {
-                return@addPreTickAction
-            }
-            val adjust = Entity.adjustMovementForCollisions(
-                null,
-                Vec3d(data.velocity.x, data.velocity.y, data.velocity.z),
-                bounding,
-                world,
-                listOf()
+            if (bounding.isNaN) return@addPreTickAction
+            val blockPos = BlockPos.ofFloored(this.pos)
+            val down = BlockPos.ofFloored(
+                this.pos.subtract(
+                    bounding.maxX - bounding.minX,
+                    bounding.maxY - bounding.minY,
+                    bounding.maxZ - bounding.minZ
+                )
             )
-            onTheGround = adjust.y != data.velocity.y && data.velocity.y < 0.0
+            if (world.getChunk(blockPos) == null || world.getChunk(down) == null) return@addPreTickAction
+            val statusPos = world.getBlockState(blockPos)
+            val statusDown = world.getBlockState(down)
+            onTheGround = !statusDown.getCollisionShape(world, down).isEmpty || !statusPos.getCollisionShape(
+                world,
+                blockPos
+            ).isEmpty
         }
 
         // 事件层
