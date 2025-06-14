@@ -1,8 +1,6 @@
 package cn.coostack.cooparticlesapi.network.particle.emitters.type
 
-import cn.coostack.cooparticlesapi.barrages.HitBox
 import net.minecraft.network.PacketByteBuf
-import net.minecraft.network.RegistryByteBuf
 import net.minecraft.network.codec.PacketCodec
 import net.minecraft.util.math.Vec3d
 
