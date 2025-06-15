@@ -249,7 +249,7 @@ abstract class ClassParticleEmitters(
             this.color = data.color
             this.currentAge = data.age
             this.maxAge = data.maxAge
-            this.textureSheet = data.textureSheet
+            this.textureSheet = data.getTextureSheet()
             this.particleAlpha = data.alpha
         }
         control.addPreTickAction {

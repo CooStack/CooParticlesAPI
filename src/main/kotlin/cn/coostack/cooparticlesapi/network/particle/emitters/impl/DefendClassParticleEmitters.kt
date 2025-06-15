@@ -76,7 +76,7 @@ class DefendClassParticleEmitters(var player: UUID, pos: Vec3d, world: World?) :
                 .associateBy {
                     templateData.clone().also {
                         it.alpha = 0.15f
-                        it.textureSheet = ParticleTextureSheet.PARTICLE_SHEET_TRANSLUCENT
+                        it.setTextureSheet(ParticleTextureSheet.PARTICLE_SHEET_TRANSLUCENT)
                     }
                 }
         )

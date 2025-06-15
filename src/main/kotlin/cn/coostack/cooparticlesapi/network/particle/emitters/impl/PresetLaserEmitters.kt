@@ -182,7 +182,7 @@ class PresetLaserEmitters(pos: Vec3d, world: World?) : ClassParticleEmitters(pos
         spawnPos: Vec3d,
         spawnWorld: World
     ) {
-        data.textureSheet = ParticleTextureSheet.PARTICLE_SHEET_TRANSLUCENT
+        data.setTextureSheet(ParticleTextureSheet.PARTICLE_SHEET_TRANSLUCENT)
         var tick = 0
         var speed = 0f
         data.maxAge = lineMaxTick

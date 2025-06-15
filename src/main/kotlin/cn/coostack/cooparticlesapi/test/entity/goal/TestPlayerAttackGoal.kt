@@ -69,7 +69,7 @@ class TestPlayerAttackGoal(entity: TestPlayerEntity, speed: Double, pauseWhenMob
                 it.maxTick = 5
                 it.templateData.apply {
                     maxAge = 60
-                    textureSheet = ParticleTextureSheet.PARTICLE_SHEET_TRANSLUCENT
+                    setTextureSheet(ParticleTextureSheet.PARTICLE_SHEET_TRANSLUCENT)
                     color = Math3DUtil.colorOf(255, 255, 255)
                     effect = TestEndRodEffect(uuid)
                 }

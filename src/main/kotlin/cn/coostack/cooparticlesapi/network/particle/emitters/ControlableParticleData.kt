@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi.network.particle.emitters
 
+import cn.coostack.cooparticlesapi.CooParticleAPI
 import cn.coostack.cooparticlesapi.particles.ControlableParticleEffect
 import cn.coostack.cooparticlesapi.particles.ControlableParticleEffectManager
 import cn.coostack.cooparticlesapi.particles.impl.TestEndRodEffect
@@ -31,9 +32,6 @@ open class ControlableParticleData {
             buf.writeString(data.effect::class.java.name)
             buf.writeUuid(data.uuid)
             buf.writeDouble(data.speed)
-//            val effectPacketCodec =
-//                data.effect.getPacketCodec() as PacketCodec<RegistryByteBuf, ControlableParticleEffect>
-//            effectPacketCodec.encode(buf, data.effect)
         }
 
         private fun decode(
@@ -65,7 +63,7 @@ open class ControlableParticleData {
                 this.visibleRange = visibleRange
                 this.age = age
                 this.maxAge = maxAge
-                this.textureSheet = this.textureSheetFromString(textureSheet)
+                this.textureSheet = textureSheet
                 this.effect = effect
                 this.speed = speed
             }
@@ -81,7 +79,9 @@ open class ControlableParticleData {
     var maxAge = 120
     var visibleRange = 128f
     var effect: ControlableParticleEffect = TestEndRodEffect(uuid)
-    var textureSheet = ParticleTextureSheet.PARTICLE_SHEET_TRANSLUCENT
+
+    // 脑瘫东西设置了客户端专属
+    private var textureSheet: String = "PARTICLE_SHEET_TRANSLUCENT"
 
     /**
      * 粒子移动速度
@@ -97,6 +97,21 @@ open class ControlableParticleData {
             ParticleTextureSheet.TERRAIN_SHEET.toString() -> ParticleTextureSheet.TERRAIN_SHEET
             else -> null
         }
+    }
+
+    fun getTextureSheet(): ParticleTextureSheet {
+        return textureSheetFromString(textureSheet) ?: let {
+            CooParticleAPI.logger.error("can not find textureSheet $textureSheet")
+            ParticleTextureSheet.PARTICLE_SHEET_OPAQUE
+        }
+    }
+
+    fun setTextureSheet(value: String) {
+        this.textureSheet = value
+    }
+
+    fun setTextureSheet(value: ParticleTextureSheet) {
+        this.textureSheet = value.toString()
     }
 
     open fun getCodec(): PacketCodec<PacketByteBuf, out ControlableParticleData> {

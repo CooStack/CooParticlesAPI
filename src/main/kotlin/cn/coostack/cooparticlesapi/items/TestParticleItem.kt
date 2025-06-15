@@ -79,7 +79,7 @@ class TestParticleItem(settings: Settings) : Item(settings) {
             .also {
                 it.maxTick = 240
                 it.templateData.apply {
-                    textureSheet = ParticleTextureSheet.PARTICLE_SHEET_TRANSLUCENT
+                    setTextureSheet(ParticleTextureSheet.PARTICLE_SHEET_TRANSLUCENT)
                     color = Math3DUtil.colorOf(100, 100, 210)
                     effect = TestEndRodEffect(uuid)
                     size = 0.1f
@@ -95,7 +95,7 @@ class TestParticleItem(settings: Settings) : Item(settings) {
                 it.maxTick = 240
                 it.templateData.apply {
                     maxAge = 1
-                    textureSheet = ParticleTextureSheet.PARTICLE_SHEET_TRANSLUCENT
+                    setTextureSheet(ParticleTextureSheet.PARTICLE_SHEET_TRANSLUCENT)
                     color = Math3DUtil.colorOf(100, 100, 210)
                     effect = TestEndRodEffect(uuid)
                 }
@@ -110,7 +110,7 @@ class TestParticleItem(settings: Settings) : Item(settings) {
                 it.maxTick = 120
                 it.templateData.apply {
                     maxAge = 20
-                    textureSheet = ParticleTextureSheet.PARTICLE_SHEET_TRANSLUCENT
+                    setTextureSheet(ParticleTextureSheet.PARTICLE_SHEET_TRANSLUCENT)
                     color = Math3DUtil.colorOf(100, 100, 210)
                     effect = TestEndRodEffect(uuid)
                 }
@@ -125,7 +125,7 @@ class TestParticleItem(settings: Settings) : Item(settings) {
                 it.maxTick = 10
                 it.templateData.apply {
                     maxAge = 60
-                    textureSheet = ParticleTextureSheet.PARTICLE_SHEET_TRANSLUCENT
+                    setTextureSheet(ParticleTextureSheet.PARTICLE_SHEET_TRANSLUCENT)
                     color = Math3DUtil.colorOf(255, 255, 255)
                     effect = TestEndRodEffect(uuid)
                 }
@@ -141,7 +141,7 @@ class TestParticleItem(settings: Settings) : Item(settings) {
             it.maxTick = -1
             it.templateData.apply {
                 maxAge = 30
-                textureSheet = ParticleTextureSheet.PARTICLE_SHEET_TRANSLUCENT
+                setTextureSheet(ParticleTextureSheet.PARTICLE_SHEET_TRANSLUCENT)
                 color = Math3DUtil.colorOf(255, 255, 255)
                 effect = TestEndRodEffect(uuid)
             }
@@ -159,7 +159,7 @@ class TestParticleItem(settings: Settings) : Item(settings) {
             it.moveDirection = user.rotationVector.normalize().multiply(0.5)
             it.templateData.apply {
                 maxAge = 20
-                textureSheet = ParticleTextureSheet.PARTICLE_SHEET_TRANSLUCENT
+                setTextureSheet(ParticleTextureSheet.PARTICLE_SHEET_TRANSLUCENT)
                 color = Math3DUtil.colorOf(217, 137, 146)
                 effect = ControlableCloudEffect(uuid)
             }
