@@ -263,6 +263,7 @@ class SimpleParticleEmitters(
             this.maxAge = data.maxAge
             this.textureSheet = data.getTextureSheet()
             this.particleAlpha = data.alpha
+
         }
         control.addPreTickAction {
             if (minecraftTick) return@addPreTickAction

@@ -29,12 +29,12 @@ public abstract class CooParticleCameraMixin {
 
     @Inject(method = "update", at = @At("TAIL"))
     private void onUpdate(CallbackInfo ci) {
-//        float newYaw = yaw + CameraUtil.INSTANCE.getCurrentYawOffset();
-//        float newPitch = pitch + CameraUtil.INSTANCE.getCurrentPitchOffset();
-//        setRotation(newYaw, newPitch);
+        float newYaw = yaw + ClientCameraUtil.INSTANCE.getCurrentYawOffset();
+        float newPitch = pitch + ClientCameraUtil.INSTANCE.getCurrentPitchOffset();
         double x = pos.getX() + ClientCameraUtil.INSTANCE.getCurrentXOffset();
         double y = pos.getY() + ClientCameraUtil.INSTANCE.getCurrentYOffset();
         double z = pos.getZ() + ClientCameraUtil.INSTANCE.getCurrentZOffset();
+        setRotation(newYaw, newPitch);
         setPos(x, y, z);
     }
 }

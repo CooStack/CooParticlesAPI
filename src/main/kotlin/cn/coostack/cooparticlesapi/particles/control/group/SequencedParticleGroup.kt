@@ -34,6 +34,10 @@ abstract class SequencedParticleGroup(uuid: UUID) : ControlableParticleGroup(uui
             return other === this
         }
 
+        override fun hashCode(): Int {
+            return order
+        }
+
     }
 
     val displayedStatus: LongArray by lazy {

@@ -35,7 +35,6 @@ import kotlin.collections.iterator
  * 在客户端cancel只会在客户端不可见并且会被服务器状态刷新
  * 所以删除粒子只能在服务器上
  */
-@Environment(EnvType.CLIENT)
 abstract class ControlableParticleGroup(val uuid: UUID) : Controlable<ControlableParticleGroup> {
     // 实际存在于客户端的粒子
     val particles = ConcurrentHashMap<UUID, Controlable<*>>()
