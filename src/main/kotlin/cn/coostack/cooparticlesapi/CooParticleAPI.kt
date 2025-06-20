@@ -42,6 +42,10 @@ object CooParticleAPI : ModInitializer {
     const val MOD_ID = "cooparticlesapi"
     lateinit var server: MinecraftServer
 
+    /**
+     * 只会在服务器运行的调度器
+     * 请不要执行客户端操作
+     */
     @JvmField
     val scheduler = CooScheduler()
 

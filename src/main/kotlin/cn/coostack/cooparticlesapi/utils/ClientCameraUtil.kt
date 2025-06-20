@@ -1,6 +1,7 @@
 package cn.coostack.cooparticlesapi.utils
 
 import cn.coostack.cooparticlesapi.CooParticleAPI
+import cn.coostack.cooparticlesapi.CooParticleAPIClient
 import net.fabricmc.api.EnvType
 import net.fabricmc.api.Environment
 import kotlin.random.Random
@@ -22,7 +23,7 @@ object ClientCameraUtil {
         var currentAmplitude = amplitude
         val decreaseStep = amplitude / tick
         val random = Random(System.currentTimeMillis())
-        CooParticleAPI.scheduler.runTaskTimerMaxTick(tick) {
+        CooParticleAPIClient.scheduler.runTaskTimerMaxTick(tick) {
             currentXOffset = currentAmplitude * random.nextDouble(-0.5, 0.5)
             currentYOffset = currentAmplitude * random.nextDouble(-0.5, 0.5)
             currentZOffset = currentAmplitude * random.nextDouble(-0.5, 0.5)

@@ -19,6 +19,7 @@ import cn.coostack.cooparticlesapi.particles.impl.ControlableEnchantmentParticle
 import cn.coostack.cooparticlesapi.particles.impl.ControlableFireworkParticle
 import cn.coostack.cooparticlesapi.particles.impl.ControlableFlashParticle
 import cn.coostack.cooparticlesapi.particles.impl.TestEndRodParticle
+import cn.coostack.cooparticlesapi.scheduler.CooScheduler
 import cn.coostack.cooparticlesapi.test.entity.CooParticleEntities
 import cn.coostack.cooparticlesapi.test.entity.CooParticlesEntityLayers
 import cn.coostack.cooparticlesapi.test.entity.TestEntity
@@ -45,7 +46,11 @@ import net.fabricmc.fabric.api.client.rendering.v1.EntityModelLayerRegistry
 import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry
 
 object CooParticleAPIClient : ClientModInitializer {
-
+    /**
+     * 只会在客户端运行的调度器, 请不要在这里执行服务器操作
+     */
+    @JvmField
+    val scheduler = CooScheduler()
     override fun onInitializeClient() {
         loadParticleGroupPacketListener()
         registerClientEvents()
@@ -81,7 +86,6 @@ object CooParticleAPIClient : ClientModInitializer {
         ClientParticleGroupManager.register(
             SequencedMagicCircleClient::class.java, SequencedMagicCircleClient.Provider()
         )
-
         ParticleStyleManager.register(ExampleStyle::class.java, ExampleStyle.Provider())
         ParticleStyleManager.register(ExampleSequencedStyle::class.java, ExampleSequencedStyle.Provider())
         ParticleStyleManager.register(RomaMagicTestStyle::class.java, RomaMagicTestStyle.Provider())
@@ -123,6 +127,7 @@ object CooParticleAPIClient : ClientModInitializer {
             ClientParticleGroupManager.clearAllVisible()
         }
         ClientTickEvents.START_WORLD_TICK.register {
+            scheduler.doTick()
             ClientParticleGroupManager.doClientTick()
             ParticleStyleManager.doTickClient()
             ParticleEmittersManager.doTickClient()

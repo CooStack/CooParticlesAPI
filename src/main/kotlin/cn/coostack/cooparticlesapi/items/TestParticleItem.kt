@@ -23,6 +23,7 @@ import cn.coostack.cooparticlesapi.test.particle.emitter.event.TestOnLiquidEvent
 import cn.coostack.cooparticlesapi.test.particle.style.RomaMagicTestStyle
 import cn.coostack.cooparticlesapi.test.particle.style.RotateTestStyle
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
+import cn.coostack.cooparticlesapi.utils.ServerCameraUtil
 import net.minecraft.client.particle.ParticleTextureSheet
 import net.minecraft.entity.player.PlayerEntity
 import net.minecraft.item.Item
@@ -38,11 +39,17 @@ class TestParticleItem(settings: Settings) : Item(settings) {
         if (world.isClient) {
             return TypedActionResult.success(user.getStackInHand(hand))
         }
-        testEvents(world, user)
+//        testEvents(world, user)
+        testShake(world, user)
 //        CameraUtil.startShakeCamera(240, 0.25)
 //        testRomaCircle(world, user)
         // 线性阻力
         return super.use(world, user, hand)
+    }
+
+    private fun testShake(world: World, user: PlayerEntity) {
+        if (world.isClient) return
+        ServerCameraUtil.sendShake(world as ServerWorld, user.pos, 128.0, 0.5, 10)
     }
 
     private fun testEvents(world: World, user: PlayerEntity) {

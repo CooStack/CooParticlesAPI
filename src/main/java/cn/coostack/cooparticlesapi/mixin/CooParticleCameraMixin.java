@@ -16,8 +16,6 @@ public abstract class CooParticleCameraMixin {
 
     @Shadow
     private float pitch;
-
-
     @Shadow
     protected abstract void setRotation(float yaw, float pitch);
 
