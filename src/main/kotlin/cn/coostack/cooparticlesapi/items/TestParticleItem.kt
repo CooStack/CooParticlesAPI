@@ -1,6 +1,7 @@
 package cn.coostack.cooparticlesapi.items
 
 import cn.coostack.cooparticlesapi.CooParticleAPI
+import cn.coostack.cooparticlesapi.network.animation.PathMotionManager
 import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableParticleData
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersManager
 import cn.coostack.cooparticlesapi.network.particle.emitters.PhysicConstant
@@ -16,6 +17,7 @@ import cn.coostack.cooparticlesapi.network.particle.emitters.type.EmittersShootT
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleStyleManager
 import cn.coostack.cooparticlesapi.particles.impl.ControlableCloudEffect
 import cn.coostack.cooparticlesapi.particles.impl.TestEndRodEffect
+import cn.coostack.cooparticlesapi.test.particle.animation.QuadraticStylePathMotion
 import cn.coostack.cooparticlesapi.test.particle.emitter.TestEventEmitter
 import cn.coostack.cooparticlesapi.test.particle.emitter.event.TestEntityHitEventHandler
 import cn.coostack.cooparticlesapi.test.particle.emitter.event.TestOnGroundEventHandler
@@ -40,7 +42,7 @@ class TestParticleItem(settings: Settings) : Item(settings) {
             return TypedActionResult.success(user.getStackInHand(hand))
         }
 //        testEvents(world, user)
-        testShake(world, user)
+        testRomaCircle(world, user)
 //        CameraUtil.startShakeCamera(240, 0.25)
 //        testRomaCircle(world, user)
         // 线性阻力
@@ -79,6 +81,8 @@ class TestParticleItem(settings: Settings) : Item(settings) {
     private fun testRomaCircle(world: World, user: PlayerEntity) {
         val style = RomaMagicTestStyle()
         ParticleStyleManager.spawnStyle(world as ServerWorld, user.pos, style)
+        val motion = QuadraticStylePathMotion(style)
+        PathMotionManager.applyMotion(motion)
     }
 
     private fun testPresets(world: World, user: PlayerEntity) {

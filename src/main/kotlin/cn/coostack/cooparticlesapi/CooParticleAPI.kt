@@ -4,6 +4,7 @@ import cn.coostack.cooparticlesapi.barrages.BarrageManager
 import cn.coostack.cooparticlesapi.config.APIConfigManager
 import cn.coostack.cooparticlesapi.items.CooItems
 import cn.coostack.cooparticlesapi.items.group.CooItemGroup
+import cn.coostack.cooparticlesapi.network.animation.PathMotionManager
 import cn.coostack.cooparticlesapi.network.packet.PacketCameraShakeS2C
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleEmittersS2C
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleGroupS2C
@@ -90,6 +91,7 @@ object CooParticleAPI : ModInitializer {
             ParticleStyleManager.doTickServer()
             ParticleEmittersManager.doTickServer()
             BarrageManager.doTick()
+            PathMotionManager.tick()
             scheduler.doTick()
         }
         ServerLifecycleEvents.SERVER_STARTED.register { server ->

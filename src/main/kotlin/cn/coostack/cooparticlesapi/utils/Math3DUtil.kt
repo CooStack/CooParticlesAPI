@@ -98,19 +98,23 @@ object Math3DUtil {
     private fun getLightningNodesAttenuation(
         start: RelativeLocation, end: RelativeLocation, counts: Int, currentOffsetRange: Double, attenuation: Double
     ): List<RelativeLocation> {
+        /**
+         * FIXED 当某些衰减过小时 会出现0.0的异常
+         */
+        val fixedOffsetRange = currentOffsetRange.coerceAtLeast(0.01)
         require(attenuation in 0.01..1.0)
         // 二分 start - > end 位置
         // 先获取中点
         val mid = start + (end - start).multiply(0.5)
         // 让中点进行偏移
-        mid.x += random.nextDouble(-currentOffsetRange, currentOffsetRange)
-        mid.y += random.nextDouble(-currentOffsetRange, currentOffsetRange)
-        mid.z += random.nextDouble(-currentOffsetRange, currentOffsetRange)
+        mid.x += random.nextDouble(-fixedOffsetRange, fixedOffsetRange)
+        mid.y += random.nextDouble(-fixedOffsetRange, fixedOffsetRange)
+        mid.z += random.nextDouble(-fixedOffsetRange, fixedOffsetRange)
         val res = mutableListOf(mid)
         if (counts <= 1) {
             return res
         }
-        val nextOffsetRange = (currentOffsetRange * attenuation).coerceAtLeast(0.01)
+        val nextOffsetRange = (fixedOffsetRange * attenuation).coerceAtLeast(0.01)
         val left = getLightningNodesAttenuation(start, mid, counts - 1, nextOffsetRange, attenuation)
         val right = getLightningNodesAttenuation(mid, end, counts - 1, nextOffsetRange, attenuation)
         // 合并点集合
@@ -599,7 +603,8 @@ object Math3DUtil {
         // 先让图形面向Z轴
         q.rotateY(axisYaw)
             .rotateLocalX(
-                axisPitch)
+                axisPitch
+            )
         // 后再转回目标点
         val toQ = Quaterniond()
             .rotateY(-toYaw)

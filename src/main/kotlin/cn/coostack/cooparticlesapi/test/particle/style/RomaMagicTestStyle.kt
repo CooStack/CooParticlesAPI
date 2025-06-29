@@ -53,6 +53,7 @@ class RomaMagicTestStyle(uuid: UUID = UUID.randomUUID()) :
                     }.toggleOnDisplay {
                         this.addPreTickAction {
                             rotateParticlesAsAxis(PI / 32)
+                            rotateParticlesToPoint(this@RomaMagicTestStyle.axis)
                         }
                     }
             )
@@ -71,6 +72,7 @@ class RomaMagicTestStyle(uuid: UUID = UUID.randomUUID()) :
                     }.toggleOnDisplay {
                         this.addPreTickAction {
                             rotateParticlesAsAxis(-PI / 32)
+                            rotateParticlesToPoint(this@RomaMagicTestStyle.axis)
                         }
                     }
             )
@@ -114,6 +116,7 @@ class RomaMagicTestStyle(uuid: UUID = UUID.randomUUID()) :
                     .toggleOnDisplay {
                         this.addPreTickAction {
                             rotateParticlesAsAxis(PI / 64)
+                            rotateParticlesToPoint(this@RomaMagicTestStyle.axis)
                         }
                     }
             )
@@ -136,6 +139,7 @@ class RomaMagicTestStyle(uuid: UUID = UUID.randomUUID()) :
                     }.toggleOnDisplay {
                         this.addPreTickAction {
                             rotateParticlesAsAxis(-PI / 32)
+                            rotateParticlesToPoint(this@RomaMagicTestStyle.axis)
                         }
                     }
             )

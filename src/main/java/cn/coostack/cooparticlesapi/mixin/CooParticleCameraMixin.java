@@ -16,6 +16,7 @@ public abstract class CooParticleCameraMixin {
 
     @Shadow
     private float pitch;
+
     @Shadow
     protected abstract void setRotation(float yaw, float pitch);
 
@@ -27,11 +28,11 @@ public abstract class CooParticleCameraMixin {
 
     @Inject(method = "update", at = @At("TAIL"))
     private void onUpdate(CallbackInfo ci) {
-        float newYaw = yaw + ClientCameraUtil.INSTANCE.getCurrentYawOffset();
-        float newPitch = pitch + ClientCameraUtil.INSTANCE.getCurrentPitchOffset();
-        double x = pos.getX() + ClientCameraUtil.INSTANCE.getCurrentXOffset();
-        double y = pos.getY() + ClientCameraUtil.INSTANCE.getCurrentYOffset();
-        double z = pos.getZ() + ClientCameraUtil.INSTANCE.getCurrentZOffset();
+        float newYaw = yaw + ClientCameraUtil.INSTANCE.getShakeYawOffset$coo_particles_api() + ClientCameraUtil.INSTANCE.getCurrentYawOffset();
+        float newPitch = pitch + ClientCameraUtil.INSTANCE.getShakePitchOffset$coo_particles_api() + ClientCameraUtil.INSTANCE.getCurrentPitchOffset();
+        double x = pos.getX() + ClientCameraUtil.INSTANCE.getShakeXOffset$coo_particles_api() + ClientCameraUtil.INSTANCE.getCurrentXOffset();
+        double y = pos.getY() + ClientCameraUtil.INSTANCE.getShakeYOffset$coo_particles_api() + ClientCameraUtil.INSTANCE.getCurrentYOffset();
+        double z = pos.getZ() + ClientCameraUtil.INSTANCE.getShakeZOffset$coo_particles_api() + ClientCameraUtil.INSTANCE.getCurrentZOffset();
         setRotation(newYaw, newPitch);
         setPos(x, y, z);
     }

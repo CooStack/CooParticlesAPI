@@ -1,18 +1,44 @@
 package cn.coostack.cooparticlesapi.utils
 
-import cn.coostack.cooparticlesapi.CooParticleAPI
 import cn.coostack.cooparticlesapi.CooParticleAPIClient
-import net.fabricmc.api.EnvType
-import net.fabricmc.api.Environment
+import net.minecraft.util.math.Vec3d
 import kotlin.random.Random
 
 object ClientCameraUtil {
+    internal var shakeYawOffset = 0f
+    internal var shakePitchOffset = 0f
+    internal var shakeXOffset = 0.0
+    internal var shakeYOffset = 0.0
+    internal var shakeZOffset = 0.0
+
     var currentYawOffset = 0f
     var currentPitchOffset = 0f
 
     var currentXOffset = 0.0
     var currentYOffset = 0.0
     var currentZOffset = 0.0
+
+    fun setOffsetPosition(offset: Vec3d) {
+        currentXOffset = offset.x
+        currentYOffset = offset.y
+        currentZOffset = offset.z
+    }
+
+    fun resetPosOffset() {
+        currentXOffset = 0.0
+        currentYOffset = 0.0
+        currentZOffset = 0.0
+    }
+
+    fun resetAngleOffset() {
+        currentYawOffset = 0f
+        currentPitchOffset = 0f
+    }
+
+    fun resetOffset() {
+        resetAngleOffset()
+        resetPosOffset()
+    }
 
     /**
      * @param tick 修改相机的位置
@@ -24,18 +50,18 @@ object ClientCameraUtil {
         val decreaseStep = amplitude / tick
         val random = Random(System.currentTimeMillis())
         CooParticleAPIClient.scheduler.runTaskTimerMaxTick(tick) {
-            currentXOffset = currentAmplitude * random.nextDouble(-0.5, 0.5)
-            currentYOffset = currentAmplitude * random.nextDouble(-0.5, 0.5)
-            currentZOffset = currentAmplitude * random.nextDouble(-0.5, 0.5)
-            currentYawOffset = (currentAmplitude * random.nextDouble(-2.0, 2.0)).toFloat()
-            currentPitchOffset = (currentAmplitude * random.nextDouble(-2.0, 2.0)).toFloat()
+            shakeXOffset = currentAmplitude * random.nextDouble(-0.5, 0.5)
+            shakeYOffset = currentAmplitude * random.nextDouble(-0.5, 0.5)
+            shakeZOffset = currentAmplitude * random.nextDouble(-0.5, 0.5)
+            shakeYawOffset = (currentAmplitude * random.nextDouble(-2.0, 2.0)).toFloat()
+            shakePitchOffset = (currentAmplitude * random.nextDouble(-2.0, 2.0)).toFloat()
             currentAmplitude -= decreaseStep
         }.setFinishCallback {
-            currentYawOffset = 0f
-            currentPitchOffset = 0f
-            currentXOffset = 0.0
-            currentYOffset = 0.0
-            currentZOffset = 0.0
+            shakeYawOffset = 0f
+            shakePitchOffset = 0f
+            shakeXOffset = 0.0
+            shakeYOffset = 0.0
+            shakeZOffset = 0.0
         }
     }
 }
