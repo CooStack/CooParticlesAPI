@@ -91,7 +91,7 @@ abstract class ControlableParticle(
      * @see scale
      * 粒子尺寸
      */
-    var size: Float
+    var size: Floatd
         get() = super.scale
         set(value) {
             super.scale = value
