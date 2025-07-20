@@ -71,7 +71,7 @@ abstract class ScaleHelper(var minScale: Double, var maxScale: Double, var scale
             resetScaleMin()
             return
         }
-        scale(minScale + step * enter)
+        scale(step * enter.coerceIn(0, scaleTick) + minScale)
     }
 
     open fun doScale() {
@@ -82,7 +82,7 @@ abstract class ScaleHelper(var minScale: Double, var maxScale: Double, var scale
             return
         }
         current++
-        scale(getGroupScale() + step)
+        scale((step * current.coerceIn(0, scaleTick) + minScale).coerceAtMost(maxScale))
     }
 
     open fun doScaleReversed() {
@@ -93,7 +93,7 @@ abstract class ScaleHelper(var minScale: Double, var maxScale: Double, var scale
             return
         }
         current--
-        scale(getGroupScale() - step)
+        scale((step * current.coerceIn(0, scaleTick) + minScale).coerceAtMost(maxScale))
     }
 
     open fun over(): Boolean = scaleTick - 1 <= current

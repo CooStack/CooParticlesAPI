@@ -1,6 +1,5 @@
 package cn.coostack.cooparticlesapi.utils
 
-import cn.coostack.cooparticlesapi.config.APIConfig
 import cn.coostack.cooparticlesapi.config.APIConfigManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -15,8 +14,6 @@ import org.joml.Vector3d
 import org.joml.Vector3f
 import java.util.ArrayList
 import java.util.concurrent.CopyOnWriteArrayList
-import java.util.concurrent.Executors
-import java.util.concurrent.FutureTask
 import kotlin.math.*
 import kotlin.random.Random
 
@@ -38,7 +35,75 @@ object Math3DUtil {
         return Vector3f(r.toFloat() / 255, g.toFloat() / 255, b.toFloat() / 255)
     }
 
+    /**
+     * 生成一条从原点指向target的相对虚线
+     * @param target 相对目标位置
+     * @param totalCount 这条直线一共拥有的点的个数
+     * @param dottedCount 虚线之间的间隔个数
+     * @param step 每条小线段的间隔
+     */
+    fun generateDottedLine(
+        target: RelativeLocation,
+        totalCount: Int,
+        dottedCount: Int,
+        step: Double
+    ): List<RelativeLocation> {
+        val res = arrayListOf<RelativeLocation>()
+        val len = target.length() //总长度
+        // 就是普通的直线
+        if (len <= step) return emptyList()
+        if (step <= 0.0) return getLineLocations(RelativeLocation(), target, totalCount)
+        val lineStep = len / dottedCount - step
+        if (lineStep <= 0) return emptyList() // 空隙比他妈的直线长
+        val perCount = (totalCount / dottedCount).coerceAtLeast(1)
+        val dir = target.normalize()
+        var current = dir.multiplyClone(lineStep)
+        var pre = RelativeLocation()
+        repeat(dottedCount) {
+            res.addAll(getLineLocations(pre, current, perCount))
+            pre = current + dir * step
+            current = pre + dir * lineStep
+        }
+        return res
+    }
 
+    /**
+     * 生成一条从原点指向target的相对虚线圆环
+     * @param r 半径
+     * @param dottedCount 虚线之间的间隔个数
+     * @param totalCount 总点个数
+     * @param step 每条小线段的间隔
+     */
+    fun generateDottedCircle(r: Double, totalCount: Int, dottedCount: Int, step: Double): List<RelativeLocation> {
+        val res = arrayListOf<RelativeLocation>()
+        if (step >= 2 * PI) {
+            return emptyList()
+        }
+        val perArcCount = (totalCount / dottedCount).coerceAtLeast(1)
+        val solidArcLengthStep = 2 * PI / dottedCount - step // 计算实线部分的弧长
+        val angleStep = solidArcLengthStep / perArcCount // 圆环实线部分的 点的个数
+        var pre = 0.0
+        var current = solidArcLengthStep
+        repeat(dottedCount) {
+            // 这里要生成弧线
+            repeat(perArcCount) {
+                val arcAngle = pre + it * angleStep
+                res.add(
+                    RelativeLocation(
+                        cos(arcAngle) * r,
+                        0.0,
+                        sin(arcAngle) * r
+                    )
+                )
+            }
+            pre = current + step
+            current = pre + solidArcLengthStep
+        }
+
+        return res
+    }
+
+    // 傅里叶级数
     /**
      * 闪电
      */

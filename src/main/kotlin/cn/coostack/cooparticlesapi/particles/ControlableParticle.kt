@@ -21,6 +21,7 @@ import net.minecraft.util.math.random.Random
 import org.joml.Quaternionf
 import org.joml.Vector2f
 import org.joml.Vector3f
+import java.awt.Color
 import java.util.*
 
 
@@ -91,7 +92,7 @@ abstract class ControlableParticle(
      * @see scale
      * 粒子尺寸
      */
-    var size: Floatd
+    var size: Float
         get() = super.scale
         set(value) {
             super.scale = value
@@ -299,6 +300,14 @@ abstract class ControlableParticle(
      */
     fun colorOfRGB(r: Int, g: Int, b: Int) {
         color = Math3DUtil.colorOf(r.coerceIn(0, 255), g.coerceIn(0, 255), b.coerceIn(0, 255))
+    }
+
+    fun colorOfRGBA(rgba: Int) {
+        val a = (rgba shr 24) and 0xFF
+        val r = (rgba shr 16) and 0xFF
+        val g = (rgba shr 8) and 0xFF
+        val b = rgba and 0xFF
+        colorOfRGBA(r, g, b, a / 255f)
     }
 
     fun colorOfRGBA(r: Int, g: Int, b: Int, alpha: Float) {

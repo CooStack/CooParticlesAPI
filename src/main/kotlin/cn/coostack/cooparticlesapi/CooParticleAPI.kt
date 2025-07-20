@@ -97,7 +97,6 @@ object CooParticleAPI : ModInitializer {
         ServerLifecycleEvents.SERVER_STARTED.register { server ->
             this.server = server
         }
-
         PacketParticleGroupS2C.init()
         PacketParticleS2C.init()
         PacketParticleStyleS2C.init()
@@ -117,6 +116,5 @@ object CooParticleAPI : ModInitializer {
             CooParticleEntities.TEST_PLAYER_ENTITY,
             TestPlayerEntity.createDefaultMobAttributes()
         )
-
     }
 }

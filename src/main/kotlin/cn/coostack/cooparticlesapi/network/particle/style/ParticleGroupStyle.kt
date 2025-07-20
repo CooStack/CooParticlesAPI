@@ -48,7 +48,8 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
      */
     var autoToggle = false
 
-    internal var displayed = false
+    var displayed = false
+        internal set
     var valid = true
         internal set
     internal val invokeQueue = ArrayList<ParticleGroupStyle.() -> Unit>()

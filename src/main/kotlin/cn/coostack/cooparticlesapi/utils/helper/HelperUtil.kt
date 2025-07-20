@@ -18,6 +18,9 @@ import cn.coostack.cooparticlesapi.utils.helper.impl.StyleStatusHelper
  */
 object HelperUtil {
 
+
+
+
     fun sequencedStyle(maxCount: Int, progressMaxTick: Int): StyleProgressSequencedHelper {
         return StyleProgressSequencedHelper(
             maxCount, progressMaxTick,

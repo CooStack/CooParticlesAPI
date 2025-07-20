@@ -15,9 +15,10 @@ import java.util.UUID
 open class ControlableParticleData {
     companion object {
         @JvmStatic
-        val PACKET_CODEC = PacketCodec.ofStatic<PacketByteBuf, ControlableParticleData>(
-            ::encode, ::decode
-        )
+        val PACKET_CODEC: PacketCodec<PacketByteBuf, ControlableParticleData> =
+            PacketCodec.ofStatic<PacketByteBuf, ControlableParticleData>(
+                ::encode, ::decode
+            )
 
         private fun encode(buf: PacketByteBuf, data: ControlableParticleData) {
             buf.writeUuid(data.uuid)

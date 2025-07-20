@@ -28,8 +28,7 @@ class SequencedParticleShapeStyle(uuid: UUID) :
     SequencedParticleStyle(64.0, uuid) {
     var scaleHelper: ScaleHelper? = null
     private var onDisplayInvoke: SequencedParticleShapeStyle.() -> Unit = {}
-    private var beforeDisplayInvoke: SequencedParticleShapeStyle.(SortedMap<SortedStyleData, RelativeLocation>) -> Unit =
-        {}
+    private var beforeDisplayInvoke: SequencedParticleShapeStyle.(SortedMap<SortedStyleData, RelativeLocation>) -> Unit = {}
     private val pointBuilders = LinkedHashMap<PointsBuilder, (RelativeLocation) -> SortedStyleData>()
 
     /**

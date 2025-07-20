@@ -35,6 +35,7 @@ import cn.coostack.cooparticlesapi.test.particle.style.ExampleSequencedStyle
 import cn.coostack.cooparticlesapi.test.particle.style.ExampleStyle
 import cn.coostack.cooparticlesapi.test.particle.style.RomaMagicTestStyle
 import cn.coostack.cooparticlesapi.test.particle.style.RotateTestStyle
+import cn.coostack.cooparticlesapi.test.particle.style.TestShapeUtilStyle
 import cn.coostack.cooparticlesapi.utils.ParticleAsyncRenderHelper
 import net.fabricmc.api.ClientModInitializer
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
@@ -90,6 +91,7 @@ object CooParticleAPIClient : ClientModInitializer {
         ParticleStyleManager.register(ExampleSequencedStyle::class.java, ExampleSequencedStyle.Provider())
         ParticleStyleManager.register(RomaMagicTestStyle::class.java, RomaMagicTestStyle.Provider())
         ParticleStyleManager.register(RotateTestStyle::class.java, RotateTestStyle.Provider())
+        ParticleStyleManager.register(TestShapeUtilStyle::class.java, TestShapeUtilStyle.Provider())
         CooModParticles.reg()
         ParticleEmittersManager.init()
         testEntity()

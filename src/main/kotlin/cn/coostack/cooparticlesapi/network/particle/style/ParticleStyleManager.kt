@@ -38,6 +38,7 @@ object ParticleStyleManager {
     /**
      * 在ClientModInitializer 注册ParticleStyle 用于服务器同步
      */
+    @Environment(EnvType.CLIENT)
     fun register(
         type: Class<out ParticleGroupStyle>,
         provider: ParticleStyleProvider

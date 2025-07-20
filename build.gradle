@@ -1,4 +1,7 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+import groovy.json.JsonSlurper
+import groovy.json.JsonOutput
+
 
 plugins {
     id 'fabric-loom' version '1.10-SNAPSHOT'
@@ -72,7 +75,6 @@ java {
 
 jar {
     inputs.property "archivesName", project.base.archivesName
-
     from("LICENSE") {
         rename { "${it}_${inputs.properties.archivesName}" }
     }
@@ -86,6 +88,40 @@ jar {
     }
 }
 
+
+tasks.register('jarWithoutDataGen', Jar) {
+    group = "build"
+    description = "用于生成没有fabric模组信息的加载器, 需要在run的mods文件里搭配运行环境"
+    archiveBaseName = "${archiveBaseName.get()}-without-datagen"
+    inputs.property "archivesName", project.base.archivesName
+    from("LICENSE") {
+        rename { "${it}_${inputs.properties.archivesName}" }
+    }
+    from(configurations.embed.collect {
+        it.isDirectory() ? it : zipTree(it)
+    }) {
+        // 排除可能冲突的文件
+        exclude "META-INF/*.SF"
+        exclude "META-INF/*.DSA"
+        exclude "META-INF/*.RSA"
+    }
+    from(sourceSets.main.output) {}
+    filesMatching("fabric.mod.json") {
+        def json = new JsonSlurper().parseText(it.file.text)
+        if (json.entrypoints && json.entrypoints.'fabric-datagen') {
+            json.entrypoints.remove('fabric-datagen')
+        }
+
+        // 重新生成 JSON 并写入文件
+        def updatedJson = JsonOutput.prettyPrint(JsonOutput.toJson(json))
+        it.file.text = updatedJson
+    }
+}
+tasks.register("lib_build"){
+    group = "build"
+}
+
+lib_build.dependsOn build,jarWithoutDataGen
 // configure the maven publication
 publishing {
     publications {

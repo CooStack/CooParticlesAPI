@@ -3,7 +3,7 @@
   "id": "cooparticlesapi",
   "version": "${version}",
   "name": "CooParticleAPI",
-  "description": "此模组会修改粒子个数上限(使用mixin) 如果存在其他模组也使用了类似的方法可能会冲突",
+  "description": "CooParticlesAPI made by CooStack",
   "authors": [
     "CooStack"
   ],

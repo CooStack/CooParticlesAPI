@@ -43,6 +43,10 @@ class PointsBuilder {
     }
 
 
+    fun addImage(image: ImagePointBuilder): PointsBuilder = addPoints(image.build())
+
+    fun addFourierSeries(builder: FourierSeriesBuilder): PointsBuilder = addPoints(builder.build())
+
     /**
      * 循环对每一个已经加入到builder的点进行同一个操作
      */
@@ -137,6 +141,7 @@ class PointsBuilder {
 
     fun addPolygonInCircle(n: Int, edgeCount: Int, r: Double): PointsBuilder = addPoints(
         Math3DUtil.getPolygonInCircleLocations(n, edgeCount, r)
+
     )
 
     fun addPolygonInCircleVertices(n: Int, r: Double): PointsBuilder = addPoints(
@@ -200,6 +205,12 @@ class PointsBuilder {
     ): PointsBuilder = addWith {
         this.getLightningNodesEffectAttenuation(RelativeLocation(), end, counts, maxOffset, attenuation)
     }
+
+    fun addDottedLine(target: RelativeLocation, totalCount: Int, dottedCount: Int, emptyStep: Double): PointsBuilder =
+        addWith { Math3DUtil.generateDottedLine(target, totalCount, dottedCount, emptyStep) }
+
+    fun addDottedCircle(r: Double, totalCount: Int, dottedCount: Int, emptyStep: Double): PointsBuilder =
+        addWith { Math3DUtil.generateDottedCircle(r, totalCount, dottedCount, emptyStep) }
 
     fun addLightningAttenuationPoints(
         start: RelativeLocation,

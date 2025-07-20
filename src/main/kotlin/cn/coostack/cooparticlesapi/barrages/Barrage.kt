@@ -5,6 +5,7 @@ import cn.coostack.cooparticlesapi.network.particle.ServerParticleGroup
 import net.minecraft.entity.LivingEntity
 import net.minecraft.server.world.ServerWorld
 import net.minecraft.util.math.Vec3d
+import java.util.UUID
 
 interface Barrage {
     var loc: Vec3d
@@ -15,6 +16,7 @@ interface Barrage {
     var lunch: Boolean
     val valid: Boolean
     val options: BarrageOption
+    val uuid: UUID
 
     /**
      * 设置bindControl 会每tick都会设置 loc (teleport)

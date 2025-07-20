@@ -9,6 +9,7 @@ import net.minecraft.util.math.BlockPos
 import net.minecraft.util.math.ChunkPos
 import net.minecraft.util.math.Vec3d
 import net.minecraft.world.chunk.Chunk
+import java.util.UUID
 import kotlin.math.max
 
 abstract class AbstractBarrage(
@@ -27,6 +28,7 @@ abstract class AbstractBarrage(
     override val valid: Boolean
         get() = isValid
     private var currentAcrossCount = 0
+    override val uuid: UUID = UUID.randomUUID()
 
     /**
      * 当获取到hitBox有实体时，可以对实体进行过滤
@@ -44,6 +46,10 @@ abstract class AbstractBarrage(
 
     override fun tick() {
         if (!lunch || !valid) {
+            return
+        }
+        // 区块不加载不执行tick
+        if (!world.isChunkLoaded(loc.x.toInt() shr 4, loc.z.toInt() shr 4)) {
             return
         }
 
