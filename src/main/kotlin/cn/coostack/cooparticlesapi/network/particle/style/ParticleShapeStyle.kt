@@ -25,8 +25,12 @@ import java.util.UUID
 open class ParticleShapeStyle(uuid: UUID) :
     ParticleGroupStyle(64.0, uuid) {
     var scaleHelper: ScaleHelper? = null
-    private var onDisplayInvoke: ParticleShapeStyle.() -> Unit = {}
-    private var beforeDisplayInvoke: ParticleShapeStyle.(Map<StyleData, RelativeLocation>) -> Unit = {}
+
+    /**
+     * 增加可复用性
+     */
+    private val displayInvokes = mutableListOf<ParticleShapeStyle.() -> Unit>()
+    private val beforeDisplayInvokes = mutableListOf<ParticleShapeStyle.(Map<StyleData, RelativeLocation>) -> Unit>()
     private val pointBuilders = LinkedHashMap<PointsBuilder, (RelativeLocation) -> StyleData>()
 
     /**
@@ -109,9 +113,10 @@ open class ParticleShapeStyle(uuid: UUID) :
 
     /**
      * 在display之前执行
+     * 可以多次执行此方法, 不会发生方法覆盖
      */
     fun toggleOnDisplay(toggleMethod: ParticleShapeStyle.() -> Unit): ParticleShapeStyle {
-        onDisplayInvoke = toggleMethod
+        displayInvokes.add(toggleMethod)
         return this
     }
 
@@ -119,12 +124,12 @@ open class ParticleShapeStyle(uuid: UUID) :
      * 在生成粒子之前执行
      */
     fun toggleBeforeDisplay(toggleMethod: ParticleShapeStyle.(Map<StyleData, RelativeLocation>) -> Unit): ParticleShapeStyle {
-        beforeDisplayInvoke = toggleMethod
+        beforeDisplayInvokes.add(toggleMethod)
         return this
     }
 
     override fun beforeDisplay(styles: Map<StyleData, RelativeLocation>) {
-        beforeDisplayInvoke(styles)
+        beforeDisplayInvokes.forEach { it(styles) }
     }
 
     override fun getCurrentFrames(): Map<StyleData, RelativeLocation> {
@@ -136,7 +141,9 @@ open class ParticleShapeStyle(uuid: UUID) :
     }
 
     override fun onDisplay() {
-        onDisplayInvoke()
+        displayInvokes.forEach {
+            it()
+        }
         addPreTickAction {
             spawnAge++
             if (!scalePreTick || scaleHelper == null) {

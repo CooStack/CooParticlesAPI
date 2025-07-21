@@ -27,8 +27,11 @@ import java.util.function.Predicate
 class SequencedParticleShapeStyle(uuid: UUID) :
     SequencedParticleStyle(64.0, uuid) {
     var scaleHelper: ScaleHelper? = null
-    private var onDisplayInvoke: SequencedParticleShapeStyle.() -> Unit = {}
-    private var beforeDisplayInvoke: SequencedParticleShapeStyle.(SortedMap<SortedStyleData, RelativeLocation>) -> Unit = {}
+
+    private val displayInvokes = mutableListOf<SequencedParticleShapeStyle.() -> Unit>()
+    private val beforeDisplayInvokes =
+        mutableListOf<SequencedParticleShapeStyle.(SortedMap<SortedStyleData, RelativeLocation>) -> Unit>()
+
     private val pointBuilders = LinkedHashMap<PointsBuilder, (RelativeLocation) -> SortedStyleData>()
 
     /**
@@ -144,7 +147,7 @@ class SequencedParticleShapeStyle(uuid: UUID) :
      * 在display之前执行
      */
     fun toggleOnDisplay(toggleMethod: SequencedParticleShapeStyle.() -> Unit): SequencedParticleShapeStyle {
-        onDisplayInvoke = toggleMethod
+        displayInvokes.add(toggleMethod)
         return this
     }
 
@@ -152,18 +155,20 @@ class SequencedParticleShapeStyle(uuid: UUID) :
      * 在生成粒子之前执行
      */
     fun toggleBeforeDisplay(toggleMethod: SequencedParticleShapeStyle.(SortedMap<SortedStyleData, RelativeLocation>) -> Unit): SequencedParticleShapeStyle {
-        beforeDisplayInvoke = toggleMethod
+        beforeDisplayInvokes.add(toggleMethod)
         return this
     }
 
 
     override fun beforeDisplay(styles: SortedMap<SortedStyleData, RelativeLocation>) {
-        beforeDisplayInvoke(styles)
+        beforeDisplayInvokes.forEach {
+            it(styles)
+        }
     }
 
 
     override fun onDisplay() {
-        onDisplayInvoke()
+        displayInvokes.forEach { it() }
         addPreTickAction {
             if (animationIndex >= animationConditions.size) {
                 return@addPreTickAction

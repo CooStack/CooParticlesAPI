@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi
 
+import cn.coostack.cooparticlesapi.animation.AnimateManager
 import cn.coostack.cooparticlesapi.network.packet.PacketCameraShakeS2C
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleEmittersS2C
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleGroupS2C
@@ -133,6 +134,7 @@ object CooParticleAPIClient : ClientModInitializer {
             ClientParticleGroupManager.doClientTick()
             ParticleStyleManager.doTickClient()
             ParticleEmittersManager.doTickClient()
+            AnimateManager.tickClient()
         }
         ClientWorldEvents.AFTER_CLIENT_WORLD_CHANGE.register { _, _ ->
             ParticleEmittersManager.clientEmitters.clear()

@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi
 
+import cn.coostack.cooparticlesapi.animation.AnimateManager
 import cn.coostack.cooparticlesapi.barrages.BarrageManager
 import cn.coostack.cooparticlesapi.config.APIConfigManager
 import cn.coostack.cooparticlesapi.items.CooItems
@@ -14,7 +15,6 @@ import cn.coostack.cooparticlesapi.network.particle.ServerParticleGroupManager
 import cn.coostack.cooparticlesapi.network.particle.ServerParticleGroup
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersManager
 import cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind.WindDirections
-import cn.coostack.cooparticlesapi.network.particle.emitters.type.EmittersShootType
 import cn.coostack.cooparticlesapi.network.particle.emitters.type.EmittersShootTypes
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleStyleManager
 import cn.coostack.cooparticlesapi.particles.ControlableParticle
@@ -34,9 +34,7 @@ import cn.coostack.cooparticlesapi.test.entity.CooParticleEntities
 import cn.coostack.cooparticlesapi.test.entity.TestEntity
 import cn.coostack.cooparticlesapi.test.entity.TestPlayerEntity
 import com.ezylang.evalex.Expression
-import com.ezylang.evalex.config.ExpressionConfiguration
 import net.fabricmc.fabric.api.`object`.builder.v1.entity.FabricDefaultAttributeRegistry
-import net.minecraft.entity.mob.MobEntity
 
 object CooParticleAPI : ModInitializer {
     val logger = LoggerFactory.getLogger("CooParticleAPI")!!
@@ -92,6 +90,7 @@ object CooParticleAPI : ModInitializer {
             ParticleEmittersManager.doTickServer()
             BarrageManager.doTick()
             PathMotionManager.tick()
+            AnimateManager.tickServer()
             scheduler.doTick()
         }
         ServerLifecycleEvents.SERVER_STARTED.register { server ->

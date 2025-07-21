@@ -12,6 +12,7 @@ import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
 import cn.coostack.cooparticlesapi.particles.control.ControlType
 import cn.coostack.cooparticlesapi.particles.control.ParticleControler
 import cn.coostack.cooparticlesapi.particles.control.group.ControlableParticleGroup
+import cn.coostack.cooparticlesapi.particles.impl.TestEndRodEffect
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking
@@ -21,6 +22,7 @@ import net.minecraft.util.math.Vec3d
 import net.minecraft.world.World
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import javax.swing.text.Style
 import kotlin.collections.set
 import kotlin.math.PI
 
@@ -428,4 +430,58 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
         }
     }
 
+    /**
+     * 为了提高傻逼StyleData的复用性 专门设置此类
+     */
+    open class StyleDataBuilder() {
+        private var displayerBuilder: (UUID) -> ParticleDisplayer =
+            { ParticleDisplayer.withSingle(TestEndRodEffect(it)) }
+        private val particleHandlers = mutableListOf<ControlableParticle.() -> Unit>()
+        private val particleControlerHandlers = mutableListOf<ParticleControler.() -> Unit>()
+        fun addParticleHandler(
+            builder: ControlableParticle.() -> Unit
+        ): StyleDataBuilder {
+            particleHandlers.add(builder)
+            return this
+        }
+
+        fun addParticleControlerHandler(
+            builder: ParticleControler.() -> Unit
+        ): StyleDataBuilder {
+            particleControlerHandlers.add(builder)
+            return this
+        }
+
+        fun clearParticleHandlers(): StyleDataBuilder {
+            particleHandlers.clear()
+            return this
+        }
+
+        fun clearParticleControlers(): StyleDataBuilder {
+            particleControlerHandlers.clear()
+            return this
+        }
+
+        fun removeHandler(index: Int): StyleDataBuilder {
+            if (index in particleHandlers.indices) particleHandlers.removeAt(index)
+            return this
+        }
+
+        fun removeParticleControler(index: Int): StyleDataBuilder {
+            if (index in particleControlerHandlers.indices) particleControlerHandlers.removeAt(index)
+            return this
+        }
+
+        fun displayer(builder: (UUID) -> ParticleDisplayer): StyleDataBuilder {
+            this.displayerBuilder = builder
+            return this
+        }
+
+        fun build(): StyleData = StyleData(displayerBuilder)
+            .withParticleHandler {
+                particleHandlers.forEach { it() }
+            }.withParticleControlerHandler {
+                particleControlerHandlers.forEach { it() }
+            }
+    }
 }

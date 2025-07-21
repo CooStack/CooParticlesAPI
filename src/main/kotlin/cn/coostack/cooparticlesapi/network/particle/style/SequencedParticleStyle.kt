@@ -3,9 +3,11 @@ package cn.coostack.cooparticlesapi.network.particle.style
 import cn.coostack.cooparticlesapi.CooParticleAPI
 import cn.coostack.cooparticlesapi.network.buffer.ParticleControlerDataBuffer
 import cn.coostack.cooparticlesapi.network.buffer.ParticleControlerDataBuffers
+import cn.coostack.cooparticlesapi.particles.ControlableParticle
 import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
 import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
 import cn.coostack.cooparticlesapi.particles.control.ParticleControler
+import cn.coostack.cooparticlesapi.particles.impl.TestEndRodEffect
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.MathDataUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
@@ -57,6 +59,58 @@ abstract class SequencedParticleStyle(visibleRange: Double = 32.0, uuid: UUID = 
         }
     }
 
+
+    class SortedStyleDataBuilder {
+        private var displayerBuilder: (UUID) -> ParticleDisplayer =
+            { ParticleDisplayer.withSingle(TestEndRodEffect(it)) }
+        private val particleHandlers = mutableListOf<ControlableParticle.() -> Unit>()
+        private val particleControlerHandlers = mutableListOf<ParticleControler.() -> Unit>()
+        fun addParticleHandler(
+            builder: ControlableParticle.() -> Unit
+        ): SortedStyleDataBuilder {
+            particleHandlers.add(builder)
+            return this
+        }
+
+        fun addParticleControlerHandler(
+            builder: ParticleControler.() -> Unit
+        ): SortedStyleDataBuilder {
+            particleControlerHandlers.add(builder)
+            return this
+        }
+
+        fun clearParticleHandlers(): SortedStyleDataBuilder {
+            particleHandlers.clear()
+            return this
+        }
+
+        fun clearParticleControlers(): SortedStyleDataBuilder {
+            particleControlerHandlers.clear()
+            return this
+        }
+
+        fun removeHandler(index: Int): SortedStyleDataBuilder {
+            if (index in particleHandlers.indices) particleHandlers.removeAt(index)
+            return this
+        }
+
+        fun removeParticleControler(index: Int): SortedStyleDataBuilder {
+            if (index in particleControlerHandlers.indices) particleControlerHandlers.removeAt(index)
+            return this
+        }
+
+        fun displayer(builder: (UUID) -> ParticleDisplayer): SortedStyleDataBuilder {
+            this.displayerBuilder = builder
+            return this
+        }
+
+        fun build(order: Int): StyleData = SortedStyleData(displayerBuilder, order)
+            .withParticleHandler {
+                particleHandlers.forEach { it() }
+            }.withParticleControlerHandler {
+                particleControlerHandlers.forEach { it() }
+            }
+    }
 
     // 在服务器处为0
     val displayedStatus: LongArray by lazy {
