@@ -1,22 +1,17 @@
 package cn.coostack.cooparticlesapi.mixin;
 
-import cn.coostack.cooparticlesapi.CooParticleAPI;
 import cn.coostack.cooparticlesapi.utils.ParticleAsyncRenderHelper;
-import com.google.common.collect.EvictingQueue;
 import com.llamalad7.mixinextras.sugar.Local;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleManager;
 import net.minecraft.client.particle.ParticleTextureSheet;
 import net.minecraft.client.render.*;
 import net.minecraft.client.texture.TextureManager;
-import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.Redirect;
 
-import java.util.List;
+import java.util.Collection;
 import java.util.Queue;
 
 /**

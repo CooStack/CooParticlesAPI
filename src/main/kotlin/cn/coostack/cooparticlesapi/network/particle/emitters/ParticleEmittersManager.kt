@@ -138,6 +138,13 @@ object ParticleEmittersManager {
                 }
                 return@forEach
             }
+            if (p.isDead) {
+                if (emitters in visibleSet) {
+                    removeView(p, emitters)
+                    visibleSet!!.remove(emitters)
+                }
+                return@forEach
+            }
             if (emitters in visibleSet) {
                 return@forEach
             }

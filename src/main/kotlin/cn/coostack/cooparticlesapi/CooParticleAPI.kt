@@ -34,6 +34,7 @@ import cn.coostack.cooparticlesapi.test.entity.CooParticleEntities
 import cn.coostack.cooparticlesapi.test.entity.TestEntity
 import cn.coostack.cooparticlesapi.test.entity.TestPlayerEntity
 import com.ezylang.evalex.Expression
+import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents
 import net.fabricmc.fabric.api.`object`.builder.v1.entity.FabricDefaultAttributeRegistry
 
 object CooParticleAPI : ModInitializer {
@@ -104,6 +105,7 @@ object CooParticleAPI : ModInitializer {
         WindDirections.init()
         testEntity()
     }
+
 
     private fun testEntity() {
         CooParticleEntities.init()

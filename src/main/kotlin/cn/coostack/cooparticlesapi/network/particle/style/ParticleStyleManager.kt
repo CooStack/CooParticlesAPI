@@ -138,6 +138,13 @@ object ParticleStyleManager {
                 }
                 return@forEach
             }
+            if (p.isDead) {
+                if (style in visibleSet) {
+                    removeGroupPlayerView(p, style)
+                    visibleSet!!.remove(style)
+                }
+                return@forEach
+            }
             if (style.pos.distanceTo(p.pos) <= style.visibleRange) {
                 // 防止重复添加(发包)
                 if (style in visibleSet) {

@@ -32,7 +32,7 @@ class RomaMagicTestStyle(uuid: UUID = UUID.randomUUID()) :
                         PointsBuilder()
                             .addWith {
                                 val r = ArrayList<RelativeLocation>()
-                                PointsBuilder().addCircle(3.5, 10)
+                                PointsBuilder().addCircle(3.5, 12)
                                     .create().forEachIndexed { index, rel ->
                                         r.addAll(
                                             PointsBuilder().withPreset { withRomaNumber(index + 1, 1.0) }
@@ -52,7 +52,7 @@ class RomaMagicTestStyle(uuid: UUID = UUID.randomUUID()) :
                         }
                     }.toggleOnDisplay {
                         this.addPreTickAction {
-                            rotateParticlesAsAxis(PI / 32)
+                            rotateParticlesAsAxis(PI / 256)
                             rotateParticlesToPoint(this@RomaMagicTestStyle.axis)
                         }
                     }
@@ -138,7 +138,7 @@ class RomaMagicTestStyle(uuid: UUID = UUID.randomUUID()) :
                         }
                     }.toggleOnDisplay {
                         this.addPreTickAction {
-                            rotateParticlesAsAxis(-PI / 32)
+                            rotateParticlesAsAxis(-PI / 256)
                             rotateParticlesToPoint(this@RomaMagicTestStyle.axis)
                         }
                     }

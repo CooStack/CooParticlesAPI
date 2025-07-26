@@ -1,5 +1,7 @@
 package cn.coostack.cooparticlesapi.utils.helper
 
+import cn.coostack.cooparticlesapi.network.particle.style.SequencedParticleShapeStyle
+import cn.coostack.cooparticlesapi.network.particle.style.SequencedParticleStyle
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import cn.coostack.cooparticlesapi.utils.helper.impl.GroupBezierValueScaleHelper
 import cn.coostack.cooparticlesapi.utils.helper.impl.GroupProgressSequencedHelper
@@ -17,8 +19,6 @@ import cn.coostack.cooparticlesapi.utils.helper.impl.StyleStatusHelper
  * 否则无法使用此类!
  */
 object HelperUtil {
-
-
 
 
     fun sequencedStyle(maxCount: Int, progressMaxTick: Int): StyleProgressSequencedHelper {
@@ -45,6 +45,7 @@ object HelperUtil {
     ): BezierValueScaleHelper {
         return StyleBezierValueScaleHelper(scaleTick, minScale, maxScale, c1, c2)
     }
+
     fun bezierValueScaleGroup(
         minScale: Double,
         maxScale: Double,
@@ -67,6 +68,10 @@ object HelperUtil {
 
     fun particleAlpha(minAlpha: Double, maxAlpha: Double, alphaTick: Int): ParticleAlphaHelper {
         return ParticleAlphaHelper(minAlpha, maxAlpha, alphaTick)
+    }
+
+    fun <T : SequencedParticleStyle> styleSequencedAnimationHelper(): SequencedAnimationHelper<T> {
+        return SequencedAnimationHelper()
     }
 
 }

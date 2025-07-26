@@ -23,10 +23,13 @@ public class CooParticleMixinLoaderPlugin implements IMixinConfigPlugin {
 
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
-        if (!mixinClassName.equals("cn.coostack.cooparticlesapi.mixin.ParticleManagerMixin")) {
-            return true;
+        if ("cn.coostack.cooparticlesapi.mixin.ParticleManagerMixin".equals(mixinClassName)) {
+            return APIConfigManager.getConfig().getEnabledParticleCountInject();
         }
-        return APIConfigManager.getConfig().getEnabledParticleCountInject();
+        if ("cn.coostack.cooparticlesapi.mixin.ParticleManagerRenderMixin".equals(mixinClassName)) {
+            return APIConfigManager.getConfig().getEnabledParticleAsync();
+        }
+        return true;
     }
 
     @Override

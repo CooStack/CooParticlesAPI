@@ -5,6 +5,7 @@ import cn.coostack.cooparticlesapi.network.buffer.ParticleControlerDataBuffers
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleGroupS2C
 import cn.coostack.cooparticlesapi.particles.control.ControlType
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleGroupS2C.PacketArgsType
+import cn.coostack.cooparticlesapi.network.particle.style.ParticleStyleManager
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking
 import net.minecraft.server.network.ServerPlayerEntity
 import net.minecraft.server.world.ServerWorld
@@ -89,6 +90,13 @@ object ServerParticleGroupManager {
                         removeGroupPlayerView(p, value)
                     }
                     visibleSet!!.remove(value)
+                    return@forEach
+                }
+                if (p.isDead) {
+                    if (value in visibleSet) {
+                        removeGroupPlayerView(p, value)
+                        visibleSet!!.remove(value)
+                    }
                     return@forEach
                 }
                 if (value.pos.distanceTo(p.pos) <= value.visibleRange) {

@@ -8,17 +8,18 @@ class APIConfig {
      * (对其他插件进行兼容)
      */
     var enabledParticleCountInject = true
+    var enabledParticleAsync = true
 
     /**
      * 粒子数量上限
-     * 原版上限为65536
+     * 原版上限为16384
      */
-    var particleCountLimit = 65536
+    var particleCountLimit = 65536 * 2
         get() = max(field, 1)
 
     /**
      * Math3DUtil的 threadPool最大线程数
      */
-    var calculateThreadCount = 4
+    var calculateThreadCount = 16
         get() = max(field, 1)
 }

@@ -355,6 +355,7 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
             if (len in -1e-3..1e-3) return@forEach
             value.multiply(len * scale / value.length())
         }
+        toggleRelative()
     }
 
     open fun preRotateTo(map: Map<StyleData, RelativeLocation>, to: RelativeLocation) {

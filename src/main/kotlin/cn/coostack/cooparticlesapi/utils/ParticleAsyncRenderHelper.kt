@@ -1,30 +1,17 @@
 package cn.coostack.cooparticlesapi.utils
 
 import cn.coostack.cooparticlesapi.config.APIConfigManager
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Deferred
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.newFixedThreadPoolContext
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.*
 import net.minecraft.client.particle.Particle
 import net.minecraft.client.particle.ParticleTextureSheet
 import net.minecraft.client.render.BufferBuilder
 import net.minecraft.client.render.BufferRenderer
-import net.minecraft.client.render.BuiltBuffer
 import net.minecraft.client.render.Camera
 import net.minecraft.client.render.Tessellator
 import net.minecraft.client.texture.TextureManager
 import net.minecraft.util.crash.CrashException
 import net.minecraft.util.crash.CrashReport
-import org.joml.Vector3d
-import java.util.ArrayList
-import java.util.Arrays
-import java.util.concurrent.Executors
-import java.util.concurrent.FutureTask
+import java.util.Queue
 
 /**
  * TODO 会导致游戏奔溃
@@ -33,12 +20,22 @@ object ParticleAsyncRenderHelper {
     @JvmStatic
     val threadCount: Int
         get() = APIConfigManager.getConfig().calculateThreadCount
+
+    @OptIn(DelicateCoroutinesApi::class)
     private var scope = CoroutineScope(newFixedThreadPoolContext(threadCount, "particle-async"))
+    private val tessellatorInstances = ArrayList<Tessellator>()
+
+    init {
+        repeat(threadCount) {
+            tessellatorInstances.add(Tessellator())
+        }
+    }
+
     /**
      * 异步渲染粒子
-     * TODO 会因为非法访问内存导致崩溃(原因未知)
-     * 好像是顶点渲染的部分导致的
+     * 使用协程
      */
+    @OptIn(ExperimentalCoroutinesApi::class)
     fun renderParticlesAsync(
         particles: Array<Any>,
         instance: ParticleTextureSheet,
@@ -60,7 +57,7 @@ object ParticleAsyncRenderHelper {
         var currentIndex = 0
         val tasks = ArrayList<Deferred<BufferBuilder>>()
         repeat(actualThreads) {
-            val tessellator = Tessellator.getInstance()
+            val tessellator = tessellatorInstances[it]
             var next = currentIndex + taskPreThreadCount // 取到  taskHandledIndexStart ..< next
             if (notHandledTaskCount > 0) {
                 next++
@@ -70,11 +67,11 @@ object ParticleAsyncRenderHelper {
             currentIndex = next
             val builder = instance.begin(tessellator, textureManager) ?: return@repeat
             // 复用子数组 taskHandledIndexStart - next
-            val array = particles.sliceArray(taskHandledIndexStart..<next)
+            val s = taskHandledIndexStart
+            val n = next
             // 创建任务
-
             val job = scope.async {
-                submitParticlesRender(array, builder, camera, tickDelta)
+                submitParticlesRender(particles, s, n, builder, camera, tickDelta)
             }
             tasks.add(job)
         }
@@ -84,16 +81,20 @@ object ParticleAsyncRenderHelper {
                 BufferRenderer.drawWithGlobalProgram(built)
             }
         }
+
     }
+
 
     fun submitParticlesRender(
         particles: Array<out Any>,
+        left: Int,
+        right: Int,
         builder: BufferBuilder,
         camera: Camera,
         tickDelta: Float
     ): BufferBuilder {
-        particles.forEach { particle ->
-            render(particle, builder, camera, tickDelta)
+        for (i in left..<right) {
+            render(particles[i], builder, camera, tickDelta)
         }
         return builder
     }
@@ -111,4 +112,6 @@ object ParticleAsyncRenderHelper {
             throw CrashException(crash)
         }
     }
+
+
 }

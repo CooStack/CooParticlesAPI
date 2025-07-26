@@ -81,8 +81,6 @@ class TestParticleItem(settings: Settings) : Item(settings) {
     private fun testRomaCircle(world: World, user: PlayerEntity) {
         val style = RomaMagicTestStyle()
         ParticleStyleManager.spawnStyle(world as ServerWorld, user.pos, style)
-        val motion = QuadraticStylePathMotion(style)
-        PathMotionManager.applyMotion(motion)
     }
 
     private fun testPresets(world: World, user: PlayerEntity) {

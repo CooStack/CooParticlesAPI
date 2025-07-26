@@ -161,13 +161,28 @@ object MathPresets {
         return builder.create()
     }
 
-    /**
-     *
-     */
+    fun romaXI(scale: Double): List<RelativeLocation> {
+        require(scale >= 0.01)
+        val res = ArrayList<RelativeLocation>()
+        val offset = getRomaOffsetX(scale) / 2
+        res.addAll(romaX(scale).onEach { it.x -= offset })
+        res.addAll(romaI(scale).onEach { it.x += offset })
+        return res
+    }
+
+    fun romaXII(scale: Double): List<RelativeLocation> {
+        require(scale >= 0.01)
+        val res = ArrayList<RelativeLocation>()
+        val offset = getRomaOffsetX(scale) / 2
+        res.addAll(romaXI(scale).onEach { it.x -= offset * 2 })
+        res.addAll(romaI(scale).onEach { it.x += offset })
+        return res
+    }
+
     fun getRomaOffsetX(scale: Double): Double = 0.125 * scale * 2
     fun getRomaOffsetY(scale: Double): Double = 0.25 * scale * 2
     fun withRomaNumber(i: Int, scale: Double): List<RelativeLocation> {
-        require(i in 1..10) { "只支持1-10的罗马数字" }
+        require(i in 1..12) { "只支持1-10的罗马数字" }
         return when (i) {
             1 -> romaI(scale)
             2 -> romaII(scale)
@@ -179,6 +194,8 @@ object MathPresets {
             8 -> romaVIII(scale)
             9 -> romaIX(scale)
             10 -> romaX(scale)
+            11 -> romaXI(scale)
+            12 -> romaXII(scale)
             else -> {
                 ArrayList<RelativeLocation>()
             }

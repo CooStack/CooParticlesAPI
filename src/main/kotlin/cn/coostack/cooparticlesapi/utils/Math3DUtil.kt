@@ -243,26 +243,23 @@ object Math3DUtil {
      *                实际偏移量为 [0, discrete] 的随机值，负值会被自动归零
      */
     fun getSingleDiscreteOnCircleXZ(r: Double, discrete: Double, pointRadius: Double): RelativeLocation {
-        val effectiveDiscrete = discrete.coerceAtLeast(0.0)  // 确保非负分散度
-        // 生成标准圆环坐标 (y 固定为 0)
-        val x0 = r * cos(pointRadius)
-        val z0 = r * sin(pointRadius)
-        // 生成三维随机偏移向量（球坐标系）
-        val u = Random.nextDouble()
-        val v = Random.nextDouble()
-        val azimuth = 2 * PI * u      // 方位角 [0, 2π)
-        val polar = acos(2 * v - 1)   // 极角 [0, π] 保证均匀分布
-        val offsetMag = Random.nextDouble() * effectiveDiscrete  // 偏移量 [0, discrete]
-        // 转换为笛卡尔坐标系的偏移量
-        val horizontal = offsetMag * sin(polar)
-        val dx = horizontal * cos(azimuth)
-        val dz = horizontal * sin(azimuth)
-        val dy = offsetMag * cos(polar)  // 垂直方向偏移
+        val x = cos(pointRadius) * r
+        val z = sin(pointRadius) * r
+        if (discrete <= 0) return RelativeLocation(x, 0.0, z)
+
+        val randomR = random.nextDouble(discrete)
+        val rx = random.nextDouble(-PI, PI)
+        val ry = random.nextDouble(-PI, PI)
+        val add = RelativeLocation(
+            randomR * cos(rx) * cos(ry),
+            randomR * sin(rx),
+            randomR * sin(ry) * cos(rx)
+        )
         // 合成最终坐标
         return RelativeLocation(
-            x = x0 + dx,
-            y = dy,  // 原 y 坐标为 0，直接使用偏移量
-            z = z0 + dz
+            x = x + add.x,
+            y = add.y,  // 原 y 坐标为 0，直接使用偏移量
+            z = z + add.z
         )
     }
 

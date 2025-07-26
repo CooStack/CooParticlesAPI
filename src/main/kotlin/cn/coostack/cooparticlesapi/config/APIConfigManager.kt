@@ -9,8 +9,10 @@ import java.nio.file.Files
 object APIConfigManager {
     private val gson = GsonBuilder().setPrettyPrinting().create()
     private val path = FabricLoader.getInstance().configDir.resolve("${CooParticleAPI.MOD_ID}.json")
+
     @JvmStatic
     private var withConfig: APIConfig? = null
+
     @JvmStatic
     fun getConfig(): APIConfig {
         return withConfig ?: let {
@@ -18,6 +20,7 @@ object APIConfigManager {
             withConfig!!
         }
     }
+
     @JvmStatic
     fun loadConfig() {
         if (!Files.exists(path)) {

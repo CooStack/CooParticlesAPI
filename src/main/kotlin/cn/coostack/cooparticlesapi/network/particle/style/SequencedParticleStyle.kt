@@ -19,6 +19,11 @@ import java.util.UUID
 import kotlin.collections.toList
 import kotlin.math.PI
 
+
+/**
+ * 几个免除手动书写 SequencedParticleStyle的方法
+ *
+ */
 abstract class SequencedParticleStyle(visibleRange: Double = 32.0, uuid: UUID = UUID.randomUUID()) :
     ParticleGroupStyle(visibleRange, uuid) {
 
@@ -104,15 +109,21 @@ abstract class SequencedParticleStyle(visibleRange: Double = 32.0, uuid: UUID = 
             return this
         }
 
-        fun build(order: Int): StyleData = SortedStyleData(displayerBuilder, order)
+        fun build(order: Int): SortedStyleData = SortedStyleData(displayerBuilder, order)
             .withParticleHandler {
                 particleHandlers.forEach { it() }
             }.withParticleControlerHandler {
                 particleControlerHandlers.forEach { it() }
-            }
+            } as SortedStyleData
     }
 
-    // 在服务器处为0
+    /**
+     * 在服务器处是0 size的大小
+     * client用于存储某个粒子/粒子组 的展示情况
+     *
+     * TODO 制作扩容的 MutableLongStatusList
+     * 用于彻底解除强制重写的烦恼
+     */
     val displayedStatus: LongArray by lazy {
         LongArray(getParticlesCount())
     }
@@ -347,6 +358,11 @@ abstract class SequencedParticleStyle(visibleRange: Double = 32.0, uuid: UUID = 
             clearStatus()
         }
         displayParticles()
+    }
+
+    override fun clear(valid: Boolean) {
+        sequencedParticles.clear()
+        super.clear(valid)
     }
 
     /**
