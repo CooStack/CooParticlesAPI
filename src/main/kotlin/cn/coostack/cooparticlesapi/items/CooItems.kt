@@ -11,7 +11,7 @@ object CooItems {
 
     val testParticle = register(
         "test_particle",
-        TestParticleItem(Item.Settings())
+        TestParticleItem(Item.Settings().maxCount(1))
     )
 
     val testBarrierItem = register(
