@@ -194,6 +194,20 @@ object ParticleStyleManager {
     private fun buildAutoTogglePacket(
         style: ParticleGroupStyle,
     ): PacketParticleStyleS2C {
+
+        /**
+         * SequencedParticleStyle
+         * 你赢了
+         * addMultiple的index 能从 7 自动同步成 0
+         *
+         * 一看 server side 诶 index没有问题
+         * 一看args 诶 index没有问题
+         * 但是呢
+         * 传入客户端之后啊
+         * 7 变成 0 了捏
+         * 不知道的以为是Packet的 CODEC被你妈吃数据包了
+         */
+
         return PacketParticleStyleS2C(
             style.uuid,
             ControlType.CHANGE,

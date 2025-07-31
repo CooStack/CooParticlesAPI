@@ -11,6 +11,7 @@ import cn.coostack.cooparticlesapi.particles.impl.TestEndRodEffect
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.MathDataUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
+import com.sun.jna.platform.win32.OleAuto
 import net.minecraft.client.world.ClientWorld
 import net.minecraft.util.math.Vec3d
 import net.minecraft.world.World
@@ -23,39 +24,17 @@ import kotlin.math.PI
 /**
  * 几个免除手动书写 SequencedParticleStyle的方法
  *
+ * 在这里不建议使用 autoToggle方法
+ * 会导致一些奇奇怪怪的问题 (原因未知)
+ * 可能是 部分index同步错误导致
  */
 abstract class SequencedParticleStyle(visibleRange: Double = 32.0, uuid: UUID = UUID.randomUUID()) :
     ParticleGroupStyle(visibleRange, uuid) {
-
-    enum class SequencedChangeMethod(val id: Int) {
-        /**
-         * 类似于
-         * removeSingle removeMultiple removeAll
-         * addSingle addMultiple addAll
-         * 等方法输入的参数
-         *
-         * 数据包获取此参数会引向上述方法
-         */
-        CHANGE_LINKED(1),
-
-        /**
-         * 自定义其他索引使用的参数
-         *
-         * 数据包获取此参数会引向 changeParticlesStatus
-         */
-        CHANGE_ARRAY(2);
-
-        companion object {
-            @JvmStatic
-            fun fromID(id: Int): SequencedChangeMethod {
-                return when (id) {
-                    1 -> CHANGE_LINKED
-                    2 -> CHANGE_ARRAY
-                    else -> CHANGE_ARRAY
-                }
-            }
-        }
+    companion object {
+        const val CREATE_PARTICLE = 1
+        const val DELETE_PARTICLE = 0
     }
+
 
     class SortedStyleData(displayerBuilder: (UUID) -> ParticleDisplayer, val order: Int) :
         StyleData(displayerBuilder), Comparable<SortedStyleData> {
@@ -121,11 +100,17 @@ abstract class SequencedParticleStyle(visibleRange: Double = 32.0, uuid: UUID = 
      * 在服务器处是0 size的大小
      * client用于存储某个粒子/粒子组 的展示情况
      *
-     * TODO 制作扩容的 MutableLongStatusList
      * 用于彻底解除强制重写的烦恼
+     *
+     * FIXED 修复多余的内存占用
      */
     val displayedStatus: LongArray by lazy {
-        LongArray(getParticlesCount())
+        val count = getParticlesCount()
+        var page = count / 64
+        if (count % 64 > 0) {
+            page++
+        }
+        LongArray(page)
     }
 
 
@@ -143,6 +128,9 @@ abstract class SequencedParticleStyle(visibleRange: Double = 32.0, uuid: UUID = 
 
     /**
      * 此参数所指向的状态为false
+     *
+     * 服务器可用
+     * 不会同步到客户端
      */
     var particleLinkageDisplayCurrentIndex = 0
         private set
@@ -163,23 +151,27 @@ abstract class SequencedParticleStyle(visibleRange: Double = 32.0, uuid: UUID = 
      * 服务器发包 -> index_status_change -> intArray index, status
      */
     fun addSingle() {
-        if (!client) {
-            // 处理服务器
-            // 发包
-            val args = buildChangeSingleStatusArgs(
-                particleLinkageDisplayCurrentIndex++,
-                true,
-                SequencedChangeMethod.CHANGE_LINKED
-            )
-            change({}, mapOf(args))
+        if (client) {
+            // 适配在纯客户端页面的添加
+            // 由于和服务器无关所以大多数参数无需设置
+            if (particleLinkageDisplayCurrentIndex >= getParticlesCount()) {
+                return
+            }
+            toggleFromStatus(particleLinkageDisplayCurrentIndex++, true)
             return
         }
-        if (particleLinkageDisplayCurrentIndex >= sequencedParticles.size) {
+        displayedParticleCount++
+        if (getStatus(particleLinkageDisplayCurrentIndex)) {
             return
         }
-
-        // 接受发包
-        toggleFromStatus(particleLinkageDisplayCurrentIndex++, true)
+        setStatus(particleLinkageDisplayCurrentIndex, true)
+        // 处理服务器
+        // 发包
+        val args = buildChangeSingleStatusArgs(
+            particleLinkageDisplayCurrentIndex++,
+            true
+        )
+        change({}, mapOf(args))
     }
 
     /**
@@ -187,6 +179,12 @@ abstract class SequencedParticleStyle(visibleRange: Double = 32.0, uuid: UUID = 
      *              indexes_status_change_method -> intArray status method
      */
     fun addMultiple(count: Int) {
+        if (client) {
+            repeat(count) {
+                addSingle()
+            }
+            return
+        }
         if (count <= 0) {
             return
         }
@@ -194,47 +192,47 @@ abstract class SequencedParticleStyle(visibleRange: Double = 32.0, uuid: UUID = 
             addSingle()
             return
         }
-        if (!client) {
-            // 处理服务器
-            // 发包
-            val indexes = particleLinkageDisplayCurrentIndex..<particleLinkageDisplayCurrentIndex + count
-            val args =
-                buildChangeMultipleStatusArgs(
-                    indexes.toList().toIntArray(),
-                    true,
-                    SequencedChangeMethod.CHANGE_LINKED
-                )
-            change({
-                particleLinkageDisplayCurrentIndex =
-                    (particleLinkageDisplayCurrentIndex + count).coerceAtMost(getParticlesCount() - 1)
-            }, args)
-            return
+        displayedParticleCount += count
+        // 处理服务器
+        // 发包
+        val indexes = particleLinkageDisplayCurrentIndex..<particleLinkageDisplayCurrentIndex + count
+        for (i in indexes) {
+            setStatus(i, true)
         }
-        repeat(count) {
-            addSingle()
-        }
+        val args =
+            buildChangeMultipleStatusArgs(
+                indexes.toList().toIntArray(),
+                true
+            )
+        change({
+            particleLinkageDisplayCurrentIndex =
+                (particleLinkageDisplayCurrentIndex + count).coerceAtMost(getParticlesCount() - 1)
+        }, args)
     }
 
     fun removeSingle() {
-        if (!client) {
-            // 处理服务器
-            // 发包
-            val args = buildChangeSingleStatusArgs(
-                particleLinkageDisplayCurrentIndex--,
-                false,
-                SequencedChangeMethod.CHANGE_LINKED
-            )
-            change({}, mapOf(args))
-            return
+        if (client) {
+            if (particleLinkageDisplayCurrentIndex <= 0) return
+            toggleFromStatus(particleLinkageDisplayCurrentIndex--, false)
         }
-        if (particleLinkageDisplayCurrentIndex <= 0) {
-            return
-        }
-        // 接受发包
-        toggleFromStatus(particleLinkageDisplayCurrentIndex--, false)
+        displayedParticleCount--
+        setStatus(particleLinkageDisplayCurrentIndex, false)
+        // 处理服务器
+        // 发包
+        val args = buildChangeSingleStatusArgs(
+            particleLinkageDisplayCurrentIndex--,
+            false
+        )
+        change({}, mapOf(args))
     }
 
     fun removeMultiple(count: Int) {
+        if (client) {
+            repeat(count) {
+                removeSingle()
+            }
+            return
+        }
         if (count <= 0) {
             return
         }
@@ -243,43 +241,39 @@ abstract class SequencedParticleStyle(visibleRange: Double = 32.0, uuid: UUID = 
             return
         }
 
-        if (!client) {
-            // 处理服务器
-            // 发包
-            val indexes = particleLinkageDisplayCurrentIndex - count + 1..particleLinkageDisplayCurrentIndex
-            val args =
-                buildChangeMultipleStatusArgs(
-                    indexes.toList().toIntArray(),
-                    false,
-                    SequencedChangeMethod.CHANGE_LINKED
-                )
-            change({
-                particleLinkageDisplayCurrentIndex =
-                    (particleLinkageDisplayCurrentIndex - count).coerceAtLeast(0)
-            }, args)
-            return
+        displayedParticleCount -= count
+        // 处理服务器
+        // 发包
+        val indexes = particleLinkageDisplayCurrentIndex - count + 1..particleLinkageDisplayCurrentIndex
+        for (i in indexes) {
+            setStatus(i, false)
         }
-        repeat(count) {
-            removeSingle()
-        }
+        val args =
+            buildChangeMultipleStatusArgs(
+                indexes.toList().toIntArray(),
+                false
+            )
+        change({
+            particleLinkageDisplayCurrentIndex =
+                (particleLinkageDisplayCurrentIndex - count).coerceAtLeast(0)
+        }, args)
     }
 
 
     fun changeParticlesStatus(indexes: IntArray, status: Boolean) {
         if (!client) {
-            val args = buildChangeMultipleStatusArgs(indexes, status, SequencedChangeMethod.CHANGE_ARRAY)
+            val args = buildChangeMultipleStatusArgs(indexes, status)
             change(args)
             return
         }
         for (index in indexes) {
             changeSingleStatus(index, status)
         }
-
     }
 
     fun changeSingleStatus(index: Int, status: Boolean) {
         if (!client) {
-            val arg = buildChangeSingleStatusArgs(index, status, SequencedChangeMethod.CHANGE_ARRAY)
+            val arg = buildChangeSingleStatusArgs(index, status)
             change(mapOf(arg))
             return
         }
@@ -290,12 +284,11 @@ abstract class SequencedParticleStyle(visibleRange: Double = 32.0, uuid: UUID = 
     private fun buildChangeMultipleStatusArgs(
         indexes: IntArray,
         status: Boolean,
-        method: SequencedChangeMethod
     ): Map<String, ParticleControlerDataBuffer<*>> {
         return mapOf(
             "indexes_status_change_arg" to ParticleControlerDataBuffers.intArray(indexes),
             "indexes_status_change_status" to ParticleControlerDataBuffers.intArray(
-                intArrayOf(if (status) 1 else 0, method.id)
+                intArrayOf(if (status) CREATE_PARTICLE else DELETE_PARTICLE, displayedParticleCount)
             )
         )
     }
@@ -303,13 +296,11 @@ abstract class SequencedParticleStyle(visibleRange: Double = 32.0, uuid: UUID = 
     private fun buildChangeSingleStatusArgs(
         index: Int,
         status: Boolean,
-        method: SequencedChangeMethod
     ): Pair<String, ParticleControlerDataBuffer<IntArray>> {
         return "index_status_change" to ParticleControlerDataBuffers.intArray(
             intArrayOf(
                 index,
-                if (status) 1 else 0,
-                method.id
+                if (status) CREATE_PARTICLE else DELETE_PARTICLE, displayedParticleCount
             )
         )
     }
@@ -383,45 +374,23 @@ abstract class SequencedParticleStyle(visibleRange: Double = 32.0, uuid: UUID = 
             System.arraycopy(array, 0, displayedStatus, 0, array.size)
         }
         args["displayed_particle_count"]?.let { displayedParticleCount = it.loadedValue!! as Int }
-        args["particle_linkage_index"]?.let { particleLinkageDisplayCurrentIndex = it.loadedValue!! as Int }
         readPacketArgsSequenced(args)
         args["index_status_change"]?.let {
             val array = it.loadedValue as IntArray
+
+            /** @see particleLinkageDisplayCurrentIndex */
             val index = array[0]
-            val status = array[1] == 1
-            val method = SequencedChangeMethod.fromID(array[2])
-            if (method == SequencedChangeMethod.CHANGE_LINKED) {
-                // 一个客户端和服务端同时执行完 addSingle -> particleLinkageDisplayCurrentIndex + 1(客户端当前值) -> index (来自服务器)
-                // 一个客户端和服务端同时执行完 removeSingle -> particleLinkageDisplayCurrentIndex - 1(客户端当前值) -> index (来自服务器)
-                if (index != particleLinkageDisplayCurrentIndex) {
-                    return@let
-                }
-                if (status) {
-                    addSingle()
-                } else {
-                    removeSingle()
-                }
-            } else {
-                changeSingleStatus(index, status)
-            }
+            val status = array[1] == CREATE_PARTICLE
+            this.displayedParticleCount = array[2]
+            changeSingleStatus(index, status)
         }
 
         args["indexes_status_change_arg"]?.let {
             val indexes = it.loadedValue as IntArray
             val methodArray = args["indexes_status_change_status"]!!.loadedValue as IntArray
-            val status = methodArray[0] == 1
-            val method = SequencedChangeMethod.fromID(methodArray[1])
-            if (method == SequencedChangeMethod.CHANGE_LINKED) {
-                // 一个客户端和服务端同时执行完 addSingle -> particleLinkageDisplayCurrentIndex + count(客户端当前值) -> index (来自服务器)
-                // 一个客户端和服务端同时执行完 removeSingle -> particleLinkageDisplayCurrentIndex - count(客户端当前值) -> index (来自服务器)
-                if (status) {
-                    addMultiple(indexes.size)
-                } else {
-                    removeMultiple(indexes.size)
-                }
-            } else {
-                changeParticlesStatus(indexes, status)
-            }
+            val status = methodArray[0] == CREATE_PARTICLE
+            this.displayedParticleCount = methodArray[1]
+            changeParticlesStatus(indexes, status)
         }
     }
 
@@ -530,7 +499,8 @@ abstract class SequencedParticleStyle(visibleRange: Double = 32.0, uuid: UUID = 
 
     private fun toggleFromStatus(index: Int, status: Boolean) {
         if (index >= sequencedParticles.size && client || index > getParticlesCount()) return
-        if (status && client) {
+        if (!client) return
+        if (status) {
             createWithIndex(index)
         } else {
             val uuid = sequencedParticles[index].first.uuid
@@ -546,7 +516,7 @@ abstract class SequencedParticleStyle(visibleRange: Double = 32.0, uuid: UUID = 
         val page = MathDataUtil.getStoragePageLong(index)
         val container = displayedStatus[page]
         val bit = MathDataUtil.getStorageWithBitLong(index)
-        MathDataUtil.setStatusLong(container, bit, status)
+        displayedStatus[page] = MathDataUtil.setStatusLong(container, bit, status)
     }
 
     private fun getStatus(index: Int): Boolean {

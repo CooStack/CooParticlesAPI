@@ -24,7 +24,9 @@ class LongArrayControlerBuffer : ParticleControlerDataBuffer<LongArray> {
     override fun encode(value: LongArray): ByteArray {
         val buffer = Unpooled.buffer()
         buffer.writeInt(value.size)
-        value.forEach { buffer.writeLong(it) }
+        value.forEach {
+            buffer.writeLong(it)
+        }
         return buffer.copy().array()
     }
 

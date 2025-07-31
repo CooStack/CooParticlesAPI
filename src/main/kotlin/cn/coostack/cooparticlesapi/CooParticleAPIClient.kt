@@ -37,9 +37,7 @@ import cn.coostack.cooparticlesapi.test.particle.style.ExampleStyle
 import cn.coostack.cooparticlesapi.test.particle.style.RomaMagicTestStyle
 import cn.coostack.cooparticlesapi.test.particle.style.RotateTestStyle
 import cn.coostack.cooparticlesapi.test.particle.style.TestShapeUtilStyle
-import cn.coostack.cooparticlesapi.utils.ParticleAsyncRenderHelper
 import net.fabricmc.api.ClientModInitializer
-import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientEntityEvents
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientWorldEvents
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents
@@ -47,9 +45,8 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
 import net.fabricmc.fabric.api.client.particle.v1.ParticleFactoryRegistry
 import net.fabricmc.fabric.api.client.rendering.v1.EntityModelLayerRegistry
 import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry
-import net.fabricmc.fabric.api.event.client.player.ClientPlayerBlockBreakEvents
 import net.minecraft.client.MinecraftClient
-import net.minecraft.client.network.ClientPlayerEntity
+import net.minecraft.client.world.ClientWorld
 
 object CooParticleAPIClient : ClientModInitializer {
     /**
@@ -133,12 +130,21 @@ object CooParticleAPIClient : ClientModInitializer {
             ParticleStyleManager.clearAllVisible()
             ClientParticleGroupManager.clearAllVisible()
         }
+//
+//        ClientTickEvents.START_WORLD_TICK.register {
+//            val tickManager = it.tickManager
+//            if (!tickManager.shouldTick()) {
+//                return@register
+//            }
+//            scheduler.doTick()
+//            ClientParticleGroupManager.doClientTick()
+//            ParticleStyleManager.doTickClient()
+//            ParticleEmittersManager.doTickClient()
+//            AnimateManager.tickClient()
+//        }
         ClientTickEvents.START_WORLD_TICK.register {
-            scheduler.doTick()
-            ClientParticleGroupManager.doClientTick()
-            ParticleStyleManager.doTickClient()
-            ParticleEmittersManager.doTickClient()
-            AnimateManager.tickClient()
+            tickClient(it)
+
         }
         ClientWorldEvents.AFTER_CLIENT_WORLD_CHANGE.register { _, _ ->
             ParticleEmittersManager.clientEmitters.clear()
@@ -147,6 +153,30 @@ object CooParticleAPIClient : ClientModInitializer {
         }
         MinecraftClient.getInstance().player?.isDead
     }
+
+    var subTicks = 0.0
+    private fun tickClient(world: ClientWorld) {
+        val tickManager = world.tickManager
+        if (!tickManager.shouldTick()) {
+            return
+        }
+        val rate = tickManager.tickRate
+        val preInvokeTimes = rate / 20.0 // 平均每 tick 执行的次数
+        subTicks += preInvokeTimes
+        if (subTicks >= 1) {
+            val toInt = subTicks.toInt()
+            subTicks -= toInt
+            repeat(toInt) {
+                // 这里要同步应用上tick rate
+                scheduler.doTick()
+                ClientParticleGroupManager.doClientTick()
+                ParticleStyleManager.doTickClient()
+                ParticleEmittersManager.doTickClient()
+                AnimateManager.tickClient()
+            }
+        }
+    }
+
 
     private fun testEntity() {
         EntityModelLayerRegistry.registerModelLayer(

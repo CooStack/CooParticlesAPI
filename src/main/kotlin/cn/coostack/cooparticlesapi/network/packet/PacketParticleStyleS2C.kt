@@ -25,6 +25,7 @@ class PacketParticleStyleS2C(
             CustomPayload.codecOf({ packet, buf ->
                 buf.writeUuid(packet.uuid)
                 buf.writeInt(packet.type.id)
+                buf.writeInt(packet.args.size)
                 packet.args.forEach { (t, u) ->
                     val encode = ParticleControlerDataBuffers.encode(u)
                     val len = encode.size
@@ -37,12 +38,12 @@ class PacketParticleStyleS2C(
                 val uuid = buf.readUuid()
                 val id = buf.readInt()
                 val type = ControlType.Companion.getTypeById(id)
-                while (buf.readableBytes() != 0) {
+                val argsCount = buf.readInt()
+                repeat(argsCount) {
                     val len = buf.readInt()
                     val key = buf.readString()
-                    val value = ByteArray(len)
-                    buf.readBytes(value)
-                    val decode = ParticleControlerDataBuffers.decodeToBuffer<Any>(value)
+                    val buf = buf.readBytes(len)
+                    val decode = ParticleControlerDataBuffers.decodeToBuffer<Any>(buf)
                     args[key] = decode
                 }
                 return@codecOf PacketParticleStyleS2C(

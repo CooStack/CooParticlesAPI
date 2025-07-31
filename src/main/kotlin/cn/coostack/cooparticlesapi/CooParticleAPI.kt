@@ -35,6 +35,7 @@ import cn.coostack.cooparticlesapi.test.entity.TestEntity
 import cn.coostack.cooparticlesapi.test.entity.TestPlayerEntity
 import com.ezylang.evalex.Expression
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerWorldEvents
 import net.fabricmc.fabric.api.`object`.builder.v1.entity.FabricDefaultAttributeRegistry
 
 object CooParticleAPI : ModInitializer {
@@ -85,7 +86,11 @@ object CooParticleAPI : ModInitializer {
         EmittersShootTypes.init()
         APIConfigManager.loadConfig()
         ControlableParticleEffectManager.init()
-        ServerTickEvents.START_SERVER_TICK.register { _ ->
+        ServerTickEvents.START_SERVER_TICK.register { server ->
+            val tickManager = server.tickManager
+            if (!tickManager.shouldTick()) {
+                return@register
+            }
             ServerParticleGroupManager.upgrade()
             ParticleStyleManager.doTickServer()
             ParticleEmittersManager.doTickServer()

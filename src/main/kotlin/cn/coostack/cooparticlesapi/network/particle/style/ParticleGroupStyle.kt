@@ -22,15 +22,11 @@ import net.minecraft.util.math.Vec3d
 import net.minecraft.world.World
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
-import javax.swing.text.Style
 import kotlin.collections.set
 import kotlin.math.PI
 
 /**
  * 客户端渲染和服务端处理都用这个类
- *
- * 由于模组作者不想每次都要同步客户端和服务器时在两个地方写相同的代码
- * 于是创造出此类(当初为什么没有想到555)
  */
 abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUID = UUID.randomUUID()) :
     Controlable<ParticleGroupStyle>, ServerControler<ParticleGroupStyle> {
@@ -58,10 +54,14 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
     val particles = ConcurrentHashMap<UUID, Controlable<*>>()
     val particleLocations = ConcurrentHashMap<Controlable<*>, RelativeLocation>()
 
+    // 在Particle 被标记为死亡时 重新生成该粒子作为数据依据
+    val particleDataBuffers = ConcurrentHashMap<UUID, StyleData>()
+
     /**
      * 当粒子组合初始化时, 存储1倍缩放粒子组与原点的距离
      */
     val particleDefaultLength = ConcurrentHashMap<UUID, Double>()
+
 
     abstract fun getCurrentFrames(): Map<StyleData, RelativeLocation>
 
@@ -213,7 +213,7 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
      * 除非你开启了 autoToggle
      */
     fun change(toggleMethod: ParticleGroupStyle.() -> Unit, args: Map<String, ParticleControlerDataBuffer<*>>) {
-        if (autoToggle || client) {
+        if (client) {
             return
         }
         toggleMethod(this)
@@ -264,7 +264,9 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
         if (!client) {
             return
         }
-        for (entry in particleLocations) {
+        val iterator = particleLocations.iterator()
+        while (iterator.hasNext()) {
+            val entry = iterator.next()
             val particle = entry.key
             val rl = entry.value
             particle.teleportTo(
@@ -275,6 +277,19 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
         }
     }
 
+
+    private fun spawnSingleParticle(data: StyleData, rel: RelativeLocation) {
+        val displayer = data.displayerBuilder(data.uuid)
+        if (displayer !is ParticleDisplayer.SingleParticleDisplayer) return
+        val controler = ControlParticleManager.createControl(data.uuid)
+        controler.initInvoker = data.particleHandler
+        val toPos = Vec3d(pos.x + rel.x, pos.y + rel.y, pos.z + rel.z)
+        displayer.display(toPos, world as ClientWorld) ?: return
+        data.particleControlerHandler(controler)
+        // 把粒子丢回生成列表
+        particles[data.uuid] = controler
+        particleLocations[controler] = rel
+    }
 
     open fun tick() {
         if (!displayed || !valid) {
@@ -386,6 +401,7 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
         locations.forEach {
             val data = it.key
             val uuid = it.key.uuid
+            particleDataBuffers[uuid] = data
             val rl = it.value
             val displayer = it.key.displayerBuilder(uuid)
             if (displayer is ParticleDisplayer.SingleParticleDisplayer) {
@@ -410,6 +426,7 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
         particles.clear()
         particleLocations.clear()
         particleDefaultLength.clear()
+        particleDataBuffers.clear()
         this.valid = valid
     }
 

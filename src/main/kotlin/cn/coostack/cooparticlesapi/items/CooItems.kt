@@ -27,6 +27,10 @@ object CooItems {
         "test_style", TestStyleItem()
     )
 
+    val testTickItem = register(
+        "test_tick", TestTickItem()
+    )
+
     fun register(id: String, item: Item): Item {
         val res = Registry.register(
             Registries.ITEM, Identifier.of(CooParticleAPI.MOD_ID, id), item

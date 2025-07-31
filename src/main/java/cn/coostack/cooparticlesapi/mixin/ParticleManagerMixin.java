@@ -1,6 +1,7 @@
 package cn.coostack.cooparticlesapi.mixin;
 
 
+import cn.coostack.cooparticlesapi.CooParticleAPI;
 import cn.coostack.cooparticlesapi.config.APIConfigManager;
 import com.google.common.collect.EvictingQueue;
 import net.minecraft.client.particle.Particle;
@@ -53,9 +54,17 @@ public abstract class ParticleManagerMixin {
 
     @Inject(method = "clearParticles", at = @At("HEAD"))
     public void clearParticles(CallbackInfo ci) {
-        particles.values().forEach(q -> q.forEach(this::onEvict));
-        newParticles.forEach(this::onEvict);
+        // p可能为null (因为ParticleManagerAsyncMixin
+        particles.values().forEach(q -> q.forEach((p) -> {
+            if (p != null) onEvict(p);
+        }));
+        newParticles.forEach((p) -> {
+            if (p != null) onEvict(p);
+        });
+        // 事件
+        CooParticleAPI.INSTANCE.getLogger().info("ParticleManager: clearParticles invoked");
     }
+
 
     @Unique
     private void onEvict(Particle p) {

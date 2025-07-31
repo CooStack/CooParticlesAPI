@@ -1,7 +1,9 @@
 package cn.coostack.cooparticlesapi.items
 
 import cn.coostack.cooparticlesapi.network.particle.ServerParticleGroupManager
+import cn.coostack.cooparticlesapi.network.particle.style.ParticleStyleManager
 import cn.coostack.cooparticlesapi.test.particle.server.SequencedMagicCircleServer
+import cn.coostack.cooparticlesapi.test.particle.style.ExampleSequencedStyle
 import net.minecraft.entity.player.PlayerEntity
 import net.minecraft.item.Item
 import net.minecraft.item.ItemStack
@@ -16,10 +18,15 @@ class TestSequencedItem : Item(Settings().maxCount(1).maxDamage(120)) {
             return super.use(world, user, hand)
         }
 
-        ServerParticleGroupManager.addParticleGroup(
-            SequencedMagicCircleServer(user.uuid), user.eyePos, user.world as ServerWorld
-        )
+//        ServerParticleGroupManager.addParticleGroup(
+//            SequencedMagicCircleServer(user.uuid), user.eyePos, user.world as ServerWorld
+//        )
 
+        ParticleStyleManager.spawnStyle(
+            user.world as ServerWorld,
+            user.eyePos,
+            ExampleSequencedStyle(user.uuid)
+        )
         return super.use(world, user, hand)
     }
 }

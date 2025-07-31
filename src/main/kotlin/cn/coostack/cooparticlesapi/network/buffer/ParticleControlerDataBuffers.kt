@@ -1,6 +1,7 @@
 package cn.coostack.cooparticlesapi.network.buffer
 
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
+import io.netty.buffer.ByteBuf
 import io.netty.buffer.Unpooled
 import net.minecraft.util.Identifier
 import net.minecraft.util.math.Vec3d
@@ -138,8 +139,12 @@ object ParticleControlerDataBuffers {
     }
 
     fun <T> decodeToBuffer(bytes: ByteArray): ParticleControlerDataBuffer<T> {
+        val buf = Unpooled.wrappedBuffer(bytes)
+        return decodeToBuffer(buf)
+    }
+
+    fun <T> decodeToBuffer(byteBuf: ByteBuf): ParticleControlerDataBuffer<T> {
         // 要求目标编码器必须具有空构造函数
-        val byteBuf = Unpooled.wrappedBuffer(bytes)
         val len = byteBuf.readInt()
         val toStringBytes = ByteArray(len)
         byteBuf.readBytes(toStringBytes)
@@ -165,7 +170,11 @@ object ParticleControlerDataBuffers {
         register(LongArray::class.java, LongArrayControlerBuffer.id, LongArrayControlerBuffer::class.java)
         register(UUID::class.java, UUIDControlerBuffer.id, UUIDControlerBuffer::class.java)
         register(Vec3d::class.java, Vec3dControlerBuffer.id, Vec3dControlerBuffer::class.java)
-        register(RelativeLocation::class.java, RelativeLocationControlerBuffer.id, RelativeLocationControlerBuffer::class.java)
+        register(
+            RelativeLocation::class.java,
+            RelativeLocationControlerBuffer.id,
+            RelativeLocationControlerBuffer::class.java
+        )
         register(Short::class.java, ShortControlerBuffer.id, ShortControlerBuffer::class.java)
         register(Unit::class.java, EmptyControlerBuffer.id, EmptyControlerBuffer::class.java)
         register(Char::class.java, CharControlerBuffer.id, CharControlerBuffer::class.java)

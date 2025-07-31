@@ -18,6 +18,7 @@ class ItemModelProvider(output: FabricDataOutput?) : FabricModelProvider(output)
             register(CooItems.testBarrierItem, Models.HANDHELD)
             register(CooItems.testSequencedParticle, Models.HANDHELD)
             register(CooItems.testStyleItem, Models.HANDHELD)
+            register(CooItems.testTickItem, Models.HANDHELD)
         }
     }
 }

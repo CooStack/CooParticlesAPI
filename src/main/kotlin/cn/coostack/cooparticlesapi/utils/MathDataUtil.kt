@@ -32,6 +32,9 @@ object MathDataUtil {
         return container and (1 shl move) ushr move
     }
 
+    /**
+     * @return 设置状态之后的container
+     */
     fun setStatusLong(container: Long, bit: Int, status: Boolean): Long {
         if (bit > 64 || bit <= 0) {
             return container

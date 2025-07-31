@@ -9,6 +9,6 @@
   },
   "client": [
     "CooParticleCameraMixin",
-    "ParticleManagerMixin",
+    "ParticleManagerMixin"
   ]
 }

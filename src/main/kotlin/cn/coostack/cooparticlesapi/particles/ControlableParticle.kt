@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi.particles
 
+import cn.coostack.cooparticlesapi.CooParticleAPI
 import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
 import cn.coostack.cooparticlesapi.particles.control.ParticleControler
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
@@ -259,12 +260,12 @@ abstract class ControlableParticle(
         }
 
 
-    private var lastPreview = cloneVec(pos)
+    private var lastPreview = pos
     private var update = false
 
 
     fun teleportTo(pos: Vec3d) {
-        lastPreview = cloneVec(pos)
+        lastPreview = pos
         update = true
     }
 
@@ -328,7 +329,9 @@ abstract class ControlableParticle(
             super.tick()
         }
         controler.doTick()
-        prevPos = this.pos
+        prevPosX = x
+        prevPosY = y
+        prevPosZ = z
         if (update) {
             if (!minecraftTick) {
                 this.boundingBox = Box.of(
@@ -338,7 +341,9 @@ abstract class ControlableParticle(
                     this.boundingBox.maxZ - this.boundingBox.minZ,
                 )
             }
-            prevPos = this.pos
+            prevPosX = x
+            prevPosY = y
+            prevPosZ = z
             this.pos = lastPreview
             update = false
         }
@@ -474,9 +479,6 @@ abstract class ControlableParticle(
         return textureSheet
     }
 
-    private fun cloneVec(vec: Vec3d): Vec3d {
-        return Vec3d(vec.x, vec.y, vec.z)
-    }
 
     /**
      * 在黑夜里粒子也会很亮

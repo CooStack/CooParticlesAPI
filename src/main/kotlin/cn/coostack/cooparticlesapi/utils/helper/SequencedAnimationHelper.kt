@@ -23,6 +23,7 @@ class SequencedAnimationHelper<T : SequencedParticleStyle> {
     fun loadStyle(style: T): SequencedAnimationHelper<T> {
         this.style = style
         style.addPreTickAction {
+            if (style.client) return@addPreTickAction
             if (animationIndex >= animationConditions.size) {
                 return@addPreTickAction
             }
