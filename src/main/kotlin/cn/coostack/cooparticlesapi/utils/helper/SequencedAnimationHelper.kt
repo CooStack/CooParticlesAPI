@@ -39,15 +39,4 @@ class SequencedAnimationHelper<T : SequencedParticleStyle> {
         }
         return this
     }
-
-    fun getArgs(): Map<String, ParticleControlerDataBuffer<*>> = mapOf(
-        "animation_index" to ParticleControlerDataBuffers.int(animationIndex)
-    )
-
-    fun setFromArgs(args: Map<String, ParticleControlerDataBuffer<*>>) {
-        args["animation_index"]?.let {
-            animationIndex = it.loadedValue as Int
-        }
-    }
-
 }

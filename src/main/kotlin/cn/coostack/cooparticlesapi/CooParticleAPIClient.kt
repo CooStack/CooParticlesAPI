@@ -43,9 +43,12 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientWorldEvents
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
 import net.fabricmc.fabric.api.client.particle.v1.ParticleFactoryRegistry
+import net.fabricmc.fabric.api.client.rendering.v1.CoreShaderRegistrationCallback
 import net.fabricmc.fabric.api.client.rendering.v1.EntityModelLayerRegistry
 import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry
+import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents
 import net.minecraft.client.MinecraftClient
+import net.minecraft.client.gl.ShaderProgram
 import net.minecraft.client.world.ClientWorld
 
 object CooParticleAPIClient : ClientModInitializer {
@@ -130,21 +133,8 @@ object CooParticleAPIClient : ClientModInitializer {
             ParticleStyleManager.clearAllVisible()
             ClientParticleGroupManager.clearAllVisible()
         }
-//
-//        ClientTickEvents.START_WORLD_TICK.register {
-//            val tickManager = it.tickManager
-//            if (!tickManager.shouldTick()) {
-//                return@register
-//            }
-//            scheduler.doTick()
-//            ClientParticleGroupManager.doClientTick()
-//            ParticleStyleManager.doTickClient()
-//            ParticleEmittersManager.doTickClient()
-//            AnimateManager.tickClient()
-//        }
         ClientTickEvents.START_WORLD_TICK.register {
             tickClient(it)
-
         }
         ClientWorldEvents.AFTER_CLIENT_WORLD_CHANGE.register { _, _ ->
             ParticleEmittersManager.clientEmitters.clear()
