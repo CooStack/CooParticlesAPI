@@ -11,6 +11,7 @@ import cn.coostack.cooparticlesapi.network.packet.PacketParticleEmittersS2C
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleGroupS2C
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleS2C
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleStyleS2C
+import cn.coostack.cooparticlesapi.network.packet.PacketRenderEntityS2C
 import cn.coostack.cooparticlesapi.network.particle.ServerParticleGroupManager
 import cn.coostack.cooparticlesapi.network.particle.ServerParticleGroup
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersManager
@@ -30,12 +31,11 @@ import org.slf4j.LoggerFactory
 import cn.coostack.cooparticlesapi.particles.ControlableParticleEffect
 import cn.coostack.cooparticlesapi.particles.ControlableParticleEffectManager
 import cn.coostack.cooparticlesapi.particles.CooModParticles
+import cn.coostack.cooparticlesapi.renderer.server.ServerRenderEntityManager
 import cn.coostack.cooparticlesapi.test.entity.CooParticleEntities
 import cn.coostack.cooparticlesapi.test.entity.TestEntity
 import cn.coostack.cooparticlesapi.test.entity.TestPlayerEntity
 import com.ezylang.evalex.Expression
-import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents
-import net.fabricmc.fabric.api.event.lifecycle.v1.ServerWorldEvents
 import net.fabricmc.fabric.api.`object`.builder.v1.entity.FabricDefaultAttributeRegistry
 
 object CooParticleAPI : ModInitializer {
@@ -86,6 +86,12 @@ object CooParticleAPI : ModInitializer {
         EmittersShootTypes.init()
         APIConfigManager.loadConfig()
         ControlableParticleEffectManager.init()
+        PacketParticleGroupS2C.init()
+        PacketParticleS2C.init()
+        PacketParticleStyleS2C.init()
+        PacketParticleEmittersS2C.init()
+        PacketCameraShakeS2C.init()
+        PacketRenderEntityS2C.init()
         ServerTickEvents.START_SERVER_TICK.register { server ->
             val tickManager = server.tickManager
             if (!tickManager.shouldTick()) {
@@ -97,16 +103,12 @@ object CooParticleAPI : ModInitializer {
             BarrageManager.doTick()
             PathMotionManager.tick()
             AnimateManager.tickServer()
+            ServerRenderEntityManager.tick()
             scheduler.doTick()
         }
         ServerLifecycleEvents.SERVER_STARTED.register { server ->
             this.server = server
         }
-        PacketParticleGroupS2C.init()
-        PacketParticleS2C.init()
-        PacketParticleStyleS2C.init()
-        PacketParticleEmittersS2C.init()
-        PacketCameraShakeS2C.init()
         WindDirections.init()
         testEntity()
     }

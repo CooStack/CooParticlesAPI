@@ -6,11 +6,13 @@ import cn.coostack.cooparticlesapi.network.packet.PacketParticleEmittersS2C
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleGroupS2C
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleS2C
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleStyleS2C
+import cn.coostack.cooparticlesapi.network.packet.PacketRenderEntityS2C
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientCameraShakeHandler
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientParticleEmittersPacketHandler
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientParticleGroupPacketHandler
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientParticlePacketHandler
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientParticleStylePacketHandler
+import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientRenderEntityPacketHandler
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersManager
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleStyleManager
 import cn.coostack.cooparticlesapi.particles.CooModParticles
@@ -20,6 +22,7 @@ import cn.coostack.cooparticlesapi.particles.impl.ControlableEnchantmentParticle
 import cn.coostack.cooparticlesapi.particles.impl.ControlableFireworkParticle
 import cn.coostack.cooparticlesapi.particles.impl.ControlableFlashParticle
 import cn.coostack.cooparticlesapi.particles.impl.TestEndRodParticle
+import cn.coostack.cooparticlesapi.renderer.client.ClientRenderEntityManager
 import cn.coostack.cooparticlesapi.scheduler.CooScheduler
 import cn.coostack.cooparticlesapi.test.entity.CooParticleEntities
 import cn.coostack.cooparticlesapi.test.entity.CooParticlesEntityLayers
@@ -37,18 +40,15 @@ import cn.coostack.cooparticlesapi.test.particle.style.ExampleStyle
 import cn.coostack.cooparticlesapi.test.particle.style.RomaMagicTestStyle
 import cn.coostack.cooparticlesapi.test.particle.style.RotateTestStyle
 import cn.coostack.cooparticlesapi.test.particle.style.TestShapeUtilStyle
+import cn.coostack.cooparticlesapi.test.renderer.TestRendererEntity
 import net.fabricmc.api.ClientModInitializer
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientWorldEvents
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
 import net.fabricmc.fabric.api.client.particle.v1.ParticleFactoryRegistry
-import net.fabricmc.fabric.api.client.rendering.v1.CoreShaderRegistrationCallback
 import net.fabricmc.fabric.api.client.rendering.v1.EntityModelLayerRegistry
 import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry
-import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents
-import net.minecraft.client.MinecraftClient
-import net.minecraft.client.gl.ShaderProgram
 import net.minecraft.client.world.ClientWorld
 
 object CooParticleAPIClient : ClientModInitializer {
@@ -99,11 +99,18 @@ object CooParticleAPIClient : ClientModInitializer {
         ParticleStyleManager.register(TestShapeUtilStyle::class.java, TestShapeUtilStyle.Provider())
         CooModParticles.reg()
         ParticleEmittersManager.init()
+
+        ClientRenderEntityManager.register(TestRendererEntity.id, TestRendererEntity.codec)
+
         testEntity()
     }
 
 
     private fun loadParticleGroupPacketListener() {
+        ClientPlayNetworking.registerGlobalReceiver(
+            PacketRenderEntityS2C.payloadID,
+            ClientRenderEntityPacketHandler
+        )
         ClientPlayNetworking.registerGlobalReceiver(
             PacketParticleGroupS2C.payloadID,
             ClientParticleGroupPacketHandler
@@ -124,6 +131,7 @@ object CooParticleAPIClient : ClientModInitializer {
             PacketCameraShakeS2C.payloadID,
             ClientCameraShakeHandler
         )
+
     }
 
 
@@ -131,6 +139,7 @@ object CooParticleAPIClient : ClientModInitializer {
         ClientPlayConnectionEvents.DISCONNECT.register { _, event ->
             ParticleEmittersManager.clientEmitters.clear()
             ParticleStyleManager.clearAllVisible()
+            ClientRenderEntityManager.clear()
             ClientParticleGroupManager.clearAllVisible()
         }
         ClientTickEvents.START_WORLD_TICK.register {
@@ -140,8 +149,8 @@ object CooParticleAPIClient : ClientModInitializer {
             ParticleEmittersManager.clientEmitters.clear()
             ParticleStyleManager.clearAllVisible()
             ClientParticleGroupManager.clearAllVisible()
+            ClientRenderEntityManager.clear()
         }
-        MinecraftClient.getInstance().player?.isDead
     }
 
     var subTicks = 0.0
@@ -163,6 +172,7 @@ object CooParticleAPIClient : ClientModInitializer {
                 ParticleStyleManager.doTickClient()
                 ParticleEmittersManager.doTickClient()
                 AnimateManager.tickClient()
+                ClientRenderEntityManager.tick()
             }
         }
     }

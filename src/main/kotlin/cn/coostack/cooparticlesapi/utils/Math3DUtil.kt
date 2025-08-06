@@ -663,15 +663,11 @@ object Math3DUtil {
         val toYaw = getYawFromLocation(toa)
         val toPitch = getPitchFromLocation(toa)
         // 先让图形面向Z轴
-        q.rotateY(axisYaw)
-            .rotateLocalX(
-                axisPitch
-            )
+        q.rotateY(axisYaw).rotateLocalX(axisPitch)
         // 后再转回目标点
         val toQ = Quaterniond()
             .rotateY(-toYaw)
             .rotateX(-toPitch)
-
         // 开始分配旋转任务
         val tasks = ArrayList<Deferred<Unit>>()
         repeat(actualThreads) {

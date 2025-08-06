@@ -363,7 +363,6 @@ abstract class SequencedParticleStyle(visibleRange: Double = 32.0, uuid: UUID = 
         return mapOf(
             "status" to ParticleControlerDataBuffers.longArray(displayedStatus),
             "displayed_particle_count" to ParticleControlerDataBuffers.int(displayedParticleCount),
-            "particle_linkage_index" to ParticleControlerDataBuffers.int(particleLinkageDisplayCurrentIndex),
             *writePacketArgsSequenced().map { it.key to it.value }.toTypedArray()
         )
     }
