@@ -17,19 +17,19 @@
   "entrypoints": {
     "main": [
       {
-        "value": "com.example.examplemod.ExampleMod",
+        "value": "cn.coostack.cooparticlesapi.CooParticlesAPIFabric",
         "adapter": "kotlin"
       }
     ],
     "fabric-datagen": [
       {
-        "value": "com.example.examplemod.ExampleModDataGen",
+        "value": "cn.coostack.cooparticlesapi.CooParticlesAPIDataGenerator",
         "adapter": "kotlin"
       }
     ],
     "client": [
       {
-        "value": "com.example.examplemod.ExampleModClient",
+        "value": "cn.coostack.cooparticlesapi.CooParticlesAPIFabricClient",
         "adapter": "kotlin"
       }
     ]
