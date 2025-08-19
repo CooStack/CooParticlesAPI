@@ -1,19 +1,13 @@
 package cn.coostack.cooparticlesapi.renderer.client
 
-import cn.coostack.cooparticlesapi.CooParticlesAPIClient
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.renderer.client.ClientRenderPipelineManager.minecraft
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlShaderType
 import cn.coostack.cooparticlesapi.renderer.shader.glsl.IdentifierShader
-import cn.coostack.cooparticlesapi.renderer.shader.pipe.MCHookedShaderPipe
 import cn.coostack.cooparticlesapi.renderer.shader.pipe.PingPongShaderPipe
 import cn.coostack.cooparticlesapi.renderer.shader.pipe.ShaderPipeManager
 import cn.coostack.cooparticlesapi.renderer.shader.pipe.SimpleShaderPipe
-import com.mojang.blaze3d.systems.RenderSystem
-import net.minecraft.client.Minecraft
 import net.minecraft.resources.ResourceLocation
-import org.lwjgl.opengl.GL33
-import java.util.function.Supplier
 
 object ShaderPipeManagers {
     val default = ShaderPipeManager(ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "default"))
@@ -50,15 +44,15 @@ object ShaderPipeManagers {
                 )
         }
 
-    val testBloom = ShaderPipeManager(ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "test_bloom"))
-        .beforeInit {
+    val simpleBloom = ShaderPipeManager(ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "test_bloom"))
+        .beforeInit { 
             addBloomEffect(10, 1.5f)
         }
 
     fun init() {
         ClientRenderPipelineManager.register(default)
         ClientRenderPipelineManager.register(testSubChannel)
-        ClientRenderPipelineManager.register(testBloom)
+        ClientRenderPipelineManager.register(simpleBloom)
     }
 
     private fun ShaderPipeManager.addBloomEffect(

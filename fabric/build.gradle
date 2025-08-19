@@ -3,6 +3,16 @@ plugins {
     id 'fabric-loom'
     id 'org.jetbrains.kotlin.jvm'
 }
+
+tasks.javadoc {
+    // fuck javadoc encode error
+    enabled = false
+}
+
+configurations {
+    embed
+    implementation.extendsFrom(embed)
+}
 dependencies {
     minecraft "com.mojang:minecraft:${minecraft_version}"
     mappings loom.layered {
@@ -12,16 +22,21 @@ dependencies {
     modImplementation "net.fabricmc:fabric-loader:${fabric_loader_version}"
     modImplementation "net.fabricmc.fabric-api:fabric-api:${fabric_version}"
     modImplementation "net.fabricmc:fabric-language-kotlin:${project.fabric_kotlin_version}"
+    embed fileTree(dir: "../depend", includes: ["*.jar"])
     modImplementation fileTree(dir: "../depend", includes: ["*.jar"])
 }
 
-tasks.javadoc {
-    // fuck javadoc encode error
-    enabled = false
-}
 tasks.named('jar', Jar) {
     destinationDirectory.set(file("../builds/jar")) // 输出到 build/customLibs
     archiveFileName.set("${rootProject.mod_name}-Fabric-${rootProject.minecraft_version}-${rootProject.version}.jar")
+    from(configurations.embed.collect {
+        it.isDirectory() ? it : zipTree(it)
+    }) {
+        // 排除可能冲突的文件
+        exclude "META-INF/*.SF"
+        exclude "META-INF/*.DSA"
+        exclude "META-INF/*.RSA"
+    }
 }
 fabricApi {
     configureDataGeneration {

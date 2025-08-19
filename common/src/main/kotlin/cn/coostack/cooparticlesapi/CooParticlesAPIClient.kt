@@ -65,7 +65,7 @@ object CooParticlesAPIClient {
 
     private fun initRender() {
         ClientRenderEntityManager.register(TestRendererEntity.id, TestRendererEntity.codec)
-        ClientRenderEntityManager.bindEntityRenderPipe(TestRendererEntity.id, ShaderPipeManagers.testBloom.pipeID)
+        ClientRenderEntityManager.bindEntityRenderPipe(TestRendererEntity.id, ShaderPipeManagers.simpleBloom.pipeID)
     }
 
     fun onDisconnect() {
