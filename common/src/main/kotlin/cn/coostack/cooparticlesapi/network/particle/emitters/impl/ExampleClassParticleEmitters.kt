@@ -39,22 +39,23 @@ class ExampleClassParticleEmitters(pos: Vec3, world: Level?) : ClassParticleEmit
         pos = pos.add(moveDirection)
     }
 
-    override fun genParticles(): Map<ControlableParticleData, RelativeLocation> {
+    override fun genParticles(): List<Pair<ControlableParticleData, RelativeLocation>> {
         return PointsBuilder()
             .addBall(2.0, 20)
-            .create().associateBy {
+            .create().map {
                 templateData.clone()
                     .apply {
                         this.velocity = it.normalize().multiplyClone(-0.1).toVector()
-                    }
+                    } to it
             }
     }
 
     override fun singleParticleAction(
         controler: ParticleControler,
         data: ControlableParticleData,
-        spawnPos: Vec3,
-        spawnWorld: Level
+        spawnPos: RelativeLocation,
+        spawnWorld: Level,
+        currentProgress: Float
     ) {
 
 

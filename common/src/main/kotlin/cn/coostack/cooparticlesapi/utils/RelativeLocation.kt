@@ -3,6 +3,7 @@ package cn.coostack.cooparticlesapi.utils
 
 import io.netty.buffer.Unpooled
 import net.minecraft.world.phys.Vec3
+import org.joml.Vector3f
 import kotlin.math.pow
 import kotlin.math.sqrt
 
@@ -102,6 +103,13 @@ data class RelativeLocation(var x: Double, var y: Double, var z: Double) {
         return this
     }
 
+    fun remove(other: Vec3): RelativeLocation {
+        x -= other.x
+        y -= other.y
+        z -= other.z
+        return this
+    }
+
     operator fun times(scalar: Double): RelativeLocation {
         return RelativeLocation(x * scalar, y * scalar, z * scalar)
     }
@@ -148,6 +156,12 @@ data class RelativeLocation(var x: Double, var y: Double, var z: Double) {
     fun distance(relativeLocation: RelativeLocation) =
         sqrt((x - relativeLocation.x).pow(2) + (y - relativeLocation.y).pow(2) + (z - relativeLocation.z).pow(2))
 
+    fun distance(pos: Vec3) = distance(
+        of(
+            pos
+        )
+    )
+
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (javaClass != other?.javaClass) return false
@@ -176,6 +190,27 @@ data class RelativeLocation(var x: Double, var y: Double, var z: Double) {
         buffer.writeDouble(y)
         buffer.writeDouble(z)
         return buffer.copy().array()
+    }
+
+    fun copyFrom(other: RelativeLocation): RelativeLocation {
+        this.x = other.x
+        this.y = other.y
+        this.z = other.z
+        return this
+    }
+
+    fun copyFrom(other: Vec3): RelativeLocation {
+        this.x = other.x
+        this.y = other.y
+        this.z = other.z
+        return this
+    }
+
+    fun copyFrom(other: Vector3f): RelativeLocation {
+        this.x = other.x.toDouble()
+        this.y = other.y.toDouble()
+        this.z = other.z.toDouble()
+        return this
     }
 
 }

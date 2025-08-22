@@ -12,6 +12,7 @@ import cn.coostack.cooparticlesapi.network.particle.emitters.impl.PresetLaserEmi
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.PresetTestEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.SimpleParticleEmitters
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
+import cn.coostack.cooparticlesapi.test.particle.emitter.TestEmitter
 import cn.coostack.cooparticlesapi.test.particle.emitter.TestEventEmitter
 import io.netty.buffer.Unpooled
 import net.minecraft.client.Minecraft
@@ -219,6 +220,7 @@ object ParticleEmittersManager {
         register(FireClassParticleEmitters.ID, FireClassParticleEmitters.CODEC)
         register(PresetLaserEmitters.ID, PresetLaserEmitters.CODEC)
         register(TestEventEmitter.ID, TestEventEmitter.CODEC)
+        register(TestEmitter.ID, TestEmitter.CODEC)
     }
 
 }

@@ -45,19 +45,19 @@ class ExplodeClassParticleEmitters(pos: Vec3, world: Level?) : ClassParticleEmit
     }
 
     val random = Random(System.currentTimeMillis())
-    override fun genParticles(): Map<ControlableParticleData, RelativeLocation> {
+    override fun genParticles(): List<Pair<ControlableParticleData, RelativeLocation>> {
         val velocityList = PointsBuilder()
             .addBall(2.0, 40)
             .rotateAsAxis(random.nextDouble(-PI, PI))
             .rotateAsAxis(random.nextDouble(-PI, PI), RelativeLocation.xAxis())
             .create()
-        val res = HashMap<ControlableParticleData, RelativeLocation>()
+        val res = ArrayList<Pair<ControlableParticleData, RelativeLocation>>()
         val count = random.nextInt(800, 1000)
         for (i in 0 until count) {
             val it = velocityList.random()
-            res[templateData.clone().apply {
+            res.add(templateData.clone().apply {
                 this.velocity = it.normalize().multiply(random.nextDouble(0.5, 6.0)).toVector()
-            }] = RelativeLocation()
+            } to RelativeLocation())
         }
         return res
     }
@@ -65,8 +65,9 @@ class ExplodeClassParticleEmitters(pos: Vec3, world: Level?) : ClassParticleEmit
     override fun singleParticleAction(
         controler: ParticleControler,
         data: ControlableParticleData,
-        spawnPos: Vec3,
-        spawnWorld: Level
+        spawnPos: RelativeLocation,
+        spawnWorld: Level,
+        currentProgress: Float
     ) {
         data.color = Math3DUtil.colorOf(
             random.nextInt(200, 255),

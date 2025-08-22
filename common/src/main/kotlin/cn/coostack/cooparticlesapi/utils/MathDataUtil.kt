@@ -25,7 +25,7 @@ object MathDataUtil {
      * @return -1 bit超出int上限
      */
     fun getStatusInt(container: Int, bit: Int): Int {
-        if (bit > 32 || bit <= 0) {
+        if (bit !in 1..32) {
             return -1
         }
         val move = bit - 1
@@ -36,7 +36,7 @@ object MathDataUtil {
      * @return 设置状态之后的container
      */
     fun setStatusLong(container: Long, bit: Int, status: Boolean): Long {
-        if (bit > 64 || bit <= 0) {
+        if (bit !in 1..64) {
             return container
         }
         val move = bit - 1

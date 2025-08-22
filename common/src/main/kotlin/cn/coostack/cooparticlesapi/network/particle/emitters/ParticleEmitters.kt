@@ -56,7 +56,7 @@ interface ParticleEmitters : ServerControler<ParticleEmitters> {
 
     fun tick()
 
-    fun spawnParticle()
+    fun spawnParticle(pos: Vec3)
 
     /**
      * 更新发射器属性状态

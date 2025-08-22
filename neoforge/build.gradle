@@ -39,9 +39,26 @@ neoForge {
         }
     }
 }
+
+tasks.register("sourceWithCommon", Jar) {
+    def current = tasks.named("sourcesJar").get()
+    dependsOn(current)
+    from current.outputs.files.collect { zipTree(it) }
+    def other = project(":common").tasks.named("sourcesJar")
+    dependsOn(other)
+    from zipTree(other.get().archiveFile)
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    exclude "META-INT/**"
+    destinationDirectory.set(file("../builds/sources"))
+    archiveFileName = "${rootProject.mod_name}-NeoForge-Source-${rootProject.version}.jar"
+}
 tasks.named('jar', Jar) {
     destinationDirectory.set(file("../builds/jar")) // 输出到 build/customLibs
     archiveFileName.set("${rootProject.mod_name}-NeoForge-${rootProject.minecraft_version}-${rootProject.version}.jar")
+    dependsOn(tasks.named("sourceWithCommon"))
+}
+tasks.withType(JavaExec).configureEach {
+    jvmArgs = ["-XX:+AllowEnhancedClassRedefinition"]
 }
 repositories {
     maven {

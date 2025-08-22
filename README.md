@@ -909,7 +909,7 @@ abstract class ClassParticleEmitters(
     /**
      * 粒子样式生成器
      */
-    abstract fun genParticles(): Map<ControlableParticleData, RelativeLocation>
+    abstract fun genParticles(): List<Pair<ControlableParticleData, RelativeLocation>>
 
     /**
      * 如若要修改粒子的位置, 速度 属性
@@ -921,7 +921,7 @@ abstract class ClassParticleEmitters(
     abstract fun singleParticleAction(
         controler: ParticleControler,
         data: ControlableParticleData,
-        spawnPos: Vec3d,
+        spawnPos: RelativeLocationd,
         spawnWorld: World
     )
 
@@ -1043,7 +1043,7 @@ class ExampleClassParticleEmitters(pos: Vec3d, world: World?) : ClassParticleEmi
      * delay是ParticleEmitters提供的参数 和上面的意义相同
      * 获取粒子生成的位置
      */
-    override fun genParticles(): Map<ControlableParticleData, RelativeLocation> {
+    override fun genParticles(): List<Pair<ControlableParticleData, RelativeLocation>> {
         return PointsBuilder()
             .addBall(2.0, 20)
             .create().associateBy {
@@ -1059,7 +1059,7 @@ class ExampleClassParticleEmitters(pos: Vec3d, world: World?) : ClassParticleEmi
     override fun singleParticleAction(
         controler: ParticleControler,
         data: ControlableParticleData,
-        spawnPos: Vec3d,
+        spawnPos: RelativeLocationd,
         spawnWorld: World
     ) {
         // 每生成一个粒子就会执行此方法

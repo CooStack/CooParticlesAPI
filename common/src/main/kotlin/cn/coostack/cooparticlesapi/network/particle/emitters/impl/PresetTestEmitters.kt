@@ -37,7 +37,7 @@ class PresetTestEmitters(pos: Vec3, world: Level?) : ClassParticleEmitters(pos, 
     override fun doTick() {
     }
 
-    override fun genParticles(): Map<ControlableParticleData, RelativeLocation> {
+    override fun genParticles(): List<Pair<ControlableParticleData, RelativeLocation>> {
         return PointsBuilder()
             .withPreset { romaI(1.0) }
             .pointsOnEach { it.y += 1.0 }
@@ -58,16 +58,17 @@ class PresetTestEmitters(pos: Vec3, world: Level?) : ClassParticleEmitters(pos, 
             .withPreset { romaIX(1.0) }
             .pointsOnEach { it.y += 1.0 }
             .withPreset { romaX(1.0) }
-            .create().associateBy {
-                templateData.clone()
+            .create().map {
+                templateData.clone() to it
             }
     }
 
     override fun singleParticleAction(
         controler: ParticleControler,
         data: ControlableParticleData,
-        spawnPos: Vec3,
-        spawnWorld: Level
+        spawnPos: RelativeLocation,
+        spawnWorld: Level,
+        currentProgress: Float
     ) {
     }
 

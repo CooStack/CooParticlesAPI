@@ -62,7 +62,7 @@ class FireClassParticleEmitters(var player: UUID, pos: Vec3, world: Level?) : Cl
 //        wind.direction = player.rotationVector.normalize().multiply(size)
     }
 
-    override fun genParticles(): Map<ControlableParticleData, RelativeLocation> {
+    override fun genParticles(): List<Pair<ControlableParticleData, RelativeLocation>> {
         val velocityList = PointsBuilder()
             .addRoundShape(fireSize, 0.25, 10, (120 * fireSize).roundToInt())
             .rotateTo(Vec3(0.0, 0.0, 1.0))
@@ -71,16 +71,16 @@ class FireClassParticleEmitters(var player: UUID, pos: Vec3, world: Level?) : Cl
 //                world!!.getPlayerByUuid(player)!!.rotationVector
 //            )
             .create()
-        val res = HashMap<ControlableParticleData, RelativeLocation>()
+        val res = ArrayList<Pair<ControlableParticleData, RelativeLocation>>()
         val random = Random(System.currentTimeMillis())
         // 0.0 - 2.0
         val step = 1.0
         var current = step
         for (i in 0 until 60) {
             val it = velocityList.random()
-            res[templateData.clone().apply {
+            res.add(templateData.clone().apply {
                 this.velocity = it.normalize().multiply(fireForce).toVector()
-            }] = RelativeLocation(0.0, current, 0.0)
+            } to RelativeLocation(0.0, current, 0.0))
         }
         return res
     }
@@ -89,8 +89,9 @@ class FireClassParticleEmitters(var player: UUID, pos: Vec3, world: Level?) : Cl
     override fun singleParticleAction(
         controler: ParticleControler,
         data: ControlableParticleData,
-        spawnPos: Vec3,
-        spawnWorld: Level
+        spawnPos: RelativeLocation,
+        spawnWorld: Level,
+        currentProgress: Float
     ) {
         data.velocity = data.velocity.add(
             Vec3(

@@ -42,23 +42,22 @@ class LightningClassParticleEmitters(pos: Vec3, world: Level?) : ClassParticleEm
     }
 
     val random = Random(System.currentTimeMillis())
-    override fun genParticles(): Map<ControlableParticleData, RelativeLocation> {
+    override fun genParticles(): List<Pair<ControlableParticleData, RelativeLocation>> {
         return Math3DUtil.getLightningEffectPoints(
             RelativeLocation(
                 random.nextDouble(-50.0, 50.0),
                 random.nextDouble(-10.0, 10.0),
                 random.nextDouble(-50.0, 50.0),
             ), 10,3
-        ).associateBy {
-            templateData.clone()
-        }
+        ).map { templateData.clone() to it }
     }
 
     override fun singleParticleAction(
         controler: ParticleControler,
         data: ControlableParticleData,
-        spawnPos: Vec3,
-        spawnWorld: Level
+        spawnPos: RelativeLocation,
+        spawnWorld: Level,
+        currentProgress: Float
     ) {
     }
 

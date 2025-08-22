@@ -28,6 +28,26 @@ object Math3DUtil {
         )
     )
 
+
+    /**
+     * 填充2点之间的点
+     * @param refiner 精细度，精细度越大两点之间越密集
+     */
+    fun fillLine(p1: RelativeLocation, p2: RelativeLocation, refiner: Double): List<RelativeLocation> {
+        // 计算出对应的点的个数
+        val actualCount = (p1.distance(p2) * refiner).roundToInt()
+        return getLineLocations(p1, p2, actualCount)
+    }
+
+    /**
+     * 填充2点之间的点
+     * @param refiner 精细度，精细度越大两点之间越密集
+     */
+    fun fillLine(p1: Vec3, p2: Vec3, refiner: Double): List<RelativeLocation> {
+        // 计算出对应的点的个数
+        return fillLine(RelativeLocation.of(p1), RelativeLocation.of(p2), refiner)
+    }
+
     /**
      * 将RGB值转换为Minecraft粒子使用的 rgb值(/255)
      */
@@ -556,7 +576,12 @@ object Math3DUtil {
      * @param angle 角度 输入一个弧度制角度
      */
     fun rotateAsAxis(locList: List<RelativeLocation>, axis: RelativeLocation, angle: Double): List<RelativeLocation> {
-        return rotateAsAxisAsync(locList, axis, angle, CooParticlesServices.API_CONFIG_MANAGER.getConfig().calculateThreadCount)
+        return rotateAsAxisAsync(
+            locList,
+            axis,
+            angle,
+            CooParticlesServices.API_CONFIG_MANAGER.getConfig().calculateThreadCount
+        )
     }
 
     /**

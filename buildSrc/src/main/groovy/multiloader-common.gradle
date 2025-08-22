@@ -1,10 +1,18 @@
 plugins {
     id 'java-library'
     id 'maven-publish'
+    id 'org.jetbrains.kotlin.jvm'
+    id 'kotlin'
 }
 
 base {
     archivesName = "${mod_id}-${project.name}-${minecraft_version}"
+}
+
+
+compileKotlin {
+    source(project(":common").sourceSets.main.allSource)
+    inputs.file "../gradle.properties"
 }
 
 java {
@@ -96,8 +104,8 @@ processResources {
             'description'                  : project.description,
             'neoforge_version'             : neoforge_version,
             'neoforge_loader_version_range': neoforge_loader_version_range,
-            "forge_version": forge_version,
-            "forge_loader_version_range": forge_loader_version_range,
+            "forge_version"                : forge_version,
+            "forge_loader_version_range"   : forge_loader_version_range,
             'credits'                      : credits,
             'java_version'                 : java_version
     ]

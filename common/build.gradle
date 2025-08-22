@@ -2,8 +2,8 @@ plugins {
     id 'multiloader-common'
     id 'net.neoforged.moddev'
     id 'org.jetbrains.kotlin.jvm'
+    id 'kotlin'
 }
-
 neoForge {
     neoFormVersion = neo_form_version
     // Automatically enable AccessTransformers if the file exists
@@ -15,7 +15,9 @@ neoForge {
         minecraftVersion = parchment_minecraft
         mappingsVersion = parchment_version
     }
+
 }
+
 tasks.javadoc {
     // fuck javadoc encode error
     enabled = false
@@ -51,3 +53,26 @@ artifacts {
     commonResources sourceSets.main.resources.sourceDirectories.singleFile
 }
 
+
+publishing {
+    publications {
+        // 定义 Maven 发布的内容
+        mavenJava(MavenPublication) {
+            artifact sourcesJar
+            pom {
+                name.set("CooParticlesAPI")
+                description.set("CooParticlesAPI")
+            }
+        }
+    }
+
+    repositories {
+        maven {
+            url 'https://nexus.jsdu.cn/repository/maven-releases/'  // 替换为你自己的 Maven 仓库地址
+            credentials {
+//                username = mavenUsername
+//                password = mavenPassword
+            }
+        }
+    }
+}

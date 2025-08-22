@@ -1,6 +1,7 @@
 package cn.coostack.cooparticlesapi.renderer
 
 import cn.coostack.cooparticlesapi.network.packet.PacketRenderEntityS2C
+import com.mojang.blaze3d.systems.RenderSystem
 import io.netty.buffer.Unpooled
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
@@ -131,6 +132,8 @@ abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) {
         projMatrix: Matrix4f, tickDelta: Float
     ) {
         lastRenderPos = pos
+        RenderSystem.disableCull()
+        RenderSystem.enableDepthTest()
         render(matrices, viewMatrix, projMatrix, tickDelta)
     }
 

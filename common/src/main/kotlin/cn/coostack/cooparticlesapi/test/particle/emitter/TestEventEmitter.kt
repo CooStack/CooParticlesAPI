@@ -5,6 +5,7 @@ import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableParticle
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmitters
 import cn.coostack.cooparticlesapi.particles.control.ParticleControler
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
+import cn.coostack.cooparticlesapi.utils.interpolator.LineInterpolator
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.level.Level
@@ -12,7 +13,7 @@ import net.minecraft.world.phys.Vec3
 
 class TestEventEmitter(pos: Vec3, world: Level?) : ClassParticleEmitters(pos, world) {
     var templateData = ControlableParticleData()
-    var shootDirection = Vec3.ZERO
+    var shootDirection: Vec3 = Vec3.ZERO
 
     companion object {
         const val ID = "test-event-particle-emitters"
@@ -34,12 +35,15 @@ class TestEventEmitter(pos: Vec3, world: Level?) : ClassParticleEmitters(pos, wo
         )
     }
 
+    override fun update(emitters: ParticleEmitters) {
+        super.update(emitters)
+    }
 
     override fun doTick() {
     }
 
-    override fun genParticles(): Map<ControlableParticleData, RelativeLocation> {
-        return mapOf(
+    override fun genParticles(): List<Pair<ControlableParticleData, RelativeLocation>> {
+        return listOf(
             templateData.clone().apply {
                 velocity = this@TestEventEmitter.shootDirection
             } to RelativeLocation()
@@ -49,8 +53,9 @@ class TestEventEmitter(pos: Vec3, world: Level?) : ClassParticleEmitters(pos, wo
     override fun singleParticleAction(
         controler: ParticleControler,
         data: ControlableParticleData,
-        spawnPos: Vec3,
-        spawnWorld: Level
+        spawnPos: RelativeLocation,
+        spawnWorld: Level,
+        currentProgress: Float
     ) {
         controler.addPreTickAction {
             updatePhysics(loc, data)

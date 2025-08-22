@@ -6,6 +6,5 @@ import net.minecraft.world.phys.Vec3
 
 
 fun ofFloored(vec: Vec3): BlockPos {
-
     return BlockPos(Mth.floor(vec.x), Mth.floor(vec.y), Mth.floor(vec.z))
 }

@@ -6,9 +6,11 @@ import cn.coostack.cooparticlesapi.network.particle.style.ParticleShapeStyle
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleStyleProvider
 import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
 import cn.coostack.cooparticlesapi.particles.impl.ControlableEndRodEffect
+import cn.coostack.cooparticlesapi.utils.GraphMathHelper
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import cn.coostack.cooparticlesapi.utils.builder.PointsBuilder
+import org.joml.Vector3f
 import java.util.UUID
 import kotlin.math.PI
 
@@ -132,9 +134,19 @@ class RomaMagicTestStyle(uuid: UUID = UUID.randomUUID()) :
                             .rotateAsAxis(PI / 4)
                             .addPolygonInCircle(4, 120, 5.5)
                             .addPolygonInCircle(4, 120, 6.0)
-                    ) {
-                        StyleData {
+                    ) { rel ->
+                        StyleData { it ->
                             ParticleDisplayer.withSingle(ControlableEndRodEffect(it))
+                        }.withParticleHandler {
+                            val pre = rel.length() / 6.0
+                            color = with(GraphMathHelper) {
+                                lerp(
+                                    pre,
+                                    Math3DUtil.colorOf(5, 100, 200),
+                                    Math3DUtil.colorOf(255, 236, 247)
+                                )
+                            }
+                            size = GraphMathHelper.lerp((rel.length() - 3) / 6.0, 0.1f, 1.5f)
                         }
                     }.toggleOnDisplay {
                         this.addPreTickAction {

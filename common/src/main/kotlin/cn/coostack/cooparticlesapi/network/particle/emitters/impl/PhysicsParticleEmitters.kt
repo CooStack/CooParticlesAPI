@@ -279,11 +279,11 @@ class PhysicsParticleEmitters(
         if (tick % max(1, delay) == 0) {
             // 执行粒子变更操作
             // 生成新粒子
-            spawnParticle()
+            spawnParticle(pos)
         }
     }
 
-    override fun spawnParticle() {
+    override fun spawnParticle(pos: Vec3) {
         if (!world!!.isClientSide) {
             return
         }

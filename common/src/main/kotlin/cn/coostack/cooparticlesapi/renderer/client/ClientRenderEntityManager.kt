@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi.renderer.client
 
+import cn.coostack.cooparticlesapi.exceptions.RenderPipeNotFoundException
 import cn.coostack.cooparticlesapi.renderer.RenderEntity
 import net.minecraft.client.Minecraft
 import net.minecraft.client.Minecraft.*
@@ -94,6 +95,11 @@ object ClientRenderEntityManager {
             val entity = entry.value
             entity.tick()
             if (entity.canceled) {
+                // 获取对标的管线分类器
+                val targetPipe = entityPipeType[entity.getRenderID()] ?: let {
+                    throw RenderPipeNotFoundException(entity.getRenderID())
+                }
+                entitiesPipeClassifier[targetPipe]?.remove(entity)
                 entity.release()
                 iterator.remove()
             }

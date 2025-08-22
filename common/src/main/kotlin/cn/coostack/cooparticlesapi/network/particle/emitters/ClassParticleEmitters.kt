@@ -15,6 +15,7 @@ import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
 import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
 import cn.coostack.cooparticlesapi.particles.control.ParticleControler
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
+import cn.coostack.cooparticlesapi.utils.interpolator.LineInterpolator
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.world.entity.Entity
@@ -44,6 +45,10 @@ abstract class ClassParticleEmitters(
     var airDensity = 0.0
     var gravity: Double = 0.0
     val handlerList = ConcurrentHashMap<String, SortedMap<ParticleEventHandler, Boolean>>()
+
+    // 线性插值器
+    val emittersInterpolator = LineInterpolator()
+        .setRefiner(5.0)
 
     override fun addEventHandler(handler: ParticleEventHandler, innerClass: Boolean) {
         val handlerID = handler.getHandlerID()
@@ -188,10 +193,16 @@ abstract class ClassParticleEmitters(
             increaseTick()
             return
         }
+        emittersInterpolator.insertPoint(pos)
         if (tick % max(1, delay) == 0) {
             // 执行粒子变更操作
             // 生成新粒子
-            spawnParticle()
+            // 进行线性插值
+            emittersInterpolator.getRefinedResult().forEach {
+                val pos = it.toVector()
+                doSubtick(pos) // 用于设置其他插值
+                spawnParticle(pos)
+            }
         }
         increaseTick()
     }
@@ -202,14 +213,18 @@ abstract class ClassParticleEmitters(
         }
     }
 
-    override fun spawnParticle() {
+    override fun spawnParticle(pos: Vec3) {
         if (!world!!.isClientSide) {
             return
         }
         val world = world as ClientLevel
         // 生成粒子样式
-        genParticles().forEach {
-            spawnParticle(world, pos.add(it.value.toVector()), it.key)
+        var spawnedCount = 0f
+        val particles = genParticles()
+        val total = particles.size
+        particles.forEach {
+            spawnedCount++
+            spawnParticle(world, pos.add(it.second.toVector()), it.first, spawnedCount / total)
         }
     }
 
@@ -222,23 +237,31 @@ abstract class ClassParticleEmitters(
     /**
      * 粒子样式生成器
      */
-    abstract fun genParticles(): Map<ControlableParticleData, RelativeLocation>
+    abstract fun genParticles(): List<Pair<ControlableParticleData, RelativeLocation>>
+
+    /**
+     * 在一次粒子生成前会执行
+     * @param current 当前插值的生成位置
+     */
+    protected open fun doSubtick(current: Vec3) {}
 
     /**
      * 如若要修改粒子的位置, 速度 属性
      * 请直接修改 ControlableParticleData
      * @param data 用于操作单个粒子属性的类
+     * @param currentProgress 生成这个粒子的时候，当前的进度
      * 执行tick方法请使用
      * controler.addPreTickAction
      */
     abstract fun singleParticleAction(
         controler: ParticleControler,
         data: ControlableParticleData,
-        spawnPos: Vec3,
-        spawnWorld: Level
+        spawnPos: RelativeLocation,
+        spawnWorld: Level,
+        currentProgress: Float
     )
 
-    private fun spawnParticle(world: ClientLevel, pos: Vec3, data: ControlableParticleData) {
+    private fun spawnParticle(world: ClientLevel, pos: Vec3, data: ControlableParticleData, progress: Float) {
         val effect = data.effect
         effect.controlUUID = data.uuid
         val displayer = ParticleDisplayer.withSingle(effect)
@@ -343,8 +366,8 @@ abstract class ClassParticleEmitters(
                 }
             }
         }
-
-        singleParticleAction(control, data, pos, world)
+        val p = RelativeLocation.of(pos)
+        singleParticleAction(control, data, p, world, progress)
         control.addPreTickAction {
             // 模拟粒子运动 速度
             teleportTo(
@@ -354,7 +377,7 @@ abstract class ClassParticleEmitters(
                 remove()
             }
         }
-        displayer.display(pos, world)
+        displayer.display(p.toVector(), world)
     }
 
     protected fun updatePhysics(pos: Vec3, data: ControlableParticleData) {

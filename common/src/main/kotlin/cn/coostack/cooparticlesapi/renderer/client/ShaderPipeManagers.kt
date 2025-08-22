@@ -44,10 +44,11 @@ object ShaderPipeManagers {
                 )
         }
 
-    val simpleBloom = ShaderPipeManager(ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "test_bloom"))
-        .beforeInit { 
-            addBloomEffect(10, 1.5f)
-        }
+    val simpleBloom =
+        ShaderPipeManager(ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "simple_bloom"))
+            .beforeInit {
+                addBloomEffect(10, 1.5f)
+            }
 
     fun init() {
         ClientRenderPipelineManager.register(default)

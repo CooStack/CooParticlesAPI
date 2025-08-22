@@ -15,10 +15,11 @@ configurations {
 }
 dependencies {
     minecraft "com.mojang:minecraft:${minecraft_version}"
-    mappings loom.layered {
-        officialMojangMappings()
-        parchment("org.parchmentmc.data:parchment-${parchment_minecraft}:${parchment_version}@zip")
-    }
+//    mappings loom.layered {
+//        officialMojangMappings()
+//        parchment("org.parchmentmc.data:parchment-${parchment_minecraft}:${parchment_version}@zip")
+//    }
+    mappings loom.officialMojangMappings()
     modImplementation "net.fabricmc:fabric-loader:${fabric_loader_version}"
     modImplementation "net.fabricmc.fabric-api:fabric-api:${fabric_version}"
     modImplementation "net.fabricmc:fabric-language-kotlin:${project.fabric_kotlin_version}"
@@ -26,6 +27,18 @@ dependencies {
     modImplementation fileTree(dir: "../depend", includes: ["*.jar"])
 }
 
+tasks.register("sourceWithCommon", Jar) {
+    def current = tasks.named("sourcesJar").get()
+    dependsOn(current)
+    from current.outputs.files.collect { zipTree(it) }
+    def other = project(":common").tasks.named("sourcesJar")
+    dependsOn(other)
+    from zipTree(other.get().archiveFile)
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    exclude "META-INT/**"
+    destinationDirectory.set(file("../builds/sources"))
+    archiveFileName = "${rootProject.mod_name}-Fabric-Source-${rootProject.version}.jar"
+}
 tasks.named('jar', Jar) {
     destinationDirectory.set(file("../builds/jar")) // 输出到 build/customLibs
     archiveFileName.set("${rootProject.mod_name}-Fabric-${rootProject.minecraft_version}-${rootProject.version}.jar")
@@ -37,6 +50,7 @@ tasks.named('jar', Jar) {
         exclude "META-INF/*.DSA"
         exclude "META-INF/*.RSA"
     }
+    dependsOn(tasks.named("sourceWithCommon"))
 }
 fabricApi {
     configureDataGeneration {

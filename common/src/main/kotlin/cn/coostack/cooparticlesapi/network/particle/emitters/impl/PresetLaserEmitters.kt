@@ -159,17 +159,17 @@ class PresetLaserEmitters(pos: Vec3, world: Level?) : ClassParticleEmitters(pos,
     }
 
     val random = Random(System.currentTimeMillis())
-    override fun genParticles(): Map<ControlableParticleData, RelativeLocation> {
-        val res = kotlin.collections.HashMap<ControlableParticleData, RelativeLocation>()
-        res.putAll(
+    override fun genParticles(): List<Pair<ControlableParticleData, RelativeLocation>> {
+        val res = kotlin.collections.ArrayList<Pair<ControlableParticleData, RelativeLocation>>()
+        res.addAll(
             PointsBuilder()
                 .addLine(
                     Vec3.ZERO,
                     targetPoint,
                     (targetPoint.length() * particleCountPreBlock).roundToInt().coerceAtLeast(1)
                 )
-                .create().associateBy {
-                    templateData.clone()
+                .create().map {
+                    templateData.clone() to it
                 }
         )
         return res
@@ -178,8 +178,9 @@ class PresetLaserEmitters(pos: Vec3, world: Level?) : ClassParticleEmitters(pos,
     override fun singleParticleAction(
         controler: ParticleControler,
         data: ControlableParticleData,
-        spawnPos: Vec3,
-        spawnWorld: Level
+        spawnPos: RelativeLocation,
+        spawnWorld: Level,
+        currentProgress: Float
     ) {
         data.setTextureSheet(ParticleRenderType.PARTICLE_SHEET_TRANSLUCENT)
         var tick = 0

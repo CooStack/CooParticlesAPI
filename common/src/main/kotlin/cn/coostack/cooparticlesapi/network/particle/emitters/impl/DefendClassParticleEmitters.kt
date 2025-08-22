@@ -47,17 +47,17 @@ class DefendClassParticleEmitters(var player: UUID, pos: Vec3, world: Level?) : 
     override fun doTick() {
     }
 
-    override fun genParticles(): Map<ControlableParticleData, RelativeLocation> {
-        val player = world!!.getPlayerByUUID(player) ?: return mapOf()
+    override fun genParticles(): List<Pair<ControlableParticleData, RelativeLocation>> {
+        val player = world!!.getPlayerByUUID(player) ?: return arrayListOf()
         val playerRotation = player.eyePosition.subtract(pos)
-        val res = HashMap<ControlableParticleData, RelativeLocation>()
-        res.putAll(
+        val res = ArrayList<Pair<ControlableParticleData, RelativeLocation>>()
+        res.addAll(
             PointsBuilder()
                 .addPolygonInCircle(6, 10, 1.0)
                 .rotateTo(playerRotation)
-                .create().associateBy { templateData.clone() }
+                .create().map { templateData.clone() to it }
         )
-        res.putAll(
+        res.addAll(
             PointsBuilder()
                 .addWith {
                     val resList = ArrayList<RelativeLocation>()
@@ -72,11 +72,11 @@ class DefendClassParticleEmitters(var player: UUID, pos: Vec3, world: Level?) : 
                 }
                 .rotateTo(playerRotation)
                 .create()
-                .associateBy {
-                    templateData.clone().also {
+                .map {
+                    templateData.clone().also { it ->
                         it.alpha = 0.15f
                         it.setTextureSheet(ParticleRenderType.PARTICLE_SHEET_TRANSLUCENT)
-                    }
+                    } to it
                 }
         )
         return res
@@ -86,9 +86,11 @@ class DefendClassParticleEmitters(var player: UUID, pos: Vec3, world: Level?) : 
     override fun singleParticleAction(
         controler: ParticleControler,
         data: ControlableParticleData,
-        spawnPos: Vec3,
-        spawnWorld: Level
+        spawnPos: RelativeLocation,
+        spawnWorld: Level,
+        currentProgress: Float
     ) {
+
     }
 
 

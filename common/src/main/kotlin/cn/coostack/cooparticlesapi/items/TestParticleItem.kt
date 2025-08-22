@@ -16,6 +16,7 @@ import cn.coostack.cooparticlesapi.network.particle.emitters.type.EmittersShootT
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleStyleManager
 import cn.coostack.cooparticlesapi.particles.impl.ControlableCloudEffect
 import cn.coostack.cooparticlesapi.particles.impl.ControlableEndRodEffect
+import cn.coostack.cooparticlesapi.test.particle.emitter.TestEmitter
 import cn.coostack.cooparticlesapi.test.particle.emitter.TestEventEmitter
 import cn.coostack.cooparticlesapi.test.particle.emitter.event.TestEntityHitEventHandler
 import cn.coostack.cooparticlesapi.test.particle.emitter.event.TestOnGroundEventHandler
@@ -26,6 +27,7 @@ import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.ServerCameraUtil
 import net.minecraft.client.particle.ParticleRenderType
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResultHolder
 import net.minecraft.world.entity.player.Player
@@ -40,7 +42,7 @@ class TestParticleItem(settings: Properties) : Item(settings) {
             return InteractionResultHolder.success(user.getItemInHand(hand))
         }
 //        testEvents(world, user)
-        testLightning(world, user)
+        testEmitter(world as ServerLevel, user as ServerPlayer)
 //        CameraUtil.startShakeCamera(240, 0.25)
 //        testRomaCircle(world, user)
         // 线性阻力
@@ -62,6 +64,20 @@ class TestParticleItem(settings: Properties) : Item(settings) {
                 addEventHandler(TestOnLiquidEventHandler, false)
             }
         ParticleEmittersManager.spawnEmitters(test)
+    }
+
+    private fun testEmitter(world: ServerLevel, user: ServerPlayer) {
+        val emitter = TestEmitter(user.eyePosition, world)
+        emitter.apply {
+            templateData.apply {
+                this.maxAge = 30
+                this.age = 10
+            }
+            particleMoveDirection = user.forward.scale(-7.8)
+            emitterMoveDirection = user.forward.scale(1.5)
+            maxTick = -1
+        }
+        ParticleEmittersManager.spawnEmitters(emitter)
     }
 
     private fun testLargeParticles(world: Level, user: Player) {

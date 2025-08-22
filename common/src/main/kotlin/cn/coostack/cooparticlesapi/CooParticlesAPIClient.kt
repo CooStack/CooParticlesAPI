@@ -40,17 +40,12 @@ object CooParticlesAPIClient {
 
 
     private fun initGroup() {
+        ClientParticleGroupManager.register(TestGroupClient::class.java, TestGroupClient.Provider())
+        ClientParticleGroupManager.register(ScaleCircleGroupClient::class.java, ScaleCircleGroupClient.Provider())
+        ClientParticleGroupManager.register(BarrierSwordGroupClient::class.java, BarrierSwordGroupClient.Provider())
         ClientParticleGroupManager.register(
-            TestGroupClient::class.java, TestGroupClient.Provider()
-        )
-        ClientParticleGroupManager.register(
-            ScaleCircleGroupClient::class.java, ScaleCircleGroupClient.Provider()
-        )
-        ClientParticleGroupManager.register(
-            BarrierSwordGroupClient::class.java, BarrierSwordGroupClient.Provider()
-        )
-        ClientParticleGroupManager.register(
-            SequencedMagicCircleClient::class.java, SequencedMagicCircleClient.Provider()
+            SequencedMagicCircleClient::class.java,
+            SequencedMagicCircleClient.Provider()
         )
     }
 
@@ -91,9 +86,9 @@ object CooParticlesAPIClient {
             ShaderPipeManagers.init() // 注册到pipeline
             ClientRenderPipelineManager.init() // 把注册的pipeline进行一个初始化
             renderInit = true
+            CooParticlesConstants.logger.info("初始化渲染管线")
         }
         // resize test
-
         val tickManager = world.tickRateManager()
         if (!tickManager.runsNormally()) {
             return
