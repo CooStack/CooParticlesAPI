@@ -26,6 +26,11 @@ data class RelativeLocation(var x: Double, var y: Double, var z: Double) {
         }
 
         @JvmStatic
+        fun of(vector: Vector3f): RelativeLocation {
+            return RelativeLocation(vector.x, vector.y, vector.z)
+        }
+
+        @JvmStatic
         fun toVector(relativeLocation: RelativeLocation): Vec3 {
             return Vec3(relativeLocation.x, relativeLocation.y, relativeLocation.z)
         }
@@ -139,6 +144,22 @@ data class RelativeLocation(var x: Double, var y: Double, var z: Double) {
 
     fun toVector(): Vec3 {
         return Vec3(x, y, z)
+    }
+
+    fun toVector3f(): Vector3f {
+        return Vector3f(x.toFloat(), y.toFloat(), z.toFloat())
+    }
+
+    fun relativize(other: RelativeLocation): RelativeLocation {
+        return other - this
+    }
+
+    fun relativize(other: Vec3): RelativeLocation {
+        return relativize(of(other))
+    }
+
+    fun relativize(other: Vector3f): RelativeLocation {
+        return relativize(of(other))
     }
 
     /**

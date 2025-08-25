@@ -16,11 +16,6 @@ interface ShaderPipe {
      */
     fun fbo(): GlFrameBuffer
 
-    /**
-     * 是否共用depth数据
-     * @return false 不共用数据 在pipeManager就不会自动设置 depthAttachment的值
-     */
-    fun shareDepth(): Boolean
 
     /**
      * 设置纹理组件过滤模式
@@ -33,16 +28,22 @@ interface ShaderPipe {
     fun write(invoker: ShaderPipe.() -> Unit)
 
     /**
+     * 这是将处理的结果存在当前的fbo中
+     * 而 write是将处理前的结果存在当前的fbo中
+     * 如果执行这个方法， 则意味着你的输入已经经过了当前 ShaderPipe frag着色器的处理
+     * 所以可以直接获取output
+     * @param channel 待处理的输入的颜色通道
+     */
+    fun writeFromChannel(channel: PipeChannels): ShaderPipe
+
+    /**
      * 通过pipe内的屏幕渲染器绘制 fbo
      * 在read时 会调用 handler执行渲染前操作
      */
     fun drawPipeFrame()
 
-    /**
-     * @param count 绘制次数 (>1 则将这个画面反复绘制)
-     * 多次绘制用于节省pipe对象个数
-     */
-    fun setPipeRenderCount(count: Int): ShaderPipe
+    fun getFrameOutput(): PipeChannels
+
 
     fun resize(width: Int, height: Int)
 

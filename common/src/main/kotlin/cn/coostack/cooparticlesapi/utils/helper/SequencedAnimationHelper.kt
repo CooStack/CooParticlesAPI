@@ -10,6 +10,7 @@ class SequencedAnimationHelper<T : SequencedParticleStyle> {
     lateinit var style: T
     var animationIndex = 0
         private set
+    var clientOnly = false
 
     /**
      * @param displayAnimatePredicate 执行该动画时必须要满足的条件
@@ -20,10 +21,20 @@ class SequencedAnimationHelper<T : SequencedParticleStyle> {
         return this
     }
 
+    /**
+     * 只在客户端执行此方法 适用于某些只在客户端生成的style
+     */
+    fun clientOnly(): SequencedAnimationHelper<T> {
+        clientOnly = true
+        return this
+    }
+
     fun loadStyle(style: T): SequencedAnimationHelper<T> {
         this.style = style
         style.addPreTickAction {
-            if (style.client) return@addPreTickAction
+            val clientDisable = style.client && !clientOnly
+            val serverDisable = clientOnly && !style.client
+            if (clientDisable || serverDisable) return@addPreTickAction
             if (animationIndex >= animationConditions.size) {
                 return@addPreTickAction
             }

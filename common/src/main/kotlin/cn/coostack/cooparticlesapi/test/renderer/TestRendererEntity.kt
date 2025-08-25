@@ -4,11 +4,8 @@ import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.renderer.RenderEntity
 import cn.coostack.cooparticlesapi.renderer.shader.ShaderProgramBuilder
 import cn.coostack.cooparticlesapi.renderer.shader.vertex.SimpleVertexBuffer
-import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlFrameBuffer
 import cn.coostack.cooparticlesapi.renderer.shader.data.CooVertexFormat
-import cn.coostack.cooparticlesapi.renderer.shader.pipe.ShaderPipeManager
 import cn.coostack.cooparticlesapi.renderer.shader.utils.ShaderUtil
-import cn.coostack.cooparticlesapi.renderer.shader.vertex.VertexBuffers
 import com.mojang.blaze3d.systems.RenderSystem
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec

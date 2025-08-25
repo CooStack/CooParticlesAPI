@@ -1,10 +1,11 @@
-package cn.coostack.cooparticlesapi.renderer.shader.pipe
+package cn.coostack.cooparticlesapi.renderer.shader.pipe.pipes
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.renderer.shader.ShaderProgramBuilder
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlFrameBuffer
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlShader
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlShaderType
+import cn.coostack.cooparticlesapi.renderer.shader.api.pipe.PipeChannels
 import cn.coostack.cooparticlesapi.renderer.shader.api.pipe.ShaderPipe
 import cn.coostack.cooparticlesapi.renderer.shader.api.pipe.handler.ShaderProgramUploader
 import cn.coostack.cooparticlesapi.renderer.shader.glsl.IdentifierShader
@@ -57,10 +58,6 @@ class MCHookedShaderPipe(
         return fbo
     }
 
-    override fun shareDepth(): Boolean {
-        return shareDepth
-    }
-
     override fun textureFilterMod(mod: Int): ShaderPipe {
         return this
     }
@@ -70,6 +67,23 @@ class MCHookedShaderPipe(
         fbo.writeFrameBufferWith {
             invoker()
         }
+    }
+
+    override fun writeFromChannel(channel: PipeChannels): MCHookedShaderPipe {
+        channel.drawWith {
+            // 绑定当前的片段着色器
+            screenProgram.useOnContext {
+                // 上传数据
+                for (handler in handles) {
+                    handler.uploadShaderData(screenProgram)
+                }
+                // 绘制到当前的fbo
+                write {
+                    shaderVertexes.draw()
+                }
+            }
+        }
+        return this
     }
 
     override fun drawPipeFrame() {
@@ -84,12 +98,13 @@ class MCHookedShaderPipe(
         }
     }
 
-    override fun setPipeRenderCount(count: Int): ShaderPipe {
-        this.count = count.coerceAtLeast(1)
-        return this
+    override fun getFrameOutput(): PipeChannels {
+        return fbo.outputChannels()
     }
 
+
     override fun resize(width: Int, height: Int) {
+        fbo.resize(width, height)
     }
 
     override fun release() {

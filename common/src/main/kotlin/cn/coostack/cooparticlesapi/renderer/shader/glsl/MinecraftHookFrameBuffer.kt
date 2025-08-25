@@ -1,10 +1,11 @@
 package cn.coostack.cooparticlesapi.renderer.shader.glsl
 
+import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlFrameBuffer
+import cn.coostack.cooparticlesapi.renderer.shader.api.pipe.PipeChannels
+import cn.coostack.cooparticlesapi.renderer.shader.pipe.manager.FramePipeChannels
 import com.mojang.blaze3d.pipeline.RenderTarget
-import net.minecraft.client.renderer.RenderType
 import org.lwjgl.opengl.GL33.*
-import java.nio.ByteBuffer
 import java.util.function.Supplier
 
 open class MinecraftHookFrameBuffer(
@@ -48,6 +49,11 @@ open class MinecraftHookFrameBuffer(
     override fun setTextureFilterMod(mod: Int) {
     }
 
+    override fun outputChannels(): PipeChannels {
+        return FramePipeChannels()
+            .addChannel { mcFrame.colorTextureId }
+    }
+
     override fun clear(bit: Int) {
         glClearColor(0f, 0f, 0f, 0f)
         glClear(bit)
@@ -59,16 +65,34 @@ open class MinecraftHookFrameBuffer(
     }
 
     override fun writeFrameBufferWith(writeScope: GlFrameBuffer.() -> Unit) {
-        mcFrame.bindWrite(true)
+//        mcFrame.bindWrite(true)
+        bindFramebuffer()
         writeScope()
-        mcFrame.unbindWrite()
+        reset()
+//        mcFrame.unbindWrite()
     }
 
     override fun readFrameBufferWith(readScope: GlFrameBuffer.() -> Unit) {
-        mcFrame.bindRead()
+        if (fbo() == 0) {
+            CooParticlesConstants.logger.error("trying to read frame buffer but fbo is zero")
+            initialized = false
+            return
+        }
+        val zero = GL_TEXTURE0
+        val activeChannels = IntArray(1)
+        val prevActive = glGetInteger(GL_ACTIVE_TEXTURE)
+        val prevTexture = glGetInteger(GL_TEXTURE_BINDING_2D)
+        glActiveTexture(zero)
+        activeChannels[0] = glGetInteger(GL_TEXTURE_BINDING_2D)
+        glBindTexture(GL_TEXTURE_2D, mcFrame.colorTextureId)
+
         readScope()
-        // 恢复
-        mcFrame.unbindRead()
+        activeChannels.forEachIndexed { channel, texture ->
+            glActiveTexture(zero + channel)
+            glBindTexture(GL_TEXTURE_2D, texture)
+        }
+        glActiveTexture(prevActive)
+        glBindTexture(GL_TEXTURE_2D, prevTexture)
     }
 
     override fun reset() {
@@ -79,13 +103,6 @@ open class MinecraftHookFrameBuffer(
         if (!initialized) {
             return
         }
-    }
-
-    private fun bindTextureTo(textureID: Int, fc: Runnable) {
-        val prev = glGetInteger(GL_TEXTURE_BINDING_2D)
-        glBindTexture(GL_TEXTURE_2D, textureID)
-        fc.run()
-        glBindTexture(GL_TEXTURE_2D, prev)
     }
 
     override fun resize(width: Int, height: Int) {

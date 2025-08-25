@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi.renderer.shader.api.glsl
 
+import cn.coostack.cooparticlesapi.renderer.shader.api.pipe.PipeChannels
 import java.util.function.Supplier
 
 interface GlFrameBuffer {
@@ -31,6 +32,11 @@ interface GlFrameBuffer {
     fun clear()
 
     fun setTextureFilterMod(mod: Int)
+
+    /**
+     * 将颜色通道转换为 pipe channel
+     */
+    fun outputChannels(): PipeChannels
 
     /**
      * 在这个方法内进行渲染操作

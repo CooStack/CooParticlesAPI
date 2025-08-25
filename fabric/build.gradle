@@ -39,9 +39,7 @@ tasks.register("sourceWithCommon", Jar) {
     destinationDirectory.set(file("../builds/sources"))
     archiveFileName = "${rootProject.mod_name}-Fabric-Source-${rootProject.version}.jar"
 }
-tasks.named('jar', Jar) {
-    destinationDirectory.set(file("../builds/jar")) // 输出到 build/customLibs
-    archiveFileName.set("${rootProject.mod_name}-Fabric-${rootProject.minecraft_version}-${rootProject.version}.jar")
+tasks.named("jar", Jar) {
     from(configurations.embed.collect {
         it.isDirectory() ? it : zipTree(it)
     }) {
@@ -51,6 +49,10 @@ tasks.named('jar', Jar) {
         exclude "META-INF/*.RSA"
     }
     dependsOn(tasks.named("sourceWithCommon"))
+}
+tasks.named('remapJar') {
+    destinationDirectory.set(file("../builds/jar")) // 输出到 build/customLibs
+    archiveFileName.set("${rootProject.mod_name}-Fabric-${rootProject.minecraft_version}-${rootProject.version}.jar")
 }
 fabricApi {
     configureDataGeneration {

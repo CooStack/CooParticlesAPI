@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi.renderer.client
 
-import cn.coostack.cooparticlesapi.renderer.shader.pipe.ShaderPipeManager
+import cn.coostack.cooparticlesapi.renderer.shader.pipe.manager.ShaderPipeManager
 import net.minecraft.client.Minecraft
 import net.minecraft.resources.ResourceLocation
 import java.util.function.Supplier

@@ -1,10 +1,11 @@
-package cn.coostack.cooparticlesapi.renderer.shader.pipe
+package cn.coostack.cooparticlesapi.renderer.shader.pipe.pipes
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.renderer.shader.ShaderProgramBuilder
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlFrameBuffer
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlShader
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlShaderType
+import cn.coostack.cooparticlesapi.renderer.shader.api.pipe.PipeChannels
 import cn.coostack.cooparticlesapi.renderer.shader.api.pipe.ShaderPipe
 import cn.coostack.cooparticlesapi.renderer.shader.api.pipe.handler.ShaderProgramUploader
 import cn.coostack.cooparticlesapi.renderer.shader.glsl.IdentifierShader
@@ -27,15 +28,12 @@ class SimpleShaderPipe(
     val fragment: GlShader, depthSupplier: Supplier<Int>, colorChannelCount: Int = 1,
 ) :
     ShaderPipe {
-    var shareDepth = true
     private val screenVertex = IdentifierShader(
         ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "pipe/vertexes/screen.vsh"),
         GlShaderType.VERTEX
     )
     private val shaderVertexes = VertexBuffers.getScreenBuffer()
-
     private val handles = ArrayList<ShaderProgramUploader>()
-    private var count = 1
 
     private val screenProgram = ShaderProgramBuilder()
         .vertex(screenVertex)
@@ -56,10 +54,6 @@ class SimpleShaderPipe(
         shaderVertexes.init()
     }
 
-    override fun setPipeRenderCount(count: Int): ShaderPipe {
-        this.count = count.coerceAtLeast(1)
-        return this
-    }
 
     override fun addRenderHandler(handler: ShaderProgramUploader): ShaderPipe {
         handles.add(handler)
@@ -68,10 +62,6 @@ class SimpleShaderPipe(
 
     override fun fbo(): GlFrameBuffer {
         return fbo
-    }
-
-    override fun shareDepth(): Boolean {
-        return shareDepth
     }
 
     override fun textureFilterMod(mod: Int): ShaderPipe {
@@ -87,10 +77,34 @@ class SimpleShaderPipe(
         }
     }
 
+
+    override fun writeFromChannel(channel: PipeChannels): SimpleShaderPipe {
+        // 绑定channel材质
+        channel.drawWith {
+            // 绑定当前的片段着色器
+            screenProgram.useOnContext {
+                // 上传数据
+                for (handler in handles) {
+                    handler.uploadShaderData(screenProgram)
+                }
+                // 绘制到当前的fbo
+                write {
+                    shaderVertexes.draw()
+                }
+            }
+        }
+        return this
+    }
+
+    // 直接输出
     override fun drawPipeFrame() {
         drawOnce()
     }
 
+
+    override fun getFrameOutput(): PipeChannels {
+        return fbo.outputChannels()
+    }
 
     private fun drawOnce() {
         screenProgram.useOnContext {

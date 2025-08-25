@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi.mixin;
 
+import cn.coostack.cooparticlesapi.CooParticlesAPIClient;
 import cn.coostack.cooparticlesapi.renderer.client.ClientRenderEntityManager;
 import net.minecraft.client.Camera;
 import net.minecraft.client.DeltaTracker;
@@ -36,6 +37,7 @@ public class WorldRendererMixin {
         if (level == null) {
             return;
         }
+        CooParticlesAPIClient.initShaderPrograms();
         boolean shouldTick = level.tickRateManager().runsNormally();
         float tickDelta = tickCounter.getGameTimeDeltaPartialTick(!shouldTick);
         ClientRenderEntityManager.INSTANCE.renderTick(tickDelta, viewMatrix, projectionMatrix);

@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi.extend
 
+import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
 
@@ -11,6 +12,10 @@ fun Vec3.relativize(target: Vec3): Vec3 {
 fun Vec3.relativize(target: Vector3f): Vec3 {
     val back = this.toVector3f().mul(-1f)
     return Vec3(target.add(back, Vector3f()))
+}
+
+fun Vec3.relativize(target: RelativeLocation): Vec3 {
+    return relativize(target.toVector())
 }
 
 fun Vector3f.relativize(target: Vec3): Vector3f {

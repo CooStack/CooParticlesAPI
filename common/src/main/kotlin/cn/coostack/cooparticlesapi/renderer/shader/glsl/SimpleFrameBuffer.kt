@@ -2,6 +2,8 @@ package cn.coostack.cooparticlesapi.renderer.shader.glsl
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlFrameBuffer
+import cn.coostack.cooparticlesapi.renderer.shader.api.pipe.PipeChannels
+import cn.coostack.cooparticlesapi.renderer.shader.pipe.manager.FramePipeChannels
 import net.minecraft.client.Minecraft
 import org.lwjgl.opengl.GL33.*
 import java.nio.ByteBuffer
@@ -18,6 +20,9 @@ open class SimpleFrameBuffer(
     private var initialized = false
     private var newDepth = false
     private var textureFilterMod = GL_LINEAR
+    private lateinit var output: PipeChannels
+
+
     override fun fbo(): Int {
         return fbo
     }
@@ -65,10 +70,19 @@ open class SimpleFrameBuffer(
             depthAttachment = depthSupplier.get()
         }
         reset()
+        if (!::output.isInitialized) {
+            output = FramePipeChannels().apply {
+                repeat(colorChannelCount) { addChannel { colorAttachments[it] } }
+            }
+        }
     }
 
     override fun setTextureFilterMod(mod: Int) {
         textureFilterMod = mod
+    }
+
+    override fun outputChannels(): PipeChannels {
+        return output
     }
 
     override fun clear() {
@@ -129,6 +143,7 @@ open class SimpleFrameBuffer(
     override fun reset() {
         glBindFramebuffer(GL_FRAMEBUFFER, prevFBO)
     }
+
 
     override fun release() {
         if (!initialized) {
@@ -208,8 +223,6 @@ open class SimpleFrameBuffer(
     }
 
     override fun resize(width: Int, height: Int) {
-//        this.width = width
-//        this.height = height
         if (!initialized) {
             return
         }

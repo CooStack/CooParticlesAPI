@@ -4,13 +4,13 @@
   "plugin": "cn.coostack.cooparticlesapi.mixin.plugin.CooParticleFabricMixinLoaderPlugin",
   "compatibilityLevel": "JAVA_18",
   "mixins": [],
+  "refmap": "cooparticlesapi.refmap.json",
   "injectors": {
     "defaultRequire": 1
   },
   "client": [
     "CooParticleCameraMixin",
     "MainTargetMixin",
-    "MixinMinecraft",
     "ParticleEngineAccessor",
     "ParticleEngineMixin",
     "WorldRendererMixin"

@@ -46,7 +46,18 @@ abstract class ClassParticleEmitters(
     var gravity: Double = 0.0
     val handlerList = ConcurrentHashMap<String, SortedMap<ParticleEventHandler, Boolean>>()
 
-    // 线性插值器
+    /**
+     * 是否启用线段插值器
+     * 如果设置为true 则spawnParticles由线段插值器管控
+     * 设置为false,则只会在 1tick内执行一次spawnParticles
+     */
+    var enableInterpolator = false
+
+    /**
+     * 插值器工具
+     * 需要启用 enableInterpolator
+     * @see enableInterpolator
+     */
     val emittersInterpolator = LineInterpolator()
         .setRefiner(5.0)
 
@@ -104,6 +115,7 @@ abstract class ClassParticleEmitters(
             buf.writeDouble(data.gravity)
             buf.writeDouble(data.airDensity)
             buf.writeDouble(data.mass)
+            buf.writeBoolean(data.enableInterpolator)
             buf.writeUtf(data.wind.getID())
             data.wind.getCodec().encode(buf, data.wind)
         }
@@ -133,6 +145,7 @@ abstract class ClassParticleEmitters(
             val gravity = buf.readDouble()
             val airDensity = buf.readDouble()
             val mass = buf.readDouble()
+            val enableInterpolator = buf.readBoolean()
             val id = buf.readUtf()
             val wind = WindDirections.getCodecFromID(id)
                 .decode(buf)
@@ -149,6 +162,7 @@ abstract class ClassParticleEmitters(
                 this.playing = playing
                 this.airDensity = airDensity
                 this.wind = wind
+                this.enableInterpolator = enableInterpolator
             }
 
         }
@@ -198,9 +212,13 @@ abstract class ClassParticleEmitters(
             // 执行粒子变更操作
             // 生成新粒子
             // 进行线性插值
-            emittersInterpolator.getRefinedResult().forEach {
-                val pos = it.toVector()
-                doSubtick(pos) // 用于设置其他插值
+            if (enableInterpolator) {
+                emittersInterpolator.getRefinedResult().forEach {
+                    val pos = it.toVector()
+                    doSubtick(pos) // 用于设置其他插值
+                    spawnParticle(pos)
+                }
+            } else {
                 spawnParticle(pos)
             }
         }

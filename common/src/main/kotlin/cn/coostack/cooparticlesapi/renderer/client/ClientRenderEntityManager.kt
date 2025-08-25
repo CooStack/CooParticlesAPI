@@ -55,6 +55,7 @@ object ClientRenderEntityManager {
     }
 
     fun add(entity: RenderEntity) {
+        entity.world = minecraft.level
         entity.init()
         entities[entity.uuid] = entity
         val pipe = getPipeIDFromType(entity.getRenderID())
@@ -75,7 +76,9 @@ object ClientRenderEntityManager {
         entitiesPipeClassifier.forEach {
             val pipeID = it.key
             val entities = it.value
-            val pipe = ClientRenderPipelineManager.getPipeManager(pipeID)!!
+            val pipe = ClientRenderPipelineManager.getPipeManager(pipeID) ?: let {
+                throw RenderPipeNotFoundException(pipeID)
+            }
             pipe.writeFrame {
                 entities.forEach { entity ->
                     stack.pushMatrix()

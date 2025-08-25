@@ -1,12 +1,12 @@
-package cn.coostack.cooparticlesapi.renderer.shader.pipe
+package cn.coostack.cooparticlesapi.renderer.shader.pipe.pipes
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.renderer.shader.ShaderProgramBuilder
 import cn.coostack.cooparticlesapi.renderer.shader.api.CooShaderProgram
-import cn.coostack.cooparticlesapi.renderer.shader.api.VertexBuffer
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlFrameBuffer
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlShader
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlShaderType
+import cn.coostack.cooparticlesapi.renderer.shader.api.pipe.PipeChannels
 import cn.coostack.cooparticlesapi.renderer.shader.api.pipe.ShaderPipe
 import cn.coostack.cooparticlesapi.renderer.shader.api.pipe.handler.ShaderProgramUploader
 import cn.coostack.cooparticlesapi.renderer.shader.glsl.IdentifierShader
@@ -77,7 +77,6 @@ class PingPongShaderPipe(
         return if (ping) pingFBO else pongFBO  // 默认返回 A，可以根据需要改
     }
 
-    override fun shareDepth(): Boolean = shareDepth
 
     override fun textureFilterMod(mod: Int): PingPongShaderPipe {
         pingFBO.setTextureFilterMod(mod)
@@ -94,20 +93,7 @@ class PingPongShaderPipe(
 
     override fun drawPipeFrame() {
         // Ping-Pong 循环渲染
-        repeat(pingpongCount - 1) {
-            val program = getCurrentShader()
-            val current = fbo()
-            val another = getAnother()
-            another.writeFrameBufferWith {
-                program.useOnContext {
-                    for (handler in getCurrentHandler()) handler.uploadShaderData(program)
-                    current.readFrameBufferWith {
-                        vertexes.draw()
-                    }
-                }
-            }
-            ping = !ping
-        }
+        drawPingPong()
 
         // 结果向外绘制
         val current = getCurrentShader()
@@ -123,7 +109,54 @@ class PingPongShaderPipe(
         ping = true
     }
 
-    override fun setPipeRenderCount(count: Int): PingPongShaderPipe {
+    override fun getFrameOutput(): PipeChannels {
+        return fbo().outputChannels()
+    }
+
+    override fun writeFromChannel(channel: PipeChannels): PingPongShaderPipe {
+        channel.drawWith {
+            val current = getCurrentShader()
+            val currentHandlers = getCurrentHandler()
+            // 绑定当前的片段着色器
+            current.useOnContext {
+                // 上传数据
+                for (handler in currentHandlers) {
+                    handler.uploadShaderData(current)
+                }
+                // 绘制到ping
+                write {
+                    vertexes.draw()
+                }
+                // ping pong 渲染
+                // 最后输出
+                drawPingPong()
+            }
+        }
+        return this
+    }
+
+    private fun drawPingPong() {
+        repeat(pingpongCount - 1) {
+            val program = getCurrentShader()
+            val current = fbo()
+            val another = getAnother()
+            another.writeFrameBufferWith {
+                program.useOnContext {
+                    for (handler in getCurrentHandler()) handler.uploadShaderData(program)
+                    current.readFrameBufferWith {
+                        vertexes.draw()
+                    }
+                }
+            }
+            ping = !ping
+        }
+    }
+
+    /**
+     * @param count 绘制次数 (>1 则将这个画面反复绘制)
+     * 多次绘制用于节省pipe对象个数
+     */
+    fun setPipeRenderCount(count: Int): PingPongShaderPipe {
         this.pingpongCount = count
         return this
     }

@@ -95,7 +95,7 @@ object ServerRenderEntityManager {
 
     fun toggle(entity: RenderEntity) {
         val packet = entity.getTogglePacket() ?: return
-        CooParticlesAPI.server.playerList.players.filter { playerCanView(entity.uuid, entity) }.forEach {
+        CooParticlesAPI.server.playerList.players.filter { playerCanView(it.uuid, entity) }.forEach {
             CooParticlesServices.SERVER_NETWORK.send(packet, it)
         }
     }

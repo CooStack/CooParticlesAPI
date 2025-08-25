@@ -58,6 +58,21 @@ object CooParticlesAPIClient {
         ParticleStyleManager.register(TestShapeUtilStyle::class.java, TestShapeUtilStyle.Provider())
     }
 
+    /**
+     * 在 render 第一次执行时初始化
+     */
+    @JvmStatic
+    private var renderInit = false
+
+    @JvmStatic
+    fun initShaderPrograms() {
+        if (renderInit) return
+        renderInit = true
+        ShaderPipeManagers.init() // 注册到pipeline
+        ClientRenderPipelineManager.init() // 把注册的pipeline进行一个初始化
+        CooParticlesConstants.logger.info("初始化渲染管线")
+    }
+
     private fun initRender() {
         ClientRenderEntityManager.register(TestRendererEntity.id, TestRendererEntity.codec)
         ClientRenderEntityManager.bindEntityRenderPipe(TestRendererEntity.id, ShaderPipeManagers.simpleBloom.pipeID)
@@ -79,15 +94,7 @@ object CooParticlesAPIClient {
     }
 
     var subTicks = 0.0
-    var renderInit = false
     fun tickClient(world: ClientLevel) {
-        if (!renderInit) {
-            // 初始化ClientRenderer
-            ShaderPipeManagers.init() // 注册到pipeline
-            ClientRenderPipelineManager.init() // 把注册的pipeline进行一个初始化
-            renderInit = true
-            CooParticlesConstants.logger.info("初始化渲染管线")
-        }
         // resize test
         val tickManager = world.tickRateManager()
         if (!tickManager.runsNormally()) {
