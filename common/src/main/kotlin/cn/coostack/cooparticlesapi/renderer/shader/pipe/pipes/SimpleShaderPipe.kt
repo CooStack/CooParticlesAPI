@@ -14,6 +14,7 @@ import cn.coostack.cooparticlesapi.renderer.shader.vertex.VertexBuffers
 import com.mojang.blaze3d.systems.RenderSystem
 import net.minecraft.client.Minecraft
 import net.minecraft.resources.ResourceLocation
+import org.lwjgl.opengl.GL33
 import java.util.function.Supplier
 
 /**
@@ -25,7 +26,10 @@ import java.util.function.Supplier
  * GLSL 获取屏幕uv 使用 in vec2 screen_uv
  */
 class SimpleShaderPipe(
-    val fragment: GlShader, depthSupplier: Supplier<Int>, colorChannelCount: Int = 1,
+    val fragment: GlShader,
+    depthSupplier: Supplier<Int>,
+    colorChannelCount: Int = 1,
+    val textureFilterMod: Int = GL33.GL_LINEAR
 ) :
     ShaderPipe {
     private val screenVertex = IdentifierShader(
@@ -34,13 +38,10 @@ class SimpleShaderPipe(
     )
     private val shaderVertexes = VertexBuffers.getScreenBuffer()
     private val handles = ArrayList<ShaderProgramUploader>()
-
     private val screenProgram = ShaderProgramBuilder()
         .vertex(screenVertex)
         .fragment(fragment)
         .build()
-
-
     val width: Int
         get() = Minecraft.getInstance().mainRenderTarget.width
     val height: Int
@@ -49,6 +50,7 @@ class SimpleShaderPipe(
 
     override fun init() {
         require(fragment.type == GlShaderType.FRAGMENT)
+        fbo.setTextureFilterMod(textureFilterMod)
         screenProgram.init()
         fbo.init()
         shaderVertexes.init()
@@ -64,8 +66,8 @@ class SimpleShaderPipe(
         return fbo
     }
 
-    override fun textureFilterMod(mod: Int): ShaderPipe {
-        fbo.setTextureFilterMod(mod)
+    override fun useMipmap(): ShaderPipe {
+        fbo.useMipmap()
         return this
     }
 

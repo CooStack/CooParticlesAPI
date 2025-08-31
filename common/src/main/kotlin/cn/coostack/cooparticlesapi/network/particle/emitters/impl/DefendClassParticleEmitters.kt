@@ -88,7 +88,8 @@ class DefendClassParticleEmitters(var player: UUID, pos: Vec3, world: Level?) : 
         data: ControlableParticleData,
         spawnPos: RelativeLocation,
         spawnWorld: Level,
-        currentProgress: Float
+        particleLerpProgress: Float,
+        posLerpProgress: Float,
     ) {
 
     }

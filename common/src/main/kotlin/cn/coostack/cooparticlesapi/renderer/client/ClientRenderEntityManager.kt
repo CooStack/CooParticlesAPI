@@ -37,6 +37,7 @@ object ClientRenderEntityManager {
 
     fun register(id: ResourceLocation, codec: StreamCodec<FriendlyByteBuf, RenderEntity>) {
         entityCodecs[id] = codec
+        bindEntityRenderPipe(id, ShaderPipeManagers.default.pipeID)
     }
 
     fun getCodecFromID(id: ResourceLocation): StreamCodec<FriendlyByteBuf, RenderEntity>? {

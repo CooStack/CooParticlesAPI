@@ -16,11 +16,7 @@ interface ShaderPipe {
      */
     fun fbo(): GlFrameBuffer
 
-
-    /**
-     * 设置纹理组件过滤模式
-     */
-    fun textureFilterMod(mod: Int): ShaderPipe
+    fun useMipmap(): ShaderPipe
 
     /**
      * 向这个pipe写入内容

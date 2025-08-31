@@ -213,13 +213,15 @@ abstract class ClassParticleEmitters(
             // 生成新粒子
             // 进行线性插值
             if (enableInterpolator) {
-                emittersInterpolator.getRefinedResult().forEach {
+                val res = emittersInterpolator.getRefinedResult()
+                val count = res.size
+                res.forEachIndexed { index, it ->
                     val pos = it.toVector()
                     doSubtick(pos) // 用于设置其他插值
-                    spawnParticle(pos)
+                    spawnParticle(pos, (index + 1f) / count)
                 }
             } else {
-                spawnParticle(pos)
+                spawnParticle(pos, 1f)
             }
         }
         increaseTick()
@@ -231,7 +233,7 @@ abstract class ClassParticleEmitters(
         }
     }
 
-    override fun spawnParticle(pos: Vec3) {
+    override fun spawnParticle(pos: Vec3, lerpProgress: Float) {
         if (!world!!.isClientSide) {
             return
         }
@@ -242,7 +244,7 @@ abstract class ClassParticleEmitters(
         val total = particles.size
         particles.forEach {
             spawnedCount++
-            spawnParticle(world, pos.add(it.second.toVector()), it.first, spawnedCount / total)
+            spawnParticle(world, pos.add(it.second.toVector()), it.first, spawnedCount / total, lerpProgress)
         }
     }
 
@@ -266,8 +268,10 @@ abstract class ClassParticleEmitters(
     /**
      * 如若要修改粒子的位置, 速度 属性
      * 请直接修改 ControlableParticleData
+     *
      * @param data 用于操作单个粒子属性的类
-     * @param currentProgress 生成这个粒子的时候，当前的进度
+     * @param particleLerpProgress 生成这个粒子的时候，当前的进度
+     * @param posLerpProgress 当发射器进行发射插值时， 插值的偏移 如果不使用插值则永远为1
      * 执行tick方法请使用
      * controler.addPreTickAction
      */
@@ -276,10 +280,17 @@ abstract class ClassParticleEmitters(
         data: ControlableParticleData,
         spawnPos: RelativeLocation,
         spawnWorld: Level,
-        currentProgress: Float
+        particleLerpProgress: Float,
+        posLerpProgress: Float,
     )
 
-    private fun spawnParticle(world: ClientLevel, pos: Vec3, data: ControlableParticleData, progress: Float) {
+    private fun spawnParticle(
+        world: ClientLevel,
+        pos: Vec3,
+        data: ControlableParticleData,
+        particleLerpProgress: Float,
+        posLerpProgress: Float
+    ) {
         val effect = data.effect
         effect.controlUUID = data.uuid
         val displayer = ParticleDisplayer.withSingle(effect)
@@ -385,7 +396,7 @@ abstract class ClassParticleEmitters(
             }
         }
         val p = RelativeLocation.of(pos)
-        singleParticleAction(control, data, p, world, progress)
+        singleParticleAction(control, data, p, world, particleLerpProgress, posLerpProgress)
         control.addPreTickAction {
             // 模拟粒子运动 速度
             teleportTo(

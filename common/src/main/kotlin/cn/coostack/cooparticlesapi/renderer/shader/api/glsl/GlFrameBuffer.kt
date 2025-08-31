@@ -15,6 +15,13 @@ interface GlFrameBuffer {
      */
     var depthSupplier: Supplier<Int>
 
+    /**
+     * fbo使用 mipmap纹理
+     */
+    fun useMipmap()
+
+    fun getOutputChannelCount(): Int
+
     fun getCurrentDepthAttachment(): Int
 
     fun width(): Int

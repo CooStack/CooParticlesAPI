@@ -21,5 +21,4 @@ object RenderUtil {
         stack.translate(x - camera.x, y - camera.y, z - camera.z)
         return stack
     }
-
 }

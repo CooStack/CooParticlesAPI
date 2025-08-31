@@ -67,7 +67,8 @@ class ExplodeClassParticleEmitters(pos: Vec3, world: Level?) : ClassParticleEmit
         data: ControlableParticleData,
         spawnPos: RelativeLocation,
         spawnWorld: Level,
-        currentProgress: Float
+        particleLerpProgress: Float,
+        posLerpProgress: Float,
     ) {
         data.color = Math3DUtil.colorOf(
             random.nextInt(200, 255),

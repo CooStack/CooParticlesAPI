@@ -57,7 +57,8 @@ class LightningClassParticleEmitters(pos: Vec3, world: Level?) : ClassParticleEm
         data: ControlableParticleData,
         spawnPos: RelativeLocation,
         spawnWorld: Level,
-        currentProgress: Float
+        particleLerpProgress: Float,
+        posLerpProgress: Float,
     ) {
     }
 

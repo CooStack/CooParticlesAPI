@@ -16,12 +16,20 @@ open class MinecraftHookFrameBuffer(
         mcFrame.depthTextureId
     }
 
+    override fun getOutputChannelCount(): Int {
+        return 1
+    }
+
     override fun getCurrentDepthAttachment(): Int {
         return depthSupplier.get()
     }
 
     override fun width(): Int {
         return mcFrame.width
+    }
+
+    override fun useMipmap() {
+
     }
 
     override fun height(): Int {

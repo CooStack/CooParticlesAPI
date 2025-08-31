@@ -16,6 +16,7 @@ object ClientRenderEntityPacketHandler {
         val buf = FriendlyByteBuf(data)
         val codec = ClientRenderEntityManager.getCodecFromID(id) ?: return
         val entity = codec.decode(buf)
+        entity.world = context.client().level
         when (method) {
             PacketRenderEntityS2C.Method.CREATE -> {
                 ClientRenderEntityManager.add(entity)

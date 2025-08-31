@@ -1,6 +1,7 @@
 package cn.coostack.cooparticlesapi.utils.helper
 
 import cn.coostack.cooparticlesapi.particles.Controlable
+import cn.coostack.cooparticlesapi.utils.GraphMathHelper
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -71,7 +72,8 @@ abstract class ScaleHelper(var minScale: Double, var maxScale: Double, var scale
             resetScaleMin()
             return
         }
-        scale(step * enter.coerceIn(0, scaleTick) + minScale)
+        val lerp = GraphMathHelper.lerp(current.toDouble() / scaleTick, minScale, maxScale)
+        scale(lerp)
     }
 
     open fun doScale() {
@@ -82,7 +84,8 @@ abstract class ScaleHelper(var minScale: Double, var maxScale: Double, var scale
             return
         }
         current++
-        scale((step * current.coerceIn(0, scaleTick) + minScale).coerceAtMost(maxScale))
+        val lerp = GraphMathHelper.lerp(current.toDouble() / scaleTick, minScale, maxScale)
+        scale(lerp)
     }
 
     open fun doScaleReversed() {
@@ -93,10 +96,11 @@ abstract class ScaleHelper(var minScale: Double, var maxScale: Double, var scale
             return
         }
         current--
-        scale((step * current.coerceIn(0, scaleTick) + minScale).coerceAtMost(maxScale))
+        val lerp = GraphMathHelper.lerp(current.toDouble() / scaleTick, minScale, maxScale)
+        scale(lerp)
     }
 
-    open fun over(): Boolean = scaleTick - 1 <= current
+    open fun over(): Boolean = scaleTick <= current
     fun isZero(): Boolean = current <= 0
 
     abstract fun getLoadedGroup(): Controlable<*>?

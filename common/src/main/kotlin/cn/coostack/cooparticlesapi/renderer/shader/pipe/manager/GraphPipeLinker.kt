@@ -39,7 +39,7 @@ class GraphPipeLinker : PipeLinker {
         if (hasLinked(input)) {
             throw RenderPipeInputException(input.pipe.fbo().fbo(), input.channel)
         }
-        val channelSize = output.pipe.getFrameOutput().getChannels().size
+        val channelSize = output.pipe.fbo().getOutputChannelCount()
         if (channelSize <= output.channel) {
             throw ArrayIndexOutOfBoundsException("output没有那么多channel 提供的输出通道个数:${channelSize} 你的输入${output.channel}")
         }

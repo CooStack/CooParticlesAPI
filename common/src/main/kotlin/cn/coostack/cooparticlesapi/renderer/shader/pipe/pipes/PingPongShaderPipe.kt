@@ -78,9 +78,9 @@ class PingPongShaderPipe(
     }
 
 
-    override fun textureFilterMod(mod: Int): PingPongShaderPipe {
-        pingFBO.setTextureFilterMod(mod)
-        pongFBO.setTextureFilterMod(mod)
+    override fun useMipmap(): ShaderPipe {
+        pingFBO.useMipmap()
+        pongFBO.useMipmap()
         return this
     }
 

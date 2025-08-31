@@ -1,6 +1,7 @@
 package cn.coostack.cooparticlesapi.items
 
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleStyleManager
+import cn.coostack.cooparticlesapi.test.particle.style.PointStyle
 import cn.coostack.cooparticlesapi.test.particle.style.TestShapeUtilStyle
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResultHolder
@@ -15,8 +16,9 @@ class TestStyleItem : Item(Item.Properties().stacksTo(1).durability(120)) {
         if (world.isClientSide) {
             return res
         }
-        val style = TestShapeUtilStyle()
-        ParticleStyleManager.spawnStyle(world, user.position(), style)
+        val style = PointStyle()
+        style.bindPlayer = user.uuid
+        ParticleStyleManager.spawnStyle(world, user.eyePosition.add(user.forward), style)
         return res
     }
 }

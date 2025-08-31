@@ -24,7 +24,8 @@ class OutputDepthPipe(val depthSupplier: Supplier<Int>) : ShaderPipe {
         throw IllegalAccessException("深度pipe不能作为输入")
     }
 
-    override fun textureFilterMod(mod: Int): ShaderPipe {
+
+    override fun useMipmap(): ShaderPipe {
         return this
     }
 

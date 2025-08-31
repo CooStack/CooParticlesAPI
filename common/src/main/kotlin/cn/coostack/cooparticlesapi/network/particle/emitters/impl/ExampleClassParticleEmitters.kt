@@ -55,7 +55,8 @@ class ExampleClassParticleEmitters(pos: Vec3, world: Level?) : ClassParticleEmit
         data: ControlableParticleData,
         spawnPos: RelativeLocation,
         spawnWorld: Level,
-        currentProgress: Float
+        particleLerpProgress: Float,
+        posLerpProgress: Float,
     ) {
 
 

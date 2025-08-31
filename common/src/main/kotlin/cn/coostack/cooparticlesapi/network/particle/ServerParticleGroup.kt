@@ -4,6 +4,7 @@ import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.network.buffer.ParticleControlerDataBuffer
 import cn.coostack.cooparticlesapi.network.buffer.ParticleControlerDataBuffers
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleGroupS2C
+import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersManager
 import cn.coostack.cooparticlesapi.particles.control.ControlType
 import cn.coostack.cooparticlesapi.particles.control.group.ControlableParticleGroup
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
@@ -256,6 +257,11 @@ abstract class ServerParticleGroup(
                 )
             )
         )
+    }
+
+    override fun spawn(world: Level, pos: Vec3) {
+        if (world !is ServerLevel) return
+        ServerParticleGroupManager.addParticleGroup(this, pos, world)
     }
 
     /**

@@ -6,6 +6,7 @@ import cn.coostack.cooparticlesapi.network.particle.emitters.event.ParticleEvent
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
+import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
 import java.util.UUID
@@ -56,7 +57,7 @@ interface ParticleEmitters : ServerControler<ParticleEmitters> {
 
     fun tick()
 
-    fun spawnParticle(pos: Vec3)
+    fun spawnParticle(pos: Vec3, lerpProgress: Float)
 
     /**
      * 更新发射器属性状态
@@ -76,6 +77,13 @@ interface ParticleEmitters : ServerControler<ParticleEmitters> {
 
     override fun remove() {
         cancelled = true
+    }
+
+    override fun spawn(world: Level, pos: Vec3) {
+        if (world !is ServerLevel) return
+        this.world = world
+        this.pos = pos
+        ParticleEmittersManager.spawnEmitters(this)
     }
 
     override fun rotateParticlesAsAxis(angle: Double) {

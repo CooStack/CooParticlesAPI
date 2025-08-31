@@ -14,6 +14,12 @@ open class SimpleFrameBuffer(
     override var depthSupplier: Supplier<Int>
 ) : GlFrameBuffer {
     override val colorAttachments: IntArray = IntArray(colorChannelCount)
+
+    override fun getOutputChannelCount(): Int {
+        return colorChannelCount
+    }
+
+    private var useMipmap = false
     private var depthAttachment = -1
     private var fbo = 0
     private var prevFBO = 0
@@ -33,6 +39,10 @@ open class SimpleFrameBuffer(
 
     override fun height(): Int {
         return Minecraft.getInstance().mainRenderTarget.height
+    }
+
+    override fun useMipmap() {
+        useMipmap = true
     }
 
     override fun getCurrentDepthAttachment(): Int {
@@ -112,6 +122,16 @@ open class SimpleFrameBuffer(
             clear(GL_COLOR_BUFFER_BIT)
         }
         writeScope()
+
+        // 生成 mipmap
+        if (useMipmap) {
+            val current = glGetInteger(GL_TEXTURE_BINDING_2D)
+            colorAttachments.forEach {
+                glBindTexture(GL_TEXTURE_2D, it)
+                glGenerateMipmap(GL_TEXTURE_2D)
+            }
+            glBindTexture(GL_TEXTURE_2D, current)
+        }
         reset()
     }
 

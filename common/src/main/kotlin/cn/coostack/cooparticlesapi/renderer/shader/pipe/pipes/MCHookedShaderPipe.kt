@@ -58,7 +58,9 @@ class MCHookedShaderPipe(
         return fbo
     }
 
-    override fun textureFilterMod(mod: Int): ShaderPipe {
+
+    override fun useMipmap(): ShaderPipe {
+        fbo.useMipmap()
         return this
     }
 

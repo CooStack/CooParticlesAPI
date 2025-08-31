@@ -55,7 +55,8 @@ class TestEventEmitter(pos: Vec3, world: Level?) : ClassParticleEmitters(pos, wo
         data: ControlableParticleData,
         spawnPos: RelativeLocation,
         spawnWorld: Level,
-        currentProgress: Float
+        particleLerpProgress: Float,
+        posLerpProgress: Float,
     ) {
         controler.addPreTickAction {
             updatePhysics(loc, data)

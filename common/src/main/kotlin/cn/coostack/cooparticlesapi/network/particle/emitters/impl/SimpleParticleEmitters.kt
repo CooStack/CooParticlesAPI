@@ -227,11 +227,11 @@ class SimpleParticleEmitters(
         if (tick % max(1, delay) == 0) {
             // 执行粒子变更操作
             // 生成新粒子
-            spawnParticle(pos)
+            spawnParticle(pos, 1f)
         }
     }
 
-    override fun spawnParticle(pos: Vec3) {
+    override fun spawnParticle(pos: Vec3, lerpProgress: Float) {
         if (!world!!.isClientSide) {
             return
         }

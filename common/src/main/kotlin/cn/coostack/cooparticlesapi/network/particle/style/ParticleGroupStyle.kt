@@ -5,6 +5,7 @@ import cn.coostack.cooparticlesapi.network.buffer.ParticleControlerDataBuffer
 import cn.coostack.cooparticlesapi.network.buffer.ParticleControlerDataBuffers
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleStyleS2C
 import cn.coostack.cooparticlesapi.network.particle.ServerControler
+import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersManager
 import cn.coostack.cooparticlesapi.particles.Controlable
 import cn.coostack.cooparticlesapi.particles.ControlableParticle
 import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
@@ -17,6 +18,7 @@ import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import net.minecraft.client.multiplayer.ClientLevel
+import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
@@ -371,6 +373,11 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
             value.multiply(len * scale / value.length())
         }
         toggleRelative()
+    }
+
+    override fun spawn(world: Level, pos: Vec3) {
+        if (world !is ServerLevel) return
+        ParticleStyleManager.spawnStyle(world, pos, this)
     }
 
     open fun preRotateTo(map: Map<StyleData, RelativeLocation>, to: RelativeLocation) {

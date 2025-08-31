@@ -68,7 +68,8 @@ class PresetTestEmitters(pos: Vec3, world: Level?) : ClassParticleEmitters(pos, 
         data: ControlableParticleData,
         spawnPos: RelativeLocation,
         spawnWorld: Level,
-        currentProgress: Float
+        particleLerpProgress: Float,
+        posLerpProgress: Float,
     ) {
     }
 

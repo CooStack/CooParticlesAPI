@@ -1,11 +1,16 @@
 package cn.coostack.cooparticlesapi.renderer
 
 import cn.coostack.cooparticlesapi.network.packet.PacketRenderEntityS2C
+import cn.coostack.cooparticlesapi.network.particle.ServerControler
+import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersManager
+import cn.coostack.cooparticlesapi.renderer.server.ServerRenderEntityManager
+import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import com.mojang.blaze3d.systems.RenderSystem
 import io.netty.buffer.Unpooled
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.resources.ResourceLocation
+import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
 import org.joml.Matrix4f
@@ -15,7 +20,7 @@ import java.util.UUID
 /**
  * 为了方便设置
  */
-abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) {
+abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) : ServerControler<RenderEntity> {
     /**
      * 渲染可视距离
      * 给服务器设置则是设置进行传输生成的最小范围
@@ -126,6 +131,43 @@ abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) {
     abstract fun getRenderID(): ResourceLocation
 
     abstract fun release()
+
+    override fun teleportTo(to: Vec3) {
+        this.lastRenderPos = this.pos
+        this.pos = to
+    }
+
+    override fun teleportTo(x: Double, y: Double, z: Double) {
+        teleportTo(Vec3(x, y, z))
+    }
+
+    override fun rotateParticlesToPoint(to: RelativeLocation) {
+
+    }
+
+
+    override fun rotateToWithAngle(to: RelativeLocation, angle: Double) {
+
+    }
+
+    override fun rotateParticlesAsAxis(angle: Double) {
+
+    }
+
+    override fun remove() {
+        this.canceled = true
+    }
+
+    override fun getValue(): RenderEntity {
+        return this
+    }
+
+    override fun spawn(world: Level, pos: Vec3) {
+        if (world !is ServerLevel) return
+        this.world = world
+        this.pos = pos
+        ServerRenderEntityManager.spawn(this)
+    }
 
     fun renderOnWorld(
         matrices: Matrix4fStack, viewMatrix: Matrix4f,

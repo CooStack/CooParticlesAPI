@@ -4,6 +4,8 @@ import cn.coostack.cooparticlesapi.network.particle.ServerParticleGroup
 import cn.coostack.cooparticlesapi.network.particle.ServerParticleGroupManager
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleGroupStyle
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleStyleManager
+import cn.coostack.cooparticlesapi.renderer.RenderEntity
+import cn.coostack.cooparticlesapi.renderer.server.ServerRenderEntityManager
 import com.google.common.collect.ConcurrentHashMultiset
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.phys.AABB
@@ -35,19 +37,28 @@ object BarrageManager {
     }
 
     private fun spawnOnWorld(barrage: Barrage) {
-        val control = barrage.bindControl
-        if (control is ServerParticleGroup) {
-            ServerParticleGroupManager.addParticleGroup(
-                control,
-                barrage.loc,
-                barrage.world
-            )
-        } else {
-            ParticleStyleManager.spawnStyle(
-                barrage.world,
-                barrage.loc,
-                control as ParticleGroupStyle
-            )
+        when (val control = barrage.bindControl) {
+            is ServerParticleGroup -> {
+                ServerParticleGroupManager.addParticleGroup(
+                    control,
+                    barrage.loc,
+                    barrage.world
+                )
+            }
+
+            is ParticleGroupStyle -> {
+                ParticleStyleManager.spawnStyle(
+                    barrage.world,
+                    barrage.loc,
+                    control
+                )
+            }
+
+            is RenderEntity -> {
+                ServerRenderEntityManager.spawn(
+                    control
+                )
+            }
         }
         barrage.lunch = true
     }

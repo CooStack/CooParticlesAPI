@@ -1,6 +1,7 @@
 package cn.coostack.cooparticlesapi.utils.helper
 
 import cn.coostack.cooparticlesapi.particles.Controlable
+import cn.coostack.cooparticlesapi.utils.GraphMathHelper
 import kotlin.math.*
 
 abstract class AlphaHelper(var minAlpha: Double, var maxAlpha: Double, var alphaTick: Int) : ParticleHelper {
@@ -66,7 +67,11 @@ abstract class AlphaHelper(var minAlpha: Double, var maxAlpha: Double, var alpha
             when {
                 current >= alphaTick -> resetAlphaMax()
                 current <= 0 -> resetAlphaMin()
-                else -> setAlpha(minAlpha + step * enter)
+                else -> {
+                    val progress = current.toDouble() / alphaTick
+                    val alpha = GraphMathHelper.lerp(progress, minAlpha, maxAlpha)
+                    setAlpha(alpha)
+                }
             }
         }
     }
@@ -75,7 +80,9 @@ abstract class AlphaHelper(var minAlpha: Double, var maxAlpha: Double, var alpha
     fun increaseAlpha() {
         getLoadedGroup()?.takeUnless { over() }?.let {
             current++
-            setAlpha(minAlpha + step * current)
+            val progress = current.toDouble() / alphaTick
+            val alpha = GraphMathHelper.lerp(progress, minAlpha, maxAlpha)
+            setAlpha(alpha)
         }
     }
 
@@ -83,7 +90,9 @@ abstract class AlphaHelper(var minAlpha: Double, var maxAlpha: Double, var alpha
     fun decreaseAlpha() {
         getLoadedGroup()?.takeUnless { isZero() }?.let {
             current--
-            setAlpha(minAlpha + step * current)
+            val progress = current.toDouble() / alphaTick
+            val alpha = GraphMathHelper.lerp(progress, minAlpha, maxAlpha)
+            setAlpha(alpha)
         }
     }
 

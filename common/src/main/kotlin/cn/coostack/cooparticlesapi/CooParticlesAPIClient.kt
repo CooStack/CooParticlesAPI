@@ -15,6 +15,7 @@ import cn.coostack.cooparticlesapi.test.particle.client.SequencedMagicCircleClie
 import cn.coostack.cooparticlesapi.test.particle.client.TestGroupClient
 import cn.coostack.cooparticlesapi.test.particle.style.ExampleSequencedStyle
 import cn.coostack.cooparticlesapi.test.particle.style.ExampleStyle
+import cn.coostack.cooparticlesapi.test.particle.style.PointStyle
 import cn.coostack.cooparticlesapi.test.particle.style.RomaMagicTestStyle
 import cn.coostack.cooparticlesapi.test.particle.style.RotateTestStyle
 import cn.coostack.cooparticlesapi.test.particle.style.TestShapeUtilStyle
@@ -56,6 +57,7 @@ object CooParticlesAPIClient {
         ParticleStyleManager.register(RomaMagicTestStyle::class.java, RomaMagicTestStyle.Provider())
         ParticleStyleManager.register(RotateTestStyle::class.java, RotateTestStyle.Provider())
         ParticleStyleManager.register(TestShapeUtilStyle::class.java, TestShapeUtilStyle.Provider())
+        ParticleStyleManager.register(PointStyle::class.java, PointStyle.Provider())
     }
 
     /**

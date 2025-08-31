@@ -180,7 +180,8 @@ class PresetLaserEmitters(pos: Vec3, world: Level?) : ClassParticleEmitters(pos,
         data: ControlableParticleData,
         spawnPos: RelativeLocation,
         spawnWorld: Level,
-        currentProgress: Float
+        particleLerpProgress: Float,
+        posLerpProgress: Float,
     ) {
         data.setTextureSheet(ParticleRenderType.PARTICLE_SHEET_TRANSLUCENT)
         var tick = 0

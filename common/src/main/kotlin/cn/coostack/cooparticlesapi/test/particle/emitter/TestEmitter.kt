@@ -11,7 +11,6 @@ import cn.coostack.cooparticlesapi.utils.GraphMathHelper
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import cn.coostack.cooparticlesapi.utils.interpolator.DirectInterpolator
-import cn.coostack.cooparticlesapi.utils.interpolator.LineInterpolator
 import net.minecraft.client.particle.ParticleRenderType
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
@@ -98,13 +97,14 @@ class TestEmitter(pos: Vec3, world: Level?) : ClassParticleEmitters(pos, world) 
         data: ControlableParticleData,
         spawnPos: RelativeLocation,
         spawnWorld: Level,
-        currentProgress: Float
+        particleLerpProgress: Float,
+        posLerpProgress: Float,
     ) {
         data.setTextureSheet(ParticleRenderType.PARTICLE_SHEET_TRANSLUCENT)
         data.size = 1f
         data.color = Vector3f(0f, 99 / 255f, 204 / 255f)
         data.alpha = 0f
-        val delta = GraphMathHelper.lerp(currentProgress, particleRotateX, lastParticleRotateX)
+        val delta = GraphMathHelper.lerp(particleLerpProgress, particleRotateX, lastParticleRotateX)
         val rotate = RelativeLocation(cos(delta), 0.0, sin(delta))
         Math3DUtil.rotatePointsToPoint(
             listOf(rotate),
@@ -113,7 +113,7 @@ class TestEmitter(pos: Vec3, world: Level?) : ClassParticleEmitters(pos, world) 
         )
         data.velocity = rotate.normalize().multiply(0.3).toVector() + particleMoveDirection
         spawnPos.add(
-            RelativeLocation.of(data.velocity.multiply(currentProgress.toDouble()))
+            RelativeLocation.of(data.velocity.multiply(particleLerpProgress.toDouble()))
         )
         controler.addPreTickAction {
             updatePhysics(pos, data)

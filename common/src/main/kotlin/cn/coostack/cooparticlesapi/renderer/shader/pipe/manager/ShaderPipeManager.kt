@@ -36,6 +36,9 @@ class ShaderPipeManager(
         .vertex(screenVertex)
         .fragment(screenFragment)
         .build()
+
+    private val useMipmap = false
+
     val pipes = HashSet<ShaderPipe>()
     val linker = GraphPipeLinker()
 

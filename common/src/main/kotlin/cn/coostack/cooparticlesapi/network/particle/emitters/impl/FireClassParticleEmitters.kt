@@ -91,7 +91,8 @@ class FireClassParticleEmitters(var player: UUID, pos: Vec3, world: Level?) : Cl
         data: ControlableParticleData,
         spawnPos: RelativeLocation,
         spawnWorld: Level,
-        currentProgress: Float
+        particleLerpProgress: Float,
+        posLerpProgress: Float,
     ) {
         data.velocity = data.velocity.add(
             Vec3(
