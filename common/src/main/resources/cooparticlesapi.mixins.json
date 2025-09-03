@@ -3,7 +3,8 @@
   "package": "cn.coostack.cooparticlesapi.mixin",
   "plugin": "cn.coostack.cooparticlesapi.mixin.plugin.CooParticleFabricMixinLoaderPlugin",
   "compatibilityLevel": "JAVA_18",
-  "mixins": [],
+  "mixins": [
+  ],
   "refmap": "cooparticlesapi.refmap.json",
   "injectors": {
     "defaultRequire": 1
@@ -12,7 +13,6 @@
     "CooParticleCameraMixin",
     "MainTargetMixin",
     "ParticleEngineAccessor",
-    "ParticleEngineMixin",
-    "WorldRendererMixin"
+    "ParticleEngineMixin"
   ]
 }

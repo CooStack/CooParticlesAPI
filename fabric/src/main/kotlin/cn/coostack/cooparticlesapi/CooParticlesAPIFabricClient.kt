@@ -1,34 +1,22 @@
 package cn.coostack.cooparticlesapi
 
-import cn.coostack.cooparticlesapi.network.packet.PacketCameraShakeS2C
-import cn.coostack.cooparticlesapi.network.packet.PacketParticleEmittersS2C
-import cn.coostack.cooparticlesapi.network.packet.PacketParticleGroupS2C
-import cn.coostack.cooparticlesapi.network.packet.PacketParticleS2C
-import cn.coostack.cooparticlesapi.network.packet.PacketParticleStyleS2C
-import cn.coostack.cooparticlesapi.network.packet.PacketRenderEntityS2C
-import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientCameraShakeHandler
-import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientParticleEmittersPacketHandler
-import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientParticleGroupPacketHandler
-import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientParticlePacketHandler
-import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientParticleStylePacketHandler
-import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientRenderEntityPacketHandler
+import cn.coostack.cooparticlesapi.CooParticlesAPIClient.initShaderPrograms
+import cn.coostack.cooparticlesapi.network.packet.*
+import cn.coostack.cooparticlesapi.network.packet.client.listener.*
 import cn.coostack.cooparticlesapi.particles.CooModParticles
-import cn.coostack.cooparticlesapi.particles.impl.ControlableCloudParticle
-import cn.coostack.cooparticlesapi.particles.impl.ControlableEnchantmentParticle
-import cn.coostack.cooparticlesapi.particles.impl.ControlableEndRodParticle
-import cn.coostack.cooparticlesapi.particles.impl.ControlableFireworkParticle
-import cn.coostack.cooparticlesapi.particles.impl.ControlableFlashParticle
+import cn.coostack.cooparticlesapi.particles.impl.*
 import cn.coostack.cooparticlesapi.platform.network.FabricClientContext
-import cn.coostack.cooparticlesapi.renderer.client.ClientRenderPipelineManager
+import cn.coostack.cooparticlesapi.renderer.client.ClientRenderEntityManager.renderTick
 import net.fabricmc.api.ClientModInitializer
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientWorldEvents
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
 import net.fabricmc.fabric.api.client.particle.v1.ParticleFactoryRegistry
+import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents
 import net.minecraft.client.Minecraft
-import org.lwjgl.glfw.GLFW
-import org.lwjgl.glfw.GLFWWindowSizeCallback
+import org.joml.Matrix4f
+
 
 object CooParticlesAPIFabricClient : ClientModInitializer {
     override fun onInitializeClient() {
@@ -48,6 +36,17 @@ object CooParticlesAPIFabricClient : ClientModInitializer {
         ClientWorldEvents.AFTER_CLIENT_WORLD_CHANGE.register { _, _ ->
             CooParticlesAPIClient.afterClientWorldChange()
         }
+
+        WorldRenderEvents.END.register {
+            val view: Matrix4f = Matrix4f().rotate(it.camera().rotation())
+            val projection: Matrix4f = it.projectionMatrix()
+            val tickDelta: Float = it.tickCounter().gameTimeDeltaTicks
+            val level = Minecraft.getInstance().level ?: return@register
+            initShaderPrograms()
+            val shouldTick: Boolean = level.tickRateManager().runsNormally()
+            renderTick(tickDelta, it.positionMatrix(), projection)
+        }
+
     }
 
     private fun registerParticleFabric() {

@@ -67,6 +67,7 @@ open class MinecraftHookFrameBuffer(
         glClear(bit)
     }
 
+
     override fun bindFramebuffer() {
         prevFBO = glGetInteger(GL_FRAMEBUFFER_BINDING)
         glBindFramebuffer(GL_FRAMEBUFFER, fbo())

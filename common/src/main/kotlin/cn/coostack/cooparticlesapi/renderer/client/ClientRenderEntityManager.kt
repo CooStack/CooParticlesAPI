@@ -1,7 +1,9 @@
 package cn.coostack.cooparticlesapi.renderer.client
 
+import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.exceptions.RenderPipeNotFoundException
 import cn.coostack.cooparticlesapi.renderer.RenderEntity
+import com.mojang.blaze3d.systems.RenderSystem
 import net.minecraft.client.Minecraft
 import net.minecraft.client.Minecraft.*
 import net.minecraft.network.FriendlyByteBuf
@@ -23,6 +25,10 @@ object ClientRenderEntityManager {
      */
     private val entityPipeType = HashMap<ResourceLocation, ResourceLocation>()
     private val entityCodecs = HashMap<ResourceLocation, StreamCodec<FriendlyByteBuf, RenderEntity>>()
+
+    fun init() {
+    }
+
     fun getFrom(uuid: UUID): RenderEntity? {
         return entities[uuid]
     }
@@ -74,6 +80,7 @@ object ClientRenderEntityManager {
         }
 
         val stack = Matrix4fStack(16)
+        val target = minecraft.mainRenderTarget
         entitiesPipeClassifier.forEach {
             val pipeID = it.key
             val entities = it.value
@@ -88,7 +95,11 @@ object ClientRenderEntityManager {
                     stack.popMatrix()
                 }
             }
+            target.bindWrite(false)
+            RenderSystem.depthMask(false)
             pipe.render()
+            RenderSystem.depthMask(true)
+            target.unbindWrite()
         }
     }
 

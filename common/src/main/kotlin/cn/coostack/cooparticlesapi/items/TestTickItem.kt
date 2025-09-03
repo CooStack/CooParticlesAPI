@@ -31,6 +31,7 @@ class TestTickItem : Item(Item.Properties().stacksTo(1)) {
         val server = world.server!!
         val tickManager = server.tickRateManager()
         val frozen = tickManager.isFrozen
+
         if (frozen) {
             if (tickManager.isSprinting) {
                 tickManager.stopSprinting()

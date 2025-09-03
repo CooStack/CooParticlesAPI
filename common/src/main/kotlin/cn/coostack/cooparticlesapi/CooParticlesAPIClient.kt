@@ -72,6 +72,7 @@ object CooParticlesAPIClient {
         renderInit = true
         ShaderPipeManagers.init() // 注册到pipeline
         ClientRenderPipelineManager.init() // 把注册的pipeline进行一个初始化
+        ClientRenderEntityManager.init()
         CooParticlesConstants.logger.info("初始化渲染管线")
     }
 

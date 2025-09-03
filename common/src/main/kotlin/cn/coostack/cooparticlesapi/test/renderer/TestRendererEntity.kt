@@ -31,7 +31,7 @@ class TestRendererEntity(world: Level?) : RenderEntity(world) {
             setVertexes(ShaderUtil.genBall(5f, 64, 64), CooVertexFormat.POINT_FORMAT)
         }
         val ballShader = ShaderProgramBuilder()
-            .vertex("core/vertex/point_random_offset.vsh")
+            .vertex("core/vertex/point.vsh")
             .fragment("core/fragment/color.fsh")
             .build()
         var initialized = false
@@ -79,8 +79,8 @@ class TestRendererEntity(world: Level?) : RenderEntity(world) {
             setMatrix4("projMat", projMatrix)
             setMatrix4("viewMat", viewMatrix)
             setMatrix4("transMat", matrices)
-            setFloat("offset", 5f)
-            setFloat("time", Math.toRadians(world?.gameTime?.toDouble() ?: 0.0).toFloat())
+//            setFloat("offset", 5f)
+//            setFloat("time", Math.toRadians(world?.gameTime?.toDouble() ?: 0.0).toFloat())
             setFloat3("color", randomColor)
             ballBuffer.draw()
             matrices.popMatrix()
