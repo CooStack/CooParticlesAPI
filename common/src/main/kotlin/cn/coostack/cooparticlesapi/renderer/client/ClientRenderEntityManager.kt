@@ -74,13 +74,7 @@ object ClientRenderEntityManager {
     }
 
     fun renderTick(tickDelta: Float, viewMatrix: Matrix4f, projMatrix: Matrix4f) {
-        val window = minecraft.window
-        if (window.screenWidth != minecraft.mainRenderTarget.viewWidth || window.screenHeight != minecraft.mainRenderTarget.viewHeight) {
-            return
-        }
-
         val stack = Matrix4fStack(16)
-        val target = minecraft.mainRenderTarget
         entitiesPipeClassifier.forEach {
             val pipeID = it.key
             val entities = it.value
@@ -95,11 +89,9 @@ object ClientRenderEntityManager {
                     stack.popMatrix()
                 }
             }
-            target.bindWrite(false)
             RenderSystem.depthMask(false)
             pipe.render()
             RenderSystem.depthMask(true)
-            target.unbindWrite()
         }
     }
 

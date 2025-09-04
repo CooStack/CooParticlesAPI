@@ -37,15 +37,15 @@ object CooParticlesAPIFabricClient : ClientModInitializer {
             CooParticlesAPIClient.afterClientWorldChange()
         }
 
-        WorldRenderEvents.END.register {
-            val view: Matrix4f = Matrix4f().rotate(it.camera().rotation())
-            val projection: Matrix4f = it.projectionMatrix()
-            val tickDelta: Float = it.tickCounter().gameTimeDeltaTicks
-            val level = Minecraft.getInstance().level ?: return@register
-            initShaderPrograms()
-            val shouldTick: Boolean = level.tickRateManager().runsNormally()
-            renderTick(tickDelta, it.positionMatrix(), projection)
-        }
+//        WorldRenderEvents.END.register {
+//            val view: Matrix4f = Matrix4f().rotate(it.camera().rotation())
+//            val projection: Matrix4f = it.projectionMatrix()
+//            val tickDelta: Float = it.tickCounter().gameTimeDeltaTicks
+//            val level = Minecraft.getInstance().level ?: return@register
+//            initShaderPrograms()
+//            val shouldTick: Boolean = level.tickRateManager().runsNormally()
+//            renderTick(tickDelta, it.positionMatrix(), projection)
+//        }
 
     }
 

@@ -36,15 +36,15 @@ object CooParticlesAPINeoClientListener {
         CooParticlesAPIClient.afterClientWorldChange()
     }
 
-    @SubscribeEvent
-    fun onRender(event: RenderLevelStageEvent) {
-        if (event.stage != RenderLevelStageEvent.Stage.AFTER_LEVEL) return
-        val level = Minecraft.getInstance().level ?: return
-
-        initShaderPrograms()
-        val shouldTick: Boolean = level.tickRateManager().runsNormally()
-        val tickDelta: Float = event.partialTick.getGameTimeDeltaPartialTick(!shouldTick)
-        renderTick(tickDelta, event.modelViewMatrix, event.projectionMatrix)
-    }
+//    @SubscribeEvent
+//    fun onRender(event: RenderLevelStageEvent) {
+//        if (event.stage != RenderLevelStageEvent.Stage.AFTER_LEVEL) return
+//        val level = Minecraft.getInstance().level ?: return
+//
+//        initShaderPrograms()
+//        val shouldTick: Boolean = level.tickRateManager().runsNormally()
+//        val tickDelta: Float = event.partialTick.getGameTimeDeltaPartialTick(!shouldTick)
+//        renderTick(tickDelta, event.modelViewMatrix, event.projectionMatrix)
+//    }
 
 }

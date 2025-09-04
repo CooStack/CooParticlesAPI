@@ -258,17 +258,22 @@ open class SimpleFrameBuffer(
     override fun copyDepthBuffer(srcFBO: Int) {
         val lastReadReader = glGetInteger(GL_READ_FRAMEBUFFER_BINDING)
         val lastDrawReader = glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING)
+        val width = Minecraft.getInstance().window.width
+        val height = Minecraft.getInstance().window.height
+
+        // 绑定读和写的FBO
         glBindFramebuffer(GL_READ_FRAMEBUFFER, srcFBO)
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fbo)
         glBlitFramebuffer(
-            0, 0, width(), height(),    // 源区域
-            0, 0, width(), height(),    // 目标区域
-            GL_DEPTH_BUFFER_BIT,    // 只复制深度缓冲
-            GL_NEAREST              // 过滤方式，深度用 NEAREST 就好
+            0, 0, width, height,  // 源区域
+            0, 0, width, height,  // 目标区域
+            GL_DEPTH_BUFFER_BIT,
+            GL_NEAREST
         )
-        // 解绑，恢复默认
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, lastReadReader)
-        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, lastDrawReader)
+        glBindFramebuffer(GL_FRAMEBUFFER, 0)
+//        // 解绑，恢复默认
+//        glBindFramebuffer(GL_READ_FRAMEBUFFER, lastReadReader)
+//        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, lastDrawReader)
     }
 
 }
