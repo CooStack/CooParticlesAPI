@@ -5,6 +5,7 @@ import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersMan
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleStyleManager
 import cn.coostack.cooparticlesapi.particles.CooModParticles
 import cn.coostack.cooparticlesapi.particles.control.group.ClientParticleGroupManager
+import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import cn.coostack.cooparticlesapi.renderer.client.ClientRenderEntityManager
 import cn.coostack.cooparticlesapi.renderer.client.ClientRenderPipelineManager
 import cn.coostack.cooparticlesapi.renderer.client.ShaderPipeManagers
@@ -13,18 +14,17 @@ import cn.coostack.cooparticlesapi.test.particle.client.BarrierSwordGroupClient
 import cn.coostack.cooparticlesapi.test.particle.client.ScaleCircleGroupClient
 import cn.coostack.cooparticlesapi.test.particle.client.SequencedMagicCircleClient
 import cn.coostack.cooparticlesapi.test.particle.client.TestGroupClient
-import cn.coostack.cooparticlesapi.test.particle.style.ExampleSequencedStyle
-import cn.coostack.cooparticlesapi.test.particle.style.ExampleStyle
-import cn.coostack.cooparticlesapi.test.particle.style.PointStyle
-import cn.coostack.cooparticlesapi.test.particle.style.RomaMagicTestStyle
-import cn.coostack.cooparticlesapi.test.particle.style.RotateTestStyle
-import cn.coostack.cooparticlesapi.test.particle.style.TestShapeUtilStyle
+import cn.coostack.cooparticlesapi.test.particle.style.*
 import cn.coostack.cooparticlesapi.test.renderer.TestRendererEntity
+import net.irisshaders.iris.api.v0.IrisApi
 import net.minecraft.client.multiplayer.ClientLevel
 
 object CooParticlesAPIClient {
     @JvmField
     val scheduler = CooScheduler()
+
+    @JvmField
+    var irisLoaded = false
 
     @JvmStatic
     fun init() {
@@ -32,6 +32,14 @@ object CooParticlesAPIClient {
         initStyle()
         initParticleType()
         initRender()
+
+
+        irisLoaded = CooParticlesServices.PLATFORM.isModLoaded("iris")
+    }
+
+    @JvmStatic
+    fun checkIrisShaderPackUsed(): Boolean {
+        return irisLoaded && IrisApi.getInstance().isShaderPackInUse
     }
 
     private fun initParticleType() {

@@ -16,18 +16,19 @@ interface ShaderPipe {
      */
     fun fbo(): GlFrameBuffer
 
+    /**
+     * 使用mipmap
+     */
     fun useMipmap(): ShaderPipe
 
     /**
      * 向这个pipe写入内容
+     * 会经过当前的frag的处理
      */
     fun write(invoker: ShaderPipe.() -> Unit)
 
     /**
-     * 这是将处理的结果存在当前的fbo中
-     * 而 write是将处理前的结果存在当前的fbo中
-     * 如果执行这个方法， 则意味着你的输入已经经过了当前 ShaderPipe frag着色器的处理
-     * 所以可以直接获取output
+     * 会将channel的内容经过当前pipe的片段着色器处理，然后存储到当前的fbo材质通道中
      * @param channel 待处理的输入的颜色通道
      */
     fun writeFromChannel(channel: PipeChannels): ShaderPipe
@@ -38,8 +39,10 @@ interface ShaderPipe {
      */
     fun drawPipeFrame()
 
+    /**
+     * 将这个fbo绘制的内容打包输出
+     */
     fun getFrameOutput(): PipeChannels
-
 
     fun resize(width: Int, height: Int)
 

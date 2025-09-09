@@ -9,29 +9,62 @@ import cn.coostack.cooparticlesapi.renderer.shader.pipe.manager.ShaderPipeManage
 import cn.coostack.cooparticlesapi.renderer.shader.pipe.pipes.PingPongShaderPipe
 import cn.coostack.cooparticlesapi.renderer.shader.pipe.pipes.SimpleShaderPipe
 import com.mojang.blaze3d.systems.RenderSystem
+import net.minecraft.client.Minecraft
 import net.minecraft.resources.ResourceLocation
 import org.lwjgl.opengl.GL33
+import kotlin.math.min
 
+/**
+ * 实现一个真正符合光学的泛光
+ * 其实是要在渲染区块方块之前 （渲染天空之后）
+ * 进行着色， 然后再进行直接泛光处理
+ *
+ * 然后渲染区块， 在对区块内容进行后处理 （光源）
+ * 最后再渲染其他
+ * 但是因为IRIS逆天的兼容性， 导致我的渲染始终只能在最后渲染
+ * 因此这个光效一定是有问题的
+ *
+ * 不过目前框架是无法实现对mc的内容进行后处理的 （也许直接套用mc的color texture channel能解决？）
+ *
+ */
 object ShaderPipeManagers {
-    val default = ShaderPipeManager(ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "default")) {
+    val default = ShaderPipeManager(
+        ResourceLocation.fromNamespaceAndPath(
+            CooParticlesConstants.MOD_ID,
+            "default"
+        )
+    ).setLinkerFunc {
         valueOutput(ShaderPipes.simpleScreenOutput {
             minecraft.mainRenderTarget.depthTextureId
         })
         it.link(valueOutput!!, 0, valueInputPipe!!, 0)
     }
     val simpleBloom =
-        ShaderPipeManager(ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "simple_bloom")) {
-        }.addBloomEffect(10, 1.5f)
+        ShaderPipeManager(
+            ResourceLocation.fromNamespaceAndPath(
+                CooParticlesConstants.MOD_ID,
+                "simple_bloom"
+            )
+        ).setLinkerFunc {
+        }.addBloomEffect(
+            10,
+            1.5f,
+            30f,
+            10f,
+            5f
+        )
 
     fun init() {
         ClientRenderPipelineManager.register(default)
         ClientRenderPipelineManager.register(simpleBloom)
     }
 
-
     private fun ShaderPipeManager.addBloomEffect(
         blurIterations: Int = 2,
-        bloomIntensity: Float = 1.0f
+        bloomIntensity: Float = 1.0f,
+        gaussSigma: Float = 2f,
+        gaussRange: Float = 2f,
+        lodLevel: Float = 15f
     ): ShaderPipeManager {
         // 添加亮部提取管道
         valueInput(
@@ -52,64 +85,49 @@ object ShaderPipeManagers {
                         "core/bloom/blur.fsh"
                     ),
                     GlShaderType.FRAGMENT
-                ), IdentifierShader(
-                    ResourceLocation.fromNamespaceAndPath(
-                        CooParticlesConstants.MOD_ID,
-                        "core/bloom/blur.fsh"
-                    ),
-                    GlShaderType.FRAGMENT
                 ),
-                { minecraft.mainRenderTarget.depthTextureId }, 1, blurIterations
+                { minecraft.mainRenderTarget.depthTextureId }, 1, blurIterations,
+                GL33.GL_LINEAR
             ).addRenderHandlerPong { program ->
                 program.setInt("bright", 0)
+                program.setFloat("sigma", gaussSigma)
+                program.setFloat("range", gaussRange)
                 program.setBoolean("horizontal", true)
             }.addRenderHandler { program ->
                 program.setInt("bright", 0)
+                program.setFloat("sigma", gaussSigma)
+                program.setFloat("range", gaussRange)
                 program.setBoolean("horizontal", false)
             }
         )
-
-        /**
-         * 这个通道需要mipmap
-         * 但是他的数据来源是上一级
-         * 所以要给上一级（也就是输入通道） 设置mipmap
-         */
-        var lastTent: ShaderPipe? = null
-        for (i in 0..3) {
-            val tent = addPipe(
-                SimpleShaderPipe(
-                    IdentifierShader(
-                        ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "core/bloom/tent.fsh"),
-                        GlShaderType.FRAGMENT
-                    ), { minecraft.mainRenderTarget.depthTextureId }, 1, GL33.GL_NEAREST_MIPMAP_LINEAR
-                ).addRenderHandler { program ->
-//                program.setInt("image", 0)
-                    program.setInt("scene", 0)
-                    program.setFloat("lod", 4f - i)
-                }.useMipmap()
-            )
-            if (lastTent == null) {
-                lastTent = tent
-                linker.link(tent, 0, valueInputPipe!!, 1)
-                continue
-            }
-            linker.link(tent, 0, lastTent, 0)
-            lastTent = tent
-        }
-        linker.link(blur, 0, lastTent!!, 0)
-        val kawase = addPipe(
+        val tent = addPipe(
             SimpleShaderPipe(
                 IdentifierShader(
-                    ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "core/bloom/kawase_blur.fsh"),
+                    ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "core/bloom/tent.fsh"),
                     GlShaderType.FRAGMENT
-                ), { minecraft.mainRenderTarget.depthTextureId }, 1, GL33.GL_LINEAR_MIPMAP_LINEAR
+                ), { minecraft.mainRenderTarget.depthTextureId }, 1, GL33.GL_NEAREST_MIPMAP_LINEAR
             ).addRenderHandler { program ->
-                program.setInt("bright", 0)
-                program.setFloat("uOffset", 3f)
-                program.setFloat("intensity", 2f)
+                program.setInt("scene", 0)
+                program.setFloat("lod", lodLevel)
             }.useMipmap()
         )
-        linker.link(kawase, 0, blur, 0)  // blur的输出 提交给 kawase的输入
+        val accumulate = addPipe(
+            SimpleShaderPipe(
+                IdentifierShader(
+                    ResourceLocation.fromNamespaceAndPath(
+                        CooParticlesConstants.MOD_ID,
+                        "core/bloom/accumulate.fsh"
+                    ),
+                    GlShaderType.FRAGMENT
+                ), { minecraft.mainRenderTarget.depthTextureId }
+            ).addRenderHandler { program ->
+                program.setFloat("intensity", bloomIntensity)
+                program.setInt("levels", lodLevel.toInt())
+            }
+        )
+        linker.link(tent, 0, valueInputPipe!!, 1)
+        linker.link(accumulate, 0, tent, 0)
+        linker.link(blur, 0, accumulate, 0)
         // 添加Bloom混合管道
         valueOutput(
             SimpleShaderPipe(
@@ -124,9 +142,8 @@ object ShaderPipeManagers {
             }
         )
 
-
         linker.link(valueOutput!!, 0, valueInputPipe!!, 0)
-        linker.link(valueOutput!!, 1, kawase, 0)
+        linker.link(valueOutput!!, 1, blur, 0)
         return this
     }
 }

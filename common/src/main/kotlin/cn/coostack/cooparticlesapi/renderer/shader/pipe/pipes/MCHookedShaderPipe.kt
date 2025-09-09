@@ -72,7 +72,7 @@ class MCHookedShaderPipe(
     }
 
     override fun writeFromChannel(channel: PipeChannels): MCHookedShaderPipe {
-        channel.drawWith {
+        channel.useOnContext {
             // 绑定当前的片段着色器
             screenProgram.useOnContext {
                 // 上传数据

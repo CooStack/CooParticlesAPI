@@ -14,7 +14,12 @@ import org.joml.Vector3f
  * 适合在粒子发射器本身进行移动时使用
  */
 class LineInterpolator : Interpolator {
-    val queue = CircularQueue<RelativeLocation>(2)
+    /**
+     * 为了防止超远距离的 "传送" 导致超级长的粒子条
+     * 设置一个上限可以防止出现这种问题
+     */
+    private var limit = 256.0
+    private val queue = CircularQueue<RelativeLocation>(2)
 
     /**
      * 细分程度
@@ -37,6 +42,11 @@ class LineInterpolator : Interpolator {
         return this
     }
 
+    override fun setLimit(limit: Double): LineInterpolator {
+        this.limit = limit
+        return this
+    }
+
     override fun setRefiner(refiner: Double): LineInterpolator {
         refinerCount = refiner.coerceAtLeast(0.001)
         return this
@@ -49,6 +59,10 @@ class LineInterpolator : Interpolator {
 
         if (queue.notNullSize() == 1) {
             return arrayListOf(queue[0])
+        }
+
+        if (queue[0].distance(queue[1]) > limit) {
+            return arrayListOf(queue[1])
         }
         return Math3DUtil.fillLine(queue[0], queue[1], refinerCount)
     }

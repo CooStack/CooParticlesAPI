@@ -18,7 +18,8 @@ import org.joml.Vector3f
  * @see putParticleArgs
  */
 class DirectInterpolator : Interpolator {
-    val queue = CircularQueue<RelativeLocation>(2)
+    private val queue = CircularQueue<RelativeLocation>(2)
+    private var limit = 256.0
 
     /**
      * 细分程度
@@ -38,6 +39,11 @@ class DirectInterpolator : Interpolator {
 
     override fun insertPoint(vec: RelativeLocation): DirectInterpolator {
         queue.addFirst(vec.clone())
+        return this
+    }
+
+    override fun setLimit(limit: Double): DirectInterpolator {
+        this.limit = limit
         return this
     }
 
@@ -65,6 +71,9 @@ class DirectInterpolator : Interpolator {
 
         if (queue.notNullSize() == 1) {
             return arrayListOf(queue[0])
+        }
+        if (queue[0].distance(queue[1]) > limit) {
+            return arrayListOf(queue[1])
         }
         return Math3DUtil.fillLine(queue[0], queue[1], refinerCount)
     }

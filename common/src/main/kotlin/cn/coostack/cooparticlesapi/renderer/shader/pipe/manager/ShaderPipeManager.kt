@@ -1,6 +1,7 @@
 package cn.coostack.cooparticlesapi.renderer.shader.pipe.manager
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
+import cn.coostack.cooparticlesapi.exceptions.RenderPipeLinkerNotSetException
 import cn.coostack.cooparticlesapi.exceptions.RenderPipeOutputNotSetException
 import cn.coostack.cooparticlesapi.renderer.shader.ShaderProgramBuilder
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlShaderType
@@ -20,7 +21,7 @@ import java.util.function.Supplier
  * @param depthSupplier 共享的深度
  */
 class ShaderPipeManager(
-    val pipeID: ResourceLocation, val linkerInit: ShaderPipeManager.(PipeLinker) -> Unit
+    val pipeID: ResourceLocation
 ) {
     private var initialized = false
     private val screenBuffer = VertexBuffers.getScreenBuffer()
@@ -36,8 +37,6 @@ class ShaderPipeManager(
         .vertex(screenVertex)
         .fragment(screenFragment)
         .build()
-
-    private val useMipmap = false
 
     val pipes = HashSet<ShaderPipe>()
     val linker = GraphPipeLinker()
@@ -55,6 +54,14 @@ class ShaderPipeManager(
     var enableBlend = true
     var blendFuncSrc = GL_ONE
     var blendFuncDst = GL_ONE
+
+    private var linkerSet = false
+    private var linkerFunc: ShaderPipeManager.(PipeLinker) -> Unit = {}
+    fun setLinkerFunc(func: ShaderPipeManager.(PipeLinker) -> Unit): ShaderPipeManager {
+        linkerSet = true
+        linkerFunc = func
+        return this
+    }
 
     /**
      * 输入管道
@@ -80,10 +87,13 @@ class ShaderPipeManager(
             return
         }
 
+        if (!linkerSet){
+            throw RenderPipeLinkerNotSetException(pipeID)
+        }
+
         beforeInitPipe.forEach {
             it()
         }
-
         initialized = true
         // 判断pipes是否为空
         if (valueInputPipe == null) {
@@ -103,7 +113,7 @@ class ShaderPipeManager(
         }
         screenBuffer.init()
         screenProgram.init()
-        linkerInit(linker)
+        linkerFunc(linker)
     }
 
     fun beforeInit(invoke: ShaderPipeManager.() -> Unit): ShaderPipeManager {
@@ -177,48 +187,20 @@ class ShaderPipeManager(
             throw RenderPipeOutputNotSetException(pipeID)
         }
         inputPipe(HashSet(), valueOutput!!)
-//        inputPipe(valueOutput!!)
         // 绘制到当前 (公共 frame)
         if (enableBlend) {
             RenderSystem.enableBlend()
             RenderSystem.blendFunc(blendFuncSrc, blendFuncDst)
         }
         RenderSystem.depthMask(false)
-//        last.drawPipeFrame()
         screenProgram.useOnContext {
-            valueOutput!!.getFrameOutput().drawWith {
+            valueOutput!!.getFrameOutput().useOnContext {
                 screenBuffer.draw()
             }
         }
         RenderSystem.defaultBlendFunc()
         RenderSystem.depthMask(true)
     }
-
-//    /**
-//     * 传递管线, 最后绘制last
-//     */
-//    fun render() {
-//        if (!initialized) {
-//            return
-//        }
-//        val iterator = pipes.iterator()
-//        var last = iterator.next()
-//        while (iterator.hasNext()) {
-//            val current = iterator.next()
-//            current.write {
-//                RenderSystem.enableBlend()
-//                last.drawPipeFrame()
-//            }
-//            last = current
-//        }
-//        // 绘制到当前 (公共 frame)
-//        RenderSystem.enableBlend()
-//        RenderSystem.blendFunc(GL_ONE, GL_ONE)
-//        RenderSystem.depthMask(false)
-//        last.drawPipeFrame()
-//        RenderSystem.defaultBlendFunc()
-//        RenderSystem.depthMask(true)
-//    }
 
     fun release() {
         pipes.forEach {

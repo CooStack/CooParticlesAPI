@@ -191,8 +191,8 @@ open class SimpleFrameBuffer(
             colorAttachments[it] = texture
             bindTextureTo(texture) {
                 glTexImage2D(
-                    GL_TEXTURE_2D, 0, GL_RGBA,
-                    width(), height(), 0, GL_RGBA, GL_UNSIGNED_BYTE, null as ByteBuffer?
+                    GL_TEXTURE_2D, 0, GL_RGBA16F,
+                    width(), height(), 0, GL_RGBA, GL_FLOAT, null as ByteBuffer?
                 )
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, textureFilterMod)
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, textureFilterMod)

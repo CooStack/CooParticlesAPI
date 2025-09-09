@@ -12,6 +12,6 @@ void main() {
     // 计算亮度
     float brightness = dot(color.rgb, vec3(0.2126, 0.7152, 0.0722));
     // 只保留超过阈值的亮部
-    BrightColor = vec4(color.rgb, 1.) * (1 + threshold);
+    BrightColor = vec4(color.rgb * threshold, 1.);
     FragColor = color;
 }

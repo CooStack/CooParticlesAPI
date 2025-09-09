@@ -21,8 +21,9 @@ interface PipeChannels {
 
     /**
      * 绑定输入的input
+     *
      * 需要自行绑定对应的通道ID
      * 绑定材质后，在内进行着色器程序的绑定，然后绘制到对应的fbo输出通道中
      */
-    fun drawWith(vertexDraw: Runnable): PipeChannels
+    fun useOnContext(vertexDraw: Runnable): PipeChannels
 }

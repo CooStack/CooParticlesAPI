@@ -116,6 +116,7 @@ abstract class ClassParticleEmitters(
             buf.writeDouble(data.airDensity)
             buf.writeDouble(data.mass)
             buf.writeBoolean(data.enableInterpolator)
+            buf.writeDouble(data.emittersInterpolator.refinerCount)
             buf.writeUtf(data.wind.getID())
             data.wind.getCodec().encode(buf, data.wind)
         }
@@ -146,6 +147,7 @@ abstract class ClassParticleEmitters(
             val airDensity = buf.readDouble()
             val mass = buf.readDouble()
             val enableInterpolator = buf.readBoolean()
+            val interpolatorCount = buf.readDouble()
             val id = buf.readUtf()
             val wind = WindDirections.getCodecFromID(id)
                 .decode(buf)
@@ -163,6 +165,7 @@ abstract class ClassParticleEmitters(
                 this.airDensity = airDensity
                 this.wind = wind
                 this.enableInterpolator = enableInterpolator
+                this.emittersInterpolator.refinerCount = interpolatorCount
             }
 
         }
@@ -455,6 +458,7 @@ abstract class ClassParticleEmitters(
         this.cancelled = emitters.cancelled
         this.playing = emitters.playing
         this.handlerList.putAll(emitters.handlerList)
+        this.emittersInterpolator.refinerCount = emitters.emittersInterpolator.refinerCount
     }
 
 }

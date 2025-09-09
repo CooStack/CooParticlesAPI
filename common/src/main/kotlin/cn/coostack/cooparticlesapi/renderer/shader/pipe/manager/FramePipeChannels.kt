@@ -33,7 +33,7 @@ class FramePipeChannels : PipeChannels {
         return channels.size
     }
 
-    override fun drawWith(vertexDraw: Runnable): PipeChannels {
+    override fun useOnContext(vertexDraw: Runnable): PipeChannels {
         use()
         vertexDraw.run()
         reset()

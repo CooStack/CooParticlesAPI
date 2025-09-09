@@ -73,26 +73,24 @@ class SimpleShaderPipe(
 
     override fun write(invoker: ShaderPipe.() -> Unit) {
         // 向fbo写入内容
-        fbo.writeFrameBufferWith {
-            RenderSystem.disableBlend()
-            invoker()
+        screenProgram.useOnContext {
+            handles.forEach {
+                it.uploadShaderData(this)
+            }
+            fbo.writeFrameBufferWith {
+                RenderSystem.disableBlend()
+                invoker()
+            }
         }
     }
 
 
     override fun writeFromChannel(channel: PipeChannels): SimpleShaderPipe {
         // 绑定channel材质
-        channel.drawWith {
-            // 绑定当前的片段着色器
-            screenProgram.useOnContext {
-                // 上传数据
-                for (handler in handles) {
-                    handler.uploadShaderData(screenProgram)
-                }
-                // 绘制到当前的fbo
-                write {
-                    shaderVertexes.draw()
-                }
+        channel.useOnContext {
+            // 绘制到当前的fbo
+            write {
+                shaderVertexes.draw()
             }
         }
         return this

@@ -18,6 +18,8 @@ interface Interpolator {
     fun insertPoint(vec: Vector3f): Interpolator
     fun insertPoint(vec: RelativeLocation): Interpolator
 
+    fun setLimit(limit: Double): Interpolator
+
     /**
      * 细分器
      * @param refiner 细分程度
