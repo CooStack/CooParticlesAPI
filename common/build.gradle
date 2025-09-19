@@ -53,27 +53,3 @@ artifacts {
     commonJava sourceSets.main.java.sourceDirectories.singleFile
     commonResources sourceSets.main.resources.sourceDirectories.singleFile
 }
-
-
-publishing {
-    publications {
-        // 定义 Maven 发布的内容
-        mavenJava(MavenPublication) {
-            artifact sourcesJar
-            pom {
-                name.set("CooParticlesAPI")
-                description.set("CooParticlesAPI")
-            }
-        }
-    }
-
-    repositories {
-        maven {
-            url 'https://nexus.jsdu.cn/repository/maven-releases/'  // 替换为你自己的 Maven 仓库地址
-            credentials {
-//                username = mavenUsername
-//                password = mavenPassword
-            }
-        }
-    }
-}

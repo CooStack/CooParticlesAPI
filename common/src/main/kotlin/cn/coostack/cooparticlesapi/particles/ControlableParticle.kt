@@ -1,7 +1,9 @@
 package cn.coostack.cooparticlesapi.particles
 
+import cn.coostack.cooparticlesapi.extend.minus
 import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
 import cn.coostack.cooparticlesapi.particles.control.ParticleControler
+import cn.coostack.cooparticlesapi.utils.GraphMathHelper
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import com.mojang.blaze3d.vertex.VertexConsumer
@@ -32,6 +34,20 @@ abstract class ControlableParticle(
      */
     val faceToCamera: Boolean = true
 ) : TextureSheetParticle(world, pos.x, pos.y, pos.z, velocity.x, velocity.y, velocity.z) {
+
+
+    companion object {
+        @JvmStatic
+        val LINEAR_INTERPOLATOR: ParticleLerpInterpolator = ParticleLerpInterpolator { p1, p2, delta ->
+            GraphMathHelper.lerp(delta, p1, p2)
+        }
+    }
+
+    /**
+     * 插值修改器
+     */
+    var lerpInterpolator: ParticleLerpInterpolator = LINEAR_INTERPOLATOR
+        private set
     val controler: ParticleControler = ControlParticleManager.getControl(controlUUID)!!
 
     /**
@@ -352,6 +368,16 @@ abstract class ControlableParticle(
             currentAngleZ = lastRotate.z
             updateRotate = false
         }
+        // 判断其他 (例如环境信息)
+
+        // TODO 多余的判断可能会导致性能问题 目前没找到优化方法 (MC的区块内方块获取属实是一言难尽 时不时就爆炸无限循环:))
+
+
+    }
+
+    fun setInterpolator(newInterpolator: ParticleLerpInterpolator): ControlableParticle {
+        this.lerpInterpolator = newInterpolator
+        return this
     }
 
     /**
@@ -368,24 +394,31 @@ abstract class ControlableParticle(
     }
 
     override fun render(vertexConsumer: VertexConsumer, camera: Camera, tickDelta: Float) {
-        if (faceToCamera) {
-            super.render(vertexConsumer, camera, tickDelta)
-            return
-        }
+        val q = Quaternionf()
         // 获取摄像机位置
         val cameraPos = camera.position
-        val x = (Mth.lerp(tickDelta.toDouble(), this.xo, this.x) - cameraPos.x()).toFloat()
-        val y = (Mth.lerp(tickDelta.toDouble(), this.yo, this.y) - cameraPos.y()).toFloat()
-        val z = (Mth.lerp(tickDelta.toDouble(), this.zo, this.z) - cameraPos.z()).toFloat()
-        val q = Quaternionf()
-        q.rotateXYZ(
-            Mth.lerp(tickDelta, this.previewAngleX, this.currentAngleX),
-            Mth.lerp(tickDelta, this.previewAngleY, this.currentAngleY),
-            Mth.lerp(tickDelta, this.previewAngleZ, this.currentAngleZ)
-        )
+        val lerpPos = (lerpInterpolator.consume(
+            Vec3(xo, yo, zo), Vec3(x, y, z), tickDelta
+        ) - cameraPos).toVector3f()
+        if (faceToCamera) {
+            this.facingCameraMode.setRotation(q, camera, tickDelta)
+            if (this.roll != 0f) {
+                q.rotateZ(Mth.lerp(tickDelta, this.oRoll, this.roll))
+            }
+        } else {
+            q.rotateXYZ(
+                Mth.lerp(tickDelta, this.previewAngleX, this.currentAngleX),
+                Mth.lerp(tickDelta, this.previewAngleY, this.currentAngleY),
+                Mth.lerp(tickDelta, this.previewAngleZ, this.currentAngleZ)
+            )
+        }
         // 构建顶点几何
+        if (faceToCamera) {
+            this.renderRotatedQuad(vertexConsumer, q, lerpPos.x, lerpPos.y, lerpPos.z, tickDelta);
+            return
+        }
         val light = this.getLightColor(tickDelta)
-        setParticleTexture(vertexConsumer, q, x, y, z, tickDelta, light)
+        setParticleTexture(vertexConsumer, q, lerpPos.x, lerpPos.y, lerpPos.z, tickDelta, light)
     }
 
     private fun setParticleTexture(

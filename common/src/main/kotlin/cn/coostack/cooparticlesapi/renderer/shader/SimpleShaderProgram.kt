@@ -2,6 +2,7 @@ package cn.coostack.cooparticlesapi.renderer.shader
 
 import cn.coostack.cooparticlesapi.renderer.shader.api.CooShaderProgram
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlShader
+import org.joml.Matrix4f
 import org.lwjgl.opengl.GL33.*
 
 class SimpleShaderProgram(override var vertexShader: GlShader, override var fragmentShader: GlShader) :

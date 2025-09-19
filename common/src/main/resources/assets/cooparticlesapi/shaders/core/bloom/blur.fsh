@@ -10,6 +10,7 @@ const int KERNEL_RADIUS = 10;  // 半径，等于最大采样距离
 uniform float sigma = 2.; // 高斯标准差（越大越模糊）
 uniform float range = 2.;
 
+
 float gaussian(float x, float sigma) {
     return exp(-(x * x) / (2.0 * sigma * sigma));
 }
@@ -27,8 +28,8 @@ void main() {
         float w = gaussian(float(i), sigma);
         sum += 2.0 * w; // 对称采样，所以乘 2
         vec2 sampOffset = offset * float(i) * range;
-        result += texture(bright,screen_uv + sampOffset).rgb * w;
-        result += texture(bright,screen_uv - sampOffset).rgb * w;
+        result += texture(bright, screen_uv + sampOffset).rgb * w;
+        result += texture(bright, screen_uv - sampOffset).rgb * w;
     }
 
     // 权重归一化

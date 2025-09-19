@@ -28,7 +28,10 @@ public class LevelRendererMixin {
     @Nullable
     private ClientLevel level;
 
-    @Inject(method = "renderLevel", at = @At(value = "INVOKE", target = "Lnet/minecraft/util/profiling/ProfilerFiller;popPush(Ljava/lang/String;)V", ordinal = 12))
+    @Inject(method = "renderLevel",
+            at = @At(value = "INVOKE",
+                    target = "Lnet/minecraft/util/profiling/ProfilerFiller;popPush(Ljava/lang/String;)V",
+                    ordinal = 11))
     public void renderBeforeEntity(DeltaTracker deltaTracker,
                                    boolean renderBlockOutline,
                                    Camera camera,
@@ -59,7 +62,7 @@ public class LevelRendererMixin {
                              CallbackInfo info) {
 
         boolean irisLoaded = CooParticlesAPIClient.irisLoaded;
-        if (CooParticlesAPIClient.checkIrisShaderPackUsed()) {
+        if (!CooParticlesAPIClient.checkIrisShaderPackUsed()) {
             return;
         }
         if (!irisLoaded) {

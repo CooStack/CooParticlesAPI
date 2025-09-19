@@ -4,27 +4,7 @@ plugins {
     // see https://projects.neoforged.net/neoforged/moddevgradle for new versions
     id 'net.neoforged.moddev' version '2.0.107' apply false
     id 'org.jetbrains.kotlin.jvm' version '2.2.0' apply false
-    id 'maven-publish'
 }
-def properties = new Properties()
-file('jsdu.properties').withInputStream { stream -> properties.load(stream) }
-
-def mavenUsername = properties['mavenUsername']
-def mavenPassword = properties['mavenPassword']
-ext {
-    mavenUser = mavenUsername
-    mavenPwd = mavenPassword
-}
-repositories {
-    maven {
-        url 'https://nexus.jsdu.cn/repository/maven-releases/'
-        credentials {
-            username = mavenUsername
-            password = mavenPassword
-        }
-    }
-}
-
 
 subprojects {
     apply plugin: 'java'

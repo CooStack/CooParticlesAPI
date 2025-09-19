@@ -10,7 +10,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(Camera.class)
-public abstract class CooParticleCameraMixin {
+public abstract class   CooParticleCameraMixin {
     @Shadow
     private float yRot;
     @Shadow

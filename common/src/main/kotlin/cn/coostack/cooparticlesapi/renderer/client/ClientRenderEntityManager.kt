@@ -81,11 +81,14 @@ object ClientRenderEntityManager {
             val pipe = ClientRenderPipelineManager.getPipeManager(pipeID) ?: let {
                 throw RenderPipeNotFoundException(pipeID)
             }
+            pipe.updateGlobalUniform("viewMat", viewMatrix)
+            pipe.updateGlobalUniform("projMat", projMatrix)
             pipe.writeFrame {
                 entities.forEach { entity ->
                     stack.pushMatrix()
                     RenderUtil.setRenderStackWithEntity(stack, entity, tickDelta)
                     entity.renderOnWorld(stack, viewMatrix, projMatrix, tickDelta)
+                    pipe.updateGlobalUniform("transMat", stack)
                     stack.popMatrix()
                 }
             }

@@ -61,6 +61,17 @@ fabricApi {
         modId = "cooparticlesapi"
     }
 }
+def properties = new Properties()
+def repoFile = rootProject.file("repo.properties")
+if (repoFile.exists()) {
+    repoFile.withInputStream { properties.load(it) }
+}
+repositories {
+    maven {
+        name = "repo"
+        url = uri("https://nexus.jsdu.cn/repository/maven-releases/")
+    }
+}
 loom {
     def aw = project(':common').file("src/main/resources/${mod_id}.accesswidener")
     if (aw.exists()) {

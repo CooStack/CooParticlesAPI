@@ -42,12 +42,6 @@ pluginManagement {
 plugins {
     id 'org.gradle.toolchains.foojay-resolver-convention' version '0.8.0'
 }
-def properties = new Properties()
-file('jsdu.properties').withInputStream { stream -> properties.load(stream) }
-
-// 获取 Maven 认证信息
-def mavenUsername = properties['mavenUsername']
-def mavenPassword = properties['mavenPassword']
 
 
 // This should match the folder name of the project, or else IDEA may complain (see https://youtrack.jetbrains.com/issue/IDEA-317606)

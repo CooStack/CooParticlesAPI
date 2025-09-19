@@ -5,14 +5,15 @@ import cn.coostack.cooparticlesapi.exceptions.RenderPipeLinkerNotSetException
 import cn.coostack.cooparticlesapi.exceptions.RenderPipeOutputNotSetException
 import cn.coostack.cooparticlesapi.renderer.shader.ShaderProgramBuilder
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlShaderType
+import cn.coostack.cooparticlesapi.renderer.shader.api.pipe.GlobalUniform
 import cn.coostack.cooparticlesapi.renderer.shader.api.pipe.PipeLinker
 import cn.coostack.cooparticlesapi.renderer.shader.api.pipe.PipeLinkerNode
 import cn.coostack.cooparticlesapi.renderer.shader.api.pipe.ShaderPipe
 import cn.coostack.cooparticlesapi.renderer.shader.glsl.IdentifierShader
+import cn.coostack.cooparticlesapi.renderer.shader.pipe.Matrix4fGlobalUniform
 import cn.coostack.cooparticlesapi.renderer.shader.pipe.pipes.SimpleShaderPipe
 import cn.coostack.cooparticlesapi.renderer.shader.vertex.VertexBuffers
 import com.mojang.blaze3d.systems.RenderSystem
-import net.minecraft.client.Minecraft
 import net.minecraft.resources.ResourceLocation
 import org.lwjgl.opengl.GL33.*
 import java.util.function.Supplier
@@ -38,6 +39,8 @@ class ShaderPipeManager(
         .fragment(screenFragment)
         .build()
 
+    private val uploadUniformPrePrograms = HashMap<String, GlobalUniform<*>>()
+
     val pipes = HashSet<ShaderPipe>()
     val linker = GraphPipeLinker()
 
@@ -57,6 +60,36 @@ class ShaderPipeManager(
 
     private var linkerSet = false
     private var linkerFunc: ShaderPipeManager.(PipeLinker) -> Unit = {}
+
+    /**
+     * 每经过一层渲染时，就会执行这个
+     * 用于设置全局变量（真）
+     *
+     * 如果是 addPipe(pipe.addRenderHandler()) 则会被覆盖
+     * 反之 addPipe(pipe).addRenderHandler() 就会覆盖这个
+     */
+    fun addGlobalUniform(upload: GlobalUniform<*>): ShaderPipeManager {
+        uploadUniformPrePrograms[upload.key] = upload
+        return this
+    }
+
+    fun updateGlobalUniform(key: String, value: Any): ShaderPipeManager {
+        val uniform = (uploadUniformPrePrograms[key] ?: return this) as GlobalUniform<Any>
+
+        if (uniform.value::class.java != value::class.java) {
+            return this
+        }
+        uniform.value = value
+        return this
+    }
+
+    fun addTransformUniformMatrix(): ShaderPipeManager {
+        return addGlobalUniform(Matrix4fGlobalUniform("transMat"))
+            .addGlobalUniform(Matrix4fGlobalUniform("viewMat"))
+            .addGlobalUniform(Matrix4fGlobalUniform("projMat"))
+    }
+
+
     fun setLinkerFunc(func: ShaderPipeManager.(PipeLinker) -> Unit): ShaderPipeManager {
         linkerSet = true
         linkerFunc = func
@@ -87,7 +120,7 @@ class ShaderPipeManager(
             return
         }
 
-        if (!linkerSet){
+        if (!linkerSet) {
             throw RenderPipeLinkerNotSetException(pipeID)
         }
 
@@ -97,8 +130,6 @@ class ShaderPipeManager(
         initialized = true
         // 判断pipes是否为空
         if (valueInputPipe == null) {
-            val mc = Minecraft.getInstance()
-            val window = mc.window
             valueInputPipe = SimpleShaderPipe(
                 IdentifierShader(
                     ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "pipe/frags/screen.fsh"),
@@ -127,6 +158,11 @@ class ShaderPipeManager(
      * 如果这个PipeManager没有加入任何的初始化, 则会自动生成一个初始化(什么都不干)
      */
     fun addPipe(pipe: ShaderPipe): ShaderPipe {
+        uploadUniformPrePrograms.forEach { handler ->
+            pipe.addRenderHandler {
+                handler.value.upload(it)
+            }
+        }
         if (initialized) {
             pipe.init()
         }
