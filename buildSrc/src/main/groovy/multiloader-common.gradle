@@ -115,26 +115,3 @@ processResources {
     }
     inputs.properties(expandProps)
 }
-def properties = new Properties()
-def repoFile = rootProject.file("repo.properties")
-if (repoFile.exists()) {
-    repoFile.withInputStream { properties.load(it) }
-}
-publishing {
-    publications {
-        register('mavenJava', MavenPublication) {
-            artifactId base.archivesName.get()
-            from components.java
-        }
-    }
-    repositories {
-        maven {
-            name = "maven"
-            url = uri("https://nexus.jsdu.cn/repository/maven-releases/")
-            credentials {
-                username = properties.getProperty("repo.user") ?: ""
-                password = properties.getProperty("repo.password") ?: ""
-            }
-        }
-    }
-}

@@ -6,6 +6,12 @@ plugins {
     id 'org.jetbrains.kotlin.jvm' version '2.2.0' apply false
 }
 
+tasks.register("publish-all") {
+    group("build")
+    description = "上传Fabric和Neoforge的内容到仓库中"
+    dependsOn(":neoforge:publish",":fabric:publish")
+}
+
 subprojects {
     apply plugin: 'java'
     apply plugin: 'kotlin'

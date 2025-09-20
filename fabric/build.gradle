@@ -66,10 +66,28 @@ def repoFile = rootProject.file("repo.properties")
 if (repoFile.exists()) {
     repoFile.withInputStream { properties.load(it) }
 }
-repositories {
-    maven {
-        name = "repo"
-        url = uri("https://nexus.jsdu.cn/repository/maven-releases/")
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            groupId = rootProject.group
+            artifactId = "${rootProject.artifact}-fabric"
+            version = "${rootProject.version}"
+            artifact(tasks.named("remapJar"))
+            artifact(tasks.named("sourceWithCommon")) {
+                classifier = "sources"
+            }
+        }
+    }
+
+    repositories {
+        maven {
+            name = "repo"
+            url = uri("https://nexus.jsdu.cn/repository/maven-releases/")
+            credentials {
+                username = properties.getProperty("repo.user") ?: ""
+                password = properties.getProperty("repo.password") ?: ""
+            }
+        }
     }
 }
 loom {

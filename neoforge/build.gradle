@@ -79,6 +79,30 @@ repositories {
         dirs "../depend"
     }
 }
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            groupId = rootProject.group
+            artifactId = "${rootProject.artifact}-neoforge"
+            version = "${rootProject.version}"
+            artifact(tasks.named("jar"))
+            artifact(tasks.named("sourceWithCommon")) {
+                classifier = "sources"
+            }
+        }
+    }
+
+    repositories {
+        maven {
+            name = "repo"
+            url = uri("https://nexus.jsdu.cn/repository/maven-releases/")
+            credentials {
+                username = properties.getProperty("repo.user") ?: ""
+                password = properties.getProperty("repo.password") ?: ""
+            }
+        }
+    }
+}
 dependencies {
     compileOnly fileTree(dir: "../compile_only_depend", includes: ["*.jar"])
     implementation "thedarkcolour:kotlinforforge-neoforge:5.9.0"
