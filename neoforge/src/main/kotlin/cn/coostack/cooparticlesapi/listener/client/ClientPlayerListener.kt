@@ -1,15 +1,17 @@
 package cn.coostack.cooparticlesapi.listener.client
 
+import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.listeners.ClientPlayerDeathListener
 import com.mojang.authlib.minecraft.client.MinecraftClient
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.screens.DeathScreen
+import net.neoforged.api.distmarker.Dist
 import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.fml.common.EventBusSubscriber
 import net.neoforged.neoforge.client.event.ScreenEvent
 import net.neoforged.neoforge.event.entity.player.PlayerEvent
 
-@EventBusSubscriber
+@EventBusSubscriber(value = [Dist.CLIENT], modid = CooParticlesConstants.MOD_ID)
 object ClientPlayerListener {
     @SubscribeEvent
     fun onPlayerDeath(event: ScreenEvent.Opening) {
@@ -19,4 +21,5 @@ object ClientPlayerListener {
             ClientPlayerDeathListener.call()
         }
     }
+
 }

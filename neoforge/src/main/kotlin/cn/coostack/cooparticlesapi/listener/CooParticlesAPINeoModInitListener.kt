@@ -33,14 +33,6 @@ import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent
 )
 object CooParticlesAPINeoModInitListener {
 
-    @SubscribeEvent
-    fun onParticleInit(event: RegisterParticleProvidersEvent) {
-        event.registerSpriteSet(CooModParticles.endRod.get()) { ControlableEndRodParticle.Factory(it) }
-        event.registerSpriteSet(CooModParticles.controlableCloud.get()) { ControlableCloudParticle.Factory(it) }
-        event.registerSpriteSet(CooModParticles.controlableFlash.get()) { ControlableFlashParticle.Factory(it) }
-        event.registerSpriteSet(CooModParticles.controlableFirework.get()) { ControlableFireworkParticle.Factory(it) }
-        event.registerSpriteSet(CooModParticles.enchantment.get()) { ControlableEnchantmentParticle.Factory(it) }
-    }
 
     @SubscribeEvent
     fun onDataProvider(event: GatherDataEvent) {

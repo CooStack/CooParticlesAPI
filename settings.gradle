@@ -49,3 +49,5 @@ rootProject.name = 'CooParticlesAPI'
 include('common')
 include('fabric')
 include('neoforge')
+include 'kapt'
+include 'kapt'

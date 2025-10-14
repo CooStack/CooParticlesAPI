@@ -7,7 +7,6 @@ import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import net.minecraft.core.registries.BuiltInRegistries
 import net.neoforged.fml.common.Mod
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent
-import net.neoforged.neoforge.event.tick.PlayerTickEvent
 import net.neoforged.neoforge.registries.RegisterEvent
 import thedarkcolour.kotlinforforge.neoforge.forge.MOD_BUS
 
@@ -28,7 +27,6 @@ object CooParticlesAPINeo {
     }
 
     fun onRegistryRegister(event: RegisterEvent) {
-        CooModParticles.reg()
         event.register(BuiltInRegistries.CREATIVE_MODE_TAB.key()) {
             it.register(CooItemGroup.API_GROUP.id, CooItemGroup.API_GROUP.get()!!)
         }

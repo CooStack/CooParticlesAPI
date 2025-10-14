@@ -1,6 +1,6 @@
 plugins {
-    id 'multiloader-loader'
     id 'fabric-loom'
+    id 'multiloader-loader'
     id 'org.jetbrains.kotlin.jvm'
 }
 
@@ -26,6 +26,9 @@ dependencies {
     embed fileTree(dir: "../depend", includes: ["*.jar"])
     modImplementation fileTree(dir: "../depend", includes: ["*.jar"])
     modCompileOnly fileTree(dir: "../compile_only_depend", includes: ["*.jar"])
+
+    implementation project(":kapt")
+    kapt project(":kapt")
 }
 
 tasks.register("sourceWithCommon", Jar) {

@@ -49,7 +49,7 @@ tasks.register("sourceWithCommon", Jar) {
     dependsOn(other)
     from zipTree(other.get().archiveFile)
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    exclude "META-INT/**"
+//    exclude "META-INT/**"
     destinationDirectory.set(file("../builds/sources"))
     archiveFileName = "${rootProject.mod_name}-NeoForge-Source-${rootProject.version}.jar"
 }
@@ -108,8 +108,10 @@ dependencies {
     implementation "thedarkcolour:kotlinforforge-neoforge:5.9.0"
     jarJar(implementation "com.ezylang:EvalEx:3.5.0")
     additionalRuntimeClasspath fileTree(dir: "../depend", includes: ["*.jar"])
-}
 
+    implementation project(":kapt")
+    kapt project(":kapt")
+}
 sourceSets.main.resources {
     srcDir 'src/generated/resources'
     srcDir '../fabric/src/main/generated/'

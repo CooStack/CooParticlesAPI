@@ -20,7 +20,6 @@ class ShaderProgramBuilder {
         return this
     }
 
-
     fun fragment(path: String): ShaderProgramBuilder {
         fragment = IdentifierShader(
             ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, path),

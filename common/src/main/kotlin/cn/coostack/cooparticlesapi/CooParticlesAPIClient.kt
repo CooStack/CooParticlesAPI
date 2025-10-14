@@ -33,7 +33,6 @@ object CooParticlesAPIClient {
         initParticleType()
         initRender()
 
-
         irisLoaded = CooParticlesServices.PLATFORM.isModLoaded("iris")
     }
 

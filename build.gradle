@@ -9,20 +9,41 @@ plugins {
 tasks.register("publish-all") {
     group("build")
     description = "上传Fabric和Neoforge的内容到仓库中"
-    dependsOn(":neoforge:publish",":fabric:publish")
+    dependsOn(":neoforge:publish", ":fabric:publish")
 }
 
 subprojects {
     apply plugin: 'java'
     apply plugin: 'kotlin'
     apply plugin: 'maven-publish'
-
     sourceSets {
-        main.kotlin.srcDirs = ['src/main/java', 'src/main/kotlin']
+        main {
+            kotlin {
+                srcDir("${project(":common").buildDir}/generated/source/kapt/main")
+            }
+            java {
+                srcDir("${project(":common").buildDir}/generated/source/kapt/main")
+            }
+        }
+        main.kotlin.srcDirs = ['src/main/java',
+                               'src/main/kotlin'
+        ]
     }
-
     compileKotlin {
-        source(project(":common").sourceSets.main.allSource)
-        inputs.file "../gradle.properties"
+        if (project.name != "kapt") {
+            source(project(":common").sourceSets.main.allSource)
+            inputs.file "../gradle.properties"
+        }
+    }
+    afterEvaluate {
+        if (project.name != "kapt") {
+            tasks.named("sourcesJar") {
+                dependsOn(project(":common").tasks.named("kaptKotlin"))
+                duplicatesStrategy = DuplicatesStrategy.INCLUDE
+            }
+            tasks.named("jar") {
+                duplicatesStrategy = DuplicatesStrategy.INCLUDE
+            }
+        }
     }
 }

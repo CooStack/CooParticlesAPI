@@ -1,6 +1,7 @@
 package cn.coostack.cooparticlesapi
 
 import cn.coostack.cooparticlesapi.animation.AnimateManager
+import cn.coostack.cooparticlesapi.apt.TestAPT
 import cn.coostack.cooparticlesapi.barrages.BarrageManager
 import cn.coostack.cooparticlesapi.network.animation.PathMotionManager
 import cn.coostack.cooparticlesapi.network.particle.ServerParticleGroupManager
@@ -24,13 +25,8 @@ object CooParticlesAPI {
 
     @JvmStatic
     fun init() {
-        // It is common for all supported loaders to provide a similar feature that can not be used directly in the
-        // common code. A popular way to get around this is using Java's built-in service loader feature to create
-        // your own abstraction layer. You can learn more about this in our provided services class. In this example
-        // we have an interface in the common code and use a loader specific implementation to delegate our call to
-        // the platform specific approach.
         if (CooParticlesServices.PLATFORM.isModLoaded(CooParticlesConstants.MOD_ID)) {
-            CooParticlesConstants.logger.info("Hello to examplemod")
+            CooParticlesConstants.logger.info("Hello to CooParticlesAPI")
         }
         CooParticlesConstants.logger.info("current :${CooParticlesServices.PLATFORM.getPlatformName()}")
         val builder = Expression("1+SQRT(x)")
@@ -40,6 +36,8 @@ object CooParticlesAPI {
         CooParticlesServices.API_CONFIG_MANAGER.loadConfig()
         ControlableParticleEffectManager.init()
         WindDirections.init()
+
+        TestAPT.callFromModID(CooParticlesConstants.MOD_ID)
     }
 
     fun onServerStart(server: MinecraftServer) {

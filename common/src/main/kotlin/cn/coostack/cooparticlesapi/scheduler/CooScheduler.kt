@@ -1,6 +1,7 @@
 package cn.coostack.cooparticlesapi.scheduler
 
 import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.function.Predicate
 import kotlin.math.sin
 
 class CooScheduler {
@@ -87,9 +88,15 @@ class CooScheduler {
 
         private var looped = false
         private var finishCallable: Runnable = Runnable {}
-
+        private var cancelPredicate: Predicate<TickRunnable> = Predicate { false }
         fun setFinishCallback(callable: Runnable): TickRunnable {
             this.finishCallable = callable
+            return this
+        }
+
+
+        fun setCancelPredicate(predicate: Predicate<TickRunnable>): TickRunnable {
+            this.cancelPredicate = predicate
             return this
         }
 
@@ -127,6 +134,11 @@ class CooScheduler {
                 if (canInvoke) {
                     runnable(this)
                 }
+                if (cancelPredicate.test(this)) {
+                    canceled = true
+                    finishCallable.run()
+                    return
+                }
                 if (currentTick >= maxTick) {
                     canceled = true
                     finishCallable.run()
@@ -138,6 +150,10 @@ class CooScheduler {
             if (looped) {
                 if (currentTick++ >= singleDelay) {
                     runnable(this)
+                    if (cancelPredicate.test(this)) {
+                        canceled = true
+                        finishCallable.run()
+                    }
                     currentTick = 0
                 }
                 return

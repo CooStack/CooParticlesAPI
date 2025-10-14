@@ -10,7 +10,6 @@ const int KERNEL_RADIUS = 10;  // 半径，等于最大采样距离
 uniform float sigma = 2.; // 高斯标准差（越大越模糊）
 uniform float range = 2.;
 
-
 float gaussian(float x, float sigma) {
     return exp(-(x * x) / (2.0 * sigma * sigma));
 }

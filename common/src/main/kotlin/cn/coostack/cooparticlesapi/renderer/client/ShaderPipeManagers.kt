@@ -3,16 +3,13 @@ package cn.coostack.cooparticlesapi.renderer.client
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.renderer.client.ClientRenderPipelineManager.minecraft
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlShaderType
-import cn.coostack.cooparticlesapi.renderer.shader.api.pipe.ShaderPipe
 import cn.coostack.cooparticlesapi.renderer.shader.glsl.IdentifierShader
 import cn.coostack.cooparticlesapi.renderer.shader.pipe.manager.ShaderPipeManager
 import cn.coostack.cooparticlesapi.renderer.shader.pipe.pipes.PingPongShaderPipe
 import cn.coostack.cooparticlesapi.renderer.shader.pipe.pipes.SimpleShaderPipe
-import com.mojang.blaze3d.systems.RenderSystem
 import net.minecraft.client.Minecraft
 import net.minecraft.resources.ResourceLocation
 import org.lwjgl.opengl.GL33
-import kotlin.math.min
 
 /**
  * 实现一个真正符合光学的泛光
@@ -77,6 +74,7 @@ object ShaderPipeManagers {
                 it.setFloat("threshold", bloomIntensity)
             }.useMipmap()
         )
+
         val blur = addPipe(
             PingPongShaderPipe(
                 IdentifierShader(
