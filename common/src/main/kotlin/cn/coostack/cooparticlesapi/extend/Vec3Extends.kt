@@ -26,6 +26,10 @@ fun Vec3.multiply(scaled: Number): Vec3 {
     return this.scale(scaled.toDouble())
 }
 
+fun Vector3f.asVec3(): Vec3 {
+    return Vec3(this)
+}
+
 operator fun Vec3.minus(other: Vec3): Vec3 {
     return this.subtract(other)
 }
@@ -60,6 +64,22 @@ operator fun Vector3f.times(other: Double): Vector3f {
 
 operator fun Double.times(other: Vector3f): Vector3f {
     return other * this
+}
+
+operator fun Vector3f.unaryMinus(): Vector3f {
+    return -1f * this
+}
+
+operator fun Vector3f.unaryPlus(): Vector3f {
+    return this
+}
+
+operator fun Vec3.unaryMinus(): Vec3 {
+    return -1.0 * this
+}
+
+operator fun Vec3.unaryPlus(): Vec3 {
+    return this
 }
 
 operator fun Vec3.times(other: Float): Vec3 {

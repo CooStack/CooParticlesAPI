@@ -1,11 +1,10 @@
 package cn.coostack.cooparticlesapi.extend
 
-import jdk.jfr.Description
 import net.minecraft.core.BlockPos
-import net.minecraft.util.Mth
 import net.minecraft.world.phys.Vec3
 
 /**
+ * named by Fabric Yarn mapping
  * @see BlockPos.containing
  */
 fun ofFloored(vec: Vec3): BlockPos {
