@@ -1,7 +1,6 @@
 package cn.coostack.cooparticlesapi.network.particle.emitters
 
 import cn.coostack.cooparticlesapi.network.particle.ServerControler
-import cn.coostack.cooparticlesapi.network.particle.emitters.event.ParticleEvent
 import cn.coostack.cooparticlesapi.network.particle.emitters.event.ParticleEventHandler
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import net.minecraft.network.FriendlyByteBuf
@@ -19,9 +18,6 @@ import java.util.UUID
  *
  * -> 不固定数量的ParticleStyleData
  * -> 方便输入的
- *
- *
- * TODO BUGS 当maxTick = 1时 会有概率不显示 (应该是tick == maxTick的状态优先被同步过去了)
  */
 interface ParticleEmitters : ServerControler<ParticleEmitters> {
     var pos: Vec3

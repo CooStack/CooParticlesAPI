@@ -1,5 +1,7 @@
 package cn.coostack.cooparticlesapi.network.particle.emitters.impl
 
+import cn.coostack.cooparticlesapi.CooParticlesConstants
+import cn.coostack.cooparticlesapi.apt.annotations.EmittersFastRegister
 import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableParticleData
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersManager
@@ -27,11 +29,14 @@ import kotlin.collections.forEach
 import kotlin.collections.set
 import kotlin.math.max
 
+@EmittersFastRegister(CooParticlesConstants.MOD_ID)
 class SimpleParticleEmitters(
     override var pos: Vec3,
     override var world: Level?,
     var templateData: ControlableParticleData,
 ) : ParticleEmitters {
+    // 用于构造测试
+    private constructor(): this(Vec3.ZERO,null, ControlableParticleData())
     override var tick: Int = 0
     override var maxTick: Int = 120
     override var delay: Int = 0

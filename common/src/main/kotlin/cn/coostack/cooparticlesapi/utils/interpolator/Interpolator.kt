@@ -12,6 +12,10 @@ import org.joml.Vector3f
  */
 interface Interpolator {
     /**
+     * 细分程度
+     */
+    val refinerCount: Double
+    /**
      * 输入不可变的向量坐标点
      */
     fun insertPoint(vec: Vec3): Interpolator

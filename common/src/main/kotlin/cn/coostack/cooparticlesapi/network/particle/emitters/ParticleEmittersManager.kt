@@ -47,6 +47,7 @@ object ParticleEmittersManager {
     /**
      * 在客户端执行
      */
+    @JvmStatic
     fun register(
         id: String,
         codec: StreamCodec<FriendlyByteBuf, ParticleEmitters>

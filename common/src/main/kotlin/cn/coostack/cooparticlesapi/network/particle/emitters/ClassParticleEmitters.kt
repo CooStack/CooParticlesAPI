@@ -11,7 +11,8 @@ import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
 import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
 import cn.coostack.cooparticlesapi.particles.control.ParticleControler
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
-import cn.coostack.cooparticlesapi.utils.interpolator.LineInterpolator
+import cn.coostack.cooparticlesapi.utils.interpolator.Interpolator
+import cn.coostack.cooparticlesapi.utils.interpolator.emitters.LineEmitterInterpolator
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.world.entity.Entity
@@ -50,9 +51,10 @@ abstract class ClassParticleEmitters(
     /**
      * 插值器工具
      * 需要启用 enableInterpolator
+     * 可以修改
      * @see enableInterpolator
      */
-    val emittersInterpolator = LineInterpolator()
+    var emittersInterpolator: Interpolator = LineEmitterInterpolator()
         .setRefiner(5.0)
 
     override fun addEventHandler(handler: ParticleEventHandler, innerClass: Boolean) {
@@ -159,7 +161,7 @@ abstract class ClassParticleEmitters(
                 this.airDensity = airDensity
                 this.wind = wind
                 this.enableInterpolator = enableInterpolator
-                this.emittersInterpolator.refinerCount = interpolatorCount
+                this.emittersInterpolator.setRefiner(interpolatorCount)
             }
 
         }
@@ -204,7 +206,9 @@ abstract class ClassParticleEmitters(
             increaseTick()
             return
         }
-        emittersInterpolator.insertPoint(pos)
+        if (enableInterpolator){
+            emittersInterpolator.insertPoint(pos)
+        }
         if (tick % max(1, delay) == 0) {
             // 执行粒子变更操作
             // 生成新粒子
@@ -267,8 +271,10 @@ abstract class ClassParticleEmitters(
      * 请直接修改 ControlableParticleData
      *
      * @param data 用于操作单个粒子属性的类
-     * @param particleLerpProgress 生成这个粒子的时候，当前的进度
+     * @param particleLerpProgress 生成这个粒子的时候，当前的进度（(当前生成的粒子索引+1)/genParticles().size ）
      * @param posLerpProgress 当发射器进行发射插值时， 插值的偏移 如果不使用插值则永远为1
+     * @param spawnPos 生成的位置，在粒子已经生成后再修改无效
+     *
      * 执行tick方法请使用
      * controler.addPreTickAction
      */
@@ -452,7 +458,7 @@ abstract class ClassParticleEmitters(
         this.cancelled = emitters.cancelled
         this.playing = emitters.playing
         this.handlerList.putAll(emitters.handlerList)
-        this.emittersInterpolator.refinerCount = emitters.emittersInterpolator.refinerCount
+        this.emittersInterpolator.setRefiner(emitters.emittersInterpolator.refinerCount)
     }
 
 }

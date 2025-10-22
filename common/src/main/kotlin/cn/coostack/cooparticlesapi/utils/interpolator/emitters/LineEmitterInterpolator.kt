@@ -1,8 +1,9 @@
-package cn.coostack.cooparticlesapi.utils.interpolator
+package cn.coostack.cooparticlesapi.utils.interpolator.emitters
 
 import cn.coostack.cooparticlesapi.utils.CircularQueue
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
+import cn.coostack.cooparticlesapi.utils.interpolator.Interpolator
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
 
@@ -13,7 +14,7 @@ import org.joml.Vector3f
  *
  * 适合在粒子发射器本身进行移动时使用
  */
-class LineInterpolator : Interpolator {
+class LineEmitterInterpolator : Interpolator {
     /**
      * 为了防止超远距离的 "传送" 导致超级长的粒子条
      * 设置一个上限可以防止出现这种问题
@@ -26,28 +27,28 @@ class LineInterpolator : Interpolator {
      * 可以理解为 1个单位长度下填充的粒子个数
      * lineTotalParticleCount = dis * refinerCount
      */
-    var refinerCount = 1.0
-    override fun insertPoint(vec: Vec3): LineInterpolator {
-        queue.addFirst(RelativeLocation.of(vec))
+    override var refinerCount: Double = 1.0
+    override fun insertPoint(vec: Vec3): LineEmitterInterpolator {
+        queue.addFirst(RelativeLocation.Companion.of(vec))
         return this
     }
 
-    override fun insertPoint(vec: Vector3f): LineInterpolator {
+    override fun insertPoint(vec: Vector3f): LineEmitterInterpolator {
         queue.addFirst(RelativeLocation(vec.x, vec.y, vec.z))
         return this
     }
 
-    override fun insertPoint(vec: RelativeLocation): LineInterpolator {
+    override fun insertPoint(vec: RelativeLocation): LineEmitterInterpolator {
         queue.addFirst(vec.clone())
         return this
     }
 
-    override fun setLimit(limit: Double): LineInterpolator {
+    override fun setLimit(limit: Double): LineEmitterInterpolator {
         this.limit = limit
         return this
     }
 
-    override fun setRefiner(refiner: Double): LineInterpolator {
+    override fun setRefiner(refiner: Double): LineEmitterInterpolator {
         refinerCount = refiner.coerceAtLeast(0.001)
         return this
     }

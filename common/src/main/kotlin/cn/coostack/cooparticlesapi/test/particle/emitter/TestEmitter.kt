@@ -10,7 +10,7 @@ import cn.coostack.cooparticlesapi.particles.control.ParticleControler
 import cn.coostack.cooparticlesapi.utils.GraphMathHelper
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
-import cn.coostack.cooparticlesapi.utils.interpolator.DirectInterpolator
+import cn.coostack.cooparticlesapi.utils.interpolator.particle.DirectParticleInterpolator
 import net.minecraft.client.particle.ParticleRenderType
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
@@ -25,7 +25,7 @@ import kotlin.random.Random
 class TestEmitter(pos: Vec3, world: Level?) : ClassParticleEmitters(pos, world) {
     var templateData = ControlableParticleData()
     var emitterMoveDirection = Vec3.ZERO
-    val particleVelocity = DirectInterpolator()
+    val particleVelocity = DirectParticleInterpolator()
         .setRefiner(5.0)
     var particleMoveDirection: Vec3 = Vec3.ZERO
     var particleRotateX: Double = 0.0

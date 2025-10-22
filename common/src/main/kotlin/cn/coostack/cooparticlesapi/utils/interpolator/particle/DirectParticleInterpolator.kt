@@ -1,9 +1,10 @@
-package cn.coostack.cooparticlesapi.utils.interpolator
+package cn.coostack.cooparticlesapi.utils.interpolator.particle
 
 import cn.coostack.cooparticlesapi.extend.plus
 import cn.coostack.cooparticlesapi.utils.CircularQueue
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
+import cn.coostack.cooparticlesapi.utils.interpolator.Interpolator
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
 
@@ -17,37 +18,37 @@ import org.joml.Vector3f
  * 然后在genParticles调用getRefinedResult 获取粒子生成的结果
  * @see putParticleArgs
  */
-class DirectInterpolator : Interpolator {
+class DirectParticleInterpolator : Interpolator {
     private val queue = CircularQueue<RelativeLocation>(2)
     private var limit = 256.0
-
     /**
      * 细分程度
      * 可以理解为 1个单位长度下填充的粒子个数
      * lineTotalParticleCount = dis * refinerCount
      */
-    var refinerCount = 1.0
-    override fun insertPoint(vec: Vec3): DirectInterpolator {
-        queue.addFirst(RelativeLocation.of(vec))
+    override var refinerCount: Double = 1.0
+
+    override fun insertPoint(vec: Vec3): DirectParticleInterpolator {
+        queue.addFirst(RelativeLocation.Companion.of(vec))
         return this
     }
 
-    override fun insertPoint(vec: Vector3f): DirectInterpolator {
+    override fun insertPoint(vec: Vector3f): DirectParticleInterpolator {
         queue.addFirst(RelativeLocation(vec.x, vec.y, vec.z))
         return this
     }
 
-    override fun insertPoint(vec: RelativeLocation): DirectInterpolator {
+    override fun insertPoint(vec: RelativeLocation): DirectParticleInterpolator {
         queue.addFirst(vec.clone())
         return this
     }
 
-    override fun setLimit(limit: Double): DirectInterpolator {
+    override fun setLimit(limit: Double): DirectParticleInterpolator {
         this.limit = limit
         return this
     }
 
-    override fun setRefiner(refiner: Double): DirectInterpolator {
+    override fun setRefiner(refiner: Double): DirectParticleInterpolator {
         refinerCount = refiner.coerceAtLeast(0.001)
         return this
     }
@@ -58,7 +59,7 @@ class DirectInterpolator : Interpolator {
      * @param dir 粒子移动方向
      * @param speed 粒子移动速度
      */
-    fun putParticleArgs(pos: Vec3, dir: Vec3, speed: Double): DirectInterpolator {
+    fun putParticleArgs(pos: Vec3, dir: Vec3, speed: Double): DirectParticleInterpolator {
         insertPoint(pos)
         insertPoint(pos + dir.normalize().scale(speed))
         return this

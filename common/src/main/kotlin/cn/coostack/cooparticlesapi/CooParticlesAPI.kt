@@ -1,7 +1,7 @@
 package cn.coostack.cooparticlesapi
 
 import cn.coostack.cooparticlesapi.animation.AnimateManager
-import cn.coostack.cooparticlesapi.apt.TestAPT
+import cn.coostack.cooparticlesapi.apt.FastRegisterUtil
 import cn.coostack.cooparticlesapi.barrages.BarrageManager
 import cn.coostack.cooparticlesapi.network.animation.PathMotionManager
 import cn.coostack.cooparticlesapi.network.particle.ServerParticleGroupManager
@@ -37,7 +37,8 @@ object CooParticlesAPI {
         ControlableParticleEffectManager.init()
         WindDirections.init()
 
-        TestAPT.callFromModID(CooParticlesConstants.MOD_ID)
+        FastRegisterUtil.loadAllFastLoader(CooParticlesConstants.MOD_ID)
+
     }
 
     fun onServerStart(server: MinecraftServer) {

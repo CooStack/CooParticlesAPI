@@ -14,6 +14,9 @@ import java.util.UUID
 open class ControlableParticleData {
     companion object {
         @JvmStatic
+        val particleTexturesMapper: MutableMap<String, ParticleRenderType> = mutableMapOf()
+
+        @JvmStatic
         val PACKET_CODEC: StreamCodec<FriendlyByteBuf, ControlableParticleData> =
             StreamCodec.of<FriendlyByteBuf, ControlableParticleData>(
                 ::encode, ::decode
@@ -53,7 +56,6 @@ open class ControlableParticleData {
                 Class.forName(effectType) as Class<ControlableParticleEffect>
             )
             val speed = buf.readDouble()
-//            val effect = ParticleTypes.PACKET_CODEC.decode(buf) as ControlableParticleEffect
             return ControlableParticleData().apply {
                 this.uuid = uuid
                 this.velocity = velocity
@@ -68,6 +70,21 @@ open class ControlableParticleData {
                 this.speed = speed
             }
         }
+
+        @JvmStatic
+        fun registerRenderType(type: ParticleRenderType){
+            particleTexturesMapper[type.toString()] = type
+        }
+
+        init {
+            particleTexturesMapper[ParticleRenderType.PARTICLE_SHEET_TRANSLUCENT.toString()] =  ParticleRenderType.PARTICLE_SHEET_TRANSLUCENT
+            particleTexturesMapper[ParticleRenderType.PARTICLE_SHEET_OPAQUE.toString()] =  ParticleRenderType.PARTICLE_SHEET_OPAQUE
+            particleTexturesMapper[ParticleRenderType.CUSTOM.toString()] =  ParticleRenderType.CUSTOM
+            particleTexturesMapper[ParticleRenderType.NO_RENDER.toString()] =  ParticleRenderType.NO_RENDER
+            particleTexturesMapper[ParticleRenderType.PARTICLE_SHEET_LIT.toString()] =  ParticleRenderType.PARTICLE_SHEET_LIT
+            particleTexturesMapper[ParticleRenderType.TERRAIN_SHEET.toString()] =  ParticleRenderType.TERRAIN_SHEET
+        }
+
     }
 
     var uuid = UUID.randomUUID()
@@ -85,18 +102,11 @@ open class ControlableParticleData {
 
     /**
      * 粒子移动速度
+     * 在ClassParticlesEmitters默认不生效
      */
     var speed: Double = 1.0
     fun textureSheetFromString(sheet: String): ParticleRenderType? {
-        return when (sheet) {
-            ParticleRenderType.PARTICLE_SHEET_TRANSLUCENT.toString() -> ParticleRenderType.PARTICLE_SHEET_TRANSLUCENT
-            ParticleRenderType.PARTICLE_SHEET_OPAQUE.toString() -> ParticleRenderType.PARTICLE_SHEET_OPAQUE
-            ParticleRenderType.CUSTOM.toString() -> ParticleRenderType.CUSTOM
-            ParticleRenderType.NO_RENDER.toString() -> ParticleRenderType.NO_RENDER
-            ParticleRenderType.PARTICLE_SHEET_LIT.toString() -> ParticleRenderType.PARTICLE_SHEET_LIT
-            ParticleRenderType.TERRAIN_SHEET.toString() -> ParticleRenderType.TERRAIN_SHEET
-            else -> null
-        }
+        return particleTexturesMapper[sheet]
     }
 
     fun getTextureSheet(): ParticleRenderType {

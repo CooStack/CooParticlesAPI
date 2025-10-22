@@ -5,6 +5,12 @@ import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
 
 
+fun Vec3.asRelative() = RelativeLocation.of(this)
+fun Vector3f.asRelative() = RelativeLocation.of(this)
+fun Vector3f.asVec3() = Vec3(this)
+
+
+
 fun Vec3.relativize(target: Vec3): Vec3 {
     return target.subtract(this)
 }
@@ -26,9 +32,7 @@ fun Vec3.multiply(scaled: Number): Vec3 {
     return this.scale(scaled.toDouble())
 }
 
-fun Vector3f.asVec3(): Vec3 {
-    return Vec3(this)
-}
+
 
 operator fun Vec3.minus(other: Vec3): Vec3 {
     return this.subtract(other)

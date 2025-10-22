@@ -4,7 +4,11 @@ plugins {
 
 group = 'cn.coostack.cooparticlesapi'
 version = '2.1.2'
-
+def properties = new Properties()
+def repoFile = rootProject.file("repo.properties")
+if (repoFile.exists()) {
+    repoFile.withInputStream { properties.load(it) }
+}
 repositories {
     mavenCentral()
 }
@@ -13,7 +17,27 @@ dependencies {
     // https://mvnrepository.com/artifact/org.jetbrains.kotlin/kotlin-stdlib
     implementation("org.jetbrains.kotlin:kotlin-stdlib:2.2.0")
 }
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            groupId = rootProject.group
+            artifactId = "${rootProject.artifact}-kapt"
+            version = "${rootProject.version}"
+            artifact(tasks.named("jar"))
+        }
+    }
 
+    repositories {
+        maven {
+            name = "repo"
+            url = uri("https://nexus.jsdu.cn/repository/maven-releases/")
+            credentials {
+                username = properties.getProperty("repo.user") ?: ""
+                password = properties.getProperty("repo.password") ?: ""
+            }
+        }
+    }
+}
 test {
     useJUnitPlatform()
 }
