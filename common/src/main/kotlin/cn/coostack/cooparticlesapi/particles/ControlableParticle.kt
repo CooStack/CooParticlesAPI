@@ -46,7 +46,7 @@ abstract class ControlableParticle(
     /**
      * 插值修改器
      */
-    var lerpInterpolator: ParticleLerpInterpolator = LINEAR_INTERPOLATOR
+    var interpolator: ParticleLerpInterpolator = LINEAR_INTERPOLATOR
         private set
     val controler: ParticleControler = ControlParticleManager.getControl(controlUUID)!!
 
@@ -353,9 +353,6 @@ abstract class ControlableParticle(
                     this.boundingBox.maxZ - this.boundingBox.minZ,
                 )
             }
-            xo = x
-            yo = y
-            zo = z
             this.loc = lastPreview
             update = false
         }
@@ -368,15 +365,10 @@ abstract class ControlableParticle(
             currentAngleZ = lastRotate.z
             updateRotate = false
         }
-        // 判断其他 (例如环境信息)
-
-        // TODO 多余的判断可能会导致性能问题 目前没找到优化方法 (MC的区块内方块获取属实是一言难尽 时不时就爆炸无限循环:))
-
-
     }
 
     fun setInterpolator(newInterpolator: ParticleLerpInterpolator): ControlableParticle {
-        this.lerpInterpolator = newInterpolator
+        this.interpolator = newInterpolator
         return this
     }
 
@@ -397,7 +389,8 @@ abstract class ControlableParticle(
         val q = Quaternionf()
         // 获取摄像机位置
         val cameraPos = camera.position
-        val lerpPos = (lerpInterpolator.consume(
+        // 摄像空间（摄像头位置为原点）
+        val lerpPos = (interpolator.consume(
             Vec3(xo, yo, zo), Vec3(x, y, z), tickDelta
         ) - cameraPos).toVector3f()
         if (faceToCamera) {

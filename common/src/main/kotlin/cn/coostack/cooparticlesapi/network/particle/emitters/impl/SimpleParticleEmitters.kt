@@ -36,7 +36,8 @@ class SimpleParticleEmitters(
     var templateData: ControlableParticleData,
 ) : ParticleEmitters {
     // 用于构造测试
-    private constructor(): this(Vec3.ZERO,null, ControlableParticleData())
+    private constructor() : this(Vec3.ZERO, null, ControlableParticleData())
+
     override var tick: Int = 0
     override var maxTick: Int = 120
     override var delay: Int = 0
@@ -316,7 +317,18 @@ class SimpleParticleEmitters(
             if (!this.onTheGround) {
                 return@addPreTickAction
             }
-            val event = ParticleOnGroundEvent(this, data, ofFloored(this.loc))
+            val block = ofFloored(this.loc)
+            val prev = prevPos
+            val res = world.getBlockState(block).getShape(world, block)
+                .clip(prev, this.loc, block)
+            val intersection = res?.location ?: this.loc
+            val event = ParticleOnGroundEvent(
+                this,
+                data,
+                ofFloored(this.loc),
+                intersection,
+                res!!
+            )
             for ((handler, _) in hitEntityHandlers) {
                 if (handler.getTargetEventID() != ParticleOnGroundEvent.EVENT_ID) {
                     continue

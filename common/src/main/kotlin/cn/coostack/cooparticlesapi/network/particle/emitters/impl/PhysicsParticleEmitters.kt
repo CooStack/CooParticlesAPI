@@ -365,7 +365,19 @@ class PhysicsParticleEmitters(
             if (!this.onTheGround) {
                 return@addPreTickAction
             }
-            val event = ParticleOnGroundEvent(this, data, ofFloored(this.loc))
+            // 计算交点
+            val block = ofFloored(this.loc)
+            val prev = prevPos
+            val res = world.getBlockState(block).getShape(world, block)
+                .clip(prev, this.loc, block)
+            val intersection = res?.location ?: this.loc
+            val event = ParticleOnGroundEvent(
+                this,
+                data,
+                ofFloored(this.loc),
+                intersection,
+                res!!
+            )
             for ((handler, _) in hitEntityHandlers) {
                 if (handler.getTargetEventID() != ParticleOnGroundEvent.EVENT_ID) {
                     continue

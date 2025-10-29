@@ -1,5 +1,7 @@
 package cn.coostack.cooparticlesapi.utils
 
+import cn.coostack.cooparticlesapi.extend.asRelative
+import cn.coostack.cooparticlesapi.extend.randomVec3
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -192,9 +194,7 @@ object Math3DUtil {
         // 先获取中点
         val mid = start + (end - start).multiply(0.5)
         // 让中点进行偏移
-        mid.x += random.nextDouble(-fixedOffsetRange, fixedOffsetRange)
-        mid.y += random.nextDouble(-fixedOffsetRange, fixedOffsetRange)
-        mid.z += random.nextDouble(-fixedOffsetRange, fixedOffsetRange)
+        mid.add(randomVec3().asRelative() * random.nextDouble(-fixedOffsetRange, fixedOffsetRange))
         val res = mutableListOf(mid)
         if (counts <= 1) {
             return res

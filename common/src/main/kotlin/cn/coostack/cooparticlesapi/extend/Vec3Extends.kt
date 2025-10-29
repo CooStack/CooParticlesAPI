@@ -1,15 +1,26 @@
 package cn.coostack.cooparticlesapi.extend
 
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
+import net.minecraft.core.Vec3i
+import net.minecraft.util.RandomSource
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.random.Random
 
+private val random = Random(System.currentTimeMillis())
 
 fun Vec3.asRelative() = RelativeLocation.of(this)
 fun Vector3f.asRelative() = RelativeLocation.of(this)
 fun Vector3f.asVec3() = Vec3(this)
 
 
+fun Vec3.asAbs(): Vec3 {
+    return Vec3(abs(this.x), abs(this.y), abs(this.z))
+}
 
 fun Vec3.relativize(target: Vec3): Vec3 {
     return target.subtract(this)
@@ -31,7 +42,6 @@ fun Vector3f.relativize(target: Vec3): Vector3f {
 fun Vec3.multiply(scaled: Number): Vec3 {
     return this.scale(scaled.toDouble())
 }
-
 
 
 operator fun Vec3.minus(other: Vec3): Vec3 {
@@ -101,3 +111,49 @@ operator fun Vec3.times(other: Double): Vec3 {
 operator fun Double.times(other: Vec3): Vec3 {
     return other * this
 }
+
+/**
+ * 球面随机分布
+ * 方向分布更均匀
+ */
+fun randomVec3(): Vec3 {
+    return randomVec3(random)
+}
+
+fun randomVec3(random: Random): Vec3 {
+    val theta = random.nextDouble(-PI, PI)
+    val phi = random.nextDouble(-PI, PI)
+    val sinPhi = sin(phi)
+    return Vec3(
+        sinPhi * cos(theta),
+        sinPhi * sin(theta),
+        cos(phi)
+    )
+}
+
+fun randomVec3(random: java.util.Random): Vec3 {
+    val theta = random.nextDouble(-PI, PI)
+    val phi = random.nextDouble(-PI, PI)
+    val sinPhi = sin(phi)
+    return Vec3(
+        sinPhi * cos(theta),
+        sinPhi * sin(theta),
+        cos(phi)
+    )
+}
+
+fun randomVec3(random: RandomSource): Vec3 {
+    val theta = random.nextDouble() * 2 * PI
+    val phi = random.nextDouble() * 2 * PI
+    val sinPhi = sin(phi)
+    return Vec3(
+        sinPhi * cos(theta),
+        sinPhi * sin(theta),
+        cos(phi)
+    )
+}
+
+fun Vec3.random() = randomVec3()
+fun Vec3.random(random: Random) = randomVec3(random)
+fun Vec3.random(random: java.util.Random) = randomVec3(random)
+fun Vec3.random(random: RandomSource) = randomVec3(random)

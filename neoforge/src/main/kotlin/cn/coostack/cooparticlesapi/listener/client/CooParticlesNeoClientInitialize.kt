@@ -6,6 +6,7 @@ import cn.coostack.cooparticlesapi.particles.CooModParticles
 import cn.coostack.cooparticlesapi.particles.impl.ControlableCloudParticle
 import cn.coostack.cooparticlesapi.particles.impl.ControlableEnchantmentParticle
 import cn.coostack.cooparticlesapi.particles.impl.ControlableEndRodParticle
+import cn.coostack.cooparticlesapi.particles.impl.ControlableFallingDustParticle
 import cn.coostack.cooparticlesapi.particles.impl.ControlableFireworkParticle
 import cn.coostack.cooparticlesapi.particles.impl.ControlableFlashParticle
 import net.neoforged.api.distmarker.Dist
@@ -32,10 +33,11 @@ object CooParticlesNeoClientInitialize {
 
     @SubscribeEvent
     fun onParticleInit(event: RegisterParticleProvidersEvent) {
-        event.registerSpriteSet(CooModParticles.endRod.get()) { ControlableEndRodParticle.Factory(it) }
+        event.registerSpriteSet(CooModParticles.controlableEndRod.get()) { ControlableEndRodParticle.Factory(it) }
         event.registerSpriteSet(CooModParticles.controlableCloud.get()) { ControlableCloudParticle.Factory(it) }
         event.registerSpriteSet(CooModParticles.controlableFlash.get()) { ControlableFlashParticle.Factory(it) }
         event.registerSpriteSet(CooModParticles.controlableFirework.get()) { ControlableFireworkParticle.Factory(it) }
-        event.registerSpriteSet(CooModParticles.enchantment.get()) { ControlableEnchantmentParticle.Factory(it) }
+        event.registerSpriteSet(CooModParticles.controlableEnchantment.get()) { ControlableEnchantmentParticle.Factory(it) }
+        event.registerSpriteSet(CooModParticles.controlableFallingDust.get()) { ControlableFallingDustParticle.Factory() }
     }
 }

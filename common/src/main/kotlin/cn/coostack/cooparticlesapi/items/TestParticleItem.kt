@@ -41,8 +41,8 @@ class TestParticleItem(settings: Properties) : Item(settings) {
         if (world.isClientSide) {
             return InteractionResultHolder.success(user.getItemInHand(hand))
         }
-//        testEvents(world, user)
-        testEmitter(world as ServerLevel, user as ServerPlayer)
+        testEvents(world, user)
+//        testEmitter(world as ServerLevel, user as ServerPlayer)
 //        CameraUtil.startShakeCamera(240, 0.25)
 //        testRomaCircle(world, user)
         // 线性阻力
@@ -59,9 +59,7 @@ class TestParticleItem(settings: Properties) : Item(settings) {
             .apply {
                 gravity = PhysicConstant.EARTH_GRAVITY
                 shootDirection = user.forward.scale(1.0)
-                addEventHandler(TestEntityHitEventHandler, false)
                 addEventHandler(TestOnGroundEventHandler, false)
-                addEventHandler(TestOnLiquidEventHandler, false)
             }
         ParticleEmittersManager.spawnEmitters(test)
     }

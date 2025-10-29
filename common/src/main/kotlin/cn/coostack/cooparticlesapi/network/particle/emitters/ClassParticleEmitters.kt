@@ -1,6 +1,10 @@
 package cn.coostack.cooparticlesapi.network.particle.emitters
 
+import cn.coostack.cooparticlesapi.extend.asRelative
+import cn.coostack.cooparticlesapi.extend.asVec3
 import cn.coostack.cooparticlesapi.extend.ofFloored
+import cn.coostack.cooparticlesapi.extend.times
+import cn.coostack.cooparticlesapi.extend.unaryMinus
 import cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind.GlobalWindDirection
 import cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind.WindDirection
 import cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind.WindDirections
@@ -16,8 +20,11 @@ import cn.coostack.cooparticlesapi.utils.interpolator.emitters.LineEmitterInterp
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.world.entity.Entity
+import net.minecraft.world.level.ClipContext
 import net.minecraft.world.level.Level
+import net.minecraft.world.phys.HitResult
 import net.minecraft.world.phys.Vec3
+import net.minecraft.world.phys.shapes.CollisionContext
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.max
@@ -206,7 +213,7 @@ abstract class ClassParticleEmitters(
             increaseTick()
             return
         }
-        if (enableInterpolator){
+        if (enableInterpolator) {
             emittersInterpolator.insertPoint(pos)
         }
         if (tick % max(1, delay) == 0) {
@@ -287,7 +294,7 @@ abstract class ClassParticleEmitters(
         posLerpProgress: Float,
     )
 
-    private fun spawnParticle(
+    private fun `spawnParticle`(
         world: ClientLevel,
         pos: Vec3,
         data: ControlableParticleData,
@@ -306,26 +313,46 @@ abstract class ClassParticleEmitters(
             this.textureSheet = data.getTextureSheet()
             this.particleAlpha = data.alpha
         }
+
         control.addPreTickAction {
+            if (currentAge++ >= lifetime) {
+                remove()
+            }
             if (minecraftTick) return@addPreTickAction
             if (bounding.hasNaN()) return@addPreTickAction
-            val blockPos = ofFloored(this.loc)
-            val down = ofFloored(
-                this.loc.subtract(
-                    bounding.maxX - bounding.minX,
-                    bounding.maxY - bounding.minY,
-                    bounding.maxZ - bounding.minZ
-                )
+            val prepareMove = this.loc.add(data.velocity)
+            val clipContext = ClipContext(
+                this.loc, prepareMove, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, CollisionContext.empty()
             )
-            if (world.getChunk(blockPos) == null || world.getChunk(down) == null) return@addPreTickAction
-            val statusPos = world.getBlockState(blockPos)
-            val statusDown = world.getBlockState(down)
-            onTheGround = !statusDown.getCollisionShape(world, down).isEmpty || !statusPos.getCollisionShape(
-                world,
-                blockPos
-            ).isEmpty
-        }
 
+            val clipRes = world.clip(clipContext)
+            this.controler.bufferedData["clip"] = clipRes
+            onTheGround = clipRes != null && clipRes.type != HitResult.Type.MISS
+            // 模拟粒子运动 速度
+            teleportTo(prepareMove) // 先模拟移动
+            if (onTheGround && clipRes != null) {
+                // 找方向 velocity
+                handlerList[ParticleOnGroundEvent.EVENT_ID]?.let {
+                    val offset = clipRes.direction.normal.asVec3() * 0.1
+                    val event = ParticleOnGroundEvent(
+                        this,
+                        data,
+                        ofFloored(prepareMove),
+                        clipRes.location.add(offset),
+                        clipRes
+                    )
+                    for ((handler, _) in it) {
+                        if (handler.getTargetEventID() != ParticleOnGroundEvent.EVENT_ID) {
+                            continue
+                        }
+                        handler.handle(event)
+                        if (event.canceled) {
+                            break
+                        }
+                    }
+                }
+            }
+        }
         // 事件层
         control.addPreTickAction {
             // 针对 ParticleHitEntityEvent
@@ -339,26 +366,6 @@ abstract class ClassParticleEmitters(
             val event = ParticleHitEntityEvent(this, data, first)
             for ((handler, _) in hitEntityHandlers) {
                 if (handler.getTargetEventID() != ParticleHitEntityEvent.EVENT_ID) {
-                    continue
-                }
-                handler.handle(event)
-                if (event.canceled) {
-                    break
-                }
-            }
-        }
-
-        control.addPreTickAction {
-            // 针对 ParticleOnGroundEvent
-            val hitEntityHandlers = handlerList[ParticleOnGroundEvent.EVENT_ID] ?: return@addPreTickAction
-            if (hitEntityHandlers.isEmpty()) return@addPreTickAction
-            // 判断事件触发
-            if (!this.onTheGround) {
-                return@addPreTickAction
-            }
-            val event = ParticleOnGroundEvent(this, data, ofFloored(this.loc))
-            for ((handler, _) in hitEntityHandlers) {
-                if (handler.getTargetEventID() != ParticleOnGroundEvent.EVENT_ID) {
                     continue
                 }
                 handler.handle(event)
@@ -400,17 +407,9 @@ abstract class ClassParticleEmitters(
         }
         val p = RelativeLocation.of(pos)
         singleParticleAction(control, data, p, world, particleLerpProgress, posLerpProgress)
-        control.addPreTickAction {
-            // 模拟粒子运动 速度
-            teleportTo(
-                this.loc.add(data.velocity)
-            )
-            if (currentAge++ >= lifetime) {
-                remove()
-            }
-        }
         displayer.display(p.toVector(), world)
     }
+
 
     protected fun updatePhysics(pos: Vec3, data: ControlableParticleData) {
         val m = mass / 1000

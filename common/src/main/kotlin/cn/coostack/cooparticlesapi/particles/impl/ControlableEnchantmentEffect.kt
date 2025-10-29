@@ -47,7 +47,7 @@ class ControlableEnchantmentEffect(controlUUID: UUID, faceToPlayer: Boolean = tr
 
 
     override fun getType(): ParticleType<*> {
-        return CooModParticles.enchantment.get()
+        return CooModParticles.controlableEnchantment.get()
     }
 
     override fun getPacketCodec(): StreamCodec<FriendlyByteBuf, out ControlableParticleEffect> {

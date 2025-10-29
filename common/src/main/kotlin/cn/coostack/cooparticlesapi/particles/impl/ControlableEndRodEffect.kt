@@ -47,7 +47,7 @@ class ControlableEndRodEffect(controlUUID: UUID, faceToPlayer: Boolean = true) :
     }
 
     override fun getType(): ParticleType<*> {
-        return CooModParticles.endRod.get()
+        return CooModParticles.controlableEndRod.get()
     }
 
     override fun getPacketCodec(): StreamCodec<FriendlyByteBuf, out ControlableParticleEffect> {

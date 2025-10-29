@@ -1,21 +1,16 @@
 package cn.coostack.cooparticlesapi
 
-import cn.coostack.cooparticlesapi.CooParticlesAPIClient.initShaderPrograms
 import cn.coostack.cooparticlesapi.network.packet.*
 import cn.coostack.cooparticlesapi.network.packet.client.listener.*
 import cn.coostack.cooparticlesapi.particles.CooModParticles
 import cn.coostack.cooparticlesapi.particles.impl.*
 import cn.coostack.cooparticlesapi.platform.network.FabricClientContext
-import cn.coostack.cooparticlesapi.renderer.client.ClientRenderEntityManager.renderTick
 import net.fabricmc.api.ClientModInitializer
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientWorldEvents
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
 import net.fabricmc.fabric.api.client.particle.v1.ParticleFactoryRegistry
-import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents
-import net.minecraft.client.Minecraft
-import org.joml.Matrix4f
 
 
 object CooParticlesAPIFabricClient : ClientModInitializer {
@@ -51,11 +46,11 @@ object CooParticlesAPIFabricClient : ClientModInitializer {
 
     private fun registerParticleFabric() {
         ParticleFactoryRegistry.getInstance()
-            .register(CooModParticles.endRod.get(), ParticleFactoryRegistry.PendingParticleFactory {
+            .register(CooModParticles.controlableEndRod.get(), ParticleFactoryRegistry.PendingParticleFactory {
                 return@PendingParticleFactory ControlableEndRodParticle.Factory(it)
             })
         ParticleFactoryRegistry.getInstance()
-            .register(CooModParticles.enchantment.get(), ParticleFactoryRegistry.PendingParticleFactory {
+            .register(CooModParticles.controlableEnchantment.get(), ParticleFactoryRegistry.PendingParticleFactory {
                 return@PendingParticleFactory ControlableEnchantmentParticle.Factory(it)
             })
         ParticleFactoryRegistry.getInstance()
@@ -69,6 +64,10 @@ object CooParticlesAPIFabricClient : ClientModInitializer {
         ParticleFactoryRegistry.getInstance()
             .register(CooModParticles.controlableFirework.get(), ParticleFactoryRegistry.PendingParticleFactory {
                 return@PendingParticleFactory ControlableFireworkParticle.Factory(it)
+            })
+        ParticleFactoryRegistry.getInstance()
+            .register(CooModParticles.controlableFallingDust.get(), ParticleFactoryRegistry.PendingParticleFactory {
+                return@PendingParticleFactory ControlableFallingDustParticle.Factory()
             })
     }
 

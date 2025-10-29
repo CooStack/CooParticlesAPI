@@ -6,6 +6,7 @@ import cn.coostack.cooparticlesapi.particles.impl.ControlableEnchantmentEffect
 import cn.coostack.cooparticlesapi.particles.impl.ControlableFireworkEffect
 import cn.coostack.cooparticlesapi.particles.impl.ControlableFlashEffect
 import cn.coostack.cooparticlesapi.particles.impl.ControlableEndRodEffect
+import cn.coostack.cooparticlesapi.particles.impl.ControlableFallingDustEffect
 import cn.coostack.cooparticlesapi.platform.registry.CommonDeferredRegistry
 import com.mojang.serialization.MapCodec
 import net.minecraft.core.particles.ParticleOptions
@@ -22,12 +23,12 @@ import net.minecraft.resources.ResourceLocation
  */
 object CooModParticles {
     val particleTypes = mutableListOf<CommonDeferredRegistry<ParticleType<*>>>()
-    val endRod = register(
-        "test_end_rod", false, { ControlableEndRodEffect.codec }, { ControlableEndRodEffect.packetCode }
+    val controlableEndRod = register(
+        "controlable_end_rod", false, { ControlableEndRodEffect.codec }, { ControlableEndRodEffect.packetCode }
     )
 
-    val enchantment = register(
-        "enchantment", false, { ControlableEnchantmentEffect.codec }, { ControlableEnchantmentEffect.packetCode }
+    val controlableEnchantment = register(
+        "controlable_enchantment", false, { ControlableEnchantmentEffect.codec }, { ControlableEnchantmentEffect.packetCode }
     )
 
     val controlableCloud = register(
@@ -40,6 +41,10 @@ object CooModParticles {
 
     val controlableFirework = register(
         "controlable_firework", false, { ControlableFireworkEffect.codec }, { ControlableFireworkEffect.packetCode }
+    )
+
+    val controlableFallingDust = register(
+        "controlable_falling_dust",false,{ ControlableFallingDustEffect.codec},{ ControlableFallingDustEffect.packetCode}
     )
 
     fun reg() {
