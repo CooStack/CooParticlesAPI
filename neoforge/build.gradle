@@ -58,9 +58,6 @@ tasks.named('jar', Jar) {
     archiveFileName.set("${rootProject.mod_name}-NeoForge-${rootProject.minecraft_version}-${rootProject.version}.jar")
     dependsOn(tasks.named("sourceWithCommon"))
 }
-tasks.withType(JavaExec).configureEach {
-    jvmArgs = ["-XX:+AllowEnhancedClassRedefinition"]
-}
 def properties = new Properties()
 def repoFile = rootProject.file("repo.properties")
 if (repoFile.exists()) {

@@ -79,7 +79,7 @@ class ExplodeClassParticleEmitters(pos: Vec3, world: Level?) : ClassParticleEmit
             data.velocity = LinearResistanceHelper.setPercentageVelocity(
                 data.velocity, 0.9
             )
-            updatePhysics(loc, data)
+            updatePhysics(loc, data, this)
         }
     }
 

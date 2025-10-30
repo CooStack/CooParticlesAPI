@@ -1,39 +1,37 @@
 package cn.coostack.cooparticlesapi.network.particle.emitters
 
-import cn.coostack.cooparticlesapi.extend.asRelative
 import cn.coostack.cooparticlesapi.extend.asVec3
 import cn.coostack.cooparticlesapi.extend.ofFloored
+import cn.coostack.cooparticlesapi.extend.plus
 import cn.coostack.cooparticlesapi.extend.times
-import cn.coostack.cooparticlesapi.extend.unaryMinus
 import cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind.GlobalWindDirection
 import cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind.WindDirection
 import cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind.WindDirections
 import cn.coostack.cooparticlesapi.network.particle.emitters.event.*
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.PhysicsParticleEmitters.Companion.CROSS_SECTIONAL_AREA
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.PhysicsParticleEmitters.Companion.DRAG_COEFFICIENT
+import cn.coostack.cooparticlesapi.particles.ControlableParticle
 import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
 import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
 import cn.coostack.cooparticlesapi.particles.control.ParticleControler
+import cn.coostack.cooparticlesapi.utils.PhysicsUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import cn.coostack.cooparticlesapi.utils.interpolator.Interpolator
 import cn.coostack.cooparticlesapi.utils.interpolator.emitters.LineEmitterInterpolator
 import net.minecraft.client.multiplayer.ClientLevel
+import net.minecraft.core.Direction
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.world.entity.Entity
-import net.minecraft.world.level.ClipContext
 import net.minecraft.world.level.Level
+import net.minecraft.world.phys.BlockHitResult
 import net.minecraft.world.phys.HitResult
 import net.minecraft.world.phys.Vec3
-import net.minecraft.world.phys.shapes.CollisionContext
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.max
 import kotlin.math.pow
 
-/**
- * 通过自定义类来实现一些发散性粒子样式
- * (实在懒得写表达式了)
- */
+/** 通过自定义类来实现一些发散性粒子样式 (实在懒得写表达式了) */
 abstract class ClassParticleEmitters(
     override var pos: Vec3,
     override var world: Level?,
@@ -49,16 +47,14 @@ abstract class ClassParticleEmitters(
     val handlerList = ConcurrentHashMap<String, SortedMap<ParticleEventHandler, Boolean>>()
 
     /**
-     * 是否启用线段插值器
-     * 如果设置为true 则spawnParticles由线段插值器管控
-     * 设置为false,则只会在 1tick内执行一次spawnParticles
+     * 是否启用线段插值器 如果设置为true 则spawnParticles由线段插值器管控 设置为false,则只会在
+     * 1tick内执行一次spawnParticles
      */
     var enableInterpolator = false
 
     /**
-     * 插值器工具
-     * 需要启用 enableInterpolator
-     * 可以修改
+     * 插值器工具 需要启用 enableInterpolator 可以修改
+     *
      * @see enableInterpolator
      */
     var emittersInterpolator: Interpolator = LineEmitterInterpolator()
@@ -124,12 +120,7 @@ abstract class ClassParticleEmitters(
             data.wind.getCodec().encode(buf, data.wind)
         }
 
-        /**
-         * 写法
-         * 先在codec的 decode方法中 创建此对象
-         * 然后将buf和container 传入此方法
-         * 然后继续decode自己的参数
-         */
+        /** 写法 先在codec的 decode方法中 创建此对象 然后将buf和container 传入此方法 然后继续decode自己的参数 */
         fun decodeBase(container: ClassParticleEmitters, buf: FriendlyByteBuf) {
             val handlerCount = buf.readInt()
             val handlerList = ArrayList<ParticleEventHandler>()
@@ -175,17 +166,12 @@ abstract class ClassParticleEmitters(
 
     }
 
-    /**
-     * 风力方向
-     */
+    /** 风力方向 */
     var wind: WindDirection = GlobalWindDirection(Vec3.ZERO).also {
         it.loadEmitters(this)
     }
 
-    /**
-     * 质量
-     * 单位 g
-     */
+    /** 质量 单位 g */
     var mass: Double = 1.0
     override fun start() {
         if (playing) return
@@ -257,33 +243,35 @@ abstract class ClassParticleEmitters(
     }
 
     /**
-     * 服务器和客户端都会执行此方法
-     * 判断服务器清使用 if(!world!!.isClient)
+     * 服务器和客户端都会执行此方法 判断服务器清使用
+     *
+     *  ```kotlin
+     *  if(!world!!.isClient)
+     *  ```
      */
     abstract fun doTick()
 
-    /**
-     * 粒子样式生成器
-     */
+    /** 粒子样式生成器 */
     abstract fun genParticles(): List<Pair<ControlableParticleData, RelativeLocation>>
 
     /**
      * 在一次粒子生成前会执行
+     *
      * @param current 当前插值的生成位置
      */
     protected open fun doSubtick(current: Vec3) {}
 
     /**
-     * 如若要修改粒子的位置, 速度 属性
-     * 请直接修改 ControlableParticleData
+     * 如若要修改粒子的位置, 速度 属性 请直接修改 ControlableParticleData
      *
      * @param data 用于操作单个粒子属性的类
-     * @param particleLerpProgress 生成这个粒子的时候，当前的进度（(当前生成的粒子索引+1)/genParticles().size ）
-     * @param posLerpProgress 当发射器进行发射插值时， 插值的偏移 如果不使用插值则永远为1
      * @param spawnPos 生成的位置，在粒子已经生成后再修改无效
      *
-     * 执行tick方法请使用
-     * controler.addPreTickAction
+     * 执行tick方法请使用 controler.addPreTickAction
+     *
+     * @param particleLerpProgress
+     *    生成这个粒子的时候，当前的进度（(当前生成的粒子索引+1)/genParticles().size ）
+     * @param posLerpProgress 当发射器进行发射插值时， 插值的偏移 如果不使用插值则永远为1
      */
     abstract fun singleParticleAction(
         controler: ParticleControler,
@@ -294,7 +282,7 @@ abstract class ClassParticleEmitters(
         posLerpProgress: Float,
     )
 
-    private fun `spawnParticle`(
+    private fun spawnParticle(
         world: ClientLevel,
         pos: Vec3,
         data: ControlableParticleData,
@@ -314,45 +302,6 @@ abstract class ClassParticleEmitters(
             this.particleAlpha = data.alpha
         }
 
-        control.addPreTickAction {
-            if (currentAge++ >= lifetime) {
-                remove()
-            }
-            if (minecraftTick) return@addPreTickAction
-            if (bounding.hasNaN()) return@addPreTickAction
-            val prepareMove = this.loc.add(data.velocity)
-            val clipContext = ClipContext(
-                this.loc, prepareMove, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, CollisionContext.empty()
-            )
-
-            val clipRes = world.clip(clipContext)
-            this.controler.bufferedData["clip"] = clipRes
-            onTheGround = clipRes != null && clipRes.type != HitResult.Type.MISS
-            // 模拟粒子运动 速度
-            teleportTo(prepareMove) // 先模拟移动
-            if (onTheGround && clipRes != null) {
-                // 找方向 velocity
-                handlerList[ParticleOnGroundEvent.EVENT_ID]?.let {
-                    val offset = clipRes.direction.normal.asVec3() * 0.1
-                    val event = ParticleOnGroundEvent(
-                        this,
-                        data,
-                        ofFloored(prepareMove),
-                        clipRes.location.add(offset),
-                        clipRes
-                    )
-                    for ((handler, _) in it) {
-                        if (handler.getTargetEventID() != ParticleOnGroundEvent.EVENT_ID) {
-                            continue
-                        }
-                        handler.handle(event)
-                        if (event.canceled) {
-                            break
-                        }
-                    }
-                }
-            }
-        }
         // 事件层
         control.addPreTickAction {
             // 针对 ParticleHitEntityEvent
@@ -407,15 +356,66 @@ abstract class ClassParticleEmitters(
         }
         val p = RelativeLocation.of(pos)
         singleParticleAction(control, data, p, world, particleLerpProgress, posLerpProgress)
+        control.addPreTickAction {
+            if (currentAge++ >= lifetime) {
+                remove()
+            }
+            if (minecraftTick) return@addPreTickAction
+            if (bounding.hasNaN()) return@addPreTickAction
+            val prepareMove = this.loc.add(data.velocity)
+            val clipRes = PhysicsUtil.collide(this.loc, data.velocity, world)
+            onTheGround = clipRes.type != HitResult.Type.MISS && clipRes.direction == Direction.UP
+            // 模拟粒子运动 速度
+            moveSingleParticleWithVelocity(this, data, prepareMove, clipRes)
+            if (onTheGround) {
+                // 找方向 velocity
+                handlerList[ParticleOnGroundEvent.EVENT_ID]?.let {
+                    val offset = clipRes.direction.normal.asVec3() * 0.1
+                    val event = ParticleOnGroundEvent(
+                        this,
+                        data,
+                        ofFloored(prepareMove),
+                        clipRes.location.add(offset),
+                        clipRes
+                    )
+                    for ((handler, _) in it) {
+                        if (handler.getTargetEventID() != ParticleOnGroundEvent.EVENT_ID) {
+                            continue
+                        }
+                        handler.handle(event)
+                        if (event.canceled) {
+                            break
+                        }
+                    }
+                }
+            }
+
+            if (clipRes.type != HitResult.Type.MISS) {
+                handlerList[ParticleCollideEvent.EVENT_ID]?.let {
+                    val event = ParticleCollideEvent(
+                        this, data, clipRes
+                    )
+                    for ((handler, _) in it) {
+                        if (handler.getTargetEventID() != ParticleCollideEvent.EVENT_ID) {
+                            continue
+                        }
+                        handler.handle(event)
+                        if (event.canceled) {
+                            break
+                        }
+                    }
+                }
+            }
+        }
         displayer.display(p.toVector(), world)
     }
 
-
-    protected fun updatePhysics(pos: Vec3, data: ControlableParticleData) {
+    protected fun updatePhysics(pos: Vec3, data: ControlableParticleData, particle: ControlableParticle) {
         val m = mass / 1000
         val v = data.velocity
         val speed = v.length()
-        val gravityForce = Vec3(0.0, -m * gravity, 0.0)
+        val gravity = if (particle.onTheGround) 0.0 else gravity
+        val gravityForce = Vec3(0.0, -m * gravity, 0.0) // 下面质量会被消除掉
         val airResistanceForce = if (speed > 0.01) {
             val dragMagnitude = 0.5 * airDensity * DRAG_COEFFICIENT *
                     CROSS_SECTIONAL_AREA * speed.pow(2) * 0.05
@@ -442,9 +442,29 @@ abstract class ClassParticleEmitters(
         data.velocity = v.add(a)
     }
 
+    /**
+     * # 处理单个粒子的位移位置
+     * - 方便更真实的物理模拟
+     * - 用于修改particle受到velocity时的移动
+     *
+     * @param particle 被操作位置的粒子
+     * @param data 被操作位置的粒子数据
+     * @param to 正常情况下粒子应该移动到的位置（单纯loc+velocity）
+     * @param collide 粒子的碰撞情况 （如果显示碰撞，则代表to位置存在方块 loc不存在）
+     */
+    protected fun moveSingleParticleWithVelocity(
+        particle: ControlableParticle,
+        data: ControlableParticleData,
+        to: Vec3,
+        collide: BlockHitResult
+    ) {
+        particle.teleportTo(to)
+    }
 
     /**
      * 数据同步需要实现此方法
+     *
+     * @param emitters 更新的模板发射器
      */
     override fun update(emitters: ParticleEmitters) {
         if (emitters !is ClassParticleEmitters) return

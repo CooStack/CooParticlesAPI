@@ -18,6 +18,7 @@ import cn.coostack.cooparticlesapi.particles.impl.ControlableCloudEffect
 import cn.coostack.cooparticlesapi.particles.impl.ControlableEndRodEffect
 import cn.coostack.cooparticlesapi.test.particle.emitter.TestEmitter
 import cn.coostack.cooparticlesapi.test.particle.emitter.TestEventEmitter
+import cn.coostack.cooparticlesapi.test.particle.emitter.event.TestCollideEventHandler
 import cn.coostack.cooparticlesapi.test.particle.emitter.event.TestEntityHitEventHandler
 import cn.coostack.cooparticlesapi.test.particle.emitter.event.TestOnGroundEventHandler
 import cn.coostack.cooparticlesapi.test.particle.emitter.event.TestOnLiquidEventHandler
@@ -59,7 +60,7 @@ class TestParticleItem(settings: Properties) : Item(settings) {
             .apply {
                 gravity = PhysicConstant.EARTH_GRAVITY
                 shootDirection = user.forward.scale(1.0)
-                addEventHandler(TestOnGroundEventHandler, false)
+                addEventHandler(TestCollideEventHandler, false)
             }
         ParticleEmittersManager.spawnEmitters(test)
     }

@@ -13,6 +13,17 @@ import net.minecraft.world.phys.Vec3
 import net.minecraft.world.phys.shapes.CollisionContext
 
 object PhysicsUtil {
+    /**
+     * 如果粒子移动前没碰撞，然后移动后碰撞，可以调用此方法修正碰撞位置
+     * 否则粒子卡在了方块内，则不适用 (会反向弹出罢)
+     *
+     * @param res 碰撞结果
+     * @return 修正后的位置(恰好擦边)
+     */
+    fun fixBeforeCollidePosition(res: BlockHitResult): Vec3 {
+        val offset = res.direction.normal.asVec3()
+        return res.location + offset.normalize() * 0.07
+    }
 
     fun collide(currentPos: Vec3, velocity: Vec3, world: Level): BlockHitResult {
         val context = ClipContext(
@@ -44,9 +55,7 @@ object PhysicsUtil {
             currentPos, next, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, CollisionContext.empty()
         )
         val clip = world.clip(context)
-        val normal = clip.direction.normal.asVec3()
-        val mulNormal = normal * velocity.asAbs()
-        return velocity + mulNormal // normal运动方向本身就是反向的 所以需要相加消除
+        return collideMovement(clip, velocity)
     }
 
 

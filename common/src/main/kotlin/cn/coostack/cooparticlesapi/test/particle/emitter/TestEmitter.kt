@@ -116,7 +116,7 @@ class TestEmitter(pos: Vec3, world: Level?) : ClassParticleEmitters(pos, world) 
             RelativeLocation.of(data.velocity.multiply(particleLerpProgress.toDouble()))
         )
         controler.addPreTickAction {
-            updatePhysics(pos, data)
+            updatePhysics(pos, data, this)
             // 颜色插值
             val p1 = this.lifetime
             val precent = this.currentAge.toFloat() / p1

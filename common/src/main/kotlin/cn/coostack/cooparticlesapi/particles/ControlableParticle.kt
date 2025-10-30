@@ -5,6 +5,7 @@ import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
 import cn.coostack.cooparticlesapi.particles.control.ParticleControler
 import cn.coostack.cooparticlesapi.utils.GraphMathHelper
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
+import cn.coostack.cooparticlesapi.utils.PhysicsUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import com.mojang.blaze3d.vertex.VertexConsumer
 import net.minecraft.client.Camera
@@ -17,6 +18,7 @@ import net.minecraft.core.BlockPos
 import net.minecraft.util.Mth
 import net.minecraft.util.RandomSource
 import net.minecraft.world.phys.AABB
+import net.minecraft.world.phys.HitResult
 import net.minecraft.world.phys.Vec3
 import org.joml.Quaternionf
 import org.joml.Vector2f
@@ -326,6 +328,30 @@ abstract class ControlableParticle(
     fun colorOfRGBA(r: Int, g: Int, b: Int, alpha: Float) {
         color = Math3DUtil.colorOf(r.coerceIn(0, 255), g.coerceIn(0, 255), b.coerceIn(0, 255))
         this.alpha = alpha.coerceIn(0f, 1f)
+    }
+
+    /**
+     * 将粒子从 loc 移动到 pos
+     * 在下一个tick生效
+     * @see teleportTo
+     */
+    fun moveToWithPhysics(pos: Vec3) {
+        val rel = pos - loc
+        val res = PhysicsUtil.collide(loc, rel, clientWorld)
+        val actualPos = if (res.type != HitResult.Type.MISS) {
+            PhysicsUtil.fixBeforeCollidePosition(res)
+        } else {
+            pos
+        }
+        teleportTo(actualPos)
+    }
+
+    /**
+     * 将粒子从 loc 移动到 pos
+     * 同teleportTo 在下一个tick生效
+     */
+    fun moveToWithPhysics(x: Double, y: Double, z: Double) {
+        moveToWithPhysics(Vec3(x, y, z))
     }
 
     /**
