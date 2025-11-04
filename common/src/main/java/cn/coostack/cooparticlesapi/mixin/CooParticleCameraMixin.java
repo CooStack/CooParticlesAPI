@@ -9,8 +9,11 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+/**
+ * @author CooStack
+ */
 @Mixin(Camera.class)
-public abstract class   CooParticleCameraMixin {
+public abstract class CooParticleCameraMixin {
     @Shadow
     private float yRot;
     @Shadow

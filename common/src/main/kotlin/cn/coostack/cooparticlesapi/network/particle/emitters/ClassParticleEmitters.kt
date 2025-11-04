@@ -266,11 +266,8 @@ abstract class ClassParticleEmitters(
      *
      * @param data 用于操作单个粒子属性的类
      * @param spawnPos 生成的位置，在粒子已经生成后再修改无效
-     *
-     * 执行tick方法请使用 controler.addPreTickAction
-     *
-     * @param particleLerpProgress
-     *    生成这个粒子的时候，当前的进度（(当前生成的粒子索引+1)/genParticles().size ）
+     *    执行tick方法请使用controler.addPreTickAction
+     * @param particleLerpProgress    生成这个粒子的时候，当前的进度（(当前生成的粒子索引+1)/genParticles().size ）
      * @param posLerpProgress 当发射器进行发射插值时， 插值的偏移 如果不使用插值则永远为1
      */
     abstract fun singleParticleAction(
@@ -452,7 +449,7 @@ abstract class ClassParticleEmitters(
      * @param to 正常情况下粒子应该移动到的位置（单纯loc+velocity）
      * @param collide 粒子的碰撞情况 （如果显示碰撞，则代表to位置存在方块 loc不存在）
      */
-    protected fun moveSingleParticleWithVelocity(
+    protected open fun moveSingleParticleWithVelocity(
         particle: ControlableParticle,
         data: ControlableParticleData,
         to: Vec3,

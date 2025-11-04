@@ -12,6 +12,9 @@ import org.spongepowered.asm.mixin.gen.Accessor;
 import java.util.Map;
 import java.util.Queue;
 
+/**
+ * @author CooStack
+ */
 @Mixin(ParticleEngine.class)
 public interface ParticleEngineAccessor {
 

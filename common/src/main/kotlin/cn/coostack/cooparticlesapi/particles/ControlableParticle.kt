@@ -31,9 +31,7 @@ abstract class ControlableParticle(
     pos: Vec3,
     velocity: Vec3,
     val controlUUID: UUID,
-    /**
-     * 是否始终转向玩家(默认实现)
-     */
+    /** 是否始终转向玩家(默认实现) */
     val faceToCamera: Boolean = true
 ) : TextureSheetParticle(world, pos.x, pos.y, pos.z, velocity.x, velocity.y, velocity.z) {
 
@@ -45,23 +43,15 @@ abstract class ControlableParticle(
         }
     }
 
-    /**
-     * 插值修改器
-     */
+    /** 插值修改器 */
     var interpolator: ParticleLerpInterpolator = LINEAR_INTERPOLATOR
         private set
     val controler: ParticleControler = ControlParticleManager.getControl(controlUUID)!!
 
-    /**
-     * 穿过液体的标记
-     * 用于适配 ParticleOnLiquidEvent
-     */
+    /** 穿过液体的标记 用于适配 ParticleOnLiquidEvent */
     internal var crossLiquid = false
 
-    /**
-     * 粒子亮度
-     * 设置为-1则为环境亮度
-     */
+    /** 粒子亮度 设置为-1则为环境亮度 */
     var light = 15
         set(value) {
             if (value == -1) {
@@ -71,21 +61,13 @@ abstract class ControlableParticle(
             field = value.coerceIn(0, 15)
         }
 
-    /**
-     * 粒子渲染类型
-     * 可以使用
-     *
-     */
+    /** 粒子渲染类型 可以使用 */
     var textureSheet: ParticleRenderType = ParticleRenderType.PARTICLE_SHEET_LIT
 
-    /**
-     * 是否调用 net.minecraft.client.particle.Particle中的tick方法
-     */
+    /** 是否调用 net.minecraft.client.particle.Particle中的tick方法 */
     var minecraftTick: Boolean = false
 
-    /**
-     * @see world
-     */
+    /** @see world */
     val clientWorld: ClientLevel
         get() = level
 
@@ -102,10 +84,7 @@ abstract class ControlableParticle(
             this.z = value.z
         }
 
-    /**
-     * @see scale
-     * 粒子尺寸
-     */
+    /** @see scale 粒子尺寸 */
     var size: Float
         get() = super.quadSize
         set(value) {
@@ -140,36 +119,28 @@ abstract class ControlableParticle(
             this.zd = value.z
         }
 
-    /**
-     * @see boundingBox
-     */
+    /** @see boundingBox */
     var bounding: AABB
         get() = boundingBox
         set(value) {
             boundingBox = value
         }
 
-    /**
-     * @see onGround
-     */
+    /** @see onGround */
     var onTheGround: Boolean
         get() = onGround
         set(value) {
             onGround = value
         }
 
-    /**
-     * @see hasPhysics fabric ->collidesWithWorld
-     */
+    /** @see hasPhysics fabric ->collidesWithWorld */
     var collidesWithTheWorld: Boolean
         get() = hasPhysics
         set(value) {
             hasPhysics = value
         }
 
-    /**
-     * @see dead
-     */
+    /** @see dead */
     var death: Boolean
         get() = removed
         set(value) = if (value) {
@@ -180,6 +151,7 @@ abstract class ControlableParticle(
 
     /**
      * byd neoforge什么傻逼mapping
+     *
      * @see bbWidth - > fabric spacingXZ
      * @see bbHeight - > Fabric spacingY
      */
@@ -190,15 +162,11 @@ abstract class ControlableParticle(
             bbHeight = value.y
         }
 
-    /**
-     * @see random
-     */
+    /** @see random */
     val rand: RandomSource
         get() = random
 
-    /**
-     * @see age
-     */
+    /** @see age */
     var currentAge: Int
         get() = age
         set(value) {
@@ -206,9 +174,7 @@ abstract class ControlableParticle(
         }
 
 
-    /**
-     * @see gravityStrength
-     */
+    /** @see gravityStrength */
     var gravityStrength: Float
         get() = super.gravity
         set(value) {
@@ -235,27 +201,21 @@ abstract class ControlableParticle(
     var previewAngleY: Float = 0f
     var currentAngleY: Float = 0f
 
-    /**
-     * @see prevAngle
-     */
+    /** @see prevAngle */
     var previewAngleZ: Float
         get() = oRoll
         set(value) {
             oRoll = value
         }
 
-    /**
-     * @see angle
-     */
+    /** @see angle */
     var currentAngleZ: Float
         get() = roll
         set(value) {
             super.roll = value
         }
 
-    /**
-     * @see velocityMultiplier
-     */
+    /** @see velocityMultiplier */
     var velocityMulti: Float
         get() = friction
         set(value) {
@@ -263,10 +223,7 @@ abstract class ControlableParticle(
         }
 
 
-    /**
-     * @see speedUpWhenYMotionIsBlocked -> fabric ascending
-     * 让粒子乱飘的罪恶源头?
-     */
+    /** @see speedUpWhenYMotionIsBlocked -> fabric ascending 让粒子乱飘的罪恶源头? */
     var canAscending: Boolean
         get() = speedUpWhenYMotionIsBlocked
         set(value) {
@@ -310,8 +267,8 @@ abstract class ControlableParticle(
     }
 
     /**
-     * 防止频繁调用Math3DUtil (让键盘休息一会)
-     * 也不用调用 color = Vector3f(xxx/255f,xxx/255f,xxx/255f)
+     * 防止频繁调用Math3DUtil (让键盘休息一会) 也不用调用 color =
+     * Vector3f(xxx/255f,xxx/255f,xxx/255f)
      */
     fun colorOfRGB(r: Int, g: Int, b: Int) {
         color = Math3DUtil.colorOf(r.coerceIn(0, 255), g.coerceIn(0, 255), b.coerceIn(0, 255))
@@ -331,8 +288,8 @@ abstract class ControlableParticle(
     }
 
     /**
-     * 将粒子从 loc 移动到 pos
-     * 在下一个tick生效
+     * 将粒子从 loc 移动到 pos 在下一个tick生效
+     *
      * @see teleportTo
      */
     fun moveToWithPhysics(pos: Vec3) {
@@ -346,16 +303,14 @@ abstract class ControlableParticle(
         teleportTo(actualPos)
     }
 
-    /**
-     * 将粒子从 loc 移动到 pos
-     * 同teleportTo 在下一个tick生效
-     */
+    /** 将粒子从 loc 移动到 pos 同teleportTo 在下一个tick生效 */
     fun moveToWithPhysics(x: Double, y: Double, z: Double) {
         moveToWithPhysics(Vec3(x, y, z))
     }
 
     /**
      * 请使用作为tick方法
+     *
      * @see ParticleControler.addPreTickAction
      */
     final override fun tick() {
@@ -398,9 +353,7 @@ abstract class ControlableParticle(
         return this
     }
 
-    /**
-     * @see ParticleControler.remove()
-     */
+    /** @see ParticleControler.remove() */
     override fun remove() {
         super.remove()
         // FIXME 原版的驱逐队列满后不会调用 markDead，百分百泄漏，
@@ -529,9 +482,7 @@ abstract class ControlableParticle(
         return textureSheet
     }
 
-    /**
-     * 在黑夜里粒子也会很亮
-     */
+    /** 在黑夜里粒子也会很亮 */
     override fun getLightColor(partialTick: Float): Int {
         return if (light == -1) {
             LevelRenderer.getLightColor(level, BlockPos(loc.x.toInt(), loc.y.toInt(), loc.z.toInt()))

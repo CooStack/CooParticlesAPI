@@ -20,6 +20,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import java.util.Map;
 import java.util.Queue;
 
+/**
+ * @author CooStack
+ */
 @Mixin(ParticleEngine.class)
 public abstract class ParticleEngineMixin {
     @Final
