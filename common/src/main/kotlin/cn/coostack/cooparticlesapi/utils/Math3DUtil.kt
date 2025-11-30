@@ -33,6 +33,7 @@ object Math3DUtil {
 
     /**
      * 填充2点之间的点
+     *
      * @param refiner 精细度，精细度越大两点之间越密集
      */
     fun fillLine(p1: RelativeLocation, p2: RelativeLocation, refiner: Double): List<RelativeLocation> {
@@ -43,6 +44,7 @@ object Math3DUtil {
 
     /**
      * 填充2点之间的点
+     *
      * @param refiner 精细度，精细度越大两点之间越密集
      */
     fun fillLine(p1: Vec3, p2: Vec3, refiner: Double): List<RelativeLocation> {
@@ -50,15 +52,14 @@ object Math3DUtil {
         return fillLine(RelativeLocation.of(p1), RelativeLocation.of(p2), refiner)
     }
 
-    /**
-     * 将RGB值转换为Minecraft粒子使用的 rgb值(/255)
-     */
+    /** 将RGB值转换为Minecraft粒子使用的 rgb值(/255) */
     fun colorOf(r: Int, g: Int, b: Int): Vector3f {
         return Vector3f(r.toFloat() / 255, g.toFloat() / 255, b.toFloat() / 255)
     }
 
     /**
      * 生成一条从原点指向target的相对虚线
+     *
      * @param target 相对目标位置
      * @param totalCount 这条直线一共拥有的点的个数
      * @param dottedCount 虚线之间的间隔个数
@@ -91,9 +92,10 @@ object Math3DUtil {
 
     /**
      * 生成一条从原点指向target的相对虚线圆环
+     *
      * @param r 半径
-     * @param dottedCount 虚线之间的间隔个数
      * @param totalCount 总点个数
+     * @param dottedCount 虚线之间的间隔个数
      * @param step 每条小线段的间隔
      */
     fun generateDottedCircle(r: Double, totalCount: Int, dottedCount: Int, step: Double): List<RelativeLocation> {
@@ -126,9 +128,7 @@ object Math3DUtil {
     }
 
     // 傅里叶级数
-    /**
-     * 闪电
-     */
+    /** 闪电 */
     fun getLightningEffectNodes(
         start: RelativeLocation, end: RelativeLocation, counts: Int
     ): List<RelativeLocation> {
@@ -185,9 +185,7 @@ object Math3DUtil {
     private fun getLightningNodesAttenuation(
         start: RelativeLocation, end: RelativeLocation, counts: Int, currentOffsetRange: Double, attenuation: Double
     ): List<RelativeLocation> {
-        /**
-         * FIXED 当某些衰减过小时 会出现0.0的异常
-         */
+        /** FIXED 当某些衰减过小时 会出现0.0的异常 */
         val fixedOffsetRange = currentOffsetRange.coerceAtLeast(0.01)
         require(attenuation in 0.01..1.0)
         // 二分 start - > end 位置
@@ -255,12 +253,13 @@ object Math3DUtil {
 
     /**
      * 在 XZ 平面上生成离散化的三维环形分布点集
-     * @param r       目标圆环的基础半径（单位：方块），建议非负值
-     * @param pointRadius  在discrete属性设置为0时 点所在的圆环的位置角度参数 输入弧度制
+     *
+     * @param r 目标圆环的基础半径（单位：方块），建议非负值
      * @param discrete 最大分散距离（单位：方块），控制点与标准圆环的偏离程度：
-     *                - = 0 时所有点严格位于圆环上
-     *                - > 0 时点会在三维空间中以该值为最大半径随机偏移
-     *                实际偏移量为 [0, discrete] 的随机值，负值会被自动归零
+     *    - = 0 时所有点严格位于圆环上
+     *    - > 0 时点会在三维空间中以该值为最大半径随机偏移 实际偏移量为 [0, discrete] 的随机值，负值会被自动归零
+     *
+     * @param pointRadius 在discrete属性设置为0时 点所在的圆环的位置角度参数 输入弧度制
      */
     fun getSingleDiscreteOnCircleXZ(r: Double, discrete: Double, pointRadius: Double): RelativeLocation {
         val x = cos(pointRadius) * r
@@ -285,12 +284,12 @@ object Math3DUtil {
 
     /**
      * 在 XZ 平面上生成离散化的三维环形分布点集
-     * @param r       目标圆环的基础半径（单位：方块），建议非负值
-     * @param count   需要生成的离散点数量，必须为正整数
+     *
+     * @param r 目标圆环的基础半径（单位：方块），建议非负值
+     * @param count 需要生成的离散点数量，必须为正整数
      * @param discrete 最大分散距离（单位：方块），控制点与标准圆环的偏离程度：
-     *                - = 0 时所有点严格位于圆环上
-     *                - > 0 时点会在三维空间中以该值为最大半径随机偏移
-     *                实际偏移量为 [0, discrete] 的随机值，负值会被自动归零
+     *    - = 0 时所有点严格位于圆环上
+     *    - > 0 时点会在三维空间中以该值为最大半径随机偏移 实际偏移量为 [0, discrete] 的随机值，负值会被自动归零
      */
     fun getDiscreteCircleXZ(r: Double, count: Int, discrete: Double): List<RelativeLocation> {
         val result = mutableListOf<RelativeLocation>()
@@ -346,6 +345,7 @@ object Math3DUtil {
 
     /**
      * 生成以 r为半径的圆的 内接正n边形
+     *
      * @param n 多边形的边数 必须大于等于3
      * @param edgeCount 每一条边的点的个数
      * @param r 半径
@@ -381,6 +381,7 @@ object Math3DUtil {
 
     /**
      * 生成以 r为半径的圆的 内接正n边形的每个顶点
+     *
      * @param n 多边形的边数 必须大于等于3
      * @param r 半径
      */
@@ -395,19 +396,15 @@ object Math3DUtil {
     }
 
     /**
-     * 让两个点集合
-     * 连线规则如下
-     * 前提: points.size > to.size
-     * 建议输入的点集合的个数 points.size % to.size == 0
-     * 如果不为0 则会有points.size % to.size 个点不会被链接
-     * 如果输入的点集合大小相反则链接规则也会相反
-     * 令 step = points.size / to.size (整除)
-     * points 的第i个点到第i+step -1个点会链接 to的第i个点
+     * 让两个点集合 连线规则如下 前提: points.size > to.size 建议输入的点集合的个数 points.size
+     * % to.size == 0 如果不为0 则会有points.size % to.size 个点不会被链接
+     * 如果输入的点集合大小相反则链接规则也会相反 令 step = points.size / to.size (整除) points
+     * 的第i个点到第i+step -1个点会链接 to的第i个点
      *
-     * 如果你使用了两个圆(Math3DUtil.getCircleXZ())上平均分布的点来调用函数
-     * 会发现两个圆的第一个点其实角度相同
-     * 所以你需要使用 Math3DUtil.rotateAsAxis() 对小的圆进行旋转
-     * 旋转角度为 -PI / points.size 这样得到的线是均匀分布的
+     * 如果你使用了两个圆(Math3DUtil.getCircleXZ())上平均分布的点来调用函数 会发现两个圆的第一个点其实角度相同
+     * 所以你需要使用 Math3DUtil.rotateAsAxis() 对小的圆进行旋转 旋转角度为 -PI / points.size
+     * 这样得到的线是均匀分布的
+     *
      * @param preLineCount 每个链接的直线的粒子个数
      * @return 返回一个二维列表, 代表直线点集合的集合
      */
@@ -444,9 +441,9 @@ object Math3DUtil {
 
     /**
      * DeepSeek解放大脑
-     * @see getCycloidGraphic 获取此函数生成的图像的顶点
-     * 参数要求必须和 getCycloidGraphic 生成的参数完全一致
-     * @param count 填写你使用  getCycloidGraphic方法时 输入的count
+     *
+     * @param count 填写你使用 getCycloidGraphic方法时 输入的count
+     * @see getCycloidGraphic 获取此函数生成的图像的顶点 参数要求必须和 getCycloidGraphic 生成的参数完全一致
      */
     fun computeCycloidVertices(
         r1: Double,
@@ -480,9 +477,7 @@ object Math3DUtil {
     }
 
 
-    /**
-     * 求最大公约数
-     */
+    /** 求最大公约数 */
     fun gcd(i: Int, j: Int): Int {
         var x = i.absoluteValue
         var y = j.absoluteValue
@@ -495,15 +490,13 @@ object Math3DUtil {
     }
 
     /**
-     * 傅里叶级数
-     * 生成以r1为半径的圆上的动点A为圆心 r2为半径 上的动点P的轨迹 点A的移动速度为w1 点P的移动速度为w2
+     * 傅里叶级数 生成以r1为半径的圆上的动点A为圆心 r2为半径 上的动点P的轨迹 点A的移动速度为w1 点P的移动速度为w2
+     *
      * @param r1 中心圆的半径
      * @param r2 中心圆上的圆的半径
      * @param w1 中心圆的角速度
-     * @param w2 中心圆上的圆的角速度
-     * r1:r2 与 w1:w2 和 生成的图形有紧密的关系
-     * 例如
-     * r1:r2 = 3:2 w1:w2 = 2:-3 时 图像是一个五角星
+     * @param w2 中心圆上的圆的角速度 r1:r2 与 w1:w2 和 生成的图形有紧密的关系 例如 r1:r2 = 3:2 w1:w2 =
+     *    2:-3 时 图像是一个五角星
      * @param scale 半径精度 如果r1认为太大 则设置小的值
      * @return 最后的图像 (在XZ平面上(以Z为纵坐标))
      */
@@ -562,8 +555,8 @@ object Math3DUtil {
     }
 
     /**
-     * from new bing
-     * 将一个相对位置按照axis旋转 n度
+     * from new bing 将一个相对位置按照axis旋转 n度
+     *
      * @param angle 角度 输入时使用弧度制的角度
      */
     fun rotateVector(point: RelativeLocation, axis: RelativeLocation, angle: Double): RelativeLocation {
@@ -573,6 +566,7 @@ object Math3DUtil {
 
     /**
      * 向量图形绕轴旋转N度
+     *
      * @param angle 角度 输入一个弧度制角度
      */
     fun rotateAsAxis(locList: List<RelativeLocation>, axis: RelativeLocation, angle: Double): List<RelativeLocation> {
@@ -586,6 +580,7 @@ object Math3DUtil {
 
     /**
      * 向量图形绕轴旋转N度
+     *
      * @param angle 角度 输入一个弧度制角度
      */
     fun rotateAsAxisAsync(
@@ -608,7 +603,7 @@ object Math3DUtil {
         // 下一个thread就是 taskPreThreadCount + n 开始 n一般为1或者0
         var currentIndex = 0
         val q = Quaterniond()
-        q.rotateAxis(angle, Vector3d(axis.x, axis.y, axis.z))
+        q.rotateAxis(angle, axis.toVector3d())
         val tasks = ArrayList<Deferred<Unit>>()
         repeat(actualThreads) {
             var next = currentIndex + taskPreThreadCount // 取到  taskHandledIndexStart ..< next
@@ -637,9 +632,7 @@ object Math3DUtil {
         return shape
     }
 
-    /**
-     * 让图形的对称轴指向某个点(图形跟着转变)
-     */
+    /** 让图形的对称轴指向某个点(图形跟着转变) */
     fun rotatePointsToPoint(
         shape: List<RelativeLocation>,
         toPoint: RelativeLocation,
@@ -728,9 +721,7 @@ object Math3DUtil {
         return shape
     }
 
-    /**
-     * 让图形的对称轴指向某个点(图形跟着转变)
-     */
+    /** 让图形的对称轴指向某个点(图形跟着转变) */
     fun rotatePointsToPoint(
         locList: List<RelativeLocation>,
         origin: Vec3,
@@ -761,9 +752,7 @@ object Math3DUtil {
         return enter
     }
 
-    /**
-     * @param yaw 输入弧度制yaw
-     */
+    /** @param yaw 输入弧度制yaw */
     fun toMinecraftYaw(yaw: Double): Double = yaw - PI / 2
 
     fun getYawFromLocation(loc: Vec3): Double {
@@ -775,8 +764,6 @@ object Math3DUtil {
     }
 
     fun getPitchFromLocation(v: RelativeLocation): Double {
-//        val length = v.length()
-//        if (length == 0.0) return 0.0
         return atan2(v.y, sqrt(v.x.pow(2) + v.z.pow(2)))
     }
 
@@ -786,9 +773,7 @@ object Math3DUtil {
         return asin(v.y / length)
     }
 
-    /**
-     * 获取在start-end线段内的count个点集合
-     */
+    /** 获取在start-end线段内的count个点集合 */
     fun getLineLocations(start: Vec3, end: Vec3, count: Int): List<RelativeLocation> {
         val origin = RelativeLocation.of(start)
         val res = mutableListOf(origin, RelativeLocation.of(end))
@@ -808,9 +793,7 @@ object Math3DUtil {
         return getLineLocations(start.toVector(), end.toVector(), count)
     }
 
-    /**
-     * 获取 从origin 向 direction方向的射线上 每个间距为 step 且总数量为count的点集合
-     */
+    /** 获取 从origin 向 direction方向的射线上 每个间距为 step 且总数量为count的点集合 */
     fun getLineLocations(origin: Vec3, direction: Vec3, step: Double, count: Int): List<RelativeLocation> {
         val originRel = RelativeLocation.of(origin)
         val res = mutableListOf(originRel)
@@ -826,8 +809,8 @@ object Math3DUtil {
     }
 
     /**
-     * 获取圆面
-     * 圆面在XZ上
+     * 获取圆面 圆面在XZ上
+     *
      * @param r 圆的半径
      * @param step 圆环之间的间距
      * @param preCircleCount 每个圆环的粒子个数
@@ -854,8 +837,8 @@ object Math3DUtil {
     }
 
     /**
-     * 获取圆面
-     * 圆面在XZ上
+     * 获取圆面 圆面在XZ上
+     *
      * @param r 圆的半径
      * @param step 圆环之间的间距
      * @param minCircleCount 一个圆环粒子个数的最小值
@@ -964,21 +947,12 @@ object Math3DUtil {
         return res
     }
 
-    /**
-     * 生成三次贝塞尔曲线 (二维)
-     */
+    /** 生成三次贝塞尔曲线 (二维) */
     fun generateBezierCurve(
         target: RelativeLocation,
-        /**
-         * 起点的曲柄向量
-         */
+        /** 起点的曲柄向量 */
         startHandle: RelativeLocation,
-        /**
-         * 终点的曲柄向量 (以 target为原点)
-         * 在Pr ae的速度,值曲线的下一个关键帧曲柄中
-         * 方向和startHandle相反
-         * 因此这里也要相反
-         */
+        /** 终点的曲柄向量 (以 target为原点) 在Pr ae的速度,值曲线的下一个关键帧曲柄中 方向和startHandle相反 因此这里也要相反 */
         endHandle: RelativeLocation,
         count: Int
     ): List<RelativeLocation> {
@@ -1039,6 +1013,7 @@ object Math3DUtil {
 
     /**
      * 生成爆炸曲线点
+     *
      * @param power 爆炸威力
      * @param maxHeight 爆炸点的最高高度
      * @param handleRadius 处理爆炸的最大范围
@@ -1095,10 +1070,7 @@ object Math3DUtil {
         return points
     }
 
-    /**
-     * 旋转是通过旋转x/z 轴来坐标值的
-     * 由于sqrt pow 是恒大于0的值因此不能用于坐标求值
-     */
+    /** 旋转是通过旋转x/z 轴来坐标值的 由于sqrt pow 是恒大于0的值因此不能用于坐标求值 */
     private fun getAxisSymbol(loc: Vec3): Int {
         val quadrants = getQuadrants(getYawFromLocation(loc))
         return when (quadrants) { // 1

@@ -17,10 +17,7 @@ import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.resources.ResourceLocation
 
-/**
- * 为了兼容 傻逼的 neoforge 的 延迟注册
- * 做出以下修改
- */
+/** 为了兼容 傻逼的 neoforge 的 延迟注册 做出以下修改 */
 object CooModParticles {
     val particleTypes = mutableListOf<CommonDeferredRegistry<ParticleType<*>>>()
     val controlableEndRod = register(
@@ -28,7 +25,10 @@ object CooModParticles {
     )
 
     val controlableEnchantment = register(
-        "controlable_enchantment", false, { ControlableEnchantmentEffect.codec }, { ControlableEnchantmentEffect.packetCode }
+        "controlable_enchantment",
+        false,
+        { ControlableEnchantmentEffect.codec },
+        { ControlableEnchantmentEffect.packetCode }
     )
 
     val controlableCloud = register(
@@ -44,7 +44,10 @@ object CooModParticles {
     )
 
     val controlableFallingDust = register(
-        "controlable_falling_dust",false,{ ControlableFallingDustEffect.codec},{ ControlableFallingDustEffect.packetCode}
+        "controlable_falling_dust",
+        false,
+        { ControlableFallingDustEffect.codec },
+        { ControlableFallingDustEffect.packetCode }
     )
 
     fun reg() {

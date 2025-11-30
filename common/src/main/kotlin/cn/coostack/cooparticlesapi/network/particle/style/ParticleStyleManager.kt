@@ -230,6 +230,8 @@ object ParticleStyleManager {
                 "rotate" to ParticleControlerDataBuffers.double(style.rotate),
                 "axis" to ParticleControlerDataBuffers.vec3d(style.axis.toVector()),
                 "scale" to ParticleControlerDataBuffers.double(style.scale),
+                "lastUpdatedGameTime" to ParticleControlerDataBuffers.long(style.lastUpdatedGameTime),
+                "displayedTime" to ParticleControlerDataBuffers.long(style.displayedTime),
                 *style.writePacketArgs().map { entry -> entry.key to entry.value }.toTypedArray()
             )
         )

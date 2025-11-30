@@ -31,7 +31,7 @@ class LinerLevelLerp {
 
     fun lerp(min: Double, max: Double): Double {
         if (levels.isEmpty()) return min
-        // 第一层level
+        // 第一层level 
         var value = min + (max - min) * levels[0]
         // 下层插值
         for (i in 1 until levels.size) {

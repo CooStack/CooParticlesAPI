@@ -895,7 +895,7 @@ abstract class ClassParticleEmitters(
         }
         val world = world as ClientWorld
         // 生成粒子样式
-        genParticles().forEach {
+        genParticles(lerpProgress: Float).forEach {
             spawnParticle(world, pos.add(it.value.toVector()), it.key)
         }
     }
@@ -909,7 +909,7 @@ abstract class ClassParticleEmitters(
     /**
      * 粒子样式生成器
      */
-    abstract fun genParticles(): List<Pair<ControlableParticleData, RelativeLocation>>
+    abstract fun genParticles(lerpProgress: Float): List<Pair<ControlableParticleData, RelativeLocation>>
 
     /**
      * 如若要修改粒子的位置, 速度 属性
@@ -1043,7 +1043,7 @@ class ExampleClassParticleEmitters(pos: Vec3d, world: World?) : ClassParticleEmi
      * delay是ParticleEmitters提供的参数 和上面的意义相同
      * 获取粒子生成的位置
      */
-    override fun genParticles(): List<Pair<ControlableParticleData, RelativeLocation>> {
+    override fun genParticles(lerpProgress: Float): List<Pair<ControlableParticleData, RelativeLocation>> {
         return PointsBuilder()
             .addBall(2.0, 20)
             .create().associateBy {

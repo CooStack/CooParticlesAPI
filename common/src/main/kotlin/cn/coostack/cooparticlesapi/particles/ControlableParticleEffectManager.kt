@@ -5,6 +5,8 @@ import cn.coostack.cooparticlesapi.particles.impl.ControlableEnchantmentEffect
 import cn.coostack.cooparticlesapi.particles.impl.ControlableFireworkEffect
 import cn.coostack.cooparticlesapi.particles.impl.ControlableFlashEffect
 import cn.coostack.cooparticlesapi.particles.impl.ControlableEndRodEffect
+import cn.coostack.cooparticlesapi.particles.impl.ControlableFallingDustEffect
+import net.minecraft.world.level.block.Blocks
 import java.util.UUID
 
 object ControlableParticleEffectManager {
@@ -26,6 +28,7 @@ object ControlableParticleEffectManager {
         register(ControlableFireworkEffect(UUID.randomUUID()))
         register(ControlableFlashEffect(UUID.randomUUID()))
         register(ControlableEndRodEffect(UUID.randomUUID()))
+        register(ControlableFallingDustEffect(UUID.randomUUID(), Blocks.AIR.defaultBlockState()))
     }
 
     fun init() {}

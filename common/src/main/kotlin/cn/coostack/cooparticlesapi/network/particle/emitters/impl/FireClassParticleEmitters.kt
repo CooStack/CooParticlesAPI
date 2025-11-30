@@ -62,7 +62,7 @@ class FireClassParticleEmitters(var player: UUID, pos: Vec3, world: Level?) : Cl
 //        wind.direction = player.rotationVector.normalize().multiply(size)
     }
 
-    override fun genParticles(): List<Pair<ControlableParticleData, RelativeLocation>> {
+    override fun genParticles(lerpProgress: Float): List<Pair<ControlableParticleData, RelativeLocation>> {
         val velocityList = PointsBuilder()
             .addRoundShape(fireSize, 0.25, 10, (120 * fireSize).roundToInt())
             .rotateTo(Vec3(0.0, 0.0, 1.0))

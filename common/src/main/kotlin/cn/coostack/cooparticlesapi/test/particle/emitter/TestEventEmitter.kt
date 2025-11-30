@@ -41,7 +41,7 @@ class TestEventEmitter(pos: Vec3, world: Level?) : ClassParticleEmitters(pos, wo
     override fun doTick() {
     }
 
-    override fun genParticles(): List<Pair<ControlableParticleData, RelativeLocation>> {
+    override fun genParticles(lerpProgress: Float): List<Pair<ControlableParticleData, RelativeLocation>> {
         return listOf(
             templateData.clone().apply {
                 velocity = this@TestEventEmitter.shootDirection

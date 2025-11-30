@@ -39,7 +39,7 @@ class ExampleClassParticleEmitters(pos: Vec3, world: Level?) : ClassParticleEmit
         pos = pos.add(moveDirection)
     }
 
-    override fun genParticles(): List<Pair<ControlableParticleData, RelativeLocation>> {
+    override fun genParticles(lerpProgress: Float): List<Pair<ControlableParticleData, RelativeLocation>> {
         return PointsBuilder()
             .addBall(2.0, 20)
             .create().map {

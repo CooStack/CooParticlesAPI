@@ -3,16 +3,15 @@ package cn.coostack.cooparticlesapi.utils
 
 import io.netty.buffer.Unpooled
 import net.minecraft.world.phys.Vec3
+import org.joml.Vector3d
 import org.joml.Vector3f
+import java.util.Vector
+import kotlin.math.PI
 import kotlin.math.pow
 import kotlin.math.sqrt
 
 
-/**
- * 描述粒子之间相对位置的类
- * 相对位置 又名向量
- * 草
- */
+/** 描述粒子之间相对位置的类 相对位置 又名向量 草 */
 data class RelativeLocation(var x: Double, var y: Double, var z: Double) {
     companion object {
         @JvmStatic
@@ -34,6 +33,7 @@ data class RelativeLocation(var x: Double, var y: Double, var z: Double) {
         fun toVector(relativeLocation: RelativeLocation): Vec3 {
             return Vec3(relativeLocation.x, relativeLocation.y, relativeLocation.z)
         }
+
 
         @JvmStatic
         fun fromBytes(bytes: ByteArray): RelativeLocation {
@@ -70,6 +70,7 @@ data class RelativeLocation(var x: Double, var y: Double, var z: Double) {
         return Vec3(origin.x + x, origin.y + y, origin.z + z)
     }
 
+
     // 转换为单位向量
     fun normalize(): RelativeLocation {
         if (length() <= 1e-6) {
@@ -87,9 +88,7 @@ data class RelativeLocation(var x: Double, var y: Double, var z: Double) {
         return RelativeLocation(x, y, z)
     }
 
-    /**
-     * 向量点乘
-     */
+    /** 向量点乘 */
     fun dot(other: RelativeLocation): Double {
         return x * other.x + y * other.y + z * other.z
     }
@@ -146,6 +145,10 @@ data class RelativeLocation(var x: Double, var y: Double, var z: Double) {
         return Vec3(x, y, z)
     }
 
+    fun toVector3d(): Vector3d {
+        return Vector3d(x, y, z)
+    }
+
     fun toVector3f(): Vector3f {
         return Vector3f(x.toFloat(), y.toFloat(), z.toFloat())
     }
@@ -162,9 +165,7 @@ data class RelativeLocation(var x: Double, var y: Double, var z: Double) {
         return relativize(of(other))
     }
 
-    /**
-     * 向量叉乘
-     */
+    /** 向量叉乘 */
     fun cross(vector: RelativeLocation): RelativeLocation {
         return RelativeLocation(
             y * vector.z - z * vector.y,

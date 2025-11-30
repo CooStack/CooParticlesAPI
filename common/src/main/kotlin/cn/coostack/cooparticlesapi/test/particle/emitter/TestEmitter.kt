@@ -75,7 +75,7 @@ class TestEmitter(pos: Vec3, world: Level?) : ClassParticleEmitters(pos, world) 
         particleRotateX += PI / 4
     }
 
-    override fun doSubtick(current: Vec3) {
+    override fun doSubtick(current: Vec3, lerpProgress: Float) {
         particleVelocity.putParticleArgs(
             current, particleMoveDirection, particleMoveDirection.length()
         )
@@ -83,7 +83,7 @@ class TestEmitter(pos: Vec3, world: Level?) : ClassParticleEmitters(pos, world) 
 
 
     val random = Random(System.currentTimeMillis())
-    override fun genParticles(): List<Pair<ControlableParticleData, RelativeLocation>> {
+    override fun genParticles(lerpProgress: Float): List<Pair<ControlableParticleData, RelativeLocation>> {
         return particleVelocity.getRefinedResult()
             .map {
                 templateData.clone().also { it ->

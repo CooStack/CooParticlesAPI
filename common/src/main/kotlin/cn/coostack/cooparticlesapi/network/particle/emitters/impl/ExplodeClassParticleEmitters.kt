@@ -45,7 +45,7 @@ class ExplodeClassParticleEmitters(pos: Vec3, world: Level?) : ClassParticleEmit
     }
 
     val random = Random(System.currentTimeMillis())
-    override fun genParticles(): List<Pair<ControlableParticleData, RelativeLocation>> {
+    override fun genParticles(lerpProgress: Float): List<Pair<ControlableParticleData, RelativeLocation>> {
         val velocityList = PointsBuilder()
             .addBall(2.0, 40)
             .rotateAsAxis(random.nextDouble(-PI, PI))

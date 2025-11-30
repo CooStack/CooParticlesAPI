@@ -159,7 +159,7 @@ class PresetLaserEmitters(pos: Vec3, world: Level?) : ClassParticleEmitters(pos,
     }
 
     val random = Random(System.currentTimeMillis())
-    override fun genParticles(): List<Pair<ControlableParticleData, RelativeLocation>> {
+    override fun genParticles(lerpProgress: Float): List<Pair<ControlableParticleData, RelativeLocation>> {
         val res = kotlin.collections.ArrayList<Pair<ControlableParticleData, RelativeLocation>>()
         res.addAll(
             PointsBuilder()
@@ -196,7 +196,7 @@ class PresetLaserEmitters(pos: Vec3, world: Level?) : ClassParticleEmitters(pos,
             if (tick == lineStartIncreaseTick) {
                 speed = defaultIncreaseSpeed
             }
-            if (tick > lineStartIncreaseTick && tick <= lineStartDecreaseTick) {
+            if (tick in (lineStartIncreaseTick + 1)..lineStartDecreaseTick) {
                 size = (size + speed).coerceAtMost(lineScaleMax)
                 speed = (speed + increaseAcceleration).coerceAtMost(maxIncreaseSpeed)
                 if (markDeadWhenArriveMaxScale && size >= lineScaleMax) {

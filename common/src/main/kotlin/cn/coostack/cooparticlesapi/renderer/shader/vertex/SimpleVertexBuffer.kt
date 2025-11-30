@@ -19,10 +19,7 @@ class SimpleVertexBuffer : VertexBuffer {
     private var dirty = false
 
 
-    /**
-     * 当我上传顶点数据时, 就会更新此项目, 如果发现当前的program不符
-     * 则会无视dirty继续上传
-     */
+    /** 当我上传顶点数据时, 就会更新此项目, 如果发现当前的program不符 则会无视dirty继续上传 */
     private var uploadedProgram = 0
     override fun uploadVertexes() {
         val programNow = glGetInteger(GL_CURRENT_PROGRAM)

@@ -47,7 +47,7 @@ class DefendClassParticleEmitters(var player: UUID, pos: Vec3, world: Level?) : 
     override fun doTick() {
     }
 
-    override fun genParticles(): List<Pair<ControlableParticleData, RelativeLocation>> {
+    override fun genParticles(lerpProgress: Float): List<Pair<ControlableParticleData, RelativeLocation>> {
         val player = world!!.getPlayerByUUID(player) ?: return arrayListOf()
         val playerRotation = player.eyePosition.subtract(pos)
         val res = ArrayList<Pair<ControlableParticleData, RelativeLocation>>()

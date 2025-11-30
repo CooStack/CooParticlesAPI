@@ -23,6 +23,8 @@ class RomaMagicTestStyle(uuid: UUID = UUID.randomUUID()) :
         ): ParticleGroupStyle {
             return RomaMagicTestStyle(uuid)
         }
+
+
     }
 
     override fun getCurrentFrames(): Map<StyleData, RelativeLocation> {

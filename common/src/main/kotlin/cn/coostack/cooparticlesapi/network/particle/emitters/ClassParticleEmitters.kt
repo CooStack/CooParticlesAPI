@@ -211,8 +211,9 @@ abstract class ClassParticleEmitters(
                 val count = res.size
                 res.forEachIndexed { index, it ->
                     val pos = it.toVector()
-                    doSubtick(pos) // 用于设置其他插值
-                    spawnParticle(pos, (index + 1f) / count)
+                    val lerpProgress = (index + 1f) / count
+                    doSubtick(pos, lerpProgress) // 用于设置其他插值
+                    spawnParticle(pos, lerpProgress)
                 }
             } else {
                 spawnParticle(pos, 1f)
@@ -234,7 +235,7 @@ abstract class ClassParticleEmitters(
         val world = world as ClientLevel
         // 生成粒子样式
         var spawnedCount = 0f
-        val particles = genParticles()
+        val particles = genParticles(lerpProgress)
         val total = particles.size
         particles.forEach {
             spawnedCount++
@@ -251,15 +252,19 @@ abstract class ClassParticleEmitters(
      */
     abstract fun doTick()
 
-    /** 粒子样式生成器 */
-    abstract fun genParticles(): List<Pair<ControlableParticleData, RelativeLocation>>
+    /**
+     * 粒子样式生成器
+     * @param lerpProgress 粒子发射器位移插值器的插值进度
+     * */
+    abstract fun genParticles(lerpProgress: Float): List<Pair<ControlableParticleData, RelativeLocation>>
 
     /**
      * 在一次粒子生成前会执行
      *
      * @param current 当前插值的生成位置
+     * @param lerpProgress 粒子生成的进度
      */
-    protected open fun doSubtick(current: Vec3) {}
+    protected open fun doSubtick(current: Vec3, lerpProgress: Float) {}
 
     /**
      * 如若要修改粒子的位置, 速度 属性 请直接修改 ControlableParticleData
@@ -267,7 +272,8 @@ abstract class ClassParticleEmitters(
      * @param data 用于操作单个粒子属性的类
      * @param spawnPos 生成的位置，在粒子已经生成后再修改无效
      *    执行tick方法请使用controler.addPreTickAction
-     * @param particleLerpProgress    生成这个粒子的时候，当前的进度（(当前生成的粒子索引+1)/genParticles().size ）
+     * @param particleLerpProgress
+     *    生成这个粒子的时候，当前的进度（(当前生成的粒子索引+1)/genParticles(lerpProgress: Float).size ）
      * @param posLerpProgress 当发射器进行发射插值时， 插值的偏移 如果不使用插值则永远为1
      */
     abstract fun singleParticleAction(

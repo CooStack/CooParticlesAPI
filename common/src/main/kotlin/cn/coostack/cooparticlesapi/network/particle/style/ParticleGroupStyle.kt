@@ -27,9 +27,7 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.collections.set
 import kotlin.math.PI
 
-/**
- * 客户端渲染和服务端处理都用这个类
- */
+/** 客户端渲染和服务端处理都用这个类 */
 abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUID = UUID.randomUUID()) :
     Controlable<ParticleGroupStyle>, ServerControler<ParticleGroupStyle> {
     var world: Level? = null
@@ -42,10 +40,18 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
             field = value.coerceAtLeast(0.001)
         }
 
+
     /**
-     * 自动发包同步到客户端
-     * 可能会占据大量带宽
+     * 上一次更新的游戏时间
+     * > 用来解决回放的时候会产生额外的粒子 或者导致缺少粒子 (额外tick)
      */
+
+    var lastUpdatedGameTime = 0L
+
+    /** 生成粒子样式的时间 可能会直接跳转到其他时候 然后这个时候这个参数就需要进行同步 */
+    var displayedTime = 0L
+
+    /** 自动发包同步到客户端 可能会占据大量带宽 */
     var autoToggle = false
 
     var displayed = false
@@ -59,9 +65,7 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
     // 在Particle 被标记为死亡时 重新生成该粒子作为数据依据
     val particleDataBuffers = ConcurrentHashMap<UUID, StyleData>()
 
-    /**
-     * 当粒子组合初始化时, 存储1倍缩放粒子组与原点的距离
-     */
+    /** 当粒子组合初始化时, 存储1倍缩放粒子组与原点的距离 */
     val particleDefaultLength = ConcurrentHashMap<UUID, Double>()
 
 
@@ -70,25 +74,20 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
     abstract fun onDisplay()
 
     /**
-     * 服务器同步到客户端时, 执行的代码
-     * 基类已经存储的参数
-     * 如 pos, world ,rotate, axis, scale, uuid 无需同步
+     * 服务器同步到客户端时, 执行的代码 基类已经存储的参数 如 pos, world ,rotate, axis, scale, uuid 无需同步
      * 自定义的其他参数需要同步
      *
-     * 如果 autoToggle = true
-     * 则会在每个tick都会执行发包 反复调用此方法
+     * 如果 autoToggle = true 则会在每个tick都会执行发包 反复调用此方法
      */
     abstract fun writePacketArgs(): Map<String, ParticleControlerDataBuffer<*>>
 
     /**
      * 客户端接受服务器的同步时, 使用的代码
      *
-     * 同步内容如下 -> 客户端创建此类时 输入的基本参数 包括了你在 writePacketArgs输入的参数
-     *               客户端在类内存在其余更改时 服务器传入的参数 比如自己设定的一些其他参数值
+     * 同步内容如下 -> 客户端创建此类时 输入的基本参数 包括了你在 writePacketArgs输入的参数 客户端在类内存在其余更改时
+     * 服务器传入的参数 比如自己设定的一些其他参数值
      *
-     * 无需处理以下参数
-     * pos world rotate axis scale uuid
-     * 其余参数自行处理
+     * 无需处理以下参数 pos world rotate axis scale uuid 其余参数自行处理
      */
     abstract fun readPacketArgs(args: Map<String, ParticleControlerDataBuffer<*>>)
 
@@ -196,24 +195,17 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
         }
     }
 
-    /**
-     * Controler需求
-     */
+    /** Controler需求 */
     override fun getControlObject(): ParticleGroupStyle {
         return this
     }
 
-    /**
-     * ServerControler需求
-     */
+    /** ServerControler需求 */
     override fun getValue(): ParticleGroupStyle {
         return this
     }
 
-    /**
-     * 当服务器出现一些不是来源于类内自发的更改时 (外部类更改) 请执行此代码
-     * 除非你开启了 autoToggle
-     */
+    /** 当服务器出现一些不是来源于类内自发的更改时 (外部类更改) 请执行此代码 除非你开启了 autoToggle */
     fun change(toggleMethod: ParticleGroupStyle.() -> Unit, args: Map<String, ParticleControlerDataBuffer<*>>) {
         if (client) {
             return
@@ -230,10 +222,7 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
         }
     }
 
-    /**
-     * 当服务器出现一些不是来源于类内自发的更改时 (外部类更改) 请执行此代码
-     * 除非你开启了 autoToggle
-     */
+    /** 当服务器出现一些不是来源于类内自发的更改时 (外部类更改) 请执行此代码 除非你开启了 autoToggle */
     fun change(args: Map<String, ParticleControlerDataBuffer<*>>) {
         change({}, args)
     }
@@ -243,6 +232,8 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
             return
         }
         displayed = true
+        this.displayedTime = world.gameTime
+        this.lastUpdatedGameTime = world.gameTime
         this.pos = pos
         this.world = world
         this.client = world.isClientSide
@@ -298,7 +289,11 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
             clear(false)
             return
         }
-
+        val current = world!!.gameTime
+        if (!displayed || !valid) {
+            clear(false)
+            return
+        }
         invokeQueue.forEach {
             it(this)
         }
@@ -306,9 +301,7 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
         val iterator = particles.iterator()
         while (iterator.hasNext()) {
             val style = iterator.next()
-            val value = style.value
-
-            when (value) {
+            when (val value = style.value) {
                 is ControlableParticleGroup -> {
                     value.tick()
                 }
@@ -317,8 +310,8 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
                     value.tick()
                 }
             }
-
         }
+        this.lastUpdatedGameTime = current
     }
 
     fun toggleScale(locations: Map<StyleData, RelativeLocation>) {
@@ -458,9 +451,7 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
         }
     }
 
-    /**
-     * 为了提高傻逼StyleData的复用性 专门设置此类
-     */
+    /** 为了提高傻逼StyleData的复用性 专门设置此类 */
     open class StyleDataBuilder() {
         private var displayerBuilder: (UUID) -> ParticleDisplayer =
             { ParticleDisplayer.withSingle(ControlableEndRodEffect(it)) }

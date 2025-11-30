@@ -2,15 +2,19 @@ package cn.coostack.cooparticlesapi.utils
 
 import cn.coostack.cooparticlesapi.extend.asAbs
 import cn.coostack.cooparticlesapi.extend.asVec3
-import cn.coostack.cooparticlesapi.extend.minus
 import cn.coostack.cooparticlesapi.extend.plus
 import cn.coostack.cooparticlesapi.extend.times
 import net.minecraft.world.entity.Entity
+import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.level.ClipContext
 import net.minecraft.world.level.Level
+import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.BlockHitResult
+import net.minecraft.world.phys.EntityHitResult
+import net.minecraft.world.phys.HitResult
 import net.minecraft.world.phys.Vec3
 import net.minecraft.world.phys.shapes.CollisionContext
+import java.util.function.Predicate
 
 object PhysicsUtil {
     /**
@@ -69,4 +73,71 @@ object PhysicsUtil {
         val mulNormal = normal * velocity.asAbs()
         return velocity + mulNormal // normal运动方向本身就是反向的 所以需要相加消除
     }
+
+
+    /**
+     * 射线实体检测，当pos尝试移动时进行碰撞检测
+     *
+     * @param currentPos 当前位置
+     * @param velocity 移动速度
+     * @param world 当前世界
+     * @param ignoreBlock 是否屏蔽方块检测
+     * @return
+     */
+    fun rayCast(
+        currentPos: Vec3,
+        velocity: Vec3,
+        world: Level,
+        entityPredicate: Predicate<LivingEntity>,
+        ignoreBlock: Boolean
+    ): HitResult? {
+        val entityHit = getEntityHitResult(world, currentPos, currentPos + velocity, entityPredicate)
+
+        if (ignoreBlock) {
+            return entityHit
+        }
+        val blockHit = collide(currentPos, velocity, world)
+
+        return if (entityHit != null) {
+            if (blockHit.location.distanceTo(currentPos) > entityHit.location.distanceTo(currentPos)) {
+                entityHit
+            } else {
+                blockHit
+            }
+        } else {
+            blockHit
+        }
+    }
+
+
+    private fun getEntityHitResult(
+        world: Level,
+        start: Vec3,
+        end: Vec3,
+        predicate: Predicate<LivingEntity>
+    ): EntityHitResult? {
+        var searchEntity: LivingEntity? = null
+        var searchPos: Vec3? = null
+        val searchBox = AABB.ofSize(start, 2.0, 2.0, 2.0).expandTowards((start + end) * 3.0).inflate(1.0)
+        var currentDistance = 0.0
+        for (entity in world.getEntitiesOfClass(LivingEntity::class.java, searchBox, predicate)) {
+            val entityBox = entity.boundingBox.inflate(entity.pickRadius.toDouble())
+            val clip = entityBox.clip(start, end)
+            if (entityBox.contains(start)) {
+                searchEntity = entity
+                searchPos = clip.orElse(start)
+            } else if (clip.isPresent) {
+                val p = clip.get()
+                val distance = start.distanceToSqr(p)
+                if (distance < currentDistance || currentDistance == 0.0) {
+                    searchEntity = entity
+                    searchPos = p
+                    currentDistance = distance
+                }
+            }
+        }
+
+        return if (searchEntity == null) null else EntityHitResult(searchEntity, searchPos!!)
+    }
+
 }

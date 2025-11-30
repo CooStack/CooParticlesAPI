@@ -29,9 +29,7 @@ object ClientParticleStylePacketHandler {
         ParticleStyleManager.clientViewStyles[uuid]?.remove()
     }
 
-    /**
-     * 处理客户端同步修改
-     */
+    /** 处理客户端同步修改 */
     private fun handleChange(
         uuid: UUID,
         args: Map<String, ParticleControlerDataBuffer<*>>
@@ -65,12 +63,16 @@ object ClientParticleStylePacketHandler {
         if (args.containsKey("scale")) {
             style.scale = args["scale"]!!.loadedValue as Double
         }
+        if (args.containsKey("lastUpdatedGameTime")) {
+            style.lastUpdatedGameTime = args["lastUpdatedGameTime"]!!.loadedValue as Long
+        }
+        if (args.containsKey("displayedTime")) {
+            style.displayedTime = args["displayedTime"]!!.loadedValue as Long
+        }
         style.readPacketArgs(args)
     }
 
-    /**
-     * 处理客户端同步创建
-     */
+    /** 处理客户端同步创建 */
     private fun handleCreate(
         uuid: UUID,
         args: Map<String, ParticleControlerDataBuffer<*>>
@@ -83,6 +85,8 @@ object ClientParticleStylePacketHandler {
         style.rotate = args["rotate"]!!.loadedValue as Double
         style.axis = RelativeLocation.of(args["axis"]!!.loadedValue as Vec3)
         style.scale = args["scale"]!!.loadedValue as Double
+        style.lastUpdatedGameTime = args["lastUpdatedGameTime"]!!.loadedValue as Long
+        style.displayedTime = args["displayedTime"]!!.loadedValue as Long
         val world = Minecraft.getInstance().level
         style.readPacketArgs(args)
         ParticleStyleManager.spawnStyle(world!!, pos, style)

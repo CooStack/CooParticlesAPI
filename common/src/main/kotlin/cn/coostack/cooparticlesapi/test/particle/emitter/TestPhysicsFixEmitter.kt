@@ -41,7 +41,7 @@ class TestPhysicsFixEmitter(pos: Vec3, world: Level?) : ClassParticleEmitters(po
     override fun doTick() {
     }
 
-    override fun genParticles(): List<Pair<ControlableParticleData, RelativeLocation>> {
+    override fun genParticles(lerpProgress: Float): List<Pair<ControlableParticleData, RelativeLocation>> {
         return listOf(clone.clone() to RelativeLocation())
     }
 
