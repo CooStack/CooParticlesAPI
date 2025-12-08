@@ -1,8 +1,8 @@
 package cn.coostack.cooparticlesapi.network.particle.emitters
 
+import cn.coostack.cooparticlesapi.annotations.emitter.handle.ParticleEmittersHelper
 import cn.coostack.cooparticlesapi.extend.asVec3
 import cn.coostack.cooparticlesapi.extend.ofFloored
-import cn.coostack.cooparticlesapi.extend.plus
 import cn.coostack.cooparticlesapi.extend.times
 import cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind.GlobalWindDirection
 import cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind.WindDirection
@@ -178,6 +178,9 @@ abstract class ClassParticleEmitters(
         playing = true
         if (world?.isClientSide == false) {
             ParticleEmittersManager.updateEmitters(this)
+        }
+        if (enableInterpolator) {
+            emittersInterpolator.insertPoint(pos)
         }
     }
 
@@ -481,6 +484,9 @@ abstract class ClassParticleEmitters(
         this.playing = emitters.playing
         this.handlerList.putAll(emitters.handlerList)
         this.emittersInterpolator.setRefiner(emitters.emittersInterpolator.refinerCount)
+
+        ParticleEmittersHelper.updateEmitter(this, emitters)
+
     }
 
 }

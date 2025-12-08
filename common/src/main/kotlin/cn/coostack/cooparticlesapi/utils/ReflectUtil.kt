@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi.utils
 
+import cn.coostack.cooparticlesapi.network.particle.emitters.ClassParticleEmitters
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
@@ -13,4 +14,5 @@ object ReflectUtil {
 
     @JvmStatic
     fun getStreamCodecClass(): Class<StreamCodec<*,*>> = StreamCodec::class.java
+
 }

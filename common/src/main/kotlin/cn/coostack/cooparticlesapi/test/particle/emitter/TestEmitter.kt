@@ -1,5 +1,7 @@
 package cn.coostack.cooparticlesapi.test.particle.emitter
 
+import cn.coostack.cooparticlesapi.annotations.emitter.EmitterField
+import cn.coostack.cooparticlesapi.annotations.emitter.handle.ParticleEmittersHelper
 import cn.coostack.cooparticlesapi.extend.multiply
 import cn.coostack.cooparticlesapi.extend.plus
 import cn.coostack.cooparticlesapi.extend.times
@@ -23,12 +25,22 @@ import kotlin.math.sin
 import kotlin.random.Random
 
 class TestEmitter(pos: Vec3, world: Level?) : ClassParticleEmitters(pos, world) {
+
+    @EmitterField
     var templateData = ControlableParticleData()
+
+    @EmitterField
     var emitterMoveDirection = Vec3.ZERO
     val particleVelocity = DirectParticleInterpolator()
         .setRefiner(5.0)
+
+    @EmitterField
     var particleMoveDirection: Vec3 = Vec3.ZERO
+
+    @EmitterField
     var particleRotateX: Double = 0.0
+
+    @EmitterField
     var lastParticleRotateX: Double = 0.0
 
     companion object {
@@ -140,6 +152,6 @@ class TestEmitter(pos: Vec3, world: Level?) : ClassParticleEmitters(pos, world) 
     }
 
     override fun getCodec(): StreamCodec<FriendlyByteBuf, ParticleEmitters> {
-        return CODEC
+        return ParticleEmittersHelper.generateCodec(this)
     }
 }

@@ -1,5 +1,7 @@
 package cn.coostack.cooparticlesapi.test.particle.emitter
 
+import cn.coostack.cooparticlesapi.annotations.emitter.EmitterField
+import cn.coostack.cooparticlesapi.annotations.emitter.handle.ParticleEmittersHelper
 import cn.coostack.cooparticlesapi.network.particle.emitters.ClassParticleEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableParticleData
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmitters
@@ -11,7 +13,10 @@ import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
 
 class TestEventEmitter(pos: Vec3, world: Level?) : ClassParticleEmitters(pos, world) {
+    @EmitterField
     var templateData = ControlableParticleData()
+
+    @EmitterField
     var shootDirection: Vec3 = Vec3.ZERO
 
     companion object {
@@ -67,6 +72,6 @@ class TestEventEmitter(pos: Vec3, world: Level?) : ClassParticleEmitters(pos, wo
     }
 
     override fun getCodec(): StreamCodec<FriendlyByteBuf, ParticleEmitters> {
-        return CODEC
+        return ParticleEmittersHelper.generateCodec(this)
     }
 }

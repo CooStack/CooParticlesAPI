@@ -62,7 +62,10 @@ interface ParticleEmitters : ServerControler<ParticleEmitters> {
     fun update(emitters: ParticleEmitters)
 
     /**
+     * 注册时传入的CODEC必须和这个完全一致
+     *
      * 编解码器
+     *
      * 编码粒子信息, 当前位置
      */
     fun getCodec(): StreamCodec<FriendlyByteBuf, ParticleEmitters>

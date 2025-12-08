@@ -20,6 +20,7 @@ import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.level.Level
+import net.minecraft.world.phys.Vec3
 import java.util.HashSet
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -54,6 +55,13 @@ object ParticleEmittersManager {
     ): StreamCodec<FriendlyByteBuf, ParticleEmitters> {
         emittersCodec[id] = codec
         return codec
+    }
+
+    @JvmStatic
+    fun register(randomInstance: ClassParticleEmitters) {
+        val codec = randomInstance.getCodec()
+        val id = randomInstance.getEmittersID()
+        register(id, codec)
     }
 
 
@@ -220,8 +228,8 @@ object ParticleEmittersManager {
         register(PresetTestEmitters.ID, PresetTestEmitters.CODEC)
         register(FireClassParticleEmitters.ID, FireClassParticleEmitters.CODEC)
         register(PresetLaserEmitters.ID, PresetLaserEmitters.CODEC)
-        register(TestEventEmitter.ID, TestEventEmitter.CODEC)
-        register(TestEmitter.ID, TestEmitter.CODEC)
+        register(TestEmitter(Vec3.ZERO, null))
+        register(TestEventEmitter(Vec3.ZERO, null))
     }
 
 }
