@@ -18,6 +18,7 @@ import net.minecraft.core.BlockPos
 import net.minecraft.util.Mth
 import net.minecraft.util.RandomSource
 import net.minecraft.world.phys.AABB
+import net.minecraft.world.phys.BlockHitResult
 import net.minecraft.world.phys.HitResult
 import net.minecraft.world.phys.Vec3
 import org.joml.Quaternionf
@@ -301,6 +302,25 @@ abstract class ControlableParticle(
             pos
         }
         teleportTo(actualPos)
+    }
+
+    /**
+     * 将粒子从 loc 移动到 pos 在下一个tick生效
+     *
+     * @see teleportTo
+     */
+    fun moveToWithPhysics(pos: Vec3, collideResult: BlockHitResult) {
+        val actualPos = if (collideResult.type != HitResult.Type.MISS) {
+            PhysicsUtil.fixBeforeCollidePosition(collideResult)
+        } else {
+            pos
+        }
+        teleportTo(actualPos)
+    }
+
+    /** 将粒子从 loc 移动到 pos 同teleportTo 在下一个tick生效 */
+    fun moveToWithPhysics(x: Double, y: Double, z: Double, collideResult: BlockHitResult) {
+        moveToWithPhysics(Vec3(x, y, z), collideResult)
     }
 
     /** 将粒子从 loc 移动到 pos 同teleportTo 在下一个tick生效 */

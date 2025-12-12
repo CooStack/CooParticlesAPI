@@ -31,10 +31,11 @@ open class ControlableParticleData {
             buf.writeFloat(data.alpha)
             buf.writeInt(data.age)
             buf.writeInt(data.maxAge)
-            buf.writeUtf(data.textureSheet.toString())
+            buf.writeUtf(data.textureSheet)
             buf.writeUtf(data.effect::class.java.name)
             buf.writeUUID(data.uuid)
             buf.writeDouble(data.speed)
+            buf.writeInt(data.sign)
         }
 
         private fun decode(
@@ -56,6 +57,7 @@ open class ControlableParticleData {
                 Class.forName(effectType) as Class<ControlableParticleEffect>
             )
             val speed = buf.readDouble()
+            val sign = buf.readInt()
             return ControlableParticleData().apply {
                 this.uuid = uuid
                 this.velocity = velocity
@@ -68,36 +70,79 @@ open class ControlableParticleData {
                 this.textureSheet = textureSheet
                 this.effect = effect
                 this.speed = speed
+                this.sign = sign
             }
         }
 
         @JvmStatic
-        fun registerRenderType(type: ParticleRenderType){
+        fun registerRenderType(type: ParticleRenderType) {
             particleTexturesMapper[type.toString()] = type
         }
 
         init {
-            particleTexturesMapper[ParticleRenderType.PARTICLE_SHEET_TRANSLUCENT.toString()] =  ParticleRenderType.PARTICLE_SHEET_TRANSLUCENT
-            particleTexturesMapper[ParticleRenderType.PARTICLE_SHEET_OPAQUE.toString()] =  ParticleRenderType.PARTICLE_SHEET_OPAQUE
-            particleTexturesMapper[ParticleRenderType.CUSTOM.toString()] =  ParticleRenderType.CUSTOM
-            particleTexturesMapper[ParticleRenderType.NO_RENDER.toString()] =  ParticleRenderType.NO_RENDER
-            particleTexturesMapper[ParticleRenderType.PARTICLE_SHEET_LIT.toString()] =  ParticleRenderType.PARTICLE_SHEET_LIT
-            particleTexturesMapper[ParticleRenderType.TERRAIN_SHEET.toString()] =  ParticleRenderType.TERRAIN_SHEET
+            particleTexturesMapper[ParticleRenderType.PARTICLE_SHEET_TRANSLUCENT.toString()] =
+                ParticleRenderType.PARTICLE_SHEET_TRANSLUCENT
+            particleTexturesMapper[ParticleRenderType.PARTICLE_SHEET_OPAQUE.toString()] =
+                ParticleRenderType.PARTICLE_SHEET_OPAQUE
+            particleTexturesMapper[ParticleRenderType.CUSTOM.toString()] = ParticleRenderType.CUSTOM
+            particleTexturesMapper[ParticleRenderType.NO_RENDER.toString()] = ParticleRenderType.NO_RENDER
+            particleTexturesMapper[ParticleRenderType.PARTICLE_SHEET_LIT.toString()] =
+                ParticleRenderType.PARTICLE_SHEET_LIT
+            particleTexturesMapper[ParticleRenderType.TERRAIN_SHEET.toString()] = ParticleRenderType.TERRAIN_SHEET
         }
 
     }
 
+    /**
+     * 粒子生成时会传输的控制UUID
+     */
     var uuid = UUID.randomUUID()
+
+    /**
+     * 粒子的移动向量
+     * 在粒子发射器中 会不断调用这次的参数
+     */
     var velocity: Vec3 = Vec3.ZERO
     var size = 0.2f
+
+    /**
+     * 粒子生成时采用的颜色，后续控制不生效
+     */
     var color = Vector3f(1f, 1f, 1f)
+
+    /**
+     * 粒子生成时采用的不透明度
+     */
     var alpha = 1f
+
+    /**
+     * 粒子生成时设置的age
+     */
     var age = 0
+
+    /**
+     * 粒子最大生命周期
+     */
     var maxAge = 120
+
+    /**
+     * 粒子可见范围
+     */
     var visibleRange = 128f
+
+    /**
+     * 粒子样式 （必须是可控制的粒子）
+     */
     var effect: ControlableParticleEffect = ControlableEndRodEffect(uuid)
 
+    /**
+     * 一些特殊标识
+     * 用于在single 区分不同类型 分工的粒子
+     */
+    var sign = 0
+
     // 脑瘫东西设置了客户端专属
+    // 粒子渲染方式 只生效一次
     private var textureSheet: String = "PARTICLE_SHEET_TRANSLUCENT"
 
     /**
