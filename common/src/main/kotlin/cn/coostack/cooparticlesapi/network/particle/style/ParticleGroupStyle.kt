@@ -109,7 +109,7 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
         axis = to
         toggleRelative()
 
-        if (!client && !autoToggle) {
+        if (!client) {
             // 同步到其他客户端
             change(
                 mapOf(
@@ -132,7 +132,7 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
             this.rotate -= 2 * PI
         }
         toggleRelative()
-        if (!client && !autoToggle) {
+        if (!client) {
             // 同步到其他客户端
             change(
                 mapOf(
@@ -152,7 +152,7 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
             this.rotate -= 2 * PI
         }
         toggleRelative()
-        if (!client && !autoToggle) {
+        if (!client) {
             // 同步到其他客户端
             change(
                 mapOf(
@@ -165,7 +165,7 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
     override fun teleportTo(pos: Vec3) {
         this.pos = pos
         toggleRelative()
-        if (!client && !autoToggle) {
+        if (!client) {
             // 同步到其他客户端
             change(
                 mapOf(
