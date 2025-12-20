@@ -1,3 +1,38 @@
+# 玩家须知
+## 安装
+### Fabric
+需求:
+1. fabric api
+2. fabric-language-kotlin
+3. minecraft 1.21.1
+
+直接丢到mods即可
+
+### Neoforge
+需求：
+1. kotlin for forge
+2. minecraft 1.21.1
+
+同上
+
+# 开发
+## 依赖 （gradle）
+### 仓库
+```groovy
+maven {
+    name = "jsdu"
+    url = "https://nexus.jsdu.cn/repository/maven-public/"
+}
+```
+### 依赖
+版本可以查看最新的 release
+```groovy
+// neoforge
+    implementation 'cn.coostack:cooparticlesapi-neoforge:version'
+// fabric
+    implementation 'cn.coostack:cooparticlesapi-fabric:version'
+```
+
 # 基本用法
 
 创建一个粒子类并且继承 ControlableParticle
