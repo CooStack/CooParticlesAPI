@@ -36,8 +36,8 @@ object CooParticlesAPI {
         CooParticlesServices.API_CONFIG_MANAGER.loadConfig()
         ControlableParticleEffectManager.init()
         WindDirections.init()
-
         FastRegisterUtil.loadAllFastLoader(CooParticlesConstants.MOD_ID)
+
     }
 
     fun onServerStart(server: MinecraftServer) {

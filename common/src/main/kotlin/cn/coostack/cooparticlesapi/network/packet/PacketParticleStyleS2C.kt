@@ -34,7 +34,7 @@ class PacketParticleStyleS2C(
                 val args = HashMap<String, ParticleControlerDataBuffer<*>>()
                 val uuid = buf.readUUID()
                 val id = buf.readInt()
-                val type = ControlType.Companion.getTypeById(id)
+                val type = ControlType.getTypeById(id)
                 val argsCount = buf.readInt()
                 repeat(argsCount) {
                     val len = buf.readInt()

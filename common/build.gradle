@@ -40,6 +40,7 @@ dependencies {
     implementation fileTree(dir: "../depend", includes: ["*.jar"])
 
     implementation project(":kapt")
+    implementation 'io.github.classgraph:classgraph:4.8.184'
     kapt project(":kapt")
 }
 tasks.named('jar', Jar) {

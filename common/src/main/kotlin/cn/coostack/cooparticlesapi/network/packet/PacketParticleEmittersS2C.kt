@@ -1,17 +1,15 @@
 package cn.coostack.cooparticlesapi.network.packet
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
-import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersManager
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload
 import net.minecraft.resources.ResourceLocation
-import java.util.UUID
 
 class PacketParticleEmittersS2C(
-    val emitterBuf: FriendlyByteBuf,
     val emitterID: String,
+    val emitterData: ByteArray,
     val type: PacketType
 ) :
     CustomPacketPayload {
@@ -32,19 +30,29 @@ class PacketParticleEmittersS2C(
     }
 
     companion object {
-        private val identifierID =
+        private val id =
             ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "particle_emitters")
-        val payloadID = CustomPacketPayload.Type<PacketParticleEmittersS2C>(identifierID)
-        val CODEC: StreamCodec<FriendlyByteBuf, PacketParticleEmittersS2C> =
-            CustomPacketPayload.codec({ packet, buf ->
+        val payloadID = CustomPacketPayload.Type<PacketParticleEmittersS2C>(id)
+
+        val CODEC =
+            StreamCodec.of<FriendlyByteBuf, PacketParticleEmittersS2C>({ buf, packet ->
+                val emitterID = packet.emitterID
                 buf.writeInt(packet.type.id)
-                buf.writeUtf(packet.emitterID)
-                buf.writeBytes(packet.emitterBuf.copy().array())
+                buf.writeUtf(emitterID)
+                buf.writeInt(packet.emitterData.size)
+                buf.writeBytes(packet.emitterData)
             }, { buf ->
                 val packetTypeID = buf.readInt()
                 val emitterID = buf.readUtf()
-                val emitterBuf = buf.readBytes(buf.readableBytes())
-                PacketParticleEmittersS2C(FriendlyByteBuf(emitterBuf), emitterID, PacketType.fromID(packetTypeID))
+                val size = buf.readInt()
+                val data = buf.readBytes(size)
+                PacketParticleEmittersS2C(
+                    emitterID,
+                    ByteArray(size).apply {
+                        data.copy().readBytes(this)
+                    },
+                    PacketType.fromID(packetTypeID)
+                )
             })
     }
 

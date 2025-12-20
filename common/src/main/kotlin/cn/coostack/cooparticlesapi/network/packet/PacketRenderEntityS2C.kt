@@ -49,7 +49,10 @@ class PacketRenderEntityS2C(var uuid: UUID, var entityData: ByteBuf, var id: Res
                 return@codec packet
             }
             )
+    }
 
+    fun copyWithBuffer(): PacketRenderEntityS2C {
+        return PacketRenderEntityS2C(uuid, entityData.copy(), id, method)
     }
 
     override fun type(): CustomPacketPayload.Type<out CustomPacketPayload?> {

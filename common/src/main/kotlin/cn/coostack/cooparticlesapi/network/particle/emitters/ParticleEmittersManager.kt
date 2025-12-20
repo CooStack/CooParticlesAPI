@@ -168,11 +168,11 @@ object ParticleEmittersManager {
     fun updateEmitters(emitters: ParticleEmitters) {
         filterVisiblePlayer(emitters).forEach {
             val player = emitters.world!!.getPlayerByUUID(it) ?: return@forEach
-            val buf = FriendlyByteBuf(Unpooled.buffer())
-            emitters.getCodec().encode(buf, emitters)
+
+            val data = encodeEmittersToArray(emitters)
             val packet = PacketParticleEmittersS2C(
-                buf,
                 emitters.getEmittersID(),
+                data,
                 PacketParticleEmittersS2C.PacketType.CHANGE_OR_CREATE
             )
             CooParticlesServices.SERVER_NETWORK.send(packet, player as ServerPlayer)
@@ -180,22 +180,21 @@ object ParticleEmittersManager {
     }
 
     fun sendChange(emitters: ParticleEmitters, to: ServerPlayer) {
-        val buf = FriendlyByteBuf(Unpooled.buffer())
-        emitters.getCodec().encode(buf, emitters)
+        val data = encodeEmittersToArray(emitters)
         val packet = PacketParticleEmittersS2C(
-            buf,
             emitters.getEmittersID(),
+            data,
             PacketParticleEmittersS2C.PacketType.CHANGE_OR_CREATE
         )
         CooParticlesServices.SERVER_NETWORK.send(packet, to)
     }
 
     private fun addView(player: ServerPlayer, emitters: ParticleEmitters) {
-        val buf = FriendlyByteBuf(Unpooled.buffer())
-        emitters.getCodec().encode(buf, emitters)
+        val data = encodeEmittersToArray(emitters)
+
         val packet = PacketParticleEmittersS2C(
-            buf,
             emitters.getEmittersID(),
+            data,
             PacketParticleEmittersS2C.PacketType.CHANGE_OR_CREATE
         )
         CooParticlesServices.SERVER_NETWORK.send(packet, player)
@@ -207,16 +206,25 @@ object ParticleEmittersManager {
     }
 
     private fun removeView(player: ServerPlayer, emitters: ParticleEmitters) {
-        val buf = FriendlyByteBuf(Unpooled.buffer())
-        emitters.getCodec().encode(buf, emitters)
+        val data = encodeEmittersToArray(emitters)
         val packet = PacketParticleEmittersS2C(
-            buf,
             emitters.getEmittersID(),
+            data,
             PacketParticleEmittersS2C.PacketType.REMOVE
         )
         CooParticlesServices.SERVER_NETWORK.send(packet, player)
     }
 
+
+    private fun encodeEmittersToArray(emitters: ParticleEmitters): ByteArray{
+        val codec = emitters.getCodec()
+        val buf = FriendlyByteBuf(Unpooled.buffer())
+        codec.encode(buf, emitters)
+
+        val data = ByteArray(buf.readableBytes())
+        buf.readBytes(data) // 只读 writerIndex 之前的内容
+        return data
+    }
 
     internal fun init() {
         register(PhysicsParticleEmitters.ID, PhysicsParticleEmitters.CODEC)

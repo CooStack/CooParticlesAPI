@@ -7,6 +7,7 @@ import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import net.minecraft.core.registries.BuiltInRegistries
 import net.neoforged.fml.common.Mod
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent
+import net.neoforged.neoforge.client.event.ScreenEvent
 import net.neoforged.neoforge.registries.RegisterEvent
 import thedarkcolour.kotlinforforge.neoforge.forge.MOD_BUS
 
@@ -23,7 +24,6 @@ object CooParticlesAPINeo {
 
 
     fun onCommon(event: FMLCommonSetupEvent) {
-        CooParticlesConstants.logger.info("on Common invoked")
     }
 
     fun onRegistryRegister(event: RegisterEvent) {

@@ -10,9 +10,10 @@ object ClientRenderEntityPacketHandler {
         payload: PacketRenderEntityS2C,
         context: ClientContext
     ) {
-        val method = payload.method
-        val data = payload.entityData
-        val id = payload.id
+        val packet = payload.copyWithBuffer()
+        val method = packet.method
+        val data = packet.entityData
+        val id = packet.id
         val buf = FriendlyByteBuf(data)
         val codec = ClientRenderEntityManager.getCodecFromID(id) ?: return
         val entity = codec.decode(buf)
