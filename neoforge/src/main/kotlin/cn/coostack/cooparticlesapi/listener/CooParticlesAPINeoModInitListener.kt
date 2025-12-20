@@ -32,8 +32,6 @@ import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent
     modid = CooParticlesConstants.MOD_ID,
 )
 object CooParticlesAPINeoModInitListener {
-
-
     @SubscribeEvent
     fun onDataProvider(event: GatherDataEvent) {
         val generator = event.generator

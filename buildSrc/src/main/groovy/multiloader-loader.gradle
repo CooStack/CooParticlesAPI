@@ -1,6 +1,5 @@
 plugins {
     id 'multiloader-common'
-    id 'org.jetbrains.kotlin.kapt'
 }
 
 configurations {
@@ -18,7 +17,6 @@ dependencies {
             requireCapability "$group:$mod_id"
         }
     }
-    implementation project(":kapt")
     commonJava project(path: ':common', configuration: 'commonJava')
     commonResources project(path: ':common', configuration: 'commonResources')
 }
@@ -31,10 +29,6 @@ tasks.named('compileJava', JavaCompile) {
 processResources {
     dependsOn(configurations.commonResources)
     from(configurations.commonResources)
-    from {
-        def kaptModule = project(":kapt")
-        kaptModule.sourceSets.main.output
-    }
 }
 
 tasks.named('javadoc', Javadoc).configure {

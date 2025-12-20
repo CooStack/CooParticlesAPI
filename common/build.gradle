@@ -4,7 +4,6 @@ plugins {
     id 'org.jetbrains.kotlin.jvm'
     id "java-library"
     id 'kotlin'
-    id 'org.jetbrains.kotlin.kapt'
 }
 neoForge {
     neoFormVersion = neo_form_version
@@ -24,9 +23,6 @@ tasks.javadoc {
     // fuck javadoc encode error
     enabled = false
 }
-kapt {
-    includeCompileClasspath = false
-}
 dependencies {
     compileOnly group: 'org.spongepowered', name: 'mixin', version: '0.8.5'
     compileOnly "org.ow2.asm:asm:9.7"
@@ -39,25 +35,15 @@ dependencies {
     compileOnly fileTree(dir: "../compile_only_depend", includes: ["*.jar"])
     implementation fileTree(dir: "../depend", includes: ["*.jar"])
 
-    implementation project(":kapt")
     implementation 'io.github.classgraph:classgraph:4.8.184'
-    kapt project(":kapt")
 }
 tasks.named('jar', Jar) {
     destinationDirectory.set(file("../builds/jar"))
     archiveFileName.set("${rootProject.mod_name}-Common-${rootProject.minecraft_version}-${rootProject.version}.jar")
 }
-sourceSets {
-    main {
-        kotlin.srcDirs += "$buildDir/generated/source/kapt/main"
-    }
-}
 
 
 afterEvaluate {
-    tasks.named('sourcesJar') {
-        dependsOn(tasks.named('kaptKotlin'))
-    }
     artifacts {
         commonJava sourceSets.main.java.sourceDirectories.files
         commonResources sourceSets.main.resources.sourceDirectories.files

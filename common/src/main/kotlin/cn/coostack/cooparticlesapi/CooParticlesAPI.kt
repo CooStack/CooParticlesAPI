@@ -1,7 +1,6 @@
 package cn.coostack.cooparticlesapi
 
 import cn.coostack.cooparticlesapi.animation.AnimateManager
-import cn.coostack.cooparticlesapi.apt.FastRegisterUtil
 import cn.coostack.cooparticlesapi.barrages.BarrageManager
 import cn.coostack.cooparticlesapi.network.animation.PathMotionManager
 import cn.coostack.cooparticlesapi.network.particle.ServerParticleGroupManager
@@ -36,7 +35,6 @@ object CooParticlesAPI {
         CooParticlesServices.API_CONFIG_MANAGER.loadConfig()
         ControlableParticleEffectManager.init()
         WindDirections.init()
-        FastRegisterUtil.loadAllFastLoader(CooParticlesConstants.MOD_ID)
 
     }
 

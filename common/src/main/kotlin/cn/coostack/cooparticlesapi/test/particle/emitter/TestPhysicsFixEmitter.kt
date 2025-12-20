@@ -1,6 +1,5 @@
 package cn.coostack.cooparticlesapi.test.particle.emitter
 
-import cn.coostack.cooparticlesapi.apt.annotations.EmittersFastRegister
 import cn.coostack.cooparticlesapi.network.particle.emitters.ClassParticleEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableParticleData
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmitters
@@ -12,7 +11,6 @@ import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
 
-@EmittersFastRegister
 class TestPhysicsFixEmitter(pos: Vec3, world: Level?) : ClassParticleEmitters(pos, world) {
     companion object {
         @JvmStatic

@@ -30,20 +30,15 @@ subprojects {
         ]
     }
     compileKotlin {
-        if (project.name != "kapt") {
             source(project(":common").sourceSets.main.allSource)
             inputs.file "../gradle.properties"
-        }
     }
     afterEvaluate {
-        if (project.name != "kapt") {
-            tasks.named("sourcesJar") {
-                dependsOn(project(":common").tasks.named("kaptKotlin"))
-                duplicatesStrategy = DuplicatesStrategy.INCLUDE
-            }
-            tasks.named("jar") {
-                duplicatesStrategy = DuplicatesStrategy.INCLUDE
-            }
+        tasks.named("sourcesJar") {
+            duplicatesStrategy = DuplicatesStrategy.INCLUDE
+        }
+        tasks.named("jar") {
+            duplicatesStrategy = DuplicatesStrategy.INCLUDE
         }
     }
 }

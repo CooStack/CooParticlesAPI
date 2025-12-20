@@ -108,8 +108,6 @@ dependencies {
     additionalRuntimeClasspath fileTree(dir: "../depend", includes: ["*.jar"])
     additionalRuntimeClasspath 'io.github.classgraph:classgraph:4.8.184'
 
-    implementation project(":kapt")
-    kapt project(":kapt")
 }
 sourceSets.main.resources {
     srcDir 'src/generated/resources'

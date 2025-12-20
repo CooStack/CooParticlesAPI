@@ -28,8 +28,6 @@ dependencies {
     modImplementation fileTree(dir: "../depend", includes: ["*.jar"])
     modCompileOnly fileTree(dir: "../compile_only_depend", includes: ["*.jar"])
 
-    implementation project(":kapt")
-    kapt project(":kapt")
 }
 
 tasks.register("sourceWithCommon", Jar) {
