@@ -3,18 +3,18 @@ package cn.coostack.cooparticlesapi.network.packet.client.listener
 import cn.coostack.cooparticlesapi.network.packet.PacketRenderEntityS2C
 import cn.coostack.cooparticlesapi.platform.network.ClientContext
 import cn.coostack.cooparticlesapi.renderer.client.ClientRenderEntityManager
+import io.netty.buffer.Unpooled
 import net.minecraft.network.FriendlyByteBuf
 
 object ClientRenderEntityPacketHandler {
     fun receive(
-        payload: PacketRenderEntityS2C,
+        packet: PacketRenderEntityS2C,
         context: ClientContext
     ) {
-        val packet = payload.copyWithBuffer()
         val method = packet.method
         val data = packet.entityData
         val id = packet.id
-        val buf = FriendlyByteBuf(data)
+        val buf = FriendlyByteBuf(Unpooled.wrappedBuffer(data))
         val codec = ClientRenderEntityManager.getCodecFromID(id) ?: return
         val entity = codec.decode(buf)
         entity.world = context.client().level
@@ -24,11 +24,11 @@ object ClientRenderEntityPacketHandler {
             }
 
             PacketRenderEntityS2C.Method.TOGGLE -> {
-                ClientRenderEntityManager.getFrom(payload.uuid)?.loadProfileFromEntity(entity)
+                ClientRenderEntityManager.getFrom(packet.uuid)?.loadProfileFromEntity(entity)
             }
 
             PacketRenderEntityS2C.Method.REMOVE -> {
-                ClientRenderEntityManager.getFrom(payload.uuid)?.canceled = true
+                ClientRenderEntityManager.getFrom(packet.uuid)?.canceled = true
             }
         }
     }

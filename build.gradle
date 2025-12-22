@@ -9,7 +9,7 @@ plugins {
 tasks.register("publish-all") {
     group("build")
     description = "上传Fabric和Neoforge的内容到仓库中"
-    dependsOn(":neoforge:publish", ":fabric:publish", ":kapt:publish")
+    dependsOn(":neoforge:publish", ":fabric:publish")
 }
 
 subprojects {

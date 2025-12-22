@@ -72,8 +72,10 @@ abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) : Serv
         }
         val buf = FriendlyByteBuf(Unpooled.buffer())
         getCodec().encode(buf, this)
+        val bytes = ByteArray(buf.readableBytes())
+        buf.readBytes(bytes)
         // 发包
-        val packet = PacketRenderEntityS2C(uuid, buf, getRenderID(), method)
+        val packet = PacketRenderEntityS2C(uuid, bytes, getRenderID(), method)
         return packet
     }
 

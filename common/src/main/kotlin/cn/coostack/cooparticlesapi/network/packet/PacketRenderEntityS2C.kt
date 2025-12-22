@@ -8,7 +8,7 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload
 import net.minecraft.resources.ResourceLocation
 import java.util.UUID
 
-class PacketRenderEntityS2C(var uuid: UUID, var entityData: ByteBuf, var id: ResourceLocation, var method: Method) :
+class PacketRenderEntityS2C(var uuid: UUID, var entityData: ByteArray, var id: ResourceLocation, var method: Method) :
     CustomPacketPayload {
     enum class Method(val id: Int) {
         CREATE(0),
@@ -35,24 +35,24 @@ class PacketRenderEntityS2C(var uuid: UUID, var entityData: ByteBuf, var id: Res
         @JvmStatic
         val CODEC: StreamCodec<FriendlyByteBuf, PacketRenderEntityS2C> =
             CustomPacketPayload.codec({ packet, buf ->
-                val entity = packet.entityData.copy().array()
+                val entity = packet.entityData
                 buf.writeInt(packet.method.id)
                 buf.writeUUID(packet.uuid)
                 buf.writeResourceLocation(packet.id)
+                buf.writeInt(entity.size)
                 buf.writeBytes(entity)
             }, { buf ->
                 val method = buf.readInt()
                 val uuid = buf.readUUID()
                 val id = buf.readResourceLocation()
-                val entity = buf.readBytes(buf.readableBytes())
-                val packet = PacketRenderEntityS2C(uuid, entity, id, Method.idOf(method))
+                val size = buf.readInt()
+                val entity = buf.readBytes(size)
+                val bytes = ByteArray(size)
+                entity.readBytes(bytes)
+                val packet = PacketRenderEntityS2C(uuid, bytes, id, Method.idOf(method))
                 return@codec packet
             }
             )
-    }
-
-    fun copyWithBuffer(): PacketRenderEntityS2C {
-        return PacketRenderEntityS2C(uuid, entityData.copy(), id, method)
     }
 
     override fun type(): CustomPacketPayload.Type<out CustomPacketPayload?> {
