@@ -433,10 +433,9 @@ class PhysicsParticleEmitters(
     }
 
     private fun updatePhysics(pos: Vec3, data: ControlableParticleData) {
-        val m = mass / 1000
         val v = data.velocity
         val speed = v.length()
-        val gravityForce = Vec3(0.0, -m * gravity, 0.0)
+        val gravityForce = Vec3(0.0, gravity, 0.0)
         val airResistanceForce = if (speed > 0.01) {
             val dragMagnitude = 0.5 * airDensity * DRAG_COEFFICIENT *
                     CROSS_SECTIONAL_AREA * speed.pow(2) * 0.05
@@ -456,7 +455,6 @@ class PhysicsParticleEmitters(
         val a = gravityForce
             .add(airResistanceForce)
             .add(windForce)
-            .scale(1.0 / m)
 
         data.velocity = v.add(a)
     }

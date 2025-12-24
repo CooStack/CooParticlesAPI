@@ -19,6 +19,7 @@ import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import cn.coostack.cooparticlesapi.utils.interpolator.Interpolator
 import cn.coostack.cooparticlesapi.utils.interpolator.emitters.LineEmitterInterpolator
 import net.minecraft.client.multiplayer.ClientLevel
+import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.world.entity.Entity
@@ -62,6 +63,8 @@ abstract class ClassParticleEmitters(
 
     override fun addEventHandler(handler: ParticleEventHandler, innerClass: Boolean) {
         val handlerID = handler.getHandlerID()
+        // 自动注册不适用于多人
+        // TODO
         if (!ParticleEventHandlerManager.hasRegister(handlerID)) {
             ParticleEventHandlerManager.register(handler)
         }
@@ -369,7 +372,15 @@ abstract class ClassParticleEmitters(
             if (minecraftTick) return@addPreTickAction
             if (bounding.hasNaN()) return@addPreTickAction
             val prepareMove = this.loc.add(data.velocity)
-            val clipRes = PhysicsUtil.collide(this.loc, data.velocity, world)
+            val clipRes = if (data.velocity.lengthSqr() > 0.001) {
+                if (data.velocity.length() <= 200) {
+                    PhysicsUtil.collide(this.loc, data.velocity, world)
+                } else {
+                    BlockHitResult.miss(this.loc, Direction.UP, BlockPos.containing(this.loc))
+                }
+            } else {
+                BlockHitResult.miss(this.loc, Direction.UP, BlockPos.containing(this.loc))
+            }
             onTheGround = clipRes.type != HitResult.Type.MISS && clipRes.direction == Direction.UP
             // 模拟粒子运动 速度
             moveSingleParticleWithVelocity(this, data, prepareMove, clipRes)
@@ -417,11 +428,10 @@ abstract class ClassParticleEmitters(
     }
 
     protected fun updatePhysics(pos: Vec3, data: ControlableParticleData, particle: ControlableParticle) {
-        val m = mass / 1000
         val v = data.velocity
         val speed = v.length()
         val gravity = if (particle.onTheGround) 0.0 else gravity
-        val gravityForce = Vec3(0.0, -m * gravity, 0.0) // 下面质量会被消除掉
+        val gravityForce = Vec3(0.0, gravity, 0.0) // 下面质量会被消除掉
         val airResistanceForce = if (speed > 0.01) {
             val dragMagnitude = 0.5 * airDensity * DRAG_COEFFICIENT *
                     CROSS_SECTIONAL_AREA * speed.pow(2) * 0.05
@@ -443,7 +453,6 @@ abstract class ClassParticleEmitters(
         val a = gravityForce
             .add(airResistanceForce)
             .add(windForce)
-            .scale(1.0 / m)
 
         data.velocity = v.add(a)
     }

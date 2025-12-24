@@ -1,3 +1,5 @@
+import net.fabricmc.loom.task.RemapJarTask
+
 plugins {
     id 'fabric-loom'
     id 'multiloader-loader'
@@ -24,7 +26,6 @@ dependencies {
     modImplementation "net.fabricmc.fabric-api:fabric-api:${fabric_version}"
     modImplementation "net.fabricmc:fabric-language-kotlin:${project.fabric_kotlin_version}"
     embed fileTree(dir: "../depend", includes: ["*.jar"])
-    embed 'io.github.classgraph:classgraph:4.8.184'
     modImplementation fileTree(dir: "../depend", includes: ["*.jar"])
     modCompileOnly fileTree(dir: "../compile_only_depend", includes: ["*.jar"])
 
@@ -57,6 +58,18 @@ tasks.named('remapJar') {
     destinationDirectory.set(file("../builds/jar")) // 输出到 build/customLibs
     archiveFileName.set("${rootProject.mod_name}-Fabric-${rootProject.minecraft_version}-${rootProject.version}.jar")
 }
+//tasks.register("remapYarnJar", RemapJarTask) {
+//    dependsOn tasks.jar
+//
+//    inputFile.set(tasks.named("jar").flatMap { it.archiveFile })
+//
+//    destinationDirectory.set(file("../builds/jar"))
+//    archiveFileName.set(
+//            "${rootProject.mod_name}-Fabric-Yarn-${rootProject.minecraft_version}-${rootProject.version}.jar"
+//    )
+//
+//    targetNamespace.set("named") // Yarn
+//}
 fabricApi {
     configureDataGeneration {
         client = true

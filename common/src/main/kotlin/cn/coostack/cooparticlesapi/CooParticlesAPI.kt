@@ -6,11 +6,13 @@ import cn.coostack.cooparticlesapi.network.animation.PathMotionManager
 import cn.coostack.cooparticlesapi.network.particle.ServerParticleGroupManager
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersManager
 import cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind.WindDirections
+import cn.coostack.cooparticlesapi.network.particle.emitters.event.ParticleEventHandlerManager
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleStyleManager
 import cn.coostack.cooparticlesapi.particles.ControlableParticleEffectManager
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import cn.coostack.cooparticlesapi.renderer.server.ServerRenderEntityManager
 import cn.coostack.cooparticlesapi.scheduler.CooScheduler
+import cn.coostack.cooparticlesapi.test.particle.emitter.event.TestCollideEventHandler
 import com.ezylang.evalex.Expression
 import net.minecraft.server.MinecraftServer
 
@@ -36,6 +38,7 @@ object CooParticlesAPI {
         ControlableParticleEffectManager.init()
         WindDirections.init()
 
+        ParticleEventHandlerManager.register(TestCollideEventHandler)
     }
 
     fun onServerStart(server: MinecraftServer) {
