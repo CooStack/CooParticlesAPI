@@ -11,7 +11,7 @@ object CooAPIScanner {
     private val classes = HashSet<SimpleClassInfo>()
 
 
-    internal fun scan() {
+    fun scan() {
         if (loaded) return
         loaded = true
         val start = System.currentTimeMillis()
@@ -42,7 +42,7 @@ object CooAPIScanner {
     }
 
     /**
-     * neoforge 需要导入的
+     * neoforge 需要手动导入的
      */
     fun inputScanResult(scan: SimpleClassInfo) {
         classes.add(scan)
@@ -52,7 +52,7 @@ object CooAPIScanner {
      * 在neoforge调用
      * 防止再次调用scan
      */
-    internal fun neoLoaded() {
+    fun neoLoaded() {
         loaded = true
     }
 

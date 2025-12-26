@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi.event.api
 
-enum class EventPriority() {
+enum class EventPriority {
     HIGHEST,
     HIGH,
     NORMAL,
