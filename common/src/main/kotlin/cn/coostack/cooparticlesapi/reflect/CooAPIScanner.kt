@@ -11,7 +11,7 @@ object CooAPIScanner {
     private val classes = HashSet<SimpleClassInfo>()
 
 
-    fun scan() {
+    internal fun scan() {
         if (loaded) return
         loaded = true
         val start = System.currentTimeMillis()
@@ -24,7 +24,7 @@ object CooAPIScanner {
         result.allClasses.filter {
             it.annotations.isNotEmpty() // 只考虑存在类注解的类
         }.forEach {
-            inputScanResult(SimpleClassInfo(it.name, it.annotations.map { it.name }.toHashSet()))
+            inputScanResult(SimpleClassInfo(it.name, it.annotations.map { it -> it.name }.toHashSet()))
         }
         val end = System.currentTimeMillis()
         CooParticlesConstants.logger.info("扫描结果处理完毕 耗时:${end - start}ms")
@@ -48,7 +48,11 @@ object CooAPIScanner {
         classes.add(scan)
     }
 
-    fun neoLoaded() {
+    /**
+     * 在neoforge调用
+     * 防止再次调用scan
+     */
+    internal fun neoLoaded() {
         loaded = true
     }
 
@@ -59,11 +63,13 @@ object CooAPIScanner {
      *
      * @param main
      */
+    @JvmStatic
     fun registerPacket(main: Class<*>) {
         val packageName = main.packageName
         registerPacket(packageName)
     }
 
+    @JvmStatic
     fun registerPacket(packageName: String) {
         needSearchedPacket.add(packageName)
         CooParticlesConstants.logger.info("注册事件包: $packageName")

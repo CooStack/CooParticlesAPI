@@ -3,13 +3,13 @@ package cn.coostack.cooparticlesapi.test
 import cn.coostack.cooparticlesapi.test.api.TestGroup
 import cn.coostack.cooparticlesapi.test.api.TestGroupBuilder
 import net.minecraft.world.entity.player.Player
-import java.util.concurrent.ConcurrentHashMap
 
 object TestManager {
 
     val builders = HashMap<String, (Player) -> TestGroupBuilder>()
 
-    val validGroups = HashSet<TestGroup>()
+    val validGroupsServer = HashSet<TestGroup>()
+    val validGroupsClient = HashSet<TestGroup>()
 
     fun register(id: String, group: (Player) -> TestGroupBuilder) {
         builders[id] = group
@@ -20,13 +20,29 @@ object TestManager {
             return null
         }
         val group = builders[id]!!(user).build()
+        if (user.level().isClientSide) {
+            validGroupsClient.add(group)
+        } else {
+            validGroupsServer.add(group)
+        }
         group.start()
-        validGroups.add(group)
         return group
     }
 
-    fun doTick() {
-        val iter = validGroups.iterator()
+    fun doTickServer() {
+        val iter = validGroupsServer.iterator()
+        while (iter.hasNext()) {
+            val group = iter.next()
+            if (group.isDone()) {
+                iter.remove()
+                continue
+            }
+            group.doTick()
+        }
+    }
+
+    fun doTickClient() {
+        val iter = validGroupsClient.iterator()
         while (iter.hasNext()) {
             val group = iter.next()
             if (group.isDone()) {

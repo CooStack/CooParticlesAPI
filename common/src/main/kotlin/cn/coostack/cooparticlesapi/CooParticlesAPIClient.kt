@@ -10,6 +10,7 @@ import cn.coostack.cooparticlesapi.renderer.client.ClientRenderEntityManager
 import cn.coostack.cooparticlesapi.renderer.client.ClientRenderPipelineManager
 import cn.coostack.cooparticlesapi.renderer.client.ShaderPipeManagers
 import cn.coostack.cooparticlesapi.scheduler.CooScheduler
+import cn.coostack.cooparticlesapi.test.TestManager
 import cn.coostack.cooparticlesapi.test.options.particle.client.BarrierSwordGroupClient
 import cn.coostack.cooparticlesapi.test.options.particle.client.ScaleCircleGroupClient
 import cn.coostack.cooparticlesapi.test.options.particle.client.SequencedMagicCircleClient
@@ -153,5 +154,6 @@ object CooParticlesAPIClient {
                 ClientRenderEntityManager.tick()
             }
         }
+        TestManager.doTickClient()
     }
 }

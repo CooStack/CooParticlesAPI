@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi.test.options.listener
 
+import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.annotations.events.EventHandler
 import cn.coostack.cooparticlesapi.annotations.events.EventListener
 import cn.coostack.cooparticlesapi.event.api.EventPriority
@@ -12,7 +13,7 @@ import net.minecraft.network.chat.Component
 /**
  *输入一个假的mod id进去看看能不能做好标识
  */
-@EventListener("TestModID")
+@EventListener(CooParticlesConstants.MOD_ID)
 object TestObjectListener {
 
     @EventHandler

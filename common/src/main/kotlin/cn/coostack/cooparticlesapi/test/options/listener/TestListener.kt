@@ -6,7 +6,7 @@ import cn.coostack.cooparticlesapi.annotations.events.EventListener
 import cn.coostack.cooparticlesapi.test.options.event.TestEvent
 import net.minecraft.network.chat.Component
 
-@EventListener
+@EventListener(CooParticlesConstants.MOD_ID)
 class TestListener {
 
     @EventHandler

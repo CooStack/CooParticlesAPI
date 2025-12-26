@@ -81,6 +81,6 @@ object CooParticlesAPI {
         AnimateManager.tickServer()
         ServerRenderEntityManager.tick()
         scheduler.doTick()
-        TestManager.doTick()
+        TestManager.doTickServer()
     }
 }
