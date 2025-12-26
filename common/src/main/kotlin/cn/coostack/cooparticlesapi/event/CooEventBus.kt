@@ -26,7 +26,7 @@ object CooEventBus {
     private var init = false
 
     private val handlerLists =
-        HashMap<Class<out CooEvent>, TreeMap<EventPriority, MutableList<Consumer<in CooEvent>>>>()
+        HashMap<Class<out CooEvent>, TreeMap<EventPriority, MutableList<EventExecutor>>>()
 
     /**
      * 在进行扫描的时候已经加载完所有类了罢
@@ -59,7 +59,14 @@ object CooEventBus {
         val handleList = handlerLists[event::class.java] ?: return
         handleList.forEach {
             for (executor in it.value) {
-                executor.accept(event)
+                runCatching {
+                    executor.executor.accept(event)
+                }.onFailure { err ->
+                    CooParticlesConstants.logger.error(
+                        "处理 事件:${event::class.java.name} 时出现错误: 监听模组：${executor.modId}",
+                        err
+                    )
+                }
                 // 事件中断
                 if (event is EventInterruptible && event.hasInterrupted) {
                     return
@@ -81,12 +88,12 @@ object CooEventBus {
             // 然后再尝试进行实例化 (newInstance)
             // modId好像没有用 但是又好像是有用的 az
             eventListeners.forEach {
-                findListenerHandlers(it)
+                findListenerHandlers(it, modId)
             }
         }
     }
 
-    private fun findListenerHandlers(target: String) {
+    private fun findListenerHandlers(target: String, modId: String) {
         val clazz = Class.forName(target)
         // 获取instance
         val instance =
@@ -105,9 +112,9 @@ object CooEventBus {
             handlerLists.getOrPut(eventType) { TreeMap() }
                 .getOrPut(handlerAnnotation.priority) {
                     ArrayList()
-                }.add { e ->
+                }.add(EventExecutor(modId) { e ->
                     it.invoke(instance, e)
-                }
+                })
         }
     }
 

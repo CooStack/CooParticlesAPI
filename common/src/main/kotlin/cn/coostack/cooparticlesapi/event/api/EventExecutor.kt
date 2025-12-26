@@ -6,11 +6,7 @@ import java.util.function.Function
 /**
  * 事件执行器
  *
- * @property priority 该执行器的优先级
+ * @param modId 该事件监听器的所属mod
  * @param executor 事件执行内容
  */
-class EventExecutor(val priority: EventPriority, val executor: Consumer<CooEvent>) : Comparable<EventExecutor> {
-    override fun compareTo(other: EventExecutor): Int {
-        return priority.compareTo(other.priority)
-    }
-}
+class EventExecutor(val modId: String, val executor: Consumer<CooEvent>)

@@ -36,7 +36,7 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
                     this.setPosition(player.position())
                 }, 100)
             }.appendOption {
-                SimpleEventHandlerOption(player, 10)
+                SimpleEventHandlerOption(player, 1)
             }
     }
 }
