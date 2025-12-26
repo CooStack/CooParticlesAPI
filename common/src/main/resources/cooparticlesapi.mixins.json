@@ -4,6 +4,7 @@
   "plugin": "cn.coostack.cooparticlesapi.mixin.plugin.CooParticleFabricMixinLoaderPlugin",
   "compatibilityLevel": "JAVA_18",
   "mixins": [
+    "events.entity.EntityMixin"
   ],
   "refmap": "cooparticlesapi.refmap.json",
   "injectors": {

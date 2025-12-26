@@ -6,5 +6,5 @@ package cn.coostack.cooparticlesapi.event.api
  * 那么不会执行在哪之后的事件处理器
  */
 interface EventInterruptible {
-    var hasInterrupted: Boolean
+    var isInterrupted: Boolean
 }

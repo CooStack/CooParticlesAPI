@@ -1,6 +1,9 @@
 package cn.coostack.cooparticlesapi
 
 import cn.coostack.cooparticlesapi.entities.CooModEntityTypes
+import cn.coostack.cooparticlesapi.event.CooEventBus
+import cn.coostack.cooparticlesapi.event.events.server.ServerPostTickEvent
+import cn.coostack.cooparticlesapi.event.events.server.ServerPreTickEvent
 import cn.coostack.cooparticlesapi.items.CooItemFabric
 import cn.coostack.cooparticlesapi.items.group.CooItemGroup
 import cn.coostack.cooparticlesapi.network.packet.PacketCameraShakeS2C
@@ -49,7 +52,15 @@ object CooParticlesAPIFabric : ModInitializer {
 
     private fun initEvents() {
         ServerTickEvents.START_SERVER_TICK.register { server ->
+            CooEventBus.call(
+                ServerPreTickEvent(server)
+            )
             CooParticlesAPI.tickServer(server)
+        }
+        ServerTickEvents.END_SERVER_TICK.register { server ->
+            CooEventBus.call(
+                ServerPostTickEvent(server)
+            )
         }
         ServerLifecycleEvents.SERVER_STARTED.register { server ->
             CooParticlesAPI.onServerStart(server)

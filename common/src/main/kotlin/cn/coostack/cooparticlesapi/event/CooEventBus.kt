@@ -4,16 +4,13 @@ import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.annotations.events.EventHandler
 import cn.coostack.cooparticlesapi.annotations.events.EventListener
 import cn.coostack.cooparticlesapi.event.api.CooEvent
-import cn.coostack.cooparticlesapi.event.api.EventCancelable
 import cn.coostack.cooparticlesapi.event.api.EventExecutor
 import cn.coostack.cooparticlesapi.event.api.EventInterruptible
 import cn.coostack.cooparticlesapi.event.api.EventPriority
 import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
 import java.lang.reflect.Modifier
 import java.util.TreeMap
-import java.util.TreeSet
 import java.util.concurrent.ConcurrentHashMap
-import java.util.function.Consumer
 
 object CooEventBus {
     /**
@@ -55,6 +52,7 @@ object CooEventBus {
         needListened.getOrPut(modId) { HashSet() }.add(target)
     }
 
+    @JvmStatic
     fun call(event: CooEvent) {
         val handleList = handlerLists[event::class.java] ?: return
         handleList.forEach {
@@ -68,7 +66,7 @@ object CooEventBus {
                     )
                 }
                 // 事件中断
-                if (event is EventInterruptible && event.hasInterrupted) {
+                if (event is EventInterruptible && event.isInterrupted) {
                     return
                 }
             }

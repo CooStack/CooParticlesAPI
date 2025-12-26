@@ -1,9 +1,11 @@
 package cn.coostack.cooparticlesapi.test.options.listener
 
-import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.annotations.events.EventHandler
 import cn.coostack.cooparticlesapi.annotations.events.EventListener
 import cn.coostack.cooparticlesapi.event.api.EventPriority
+import cn.coostack.cooparticlesapi.event.events.entity.EntityMoveEvent
+import cn.coostack.cooparticlesapi.event.events.entity.EntityPreMoveEvent
+import cn.coostack.cooparticlesapi.extend.times
 import cn.coostack.cooparticlesapi.test.options.event.TestEvent
 import net.minecraft.network.chat.Component
 
@@ -33,7 +35,7 @@ object TestObjectListener {
     fun onTestCanceled(event: TestEvent) {
         val player = event.player
         player.sendSystemMessage(Component.literal("这段代码之后就不会再有下一段了"))
-        event.hasInterrupted = true
+        event.isInterrupted = true
     }
 
     @EventHandler(EventPriority.LOWEST)
@@ -41,4 +43,5 @@ object TestObjectListener {
         val player = event.player
         player.sendSystemMessage(Component.literal("这段代码不应该被执行"))
     }
+
 }

@@ -26,7 +26,6 @@ object ClientPlayerDeathListener {
         ParticleStyleManager.clearAllVisible()
         ClientRenderEntityManager.clear()
         ClientParticleGroupManager.clearAllVisible()
-
     }
 
 }
