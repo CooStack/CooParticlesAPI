@@ -1,14 +1,17 @@
 package cn.coostack.cooparticlesapi.utils
 
 
+import cn.coostack.cooparticlesapi.extend.times
 import io.netty.buffer.Unpooled
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3d
 import org.joml.Vector3f
 import java.util.Vector
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.pow
 import kotlin.math.sqrt
+import kotlin.ranges.contains
 
 
 /** 描述粒子之间相对位置的类 相对位置 又名向量 草 */
@@ -114,9 +117,32 @@ data class RelativeLocation(var x: Double, var y: Double, var z: Double) {
         return this
     }
 
+
+    operator fun unaryMinus(): RelativeLocation {
+        return this * -1.0
+    }
+
     operator fun times(scalar: Double): RelativeLocation {
         return RelativeLocation(x * scalar, y * scalar, z * scalar)
     }
+
+    operator fun times(scalar: Float): RelativeLocation {
+        return RelativeLocation(x * scalar, y * scalar, z * scalar)
+    }
+
+    operator fun times(scalar: Int): RelativeLocation {
+        return RelativeLocation(x * scalar, y * scalar, z * scalar)
+    }
+
+    operator fun times(scalar: Vec3): RelativeLocation {
+        return RelativeLocation(x * scalar.x, y * scalar.y, z * scalar.z)
+    }
+
+    operator fun times(scalar: RelativeLocation): RelativeLocation {
+        return RelativeLocation(x * scalar.x, y * scalar.y, z * scalar.z)
+    }
+
+
 
     operator fun plus(other: RelativeLocation): RelativeLocation {
         return RelativeLocation(x + other.x, y + other.y, z + other.z)
@@ -235,4 +261,45 @@ data class RelativeLocation(var x: Double, var y: Double, var z: Double) {
         return this
     }
 
+    fun lengthCoerceIn(min: Double, max: Double): RelativeLocation {
+        require(min < max) {
+            "最小值必须小于最大值"
+        }
+        val len = this.length()
+        if (abs(len) < 1e-7) {
+            return RelativeLocation()
+        }
+        if (len in min..max) {
+            return this
+        }
+        if (len < min) {
+            return this.normalize() * min
+        }
+
+        return this.normalize() * max
+    }
+
+    fun lengthCoerceAtLeast(min: Double): RelativeLocation {
+        val len = length()
+        val abs = abs(len)
+        if (abs < 1e-7) {
+            return RelativeLocation()
+        }
+        if (len < min) {
+            return this.normalize() * min
+        }
+        return this
+    }
+
+    fun lengthCoerceAtMost(max: Double): RelativeLocation {
+        val len = length()
+        val abs = abs(len)
+        if (abs < 1e-7) {
+            return RelativeLocation()
+        }
+        if (len > max) {
+            return this.normalize() * max
+        }
+        return this
+    }
 }

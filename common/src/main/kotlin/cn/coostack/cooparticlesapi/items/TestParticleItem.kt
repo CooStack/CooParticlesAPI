@@ -16,14 +16,16 @@ import cn.coostack.cooparticlesapi.network.particle.emitters.type.EmittersShootT
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleStyleManager
 import cn.coostack.cooparticlesapi.particles.impl.ControlableCloudEffect
 import cn.coostack.cooparticlesapi.particles.impl.ControlableEndRodEffect
-import cn.coostack.cooparticlesapi.test.particle.emitter.TestEmitter
-import cn.coostack.cooparticlesapi.test.particle.emitter.TestEventEmitter
-import cn.coostack.cooparticlesapi.test.particle.emitter.event.TestCollideEventHandler
-import cn.coostack.cooparticlesapi.test.particle.emitter.event.TestEntityHitEventHandler
-import cn.coostack.cooparticlesapi.test.particle.emitter.event.TestOnGroundEventHandler
-import cn.coostack.cooparticlesapi.test.particle.emitter.event.TestOnLiquidEventHandler
-import cn.coostack.cooparticlesapi.test.particle.style.RomaMagicTestStyle
-import cn.coostack.cooparticlesapi.test.particle.style.RotateTestStyle
+import cn.coostack.cooparticlesapi.test.APITestGroupBuilder
+import cn.coostack.cooparticlesapi.test.TestManager
+import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestEmitter
+import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestEventEmitter
+import cn.coostack.cooparticlesapi.test.options.particle.emitter.event.TestCollideEventHandler
+import cn.coostack.cooparticlesapi.test.options.particle.emitter.event.TestEntityHitEventHandler
+import cn.coostack.cooparticlesapi.test.options.particle.emitter.event.TestOnGroundEventHandler
+import cn.coostack.cooparticlesapi.test.options.particle.emitter.event.TestOnLiquidEventHandler
+import cn.coostack.cooparticlesapi.test.options.particle.style.RomaMagicTestStyle
+import cn.coostack.cooparticlesapi.test.options.particle.style.RotateTestStyle
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.ServerCameraUtil
 import net.minecraft.client.particle.ParticleRenderType
@@ -42,7 +44,10 @@ class TestParticleItem(settings: Properties) : Item(settings) {
         if (world.isClientSide) {
             return InteractionResultHolder.success(user.getItemInHand(hand))
         }
-        testEvents(world, user)
+
+        TestManager.startTest(APITestGroupBuilder.ID, user)
+
+//        testEvents(world, user)
 //        testEmitter(world as ServerLevel, user as ServerPlayer)
 //        CameraUtil.startShakeCamera(240, 0.25)
 //        testRomaCircle(world, user)

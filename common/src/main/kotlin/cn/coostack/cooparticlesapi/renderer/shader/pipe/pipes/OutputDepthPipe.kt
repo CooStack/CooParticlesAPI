@@ -4,6 +4,7 @@ import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlFrameBuffer
 import cn.coostack.cooparticlesapi.renderer.shader.api.pipe.PipeChannels
 import cn.coostack.cooparticlesapi.renderer.shader.api.pipe.ShaderPipe
 import cn.coostack.cooparticlesapi.renderer.shader.api.pipe.handler.ShaderProgramUploader
+import cn.coostack.cooparticlesapi.renderer.shader.glsl.SimpleFrameBuffer
 import cn.coostack.cooparticlesapi.renderer.shader.pipe.manager.FramePipeChannels
 import java.util.function.Supplier
 
@@ -16,12 +17,14 @@ class OutputDepthPipe(val depthSupplier: Supplier<Int>) : ShaderPipe {
         pipeOutput.addChannel(depthSupplier)
     }
 
+    val buffer = SimpleFrameBuffer(1, Supplier { -1 })
+
     override fun addRenderHandler(handler: ShaderProgramUploader): ShaderPipe {
         return this
     }
 
     override fun fbo(): GlFrameBuffer {
-        throw IllegalAccessException("深度pipe不能作为输入")
+        return buffer
     }
 
 

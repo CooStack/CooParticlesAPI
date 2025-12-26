@@ -3,8 +3,8 @@ package cn.coostack.cooparticlesapi.items
 import cn.coostack.cooparticlesapi.barrages.BarrageManager
 import cn.coostack.cooparticlesapi.barrages.BarrageOption
 import cn.coostack.cooparticlesapi.barrages.HitBox
-import cn.coostack.cooparticlesapi.test.barrier.SwordBarrage
-import cn.coostack.cooparticlesapi.test.particle.server.BarrierSwordGroupServer
+import cn.coostack.cooparticlesapi.test.options.barrier.SwordBarrage
+import cn.coostack.cooparticlesapi.test.options.particle.server.BarrierSwordGroupServer
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResultHolder

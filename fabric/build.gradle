@@ -26,7 +26,9 @@ dependencies {
     modImplementation "net.fabricmc.fabric-api:fabric-api:${fabric_version}"
     modImplementation "net.fabricmc:fabric-language-kotlin:${project.fabric_kotlin_version}"
     embed fileTree(dir: "../depend", includes: ["*.jar"])
+    embed 'io.github.classgraph:classgraph:4.8.184'
     modImplementation fileTree(dir: "../depend", includes: ["*.jar"])
+    modImplementation 'io.github.classgraph:classgraph:4.8.184'
     modCompileOnly fileTree(dir: "../compile_only_depend", includes: ["*.jar"])
 
 }

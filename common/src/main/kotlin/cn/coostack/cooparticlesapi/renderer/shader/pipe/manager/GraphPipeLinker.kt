@@ -12,6 +12,16 @@ class GraphPipeLinker : PipeLinker {
      */
     private val pipeQueue = HashMap<PipeLinkerNode, MutableList<PipeLinkerNode>>()
 
+    /**
+     * 写入顺序
+     * outputPipe 将outputChannel渲染数据写入 inputPipe的 inputChannel
+     *
+     * @param inputPipe
+     * @param inputChannel
+     * @param outputPipe
+     * @param outputChannel
+     * @return
+     */
     override fun link(
         inputPipe: ShaderPipe,
         inputChannel: Int,

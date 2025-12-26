@@ -7,7 +7,9 @@ import cn.coostack.cooparticlesapi.renderer.shader.glsl.IdentifierShader
 import cn.coostack.cooparticlesapi.renderer.shader.pipe.manager.ShaderPipeManager
 import cn.coostack.cooparticlesapi.renderer.shader.pipe.pipes.PingPongShaderPipe
 import cn.coostack.cooparticlesapi.renderer.shader.pipe.pipes.SimpleShaderPipe
-import net.minecraft.client.Minecraft
+import cn.coostack.cooparticlesapi.renderer.shader.pipe.pipes.TextureShaderPipe
+import cn.coostack.cooparticlesapi.renderer.shader.texture.ReferenceTexture
+import cn.coostack.cooparticlesapi.renderer.shader.texture.SimpleTextures
 import net.minecraft.resources.ResourceLocation
 import org.lwjgl.opengl.GL33
 
@@ -65,7 +67,7 @@ object ShaderPipeManagers {
         gaussRange: Float = 2f,
         lodLevel: Float = 15f
     ): ShaderPipeManager {
-        // 添加亮部提取管道
+        // 添加亮部 提取管道
         valueInput(
             SimpleShaderPipe(
                 IdentifierShader(
@@ -75,6 +77,7 @@ object ShaderPipeManagers {
             ).addRenderHandler {
                 it.setFloat("threshold", bloomIntensity)
             }.useMipmap()
+
         )
 
         val blur = addPipe(
@@ -138,12 +141,20 @@ object ShaderPipeManagers {
             ).addRenderHandler { program ->
                 program.setInt("scene", 0)
                 program.setInt("bloomBlur", 1)
+                program.setInt("sceneDepth", 2)
                 program.setFloat("intensity", bloomIntensity)
             }
         )
 
         linker.link(valueOutput!!, 0, valueInputPipe!!, 0)
         linker.link(valueOutput!!, 1, blur, 0)
+//        linker.link( 如果有一个自定义材质纹理要作为pipe输入 则使用这个 bloom不需要多余的材质纹理 所以这里注释
+//            valueOutput!!, 2, addPipe(
+//                TextureShaderPipe(SimpleTextures().apply {
+//                    addTexture(ReferenceTexture(minecraft.mainRenderTarget.depthTextureId))
+//                })
+//            ), 0
+//        )
         return this
     }
 }

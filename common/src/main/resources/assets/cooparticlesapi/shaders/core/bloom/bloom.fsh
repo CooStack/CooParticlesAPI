@@ -5,6 +5,7 @@ out vec4 FragColor;
 
 uniform sampler2D scene;
 uniform sampler2D bloomBlur;
+
 uniform float intensity = 1.0;
 
 void main() {

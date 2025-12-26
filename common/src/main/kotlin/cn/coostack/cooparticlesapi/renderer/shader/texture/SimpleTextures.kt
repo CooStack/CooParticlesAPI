@@ -20,6 +20,10 @@ class SimpleTextures : GlTextures {
         textureWithChannel.add(texture)
     }
 
+    override fun getTextureCounts(): Int {
+        return textureWithChannel.size
+    }
+
     override fun init() {
         textureWithChannel.forEach {
             it.init()

@@ -1,7 +1,11 @@
 # 玩家须知
+
 ## 安装
+
 ### Fabric
+
 需求:
+
 1. fabric api
 2. fabric-language-kotlin
 3. minecraft 1.21.1
@@ -9,28 +13,158 @@
 直接丢到mods即可
 
 ### Neoforge
+
 需求：
+
 1. kotlin for forge
 2. minecraft 1.21.1
 
 同上
 
 # 开发
+
 ## 依赖 （gradle）
+
 ### 仓库
+
 ```groovy
 maven {
     name = "jsdu"
     url = "https://nexus.jsdu.cn/repository/maven-public/"
 }
 ```
+
 ### 依赖
+
 版本可以查看最新的 release
+
 ```groovy
 // neoforge
-    implementation 'cn.coostack:cooparticlesapi-neoforge:version'
+implementation 'cn.coostack:cooparticlesapi-neoforge:version'
 // fabric
-    implementation 'cn.coostack:cooparticlesapi-fabric:version'
+implementation 'cn.coostack:cooparticlesapi-fabric:version'
+```
+
+# 事件系统
+
+## 使用:
+
+### 创建监听器
+
+1. 创建一个类 （可以是object 也可以是普通的class）
+2. 对这个类写上@EventListener注解 （同EventBusSubscriber）
+3. 写入方法 方法只有一个参数 并且这个参数的类型必须继承CooEvent
+4. 方法需要写入注解 @EventHandler （同SubscribeEvent）
+
+### 限制
+
+1. 这个类必须有空构造方法 或者提供了单例 static INSTANCE
+2. 此事件总线不同于 原版或者fabric的事件， 目前情况下我还没有写任何一个和原版内容相关的监听 我写这个只是单纯觉得Forge的事件系统很方便
+3. 你可以写一些其他的方法 只要不给方法注解上@EventHandler就不会触发
+4. 你无需注册， 只要注解了EventHandler会在游戏开启时自动注册事件
+
+# 使用Fabric API编写CP的依赖注意：
+
+由于Fabric没有NeoForge那样提供扫描的类 所以我采用了ClassGraph进行类扫描
+
+而为了防止一些没有依赖 CooParticlesAPI的模组被扫描从而占据两倍的加载时间
+
+我写了一个方法用于手动添加扫描包内容
+
+如果你不写这个 然后直接使用事件系统是无效的
+```kotlin
+CooAPIScanner.registerPacket("cn.coostack") // 包路径 会扫描所有cn.coostack开头的类
+CooAPIScanner.registerPacket(CooParticlesAPI::class.java) // 直接传主类 他会获取这个类所在的包 然后执行上面的方法
+```
+
+## 自定义事件
+
+### CooEvent
+
+同 Neoforge 制作一个自定义事件只要创建一个类 然后继承 CooEvent即可
+
+```kotlin
+data class TestEvent(val name: String) : CooEvent()
+```
+
+触发事件则使用
+
+```kotlin
+CooEventBus.call(event)
+```
+
+# 自动生成
+## ParticleEmitter
+提供了Emitter 自动Codec选项
+```kotlin
+@EmitterAutoRegister // 自动注册粒子发射器 需要提供空构造函数或者 (pos: Vec3, level: Level) 这样的构造方法
+class CustomEmitters(pos: Vec3, level: Level) : ClassParticleEmitters(pos, level) {
+  @EmitterField
+  var templateData = ControlableParticleData()
+
+  @EmitterField // 此注解用于标记这个属性要作为Codec参数传输给客户端
+  var shootDirection: Vec3 = Vec3.ZERO
+
+  companion object {
+    const val ID = "test-event-particle-emitters"
+  }
+
+  override fun update(emitters: ParticleEmitters) {
+    super.update(emitters)
+  }
+
+  override fun doTick() {
+  }
+
+  override fun genParticles(lerpProgress: Float): List<Pair<ControlableParticleData, RelativeLocation>> {
+    return listOf( // 生成粒子初始位置
+      templateData.clone().apply {
+        velocity = this@TestEventEmitter.shootDirection
+      } to RelativeLocation()
+    )
+  }
+
+  override fun singleParticleAction(
+    controler: ParticleControler,
+    data: ControlableParticleData,
+    spawnPos: RelativeLocation,
+    spawnWorld: Level,
+    particleLerpProgress: Float,
+    posLerpProgress: Float,
+  ) {
+      // 单个粒子的生成tick变化
+    controler.addPreTickAction {
+      updatePhysics(loc, data, this)
+    }
+  }
+
+  override fun getEmittersID(): String {
+    return ID
+  }
+
+  override fun getCodec(): StreamCodec<FriendlyByteBuf, ParticleEmitters> {
+    return ParticleEmittersHelper.generateCodec(this) // 需要调用这个才能使用
+  }
+}
+```
+## 注意
+**Codec 生成器不是什么类型都能正确传输**
+
+如果你需要自定义一个新的发射器参数
+
+则需要执行下面的方法
+```kotlin
+fun <T> register(type: Class<T>, codec: StreamCodec<out FriendlyByteBuf, T>) {
+        supposedTypes[type.name] = codec
+}
+```
+
+```kotlin
+// 需要在你的模组初始化方法里执行
+fun init() {
+// 假设这里不兼容Int 然后兼容Int的方法
+  ParticleEmittersHelper.register(Int::class.java, StreamCodec.of({ b, i -> b.writeInt(i) }, { b.readInt() }))
+}
 ```
 
 # 基本用法
@@ -520,17 +654,21 @@ class SequencedMagicCircleServer(val bindPlayer: UUID) : SequencedServerParticle
 ```
 
 # 使用 ParticleGroupStyle
+
 ## 使用此类的原因
+
 在进行客户端和服务器的数据渲染同步时发现, 每次进行一个新的操作都要在服务器类上复制一样的代码 创建一样的变量, 相当的麻烦
 于是基于 ControlableParticleGroup 和 ServerParticleGroup 构造了此类
+
 ## 使用方法
+
 ```kotlin
 class ExampleStyle(val bindPlayer: UUID, uuid: UUID = UUID.randomUUID()) :
-    /**
-     * 第一个参数代表玩家可视范围 默认32.0
-     * 第二个参数代表这个粒子样式的唯一标识符
-     * 在这里直接使用默认值(randomUUID)即可
-      */
+/**
+ * 第一个参数代表玩家可视范围 默认32.0
+ * 第二个参数代表这个粒子样式的唯一标识符
+ * 在这里直接使用默认值(randomUUID)即可
+ */
     ParticleGroupStyle(16.0, uuid) {
     /**
      *  和 ControlableParticleGroup一样 为了在服务器构建这个类 同时也需要自己制作构建器
@@ -551,7 +689,7 @@ class ExampleStyle(val bindPlayer: UUID, uuid: UUID = UUID.randomUUID()) :
     val maxTick = 240
     var current = 0
     var angleSpeed = PI / 72
-    
+
     init {
         // 如果你想要修改基类 (ParticleGroupStyle)
         // 不要在beforeDisplay修改 在构造方法内修改
@@ -599,7 +737,7 @@ class ExampleStyle(val bindPlayer: UUID, uuid: UUID = UUID.randomUUID()) :
         return res
     }
 
-    
+
     override fun onDisplay() {
         // 开启参数自动同步
         autoToggle = true
@@ -625,7 +763,7 @@ class ExampleStyle(val bindPlayer: UUID, uuid: UUID = UUID.randomUUID()) :
             rotateParticlesAsAxis(angleSpeed)
         }
     }
-    
+
     // 参数自动同步时, 服务器的这些参数会自动同步到每一个客户端上
     override fun writePacketArgs(): Map<String, ParticleControlerDataBuffer<*>> {
         return mapOf(
@@ -635,6 +773,7 @@ class ExampleStyle(val bindPlayer: UUID, uuid: UUID = UUID.randomUUID()) :
             "scaleTick" to ParticleControlerDataBuffers.int(scaleTick),
         )
     }
+
     // 获取来自服务器的同步数据时, 执行此方法
     override fun readPacketArgs(args: Map<String, ParticleControlerDataBuffer<*>>) {
         if (args.containsKey("current")) {
@@ -651,11 +790,14 @@ class ExampleStyle(val bindPlayer: UUID, uuid: UUID = UUID.randomUUID()) :
 ```
 
 完成类的构建时 需要在ClientModInitializer进行注册
+
 ```kotlin
     ParticleStyleManager.register(ExampleStyle::class.java, ExampleStyle.Provider())
 ```
+
 如何在服务器生成此粒子样式?
 这里以Item为例
+
 ```kotlin
     class TestStyleItem : Item(Settings()) {
     override fun use(world: World, user: PlayerEntity, hand: Hand): TypedActionResult<ItemStack?>? {
@@ -679,59 +821,75 @@ class ExampleStyle(val bindPlayer: UUID, uuid: UUID = UUID.randomUUID()) :
 ```
 
 # 粒子样式Helper 使用规范
+
 - 所有的Helper必须在构造函数中执行loadControler方法
 - 否则会出现应用失败的BUG (原因未知)
 
 # 粒子发射器
+
 ## 前言
+
 - 由于前面的所有示例均指向一个有限粒子个数的样式
-为了更好的实现 例如爆炸, 冲击波, 火焰等粒子效果
-特地抽象出此类
-###  此粒子发射器主要有3个类用于实现功能
+  为了更好的实现 例如爆炸, 冲击波, 火焰等粒子效果
+  特地抽象出此类
+
+### 此粒子发射器主要有3个类用于实现功能
+
 - SimpleParticleEmitters
 - PhysicsParticleEmitters
 - ClassParticleEmitters
+
 #### 这三个类对应的3个不同的实现方法
+
 首先讲下前两个类
+
 #### SimpleParticleEmitters
+
 ```kotlin
 /**
  * 粒子发射器位置偏移量表达式 提供t作为参数 t 生成时间 int类型
  */
-    var evalEmittersXWithT = "0"
-    var evalEmittersYWithT = "0"
-    var evalEmittersZWithT = "0"
+var evalEmittersXWithT = "0"
+var evalEmittersYWithT = "0"
+var evalEmittersZWithT = "0"
 
-    /**
-     * 提供了多种预设
-     * box 箱子发射器
-     * point 点发射器
-     * math 数学轨迹发射器
-     */
-    var shootType = EmittersShootTypes.point()
-    private var bufferX = Expression(evalEmittersXWithT)
-    private var bufferY = Expression(evalEmittersYWithT)
-    private var bufferZ = Expression(evalEmittersZWithT)
-    var offset = Vec3d(0.0, 0.0, 0.0)
-    /**
-     * 每tick生成粒子个数
-     */
-    var count = 1
-    /**
-     * 每tick实际生成的粒子个数会受此影响 随机范围(0 .. countRandom)
-     */
-    var countRandom = 0
+/**
+ * 提供了多种预设
+ * box 箱子发射器
+ * point 点发射器
+ * math 数学轨迹发射器
+ */
+var shootType = EmittersShootTypes.point()
+private var bufferX = Expression(evalEmittersXWithT)
+private var bufferY = Expression(evalEmittersYWithT)
+private var bufferZ = Expression(evalEmittersZWithT)
+var offset = Vec3d(0.0, 0.0, 0.0)
+
+/**
+ * 每tick生成粒子个数
+ */
+var count = 1
+
+/**
+ * 每tick实际生成的粒子个数会受此影响 随机范围(0 .. countRandom)
+ */
+var countRandom = 0
 ```
+
 #### 构建方法
+
 ```kotlin
-val emitters = SimpleParticleEmitters(位置,服务器世界,粒子信息)
-val emitters = PhysicsParticleEmitters(位置,服务器世界,粒子信息)
+val emitters = SimpleParticleEmitters(位置, 服务器世界, 粒子信息)
+val emitters = PhysicsParticleEmitters(位置, 服务器世界, 粒子信息)
 ```
+
 #### 粒子信息同步
+
 - 为了能够更方便的在服务器之间同步粒子属性
 - 构建了ControlableParticleData类
 - 如果你的ParticleEffect有其他的属性
 - 可以继承此类并且重写PacketCodec解析器
+
 ```kotlin
 /**
  * 此类可以修改的属性
@@ -749,12 +907,15 @@ var visibleRange = 128f
 // 当你想要修改成其他Effect时(只支持ControlableParticleEffect 实现一个可控制粒子详细见 TestEndRodEffect的实现方式)
 var effect: ControlableParticleEffect = TestEndRodEffect(uuid)
 var textureSheet = ParticleTextureSheet.PARTICLE_SHEET_TRANSLUCENT
+
 /**
  * 粒子移动速度 在SimpleParticleEmitter和PhysicsParticleEmitter中应用
  */
 var speed = 1.0
 ```
+
 #### PhysicsParticleEmitters
+
 - 此类提供了一些基本物理参数 重力, 空气密度, 质量, 风向
 
 ```kotlin
@@ -762,29 +923,37 @@ var speed = 1.0
  * 重力加速度 时间单位是tick
  */
 var gravity = 0.0
+
 /**
  * 空气密度
  */
 var airDensity = 0.0
+
 /**
  * 风力方向
  */
 var wind: WindDirection = GlobalWindDirection(Vec3d.ZERO)
+
 /**
  * 质量
  * 单位 g
  */
 var mass = 1.0
 ```
+
 在世界中启用emitter的发射
+
 ```kotlin
 ParticleEmittersManager.spawnEmitters(emitter)
 ```
+
 修改emitter的属性
+
 ```kotlin
 var pos: Vec3d // 发射器的位置
 var world: World? // 发射器所处的世界 (在构建生成时不能传入null 可null是因为在序列化的时候不用传入世界信息)
 var tick: Int // 生成时间 tick
+
 /**
  * 当maxTick == -1时
  * 代表此粒子不会由生命周期控制
@@ -800,13 +969,17 @@ var cancelled: Boolean
 // 是否已经在世界中生成
 var playing: Boolean
 ```
+
 #### 注意
+
 - 修改发射器属性只在服务器环境修改
 - 每一个tick都会自动同步发射器属性给所有可视客户端
 
 #### ClassParticleEmitters
+
 - 这个类是一个抽象类 其实就是给开发者(我)偷懒写表达式用的
 - 可以按照自定义的规则生成粒子
+
 ```kotlin
 abstract class ClassParticleEmitters(
     override var pos: Vec3d,
@@ -1039,6 +1212,7 @@ abstract class ClassParticleEmitters(
 ```
 
 #### 实现示例
+
 ```kotlin
 class ExampleClassParticleEmitters(pos: Vec3d, world: World?) : ClassParticleEmitters(pos, world) {
     var moveDirection = Vec3d.ZERO
@@ -1067,7 +1241,7 @@ class ExampleClassParticleEmitters(pos: Vec3d, world: World?) : ClassParticleEmi
             }
         )
     }
-    
+
     // 自己 发射器tick
     override fun doTick() {
         pos = pos.add(moveDirection)
@@ -1124,7 +1298,9 @@ class ExampleClassParticleEmitters(pos: Vec3d, world: World?) : ClassParticleEmi
     }
 }
 ```
+
 实现完成后 不要忘记注册
+
 ```kotlin
-ParticleEmittersManager.register(ExampleClassParticleEmitters.ID,ExampleClassParticleEmitters.CODEC)
+ParticleEmittersManager.register(ExampleClassParticleEmitters.ID, ExampleClassParticleEmitters.CODEC)
 ```

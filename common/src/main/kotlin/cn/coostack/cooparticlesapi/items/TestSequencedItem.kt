@@ -2,8 +2,8 @@ package cn.coostack.cooparticlesapi.items
 
 import cn.coostack.cooparticlesapi.network.particle.ServerParticleGroupManager
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleStyleManager
-import cn.coostack.cooparticlesapi.test.particle.server.SequencedMagicCircleServer
-import cn.coostack.cooparticlesapi.test.particle.style.ExampleSequencedStyle
+import cn.coostack.cooparticlesapi.test.options.particle.server.SequencedMagicCircleServer
+import cn.coostack.cooparticlesapi.test.options.particle.style.ExampleSequencedStyle
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResultHolder

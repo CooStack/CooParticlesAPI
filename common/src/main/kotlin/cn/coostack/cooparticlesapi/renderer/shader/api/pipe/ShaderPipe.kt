@@ -28,12 +28,15 @@ interface ShaderPipe {
     fun write(invoker: ShaderPipe.() -> Unit)
 
     /**
-     * 会将channel的内容经过当前pipe的片段着色器处理，然后存储到当前的fbo材质通道中
-     * @param channel 待处理的输入的颜色通道
+     * 从输入的channels读取内容到当前的fbo中
+     *
+     * @param channel 输入的channel
      */
     fun writeFromChannel(channel: PipeChannels): ShaderPipe
 
     /**
+     * 输出当前pipe已经绘制的内容
+     *
      * 通过pipe内的屏幕渲染器绘制 fbo
      * 在read时 会调用 handler执行渲染前操作
      */

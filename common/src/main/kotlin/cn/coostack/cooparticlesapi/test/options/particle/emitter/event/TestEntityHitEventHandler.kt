@@ -1,0 +1,34 @@
+package cn.coostack.cooparticlesapi.test.options.particle.emitter.event
+
+import cn.coostack.cooparticlesapi.network.particle.emitters.event.ParticleEvent
+import cn.coostack.cooparticlesapi.network.particle.emitters.event.ParticleEventHandler
+import cn.coostack.cooparticlesapi.network.particle.emitters.event.ParticleHitEntityEvent
+import net.minecraft.world.entity.LivingEntity
+import net.minecraft.world.phys.Vec3
+import kotlin.random.Random
+
+object TestEntityHitEventHandler : ParticleEventHandler {
+    val random = Random(System.currentTimeMillis())
+    override fun handle(event: ParticleEvent) {
+        if (event !is ParticleHitEntityEvent) return
+        if (event.hit is LivingEntity) {
+            event.particleData.velocity = Vec3(
+                random.nextDouble(-1.0, 1.0),
+                1.0,
+                random.nextDouble(-1.0, 1.0),
+            ).normalize()
+        }
+    }
+
+    override fun getTargetEventID(): String {
+        return ParticleHitEntityEvent.EVENT_ID
+    }
+
+    override fun getHandlerID(): String {
+        return "TestEntityHitEventHandler"
+    }
+
+    override fun getPriority(): Int {
+        return 1
+    }
+}

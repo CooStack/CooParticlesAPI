@@ -1,9 +1,9 @@
 package cn.coostack.cooparticlesapi.items
 
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleStyleManager
-import cn.coostack.cooparticlesapi.test.particle.style.PointStyle
-import cn.coostack.cooparticlesapi.test.particle.style.RomaMagicTestStyle
-import cn.coostack.cooparticlesapi.test.particle.style.TestShapeUtilStyle
+import cn.coostack.cooparticlesapi.test.options.particle.style.PointStyle
+import cn.coostack.cooparticlesapi.test.options.particle.style.RomaMagicTestStyle
+import cn.coostack.cooparticlesapi.test.options.particle.style.TestShapeUtilStyle
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResultHolder
 import net.minecraft.world.entity.player.Player

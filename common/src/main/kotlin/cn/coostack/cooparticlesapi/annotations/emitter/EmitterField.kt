@@ -8,4 +8,4 @@ package cn.coostack.cooparticlesapi.annotations.emitter
  */
 @Retention(AnnotationRetention.RUNTIME)
 @Target(AnnotationTarget.FIELD)
-annotation class EmitterField()
+annotation class EmitterField

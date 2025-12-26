@@ -1,7 +1,9 @@
 package cn.coostack.cooparticlesapi.items
 
+import cn.coostack.cooparticlesapi.event.CooEventBus
 import cn.coostack.cooparticlesapi.renderer.server.ServerRenderEntityManager
-import cn.coostack.cooparticlesapi.test.renderer.TestRendererEntity
+import cn.coostack.cooparticlesapi.test.options.event.TestEvent
+import cn.coostack.cooparticlesapi.test.options.renderer.TestRendererEntity
 import net.minecraft.network.chat.Component
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
@@ -16,8 +18,13 @@ import net.minecraft.world.level.Level
 class TestTickItem : Item(Item.Properties().stacksTo(1)) {
 
     override fun use(world: Level, user: Player, hand: InteractionHand): InteractionResultHolder<ItemStack> {
+        CooEventBus.call(
+            TestEvent(user)
+        )
+
         if (world.isClientSide) return super.use(world, user, hand)
-        testShader(world as ServerLevel, user as ServerPlayer)
+//        testShader(world as ServerLevel, user as ServerPlayer)
+
         return super.use(world, user, hand)
     }
 

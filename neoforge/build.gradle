@@ -104,6 +104,7 @@ dependencies {
     compileOnly fileTree(dir: "../compile_only_depend", includes: ["*.jar"])
     implementation "thedarkcolour:kotlinforforge-neoforge:5.10.0"
     jarJar(implementation "com.ezylang:EvalEx:3.5.0")
+    jarJar(implementation 'io.github.classgraph:classgraph:4.8.184')
     additionalRuntimeClasspath fileTree(dir: "../depend", includes: ["*.jar"])
     additionalRuntimeClasspath 'io.github.classgraph:classgraph:4.8.184'
 

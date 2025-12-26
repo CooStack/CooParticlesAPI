@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi
 
+import cn.coostack.cooparticlesapi.entities.CooModEntityTypes
 import cn.coostack.cooparticlesapi.items.CooItemFabric
 import cn.coostack.cooparticlesapi.items.group.CooItemGroup
 import cn.coostack.cooparticlesapi.network.packet.PacketCameraShakeS2C
@@ -9,11 +10,13 @@ import cn.coostack.cooparticlesapi.network.packet.PacketParticleS2C
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleStyleS2C
 import cn.coostack.cooparticlesapi.network.packet.PacketRenderEntityS2C
 import cn.coostack.cooparticlesapi.particles.CooModParticles
+import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
 import net.fabricmc.api.ModInitializer
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry
 import net.minecraft.core.Registry
+import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.server.MinecraftServer
 
 object CooParticlesAPIFabric : ModInitializer {
@@ -38,6 +41,7 @@ object CooParticlesAPIFabric : ModInitializer {
         CooItemFabric.reg()
         CooItemGroup.reg()
         CooModParticles.reg()
+        initEntityTypes()
         CooModParticles.particleTypes.forEach {
             Registry.register(it.type, it.id, it.get())
         }
@@ -49,6 +53,16 @@ object CooParticlesAPIFabric : ModInitializer {
         }
         ServerLifecycleEvents.SERVER_STARTED.register { server ->
             CooParticlesAPI.onServerStart(server)
+            CooAPIScanner.scan()
+            // 注册？
+            CooParticlesConstants.logger.info("Server Started Test")
+            CooParticlesAPI.loadScannerPackages()
+        }
+    }
+
+    private fun initEntityTypes() {
+        CooModEntityTypes.types.forEach {
+            Registry.register(BuiltInRegistries.ENTITY_TYPE, it.id, it.get())
         }
     }
 

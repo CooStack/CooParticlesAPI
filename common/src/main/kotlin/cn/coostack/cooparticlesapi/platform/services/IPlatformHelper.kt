@@ -1,5 +1,7 @@
 package cn.coostack.cooparticlesapi.platform.services
 
+import cn.coostack.cooparticlesapi.enums.DistType
+
 interface IPlatformHelper {
     /**
      * Gets the name of the current platform
@@ -22,6 +24,7 @@ interface IPlatformHelper {
      * @return True if in a development environment, false otherwise.
      */
     fun isDevelopmentEnvironment(): Boolean
+    fun getDistType(): DistType
 
     /**
      * Gets the name of the environment type as a string.
@@ -31,4 +34,6 @@ interface IPlatformHelper {
     fun getEnvironmentName(): String {
         return if (isDevelopmentEnvironment()) "development" else "production"
     }
+
+
 }

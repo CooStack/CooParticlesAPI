@@ -18,7 +18,7 @@ open class ControlableParticleData {
 
         @JvmStatic
         val PACKET_CODEC: StreamCodec<FriendlyByteBuf, ControlableParticleData> =
-            StreamCodec.of<FriendlyByteBuf, ControlableParticleData>(
+            StreamCodec.of(
                 ::encode, ::decode
             )
 
@@ -35,6 +35,7 @@ open class ControlableParticleData {
             buf.writeUtf(data.effect::class.java.name)
             buf.writeUUID(data.uuid)
             buf.writeDouble(data.speed)
+            buf.writeDouble(data.speedLimit)
             buf.writeInt(data.sign)
         }
 
@@ -57,6 +58,7 @@ open class ControlableParticleData {
                 Class.forName(effectType) as Class<ControlableParticleEffect>
             )
             val speed = buf.readDouble()
+            val speedLimit = buf.readDouble()
             val sign = buf.readInt()
             return ControlableParticleData().apply {
                 this.uuid = uuid
@@ -71,6 +73,7 @@ open class ControlableParticleData {
                 this.effect = effect
                 this.speed = speed
                 this.sign = sign
+                this.speedLimit = speedLimit
             }
         }
 
@@ -140,6 +143,12 @@ open class ControlableParticleData {
      * 用于在single 区分不同类型 分工的粒子
      */
     var sign = 0
+
+    /**
+     * 粒子移动速度上限
+     * 防止不知道什么原因导致粒子移速过高从而导致客户端卡死
+     */
+    var speedLimit = 32.0
 
     // 脑瘫东西设置了客户端专属
     // 粒子渲染方式 只生效一次

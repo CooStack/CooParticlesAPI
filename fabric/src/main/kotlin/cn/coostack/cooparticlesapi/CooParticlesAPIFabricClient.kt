@@ -5,7 +5,9 @@ import cn.coostack.cooparticlesapi.network.packet.client.listener.*
 import cn.coostack.cooparticlesapi.particles.CooModParticles
 import cn.coostack.cooparticlesapi.particles.impl.*
 import cn.coostack.cooparticlesapi.platform.network.FabricClientContext
+import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
 import net.fabricmc.api.ClientModInitializer
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientWorldEvents
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents
@@ -32,7 +34,11 @@ object CooParticlesAPIFabricClient : ClientModInitializer {
             CooParticlesAPIClient.afterClientWorldChange()
         }
 
-
+        ClientLifecycleEvents.CLIENT_STARTED.register { client ->
+            CooParticlesConstants.logger.info("Client Started")
+            CooAPIScanner.scan()
+            CooParticlesAPI.loadScannerPackages()
+        }
     }
 
     private fun registerParticleFabric() {

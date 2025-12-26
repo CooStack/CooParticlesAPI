@@ -19,8 +19,11 @@ import java.util.function.Supplier
 
 /**
  * 如果上一个pipe 提供了多个通道
+ *
  * 那么下一个pipe 想要使用这些通道就必须设置>1
+ *
  * 也就是说, 上一个pipe设置了多少 下一个pipe也要设置多少
+ *
  * @param colorChannelCount 颜色组件通道, 如果输入大于1 则需要手动设置uniform (gl要求)
  * @param depthSupplier 如果让他自己生成 则输入-1
  * GLSL 获取屏幕uv 使用 in vec2 screen_uv

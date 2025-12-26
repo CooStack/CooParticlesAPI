@@ -1,6 +1,9 @@
 package cn.coostack.cooparticlesapi.network.particle.emitters
 
 import cn.coostack.cooparticlesapi.CooParticlesAPI
+import cn.coostack.cooparticlesapi.CooParticlesConstants
+import cn.coostack.cooparticlesapi.annotations.emitter.EmitterAutoRegister
+import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleEmittersS2C
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.DefendClassParticleEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.ExampleClassParticleEmitters
@@ -12,8 +15,9 @@ import cn.coostack.cooparticlesapi.network.particle.emitters.impl.PresetLaserEmi
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.PresetTestEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.SimpleParticleEmitters
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
-import cn.coostack.cooparticlesapi.test.particle.emitter.TestEmitter
-import cn.coostack.cooparticlesapi.test.particle.emitter.TestEventEmitter
+import cn.coostack.cooparticlesapi.reflect.SimpleClassInfo
+import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestEmitter
+import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestEventEmitter
 import io.netty.buffer.Unpooled
 import net.minecraft.client.Minecraft
 import net.minecraft.network.FriendlyByteBuf
@@ -21,7 +25,9 @@ import net.minecraft.network.codec.StreamCodec
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
+import java.lang.reflect.Modifier
 import java.util.HashSet
+import java.util.TreeMap
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -58,7 +64,7 @@ object ParticleEmittersManager {
     }
 
     @JvmStatic
-    fun register(randomInstance: ClassParticleEmitters) {
+    fun register(randomInstance: ParticleEmitters) {
         val codec = randomInstance.getCodec()
         val id = randomInstance.getEmittersID()
         register(id, codec)
@@ -216,7 +222,7 @@ object ParticleEmittersManager {
     }
 
 
-    private fun encodeEmittersToArray(emitters: ParticleEmitters): ByteArray{
+    private fun encodeEmittersToArray(emitters: ParticleEmitters): ByteArray {
         val codec = emitters.getCodec()
         val buf = FriendlyByteBuf(Unpooled.buffer())
         codec.encode(buf, emitters)
@@ -237,7 +243,29 @@ object ParticleEmittersManager {
         register(FireClassParticleEmitters.ID, FireClassParticleEmitters.CODEC)
         register(PresetLaserEmitters.ID, PresetLaserEmitters.CODEC)
         register(TestEmitter(Vec3.ZERO, null))
-        register(TestEventEmitter(Vec3.ZERO, null))
     }
 
+    private var handled = false
+    fun registerScanner() {
+        if (handled) {
+            return
+        }
+        handled = true
+        CooAPIScanner.getWithAnnotation(
+            EmitterAutoRegister::class.java
+        ).forEach {
+            findListenerHandlers(it)
+        }
+    }
+
+    private fun findListenerHandlers(target: SimpleClassInfo) {
+        val clazz = target.toClass()
+        // 获取instance
+        val instance =
+            clazz.declaredConstructors.find {
+                it.parameterCount == 0
+            }?.newInstance() ?: clazz.getDeclaredConstructor(Vec3::class.java, Level::class.java)
+                .newInstance(Vec3.ZERO, null)
+        register(instance as ParticleEmitters)
+    }
 }

@@ -7,6 +7,8 @@ interface GlTextures {
 
     fun addTexture(texture: GlTexture)
 
+    fun getTextureCounts(): Int
+
     fun init()
 
     fun use()

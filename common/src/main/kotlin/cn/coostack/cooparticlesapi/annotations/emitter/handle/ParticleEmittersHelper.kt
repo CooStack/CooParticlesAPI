@@ -31,6 +31,7 @@ import java.util.concurrent.ConcurrentHashMap
  */
 object ParticleEmittersHelper {
     private val supposedTypes = ConcurrentHashMap<String, StreamCodec<out FriendlyByteBuf, *>>()
+
     init {
         register(Short::class.java, StreamCodec.of({ buf, i -> buf.writeShort(i.toInt()) }, { it.readShort() }))
         register(Int::class.java, StreamCodec.of({ buf, i -> buf.writeInt(i) }, { it.readInt() }))
@@ -169,7 +170,7 @@ object ParticleEmittersHelper {
                 }
             }
         )
-
     }
+
 
 }

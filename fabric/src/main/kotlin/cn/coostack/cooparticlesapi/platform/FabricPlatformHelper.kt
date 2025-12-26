@@ -1,6 +1,8 @@
 package cn.coostack.cooparticlesapi.platform
 
+import cn.coostack.cooparticlesapi.enums.DistType
 import cn.coostack.cooparticlesapi.platform.services.IPlatformHelper
+import net.fabricmc.api.EnvType
 import net.fabricmc.loader.api.FabricLoader
 
 class FabricPlatformHelper : IPlatformHelper {
@@ -14,5 +16,12 @@ class FabricPlatformHelper : IPlatformHelper {
 
     override fun isDevelopmentEnvironment(): Boolean {
         return FabricLoader.getInstance().isDevelopmentEnvironment
+    }
+
+    override fun getDistType(): DistType {
+        return when (FabricLoader.getInstance().environmentType) {
+            EnvType.CLIENT -> DistType.CLIENT
+            EnvType.SERVER -> DistType.SERVER
+        }
     }
 }

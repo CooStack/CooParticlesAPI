@@ -2,6 +2,7 @@ package cn.coostack.cooparticlesapi.network.particle.emitters
 
 import cn.coostack.cooparticlesapi.annotations.emitter.handle.ParticleEmittersHelper
 import cn.coostack.cooparticlesapi.extend.asVec3
+import cn.coostack.cooparticlesapi.extend.lengthCoerceAtMost
 import cn.coostack.cooparticlesapi.extend.ofFloored
 import cn.coostack.cooparticlesapi.extend.times
 import cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind.GlobalWindDirection
@@ -371,6 +372,7 @@ abstract class ClassParticleEmitters(
             }
             if (minecraftTick) return@addPreTickAction
             if (bounding.hasNaN()) return@addPreTickAction
+            data.velocity = data.velocity.lengthCoerceAtMost(data.speedLimit)
             val prepareMove = this.loc.add(data.velocity)
             val clipRes = if (data.velocity.lengthSqr() > 0.001) {
                 if (data.velocity.length() <= 200) {
@@ -431,7 +433,7 @@ abstract class ClassParticleEmitters(
         val v = data.velocity
         val speed = v.length()
         val gravity = if (particle.onTheGround) 0.0 else gravity
-        val gravityForce = Vec3(0.0, gravity, 0.0) // 下面质量会被消除掉
+        val gravityForce = Vec3(0.0, -gravity, 0.0) // 下面质量会被消除掉
         val airResistanceForce = if (speed > 0.01) {
             val dragMagnitude = 0.5 * airDensity * DRAG_COEFFICIENT *
                     CROSS_SECTIONAL_AREA * speed.pow(2) * 0.05

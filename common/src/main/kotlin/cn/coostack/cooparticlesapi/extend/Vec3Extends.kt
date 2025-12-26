@@ -157,3 +157,106 @@ fun Vec3.random() = randomVec3()
 fun Vec3.random(random: Random) = randomVec3(random)
 fun Vec3.random(random: java.util.Random) = randomVec3(random)
 fun Vec3.random(random: RandomSource) = randomVec3(random)
+
+/**
+ * 强制限制向量长度
+ * 可能会有误差 向量 越接近0 误差越大
+ *
+ * @param min 最小值
+ * @param max 最大值
+ * @return Vec3.ZERO 当你输入一个0向量时则此方法失效
+ */
+fun Vec3.lengthCoerceIn(min: Double, max: Double): Vec3 {
+    require(min < max) {
+        "最小值必须小于最大值"
+    }
+    val len = this.length()
+    if (abs(len) < 1e-7) {
+        return Vec3.ZERO
+    }
+    if (len in min..max) {
+        return this
+    }
+    if (len < min) {
+        return this.normalize() * min
+    }
+
+    return this.normalize() * max
+}
+
+
+fun Vec3.lengthCoerceAtLeast(min: Double): Vec3 {
+    val len = length()
+    val abs = abs(len)
+    if (abs < 1e-7) {
+        return Vec3.ZERO
+    }
+    if (len < min) {
+        return this.normalize() * min
+    }
+    return this
+}
+
+fun Vec3.lengthCoerceAtMost(max: Double): Vec3 {
+    val len = length()
+    val abs = abs(len)
+    if (abs < 1e-7) {
+        return Vec3.ZERO
+    }
+    if (len > max) {
+        return this.normalize() * max
+    }
+    return this
+}
+
+
+/**
+ * 强制限制向量长度
+ * 可能会有误差 向量 越接近0 误差越大
+ *
+ * @param min 最小值
+ * @param max 最大值
+ * @return Vec3.ZERO 当你输入一个0向量时则此方法失效
+ */
+fun Vector3f.lengthCoerceIn(min: Double, max: Double): Vector3f {
+    require(min < max) {
+        "最小值必须小于最大值"
+    }
+    val len = this.length()
+    if (abs(len) < 1e-7) {
+        return Vector3f()
+    }
+    if (len in min..max) {
+        return this
+    }
+    if (len < min) {
+        return this.normalize() * min
+    }
+
+    return this.normalize() * max
+}
+
+
+fun Vector3f.lengthCoerceAtLeast(min: Double): Vector3f {
+    val len = length()
+    val abs = abs(len)
+    if (abs < 1e-7) {
+        return Vector3f()
+    }
+    if (len < min) {
+        return this.normalize() * min
+    }
+    return this
+}
+
+fun Vector3f.lengthCoerceAtMost(max: Double): Vector3f {
+    val len = length()
+    val abs = abs(len)
+    if (abs < 1e-7) {
+        return Vector3f()
+    }
+    if (len > max) {
+        return this.normalize() * max
+    }
+    return this
+}

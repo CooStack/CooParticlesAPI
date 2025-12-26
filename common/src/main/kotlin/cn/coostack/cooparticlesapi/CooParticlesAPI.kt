@@ -2,6 +2,8 @@ package cn.coostack.cooparticlesapi
 
 import cn.coostack.cooparticlesapi.animation.AnimateManager
 import cn.coostack.cooparticlesapi.barrages.BarrageManager
+import cn.coostack.cooparticlesapi.event.CooEventBus
+import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
 import cn.coostack.cooparticlesapi.network.animation.PathMotionManager
 import cn.coostack.cooparticlesapi.network.particle.ServerParticleGroupManager
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersManager
@@ -12,7 +14,9 @@ import cn.coostack.cooparticlesapi.particles.ControlableParticleEffectManager
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import cn.coostack.cooparticlesapi.renderer.server.ServerRenderEntityManager
 import cn.coostack.cooparticlesapi.scheduler.CooScheduler
-import cn.coostack.cooparticlesapi.test.particle.emitter.event.TestCollideEventHandler
+import cn.coostack.cooparticlesapi.test.APITestGroupBuilder
+import cn.coostack.cooparticlesapi.test.TestManager
+import cn.coostack.cooparticlesapi.test.options.particle.emitter.event.TestCollideEventHandler
 import com.ezylang.evalex.Expression
 import net.minecraft.server.MinecraftServer
 
@@ -37,14 +41,32 @@ object CooParticlesAPI {
         CooParticlesServices.API_CONFIG_MANAGER.loadConfig()
         ControlableParticleEffectManager.init()
         WindDirections.init()
-
         ParticleEventHandlerManager.register(TestCollideEventHandler)
+        registerTest()
+
+        CooAPIScanner.registerPacket("cn.coostack")
+    }
+
+
+    fun loadScannerPackages() {
+        CooEventBus.scanListeners()
+        CooEventBus.initListeners()
+
+        ParticleEventHandlerManager.registerScanner()
+        ParticleEmittersManager.registerScanner()
+
     }
 
     fun onServerStart(server: MinecraftServer) {
         this.server = server
     }
 
+
+    fun registerTest() {
+        TestManager.register(APITestGroupBuilder.ID) {
+            APITestGroupBuilder(it)
+        }
+    }
 
     fun tickServer(server: MinecraftServer) {
         val tickManager = server.tickRateManager()
@@ -59,5 +81,6 @@ object CooParticlesAPI {
         AnimateManager.tickServer()
         ServerRenderEntityManager.tick()
         scheduler.doTick()
+        TestManager.doTick()
     }
 }

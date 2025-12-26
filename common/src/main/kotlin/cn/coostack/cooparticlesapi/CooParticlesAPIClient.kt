@@ -10,12 +10,12 @@ import cn.coostack.cooparticlesapi.renderer.client.ClientRenderEntityManager
 import cn.coostack.cooparticlesapi.renderer.client.ClientRenderPipelineManager
 import cn.coostack.cooparticlesapi.renderer.client.ShaderPipeManagers
 import cn.coostack.cooparticlesapi.scheduler.CooScheduler
-import cn.coostack.cooparticlesapi.test.particle.client.BarrierSwordGroupClient
-import cn.coostack.cooparticlesapi.test.particle.client.ScaleCircleGroupClient
-import cn.coostack.cooparticlesapi.test.particle.client.SequencedMagicCircleClient
-import cn.coostack.cooparticlesapi.test.particle.client.TestGroupClient
-import cn.coostack.cooparticlesapi.test.particle.style.*
-import cn.coostack.cooparticlesapi.test.renderer.TestRendererEntity
+import cn.coostack.cooparticlesapi.test.options.particle.client.BarrierSwordGroupClient
+import cn.coostack.cooparticlesapi.test.options.particle.client.ScaleCircleGroupClient
+import cn.coostack.cooparticlesapi.test.options.particle.client.SequencedMagicCircleClient
+import cn.coostack.cooparticlesapi.test.options.particle.client.TestGroupClient
+import cn.coostack.cooparticlesapi.test.options.particle.style.*
+import cn.coostack.cooparticlesapi.test.options.renderer.TestRendererEntity
 import net.irisshaders.iris.api.v0.IrisApi
 import net.minecraft.client.multiplayer.ClientLevel
 
@@ -48,9 +48,18 @@ object CooParticlesAPIClient {
 
 
     private fun initGroup() {
-        ClientParticleGroupManager.register(TestGroupClient::class.java, TestGroupClient.Provider())
-        ClientParticleGroupManager.register(ScaleCircleGroupClient::class.java, ScaleCircleGroupClient.Provider())
-        ClientParticleGroupManager.register(BarrierSwordGroupClient::class.java, BarrierSwordGroupClient.Provider())
+        ClientParticleGroupManager.register(
+            TestGroupClient::class.java,
+            TestGroupClient.Provider()
+        )
+        ClientParticleGroupManager.register(
+            ScaleCircleGroupClient::class.java,
+            ScaleCircleGroupClient.Provider()
+        )
+        ClientParticleGroupManager.register(
+            BarrierSwordGroupClient::class.java,
+            BarrierSwordGroupClient.Provider()
+        )
         ClientParticleGroupManager.register(
             SequencedMagicCircleClient::class.java,
             SequencedMagicCircleClient.Provider()
@@ -59,12 +68,30 @@ object CooParticlesAPIClient {
 
 
     private fun initStyle() {
-        ParticleStyleManager.register(ExampleStyle::class.java, ExampleStyle.Provider())
-        ParticleStyleManager.register(ExampleSequencedStyle::class.java, ExampleSequencedStyle.Provider())
-        ParticleStyleManager.register(RomaMagicTestStyle::class.java, RomaMagicTestStyle.Provider())
-        ParticleStyleManager.register(RotateTestStyle::class.java, RotateTestStyle.Provider())
-        ParticleStyleManager.register(TestShapeUtilStyle::class.java, TestShapeUtilStyle.Provider())
-        ParticleStyleManager.register(PointStyle::class.java, PointStyle.Provider())
+        ParticleStyleManager.register(
+            ExampleStyle::class.java,
+            ExampleStyle.Provider()
+        )
+        ParticleStyleManager.register(
+            ExampleSequencedStyle::class.java,
+            ExampleSequencedStyle.Provider()
+        )
+        ParticleStyleManager.register(
+            RomaMagicTestStyle::class.java,
+            RomaMagicTestStyle.Provider()
+        )
+        ParticleStyleManager.register(
+            RotateTestStyle::class.java,
+            RotateTestStyle.Provider()
+        )
+        ParticleStyleManager.register(
+            TestShapeUtilStyle::class.java,
+            TestShapeUtilStyle.Provider()
+        )
+        ParticleStyleManager.register(
+            PointStyle::class.java,
+            PointStyle.Provider()
+        )
     }
 
     /**
