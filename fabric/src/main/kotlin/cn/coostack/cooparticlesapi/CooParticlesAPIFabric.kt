@@ -2,6 +2,10 @@ package cn.coostack.cooparticlesapi
 
 import cn.coostack.cooparticlesapi.entities.CooModEntityTypes
 import cn.coostack.cooparticlesapi.event.CooEventBus
+import cn.coostack.cooparticlesapi.event.events.entity.EntityPrePlaceBlockEvent
+import cn.coostack.cooparticlesapi.event.events.entity.player.PlayerEvent
+import cn.coostack.cooparticlesapi.event.events.entity.player.ServerPlayerDeathEvent
+import cn.coostack.cooparticlesapi.event.events.entity.player.ServerPlayerRespawnEvent
 import cn.coostack.cooparticlesapi.event.events.server.ServerPostTickEvent
 import cn.coostack.cooparticlesapi.event.events.server.ServerPreTickEvent
 import cn.coostack.cooparticlesapi.items.CooItemFabric
@@ -15,12 +19,16 @@ import cn.coostack.cooparticlesapi.network.packet.PacketRenderEntityS2C
 import cn.coostack.cooparticlesapi.particles.CooModParticles
 import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
 import net.fabricmc.api.ModInitializer
+import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents
+import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents
+import net.fabricmc.fabric.api.event.player.UseBlockCallback
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry
 import net.minecraft.core.Registry
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.server.MinecraftServer
+import net.minecraft.world.InteractionResult
 
 object CooParticlesAPIFabric : ModInitializer {
     lateinit var server: MinecraftServer
@@ -69,6 +77,27 @@ object CooParticlesAPIFabric : ModInitializer {
             CooParticlesConstants.logger.info("Server Started Test")
             CooParticlesAPI.loadScannerPackages()
         }
+
+        UseBlockCallback.EVENT.register { player, level, hand, result ->
+            val event = EntityPrePlaceBlockEvent(player, level, result.blockPos, result.direction)
+            return@register if (CooEventBus.call(event).isCancelled) {
+                InteractionResult.FAIL
+            } else {
+                InteractionResult.PASS
+            }
+        }
+
+        ServerPlayerEvents.ALLOW_DEATH.register { player, source, damage ->
+            !CooEventBus.call(ServerPlayerDeathEvent(player, player.level(), source))
+                .isCancelled
+        }
+
+        ServerPlayerEvents.AFTER_RESPAWN.register { old, new, alive ->
+            CooEventBus.call(
+                ServerPlayerRespawnEvent(new, new.level())
+            )
+        }
+
     }
 
     private fun initEntityTypes() {

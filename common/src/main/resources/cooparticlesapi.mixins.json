@@ -4,7 +4,11 @@
   "plugin": "cn.coostack.cooparticlesapi.mixin.plugin.CooParticleFabricMixinLoaderPlugin",
   "compatibilityLevel": "JAVA_18",
   "mixins": [
-    "events.entity.EntityMixin"
+    "events.entity.EnderManMixin",
+    "events.entity.EntityMixin",
+    "events.entity.player.ItemStackMixin",
+    "events.entity.player.PlayerListMixin",
+    "events.entity.player.ServerPlayerGameModeMixin"
   ],
   "refmap": "cooparticlesapi.refmap.json",
   "injectors": {
@@ -15,6 +19,6 @@
     "LevelRendererMixin",
     "MainTargetMixin",
     "ParticleEngineAccessor",
-    "ParticleEngineMixin"
+    "ParticleEngineMixin",
   ]
 }
