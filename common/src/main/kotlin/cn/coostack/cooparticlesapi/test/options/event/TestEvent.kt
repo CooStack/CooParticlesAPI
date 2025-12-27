@@ -4,6 +4,6 @@ import cn.coostack.cooparticlesapi.event.api.CooEvent
 import cn.coostack.cooparticlesapi.event.api.EventInterruptible
 import net.minecraft.world.entity.player.Player
 
-data class TestEvent(val player: Player) : CooEvent(), EventInterruptible {
+abstract class TestEvent(val player: Player) : CooEvent(), EventInterruptible {
     override var isInterrupted: Boolean = false
 }

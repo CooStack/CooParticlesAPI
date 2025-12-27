@@ -37,6 +37,7 @@ open class ControlableParticleData {
             buf.writeDouble(data.speed)
             buf.writeDouble(data.speedLimit)
             buf.writeInt(data.sign)
+            buf.writeInt(data.light)
         }
 
         private fun decode(
@@ -60,6 +61,7 @@ open class ControlableParticleData {
             val speed = buf.readDouble()
             val speedLimit = buf.readDouble()
             val sign = buf.readInt()
+            val light = buf.readInt()
             return ControlableParticleData().apply {
                 this.uuid = uuid
                 this.velocity = velocity
@@ -74,6 +76,7 @@ open class ControlableParticleData {
                 this.speed = speed
                 this.sign = sign
                 this.speedLimit = speedLimit
+                this.light = light
             }
         }
 
@@ -127,6 +130,12 @@ open class ControlableParticleData {
      * 粒子最大生命周期
      */
     var maxAge = 120
+
+    /**
+     * 粒子生成时的亮度
+     * (修改粒子亮度时请修改该数据)
+     */
+    var light = 15
 
     /**
      * 粒子可见范围
@@ -197,6 +206,9 @@ open class ControlableParticleData {
             it.effect = this.effect.clone()
             it.textureSheet = this.textureSheet
             it.speed = this.speed
+            it.sign = this.sign
+            it.speedLimit = this.speedLimit
+            it.light = this.light
         }
     }
 }

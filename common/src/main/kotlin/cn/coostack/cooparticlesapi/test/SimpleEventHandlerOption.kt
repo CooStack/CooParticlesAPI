@@ -2,6 +2,7 @@ package cn.coostack.cooparticlesapi.test
 
 import cn.coostack.cooparticlesapi.event.CooEventBus
 import cn.coostack.cooparticlesapi.test.api.TestOption
+import cn.coostack.cooparticlesapi.test.options.event.TestChildEvent
 import cn.coostack.cooparticlesapi.test.options.event.TestEvent
 import net.minecraft.world.entity.player.Player
 
@@ -11,7 +12,7 @@ class SimpleEventHandlerOption(val testPlayer: Player, ticking: Int) : TickingTe
 
     override fun doTick() {
         super.doTick()
-        CooEventBus.call(TestEvent(testPlayer))
+        CooEventBus.call(TestChildEvent(testPlayer, "id $testingTick"))
     }
 
     override fun stop() {

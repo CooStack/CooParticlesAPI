@@ -53,24 +53,33 @@ object CooEventBus {
     }
 
     @JvmStatic
-    fun call(event: CooEvent) {
-        val handleList = handlerLists[event::class.java] ?: return
-        handleList.forEach {
-            for (executor in it.value) {
-                runCatching {
-                    executor.executor.accept(event)
-                }.onFailure { err ->
-                    CooParticlesConstants.logger.error(
-                        "处理 事件:${event::class.java.name} 时出现错误: 监听模组：${executor.modId}",
-                        err
-                    )
-                }
-                // 事件中断
-                if (event is EventInterruptible && event.isInterrupted) {
-                    return
+    fun <T : CooEvent> call(event: T): T {
+        var currentEvent: Class<*> = event::class.java
+        singleEvent@ while (CooEvent::class.java.isAssignableFrom(currentEvent)) {
+            val handleList = handlerLists[currentEvent] ?: let {
+                currentEvent = currentEvent.superclass
+                continue
+            }
+            handleList.forEach {
+                for (executor in it.value) {
+                    runCatching {
+                        executor.executor.accept(event)
+                    }.onFailure { err ->
+                        CooParticlesConstants.logger.error(
+                            "处理 事件:${event::class.java.name} 时出现错误: 监听模组：${executor.modId}",
+                            err
+                        )
+                    }
+                    // 事件中断
+                    if (event is EventInterruptible && event.isInterrupted) {
+                        currentEvent = currentEvent.superclass
+                        continue@singleEvent
+                    }
                 }
             }
+            currentEvent = currentEvent.superclass
         }
+        return event
     }
 
     fun initListeners() {

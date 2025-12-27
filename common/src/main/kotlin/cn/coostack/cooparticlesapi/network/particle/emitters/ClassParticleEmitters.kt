@@ -164,6 +164,7 @@ abstract class ClassParticleEmitters(
                 this.wind = wind
                 this.enableInterpolator = enableInterpolator
                 this.emittersInterpolator.setRefiner(interpolatorCount)
+
             }
 
         }

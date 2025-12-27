@@ -1,5 +1,12 @@
 package cn.coostack.cooparticlesapi
 
+import cn.coostack.cooparticlesapi.entities.CooModEntityTypes
+import cn.coostack.cooparticlesapi.entities.renderer.TestRenderEntityRenderer
+import cn.coostack.cooparticlesapi.event.CooEventBus
+import cn.coostack.cooparticlesapi.event.events.client.ClientPostTickEvent
+import cn.coostack.cooparticlesapi.event.events.client.ClientPreTickEvent
+import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldPostTickEvent
+import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldPreTickEvent
 import cn.coostack.cooparticlesapi.network.packet.*
 import cn.coostack.cooparticlesapi.network.packet.client.listener.*
 import cn.coostack.cooparticlesapi.particles.CooModParticles
@@ -13,6 +20,7 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientWorldEvents
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
 import net.fabricmc.fabric.api.client.particle.v1.ParticleFactoryRegistry
+import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry
 
 
 object CooParticlesAPIFabricClient : ClientModInitializer {
@@ -21,6 +29,7 @@ object CooParticlesAPIFabricClient : ClientModInitializer {
         registerNetworkFabric()
         CooParticlesAPIClient.init()
         initEvents()
+        registerEntityRenderer()
     }
 
     private fun initEvents() {
@@ -29,7 +38,25 @@ object CooParticlesAPIFabricClient : ClientModInitializer {
         }
         ClientTickEvents.START_WORLD_TICK.register {
             CooParticlesAPIClient.tickClient(it)
+            val event = ClientWorldPreTickEvent(it)
+            CooEventBus.call(event)
         }
+
+        ClientTickEvents.END_WORLD_TICK.register {
+            val event = ClientWorldPostTickEvent(it)
+            CooEventBus.call(event)
+        }
+
+        ClientTickEvents.START_CLIENT_TICK.register {
+            val event = ClientPreTickEvent(it)
+            CooEventBus.call(event)
+        }
+
+        ClientTickEvents.END_CLIENT_TICK.register {
+            val event = ClientPostTickEvent(it)
+            CooEventBus.call(event)
+        }
+
         ClientWorldEvents.AFTER_CLIENT_WORLD_CHANGE.register { _, _ ->
             CooParticlesAPIClient.afterClientWorldChange()
         }
@@ -38,7 +65,13 @@ object CooParticlesAPIFabricClient : ClientModInitializer {
             CooParticlesConstants.logger.info("Client Started")
             CooAPIScanner.scan()
             CooParticlesAPI.loadScannerPackages()
+            // call event
         }
+    }
+
+
+    private fun registerEntityRenderer() {
+        EntityRendererRegistry.register(CooModEntityTypes.TEST_RENDER.get(), ::TestRenderEntityRenderer)
     }
 
     private fun registerParticleFabric() {
