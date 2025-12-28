@@ -1,7 +1,7 @@
 {
   "required": true,
   "package": "cn.coostack.cooparticlesapi.mixin",
-  "plugin": "cn.coostack.cooparticlesapi.mixin.plugin.CooParticleFabricMixinLoaderPlugin",
+  "plugin": "cn.coostack.cooparticlesapi.mixin.plugin.CooParticleMixinLoaderPlugin",
   "compatibilityLevel": "JAVA_18",
   "mixins": [
     "events.entity.EnderManMixin",
@@ -19,6 +19,6 @@
     "LevelRendererMixin",
     "MainTargetMixin",
     "ParticleEngineAccessor",
-    "ParticleEngineMixin",
+    "ParticleEngineMixin"
   ]
 }

@@ -21,6 +21,7 @@ import cn.coostack.cooparticlesapi.utils.MathDataUtil
  *  removeCount args type int -> count
  *  toggle args type int-> count
  */
+@Deprecated("使用ParticleGroupStyle！")
 abstract class SequencedServerParticleGroup(visibleRange: Double = 32.0) : ServerParticleGroup(visibleRange) {
     /**
      * 记录了每一个粒子的显示状态 (只要maxCount确实等于loadParticleLocationsWithIndex返回的map的size)

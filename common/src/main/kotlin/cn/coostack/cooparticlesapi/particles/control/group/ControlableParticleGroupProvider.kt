@@ -9,6 +9,7 @@ import java.util.*
  * 这些参数代表发包时(create particle group) 用户输入的其余参数
  * 自行解码构建
  */
+@Deprecated("使用ParticleGroupStyle！")
 interface ControlableParticleGroupProvider {
     /**
      * @param args 接收到的所有参数

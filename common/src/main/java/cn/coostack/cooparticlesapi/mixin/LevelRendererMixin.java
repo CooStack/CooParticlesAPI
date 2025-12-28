@@ -44,7 +44,9 @@ public class LevelRendererMixin {
         if (CooParticlesAPIClient.checkIrisShaderPackUsed()) {
             return;
         }
-        if (level == null) return;
+        if (level == null) {
+            return;
+        }
         CooParticlesAPIClient.initShaderPrograms();
         boolean shouldTick = level.tickRateManager().runsNormally();
         float tickDelta = deltaTracker.getGameTimeDeltaPartialTick(!shouldTick);

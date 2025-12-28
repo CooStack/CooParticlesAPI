@@ -19,6 +19,7 @@ import java.util.UUID
  * 对应的服务器端请搭配 SequencedServerParticleGroup 使用
  * 或者 在ServerParticleGroup搭配toggle 参数使用
  */
+@Deprecated("使用ParticleGroupStyle！")
 abstract class SequencedParticleGroup(uuid: UUID) : ControlableParticleGroup(uuid) {
     class SequencedParticleRelativeData(
         effect: (UUID) -> ParticleDisplayer,

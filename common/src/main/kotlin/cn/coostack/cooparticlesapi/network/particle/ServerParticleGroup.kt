@@ -21,6 +21,7 @@ import java.util.UUID
  * @param uuid 粒子组合唯一标识符
  * @param visibleRange 玩家可见范围 （origin)
  */
+@Deprecated("使用ParticleGroupStyle！")
 abstract class ServerParticleGroup(
     var visibleRange: Double = 32.0
 ) : ServerControler<ServerParticleGroup> {

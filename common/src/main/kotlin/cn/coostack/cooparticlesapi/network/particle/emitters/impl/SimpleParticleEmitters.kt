@@ -28,6 +28,7 @@ import kotlin.collections.forEach
 import kotlin.collections.set
 import kotlin.math.max
 
+@Deprecated("用ClassParticleEmitters 自己写效果！")
 class SimpleParticleEmitters(
     override var pos: Vec3,
     override var world: Level?,

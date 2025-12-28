@@ -32,6 +32,7 @@ import kotlin.collections.set
 import kotlin.math.max
 import kotlin.math.pow
 
+@Deprecated("用ClassParticleEmitters 自己写效果！")
 class PhysicsParticleEmitters(
     override var pos: Vec3,
     override var world: Level?,

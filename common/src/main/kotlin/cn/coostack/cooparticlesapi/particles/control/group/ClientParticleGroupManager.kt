@@ -5,6 +5,7 @@ import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.collections.HashMap
 
+@Deprecated("使用ParticleGroupStyle！")
 object ClientParticleGroupManager {
     private val visibleControls = ConcurrentHashMap<UUID, ControlableParticleGroup>()
 

@@ -48,7 +48,9 @@ public abstract class ParticleEngineMixin {
             if (queue1.size() == limit) {
                 // 这样驱逐队列就没用了但是可以避免内存泄漏
                 Particle poll = queue1.poll();
-                if (poll != null) cooParticlesAPI$onEvict(poll);
+                if (poll != null) {
+                    cooParticlesAPI$onEvict(poll);
+                }
             }
             queue1.add(particle);
         }

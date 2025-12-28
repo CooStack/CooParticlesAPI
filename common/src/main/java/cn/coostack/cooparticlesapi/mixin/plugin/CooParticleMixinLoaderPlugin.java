@@ -11,7 +11,7 @@ import java.util.Set;
 /**
  * @author CooStack
  */
-public class CooParticleFabricMixinLoaderPlugin implements IMixinConfigPlugin {
+public class CooParticleMixinLoaderPlugin implements IMixinConfigPlugin {
     @Override
     public void onLoad(String mixinPackage) {
     }
@@ -23,7 +23,7 @@ public class CooParticleFabricMixinLoaderPlugin implements IMixinConfigPlugin {
 
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
-        if ("cn.coostack.cooparticlesapi.mixin.ParticleManagerMixin".equals(mixinClassName)) {
+        if ("cn.coostack.cooparticlesapi.mixin.ParticleEngineMixin".equals(mixinClassName)) {
             return CooParticlesServices.API_CONFIG_MANAGER.getConfig().getEnabledParticleCountInject();
         }
         if ("cn.coostack.cooparticlesapi.mixin.ParticleManagerRenderMixin".equals(mixinClassName)) {
