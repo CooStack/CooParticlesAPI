@@ -7,8 +7,6 @@ import cn.coostack.cooparticlesapi.network.particle.style.ParticleStyleProvider
 import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
 import cn.coostack.cooparticlesapi.particles.impl.ControlableEndRodEffect
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
-import cn.coostack.cooparticlesapi.utils.builder.FourierSeriesBuilder
-import cn.coostack.cooparticlesapi.utils.builder.PointsBuilder
 import cn.coostack.cooparticlesapi.utils.builder.RGBImagePointBuilder
 import net.minecraft.resources.ResourceLocation
 import java.util.UUID
@@ -55,7 +53,7 @@ class TestShapeUtilStyle(uuid: UUID = UUID.randomUUID()) :
     override fun onDisplay() {
 //        axis = RelativeLocation(0.0, 0.0, -1.0)
         addPreTickAction {
-            rotateParticlesAsAxis(PI / 32)
+            rotateAsAxis(PI / 32)
         }
     }
 

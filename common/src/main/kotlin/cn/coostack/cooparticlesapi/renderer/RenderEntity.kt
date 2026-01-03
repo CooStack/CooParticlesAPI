@@ -143,7 +143,7 @@ abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) : Serv
         teleportTo(Vec3(x, y, z))
     }
 
-    override fun rotateParticlesToPoint(to: RelativeLocation) {
+    override fun rotateToPoint(to: RelativeLocation) {
 
     }
 
@@ -152,7 +152,7 @@ abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) : Serv
 
     }
 
-    override fun rotateParticlesAsAxis(angle: Double) {
+    override fun rotateAsAxis(angle: Double) {
 
     }
 

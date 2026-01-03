@@ -1,8 +1,10 @@
 package cn.coostack.cooparticlesapi.network.particle.emitters
 
 import cn.coostack.cooparticlesapi.CooParticlesAPI
-import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.annotations.emitter.EmitterAutoRegister
+import cn.coostack.cooparticlesapi.event.CooEventBus
+import cn.coostack.cooparticlesapi.event.events.particle.emitter.EmitterRemoveEvent
+import cn.coostack.cooparticlesapi.event.events.particle.emitter.EmitterSpawnEvent
 import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleEmittersS2C
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.DefendClassParticleEmitters
@@ -76,6 +78,7 @@ object ParticleEmittersManager {
         if (!emitters.world!!.isClientSide) return
         clientEmitters[emitters.uuid] = emitters
         emitters.start()
+        CooEventBus.call(EmitterSpawnEvent(emitters, true))
     }
 
     fun spawnEmitters(emitters: ParticleEmitters) {
@@ -98,6 +101,7 @@ object ParticleEmittersManager {
             }
         } else {
             clientEmitters[emitters.uuid] = emitters
+            CooEventBus.call(EmitterSpawnEvent(emitters, true))
         }
 
     }
@@ -132,6 +136,7 @@ object ParticleEmittersManager {
             emitters.tick()
             if (emitters.cancelled) {
                 iterator.remove()
+                CooEventBus.call(EmitterRemoveEvent(emitters, true))
             }
         }
     }
@@ -147,6 +152,7 @@ object ParticleEmittersManager {
     }
 
     fun updateClientVisible(emitters: ParticleEmitters) {
+        CooEventBus.call(EmitterSpawnEvent(emitters, false))
         CooParticlesAPI.server.playerList.players.forEach { p ->
             val visibleSet = visible.getOrPut(p.uuid) { HashSet() }
             if (p.level() != emitters.world) {
@@ -219,6 +225,7 @@ object ParticleEmittersManager {
             PacketParticleEmittersS2C.PacketType.REMOVE
         )
         CooParticlesServices.SERVER_NETWORK.send(packet, player)
+        CooEventBus.call(EmitterRemoveEvent(emitters, false))
     }
 
 

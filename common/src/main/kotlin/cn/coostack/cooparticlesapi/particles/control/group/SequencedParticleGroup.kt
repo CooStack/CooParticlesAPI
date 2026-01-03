@@ -239,7 +239,7 @@ abstract class SequencedParticleGroup(uuid: UUID) : ControlableParticleGroup(uui
     }
 
 
-    override fun rotateParticlesToPoint(to: RelativeLocation) {
+    override fun rotateToPoint(to: RelativeLocation) {
         if (!displayed) {
             return
         }
@@ -254,7 +254,7 @@ abstract class SequencedParticleGroup(uuid: UUID) : ControlableParticleGroup(uui
         axis = to.normalize()
     }
 
-    override fun rotateParticlesAsAxis(angle: Double) {
+    override fun rotateAsAxis(angle: Double) {
         if (!displayed) {
             return
         }

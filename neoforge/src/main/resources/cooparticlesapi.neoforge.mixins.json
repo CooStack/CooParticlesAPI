@@ -3,7 +3,9 @@
   "minVersion": "0.8",
   "package": "cn.coostack.cooparticlesapi.mixin",
   "compatibilityLevel": "JAVA_21",
-  "mixins": [],
+  "mixins": [
+    "event.entity.player.ItemStackMixinNeoForge"
+  ],
   "client": [
   ],
   "server": [],

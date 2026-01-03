@@ -6,7 +6,6 @@
   "mixins": [
     "events.entity.EnderManMixin",
     "events.entity.EntityMixin",
-    "events.entity.player.ItemStackMixin",
     "events.entity.player.PlayerListMixin",
     "events.entity.player.ServerPlayerGameModeMixin"
   ],
@@ -19,6 +18,8 @@
     "LevelRendererMixin",
     "MainTargetMixin",
     "ParticleEngineAccessor",
-    "ParticleEngineMixin"
+    "ParticleEngineMixin",
+    "events.world.client.ItemRendererInvoker",
+    "events.world.client.LevelRendererMixin"
   ]
 }

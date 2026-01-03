@@ -1,4 +1,4 @@
-package cn.coostack.cooparticlesapi.mixin.events.entity.player;
+package cn.coostack.cooparticlesapi.mixin.event.entity.player;
 
 import cn.coostack.cooparticlesapi.event.CooEventBus;
 import cn.coostack.cooparticlesapi.event.events.entity.player.PlayerItemDestroyEvent;
@@ -14,7 +14,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import java.util.function.Consumer;
 
 @Mixin(ItemStack.class)
-public class ItemStackMixin {
+public class ItemStackMixinFabric {
 
     @Inject(method = "hurtAndBreak(ILnet/minecraft/server/level/ServerLevel;Lnet/minecraft/server/level/ServerPlayer;Ljava/util/function/Consumer;)V",
             at = @At(value = "INVOKE", target = "Lnet/minecraft/world/item/ItemStack;setDamageValue(I)V"))

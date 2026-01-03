@@ -2,21 +2,21 @@ package cn.coostack.cooparticlesapi.mixin;
 
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants;
+import cn.coostack.cooparticlesapi.particles.CooParticleTextureSheet;
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices;
 import com.google.common.collect.EvictingQueue;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleEngine;
 import net.minecraft.client.particle.ParticleRenderType;
 import net.minecraft.core.particles.ParticleGroup;
-import org.spongepowered.asm.mixin.Final;
-import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Shadow;
-import org.spongepowered.asm.mixin.Unique;
+import org.spongepowered.asm.mixin.*;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 
@@ -35,6 +35,11 @@ public abstract class ParticleEngineMixin {
 
     @Shadow
     protected abstract void updateCount(ParticleGroup group, int count);
+
+    @Shadow
+    @Final
+    @Mutable
+    private static List<ParticleRenderType> RENDER_ORDER;
 
     @Redirect(method = "tick", at = @At(value = "INVOKE", target = "Ljava/util/Queue;poll()Ljava/lang/Object;"))
     public Object changeMaxParticles(Queue<Object> queue) {
@@ -61,10 +66,14 @@ public abstract class ParticleEngineMixin {
     public void onClear(CallbackInfo ci) {
         // p可能为null (因为ParticleManagerAsyncMixin
         particles.values().forEach(q -> q.forEach((p) -> {
-            if (p != null) cooParticlesAPI$onEvict(p);
+            if (p != null) {
+                cooParticlesAPI$onEvict(p);
+            }
         }));
         particlesToAdd.forEach((p) -> {
-            if (p != null) cooParticlesAPI$onEvict(p);
+            if (p != null) {
+                cooParticlesAPI$onEvict(p);
+            }
         });
         // 事件
         CooParticlesConstants.logger.info("ParticleManager: clearParticles invoked");
@@ -80,4 +89,16 @@ public abstract class ParticleEngineMixin {
             p.getParticleGroup().ifPresent(group -> updateCount(group, -1));
         }
     }
+
+    @Inject(method = "<clinit>", at = @At("TAIL"))
+    private static void onStaticRenderOrderInit(CallbackInfo ci) {
+        // 必须加不然不会渲染
+        var newOrder = new ArrayList<>(RENDER_ORDER);
+        newOrder.addAll(
+                CooParticleTextureSheet.getSheets()
+        );
+
+        RENDER_ORDER = newOrder;
+    }
+
 }

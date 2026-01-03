@@ -12,8 +12,8 @@ class CooItemModelProvider(output: PackOutput, existingFileHelper: ExistingFileH
     override fun registerModels() {
         registerWith(CooItems.testTickItem)
         registerWith(CooItems.testStyleItem)
-        registerWith(CooItems.testBarrierItem)
-        registerWith(CooItems.testParticle)
+        registerWith(CooItems.SINGLE_TESTING)
+        registerWith(CooItems.API_GROUP_TESTING)
         registerWith(CooItems.testSequencedParticle)
         CooParticlesConstants.logger.info("物品模型注册.............. Item Model generated")
     }

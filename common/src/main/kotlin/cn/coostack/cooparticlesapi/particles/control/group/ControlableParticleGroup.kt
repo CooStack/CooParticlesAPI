@@ -164,7 +164,7 @@ abstract class ControlableParticleGroup(val uuid: UUID) : Controlable<Controlabl
         }
     }
 
-    override fun rotateParticlesToPoint(to: RelativeLocation) {
+    override fun rotateToPoint(to: RelativeLocation) {
         if (!displayed) {
             return
         }
@@ -198,7 +198,7 @@ abstract class ControlableParticleGroup(val uuid: UUID) : Controlable<Controlabl
     /**
      * @param angle 输入弧度制
      */
-    override fun rotateParticlesAsAxis(angle: Double) {
+    override fun rotateAsAxis(angle: Double) {
         if (!displayed) {
             return
         }

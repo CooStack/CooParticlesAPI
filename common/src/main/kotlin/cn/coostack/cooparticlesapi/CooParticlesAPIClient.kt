@@ -1,9 +1,10 @@
 package cn.coostack.cooparticlesapi
 
-import cn.coostack.cooparticlesapi.animation.AnimateManager
+import cn.coostack.cooparticlesapi.display.DisplayEntityManager
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersManager
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleStyleManager
 import cn.coostack.cooparticlesapi.particles.CooModParticles
+import cn.coostack.cooparticlesapi.particles.CooParticleTextureSheet
 import cn.coostack.cooparticlesapi.particles.control.group.ClientParticleGroupManager
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import cn.coostack.cooparticlesapi.renderer.client.ClientRenderEntityManager
@@ -11,6 +12,7 @@ import cn.coostack.cooparticlesapi.renderer.client.ClientRenderPipelineManager
 import cn.coostack.cooparticlesapi.renderer.client.ShaderPipeManagers
 import cn.coostack.cooparticlesapi.scheduler.CooScheduler
 import cn.coostack.cooparticlesapi.test.TestManager
+import cn.coostack.cooparticlesapi.test.options.display.TestDisplayerStyle
 import cn.coostack.cooparticlesapi.test.options.particle.client.BarrierSwordGroupClient
 import cn.coostack.cooparticlesapi.test.options.particle.client.ScaleCircleGroupClient
 import cn.coostack.cooparticlesapi.test.options.particle.client.SequencedMagicCircleClient
@@ -19,6 +21,7 @@ import cn.coostack.cooparticlesapi.test.options.particle.style.*
 import cn.coostack.cooparticlesapi.test.options.renderer.TestRendererEntity
 import net.irisshaders.iris.api.v0.IrisApi
 import net.minecraft.client.multiplayer.ClientLevel
+import net.minecraft.client.renderer.RenderType
 
 object CooParticlesAPIClient {
     @JvmField
@@ -33,7 +36,6 @@ object CooParticlesAPIClient {
         initStyle()
         initParticleType()
         initRender()
-
         irisLoaded = CooParticlesServices.PLATFORM.isModLoaded("iris")
     }
 
@@ -72,6 +74,10 @@ object CooParticlesAPIClient {
         ParticleStyleManager.register(
             ExampleStyle::class.java,
             ExampleStyle.Provider()
+        )
+        ParticleStyleManager.register(
+            TestDisplayerStyle::class.java,
+            TestDisplayerStyle.Provider()
         )
         ParticleStyleManager.register(
             ExampleSequencedStyle::class.java,
@@ -114,6 +120,7 @@ object CooParticlesAPIClient {
     private fun initRender() {
         ClientRenderEntityManager.register(TestRendererEntity.id, TestRendererEntity.codec)
         ClientRenderEntityManager.bindEntityRenderPipe(TestRendererEntity.id, ShaderPipeManagers.simpleBloom.pipeID)
+        CooParticleTextureSheet.init()
     }
 
     fun onDisconnect() {
@@ -129,6 +136,9 @@ object CooParticlesAPIClient {
         ParticleStyleManager.clearAllVisible()
         ClientParticleGroupManager.clearAllVisible()
         ClientRenderEntityManager.clear()
+
+        DisplayEntityManager.clearClient()
+
     }
 
     var subTicks = 0.0
@@ -150,10 +160,10 @@ object CooParticlesAPIClient {
                 ClientParticleGroupManager.doClientTick()
                 ParticleStyleManager.doTickClient()
                 ParticleEmittersManager.doTickClient()
-                AnimateManager.tickClient()
                 ClientRenderEntityManager.tick()
+                DisplayEntityManager.tickClient()
+                TestManager.doTickClient()
             }
         }
-        TestManager.doTickClient()
     }
 }

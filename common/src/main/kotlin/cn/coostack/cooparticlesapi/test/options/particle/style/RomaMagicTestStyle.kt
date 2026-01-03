@@ -10,7 +10,7 @@ import cn.coostack.cooparticlesapi.utils.GraphMathHelper
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import cn.coostack.cooparticlesapi.utils.builder.PointsBuilder
-import org.joml.Vector3f
+import net.minecraft.client.particle.ParticleRenderType
 import java.util.UUID
 import kotlin.math.PI
 
@@ -53,11 +53,12 @@ class RomaMagicTestStyle(uuid: UUID = UUID.randomUUID()) :
                             ParticleDisplayer.withSingle(ControlableEndRodEffect(it))
                         }.withParticleHandler {
                             this.size = 0.1f
+                            this.textureSheet = ParticleRenderType.PARTICLE_SHEET_TRANSLUCENT
                         }
                     }.toggleOnDisplay {
                         this.addPreTickAction {
-                            rotateParticlesAsAxis(PI / 256)
-                            rotateParticlesToPoint(this@RomaMagicTestStyle.axis)
+                            rotateAsAxis(PI / 256)
+                            rotateToPoint(this@RomaMagicTestStyle.axis)
                         }
                     }
             )
@@ -75,8 +76,8 @@ class RomaMagicTestStyle(uuid: UUID = UUID.randomUUID()) :
                         }
                     }.toggleOnDisplay {
                         this.addPreTickAction {
-                            rotateParticlesAsAxis(-PI / 32)
-                            rotateParticlesToPoint(this@RomaMagicTestStyle.axis)
+                            rotateAsAxis(-PI / 32)
+                            rotateToPoint(this@RomaMagicTestStyle.axis)
                         }
                     }
             )
@@ -119,8 +120,8 @@ class RomaMagicTestStyle(uuid: UUID = UUID.randomUUID()) :
                     }
                     .toggleOnDisplay {
                         this.addPreTickAction {
-                            rotateParticlesAsAxis(PI / 64)
-                            rotateParticlesToPoint(this@RomaMagicTestStyle.axis)
+                            rotateAsAxis(PI / 64)
+                            rotateToPoint(this@RomaMagicTestStyle.axis)
                         }
                     }
             )
@@ -148,12 +149,13 @@ class RomaMagicTestStyle(uuid: UUID = UUID.randomUUID()) :
                                     Math3DUtil.colorOf(255, 236, 247)
                                 )
                             }
+                            this.textureSheet = ParticleRenderType.PARTICLE_SHEET_TRANSLUCENT
                             size = GraphMathHelper.lerp((rel.length() - 3) / 6.0, 0.1f, 1.5f)
                         }
                     }.toggleOnDisplay {
                         this.addPreTickAction {
-                            rotateParticlesAsAxis(-PI / 256)
-                            rotateParticlesToPoint(this@RomaMagicTestStyle.axis)
+                            rotateAsAxis(-PI / 256)
+                            rotateToPoint(this@RomaMagicTestStyle.axis)
                         }
                     }
             )

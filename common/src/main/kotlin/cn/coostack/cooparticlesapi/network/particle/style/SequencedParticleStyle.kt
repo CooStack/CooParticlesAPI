@@ -385,7 +385,7 @@ abstract class SequencedParticleStyle(visibleRange: Double = 32.0, uuid: UUID = 
         Math3DUtil.rotateAsAxis(locations.values.toList(), axis, rotate)
     }
 
-    override fun rotateParticlesAsAxis(angle: Double) {
+    override fun rotateAsAxis(angle: Double) {
         Math3DUtil.rotateAsAxis(
             sequencedParticles.map { it.second }.toList(), axis, angle
         )
@@ -428,7 +428,7 @@ abstract class SequencedParticleStyle(visibleRange: Double = 32.0, uuid: UUID = 
         }
     }
 
-    override fun rotateParticlesToPoint(to: RelativeLocation) {
+    override fun rotateToPoint(to: RelativeLocation) {
         Math3DUtil.rotatePointsToPoint(
             sequencedParticles.map { it.second }.toList(), to, axis
         )

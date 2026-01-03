@@ -3,6 +3,7 @@ package cn.coostack.cooparticlesapi.test
 import cn.coostack.cooparticlesapi.network.particle.emitters.PhysicConstant
 import cn.coostack.cooparticlesapi.test.api.TestGroup
 import cn.coostack.cooparticlesapi.test.api.TestGroupBuilder
+import cn.coostack.cooparticlesapi.test.options.display.TestBlockDisplayEntity
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestEventEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.event.TestCollideEventHandler
 import cn.coostack.cooparticlesapi.test.options.particle.style.RomaMagicTestStyle
@@ -36,7 +37,7 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
                     this.setPosition(player.position())
                 }, 100)
             }.appendOption {
-                SimpleEventHandlerOption(player, 1)
+                SimpleDisplayEntityOption(TestBlockDisplayEntity(player.eyePosition, player.level()), -1)
             }
     }
 }

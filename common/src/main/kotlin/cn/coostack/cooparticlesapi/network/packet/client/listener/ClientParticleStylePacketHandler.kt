@@ -9,7 +9,6 @@ import cn.coostack.cooparticlesapi.platform.network.ClientContext
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import net.minecraft.client.Minecraft
 import net.minecraft.world.phys.Vec3
-import org.joml.Vector3d
 import java.util.UUID
 
 object ClientParticleStylePacketHandler {
@@ -51,10 +50,10 @@ object ClientParticleStylePacketHandler {
             )
         } else {
             if (args.containsKey("rotate_angle")) {
-                style.rotateParticlesAsAxis(args["rotate_angle"]!!.loadedValue as Double)
+                style.rotateAsAxis(args["rotate_angle"]!!.loadedValue as Double)
             }
             if (args.containsKey("rotate_to")) {
-                style.rotateParticlesToPoint(args["rotate_to"]!!.loadedValue as RelativeLocation)
+                style.rotateToPoint(args["rotate_to"]!!.loadedValue as RelativeLocation)
             }
         }
         if (args.containsKey("axis")) {

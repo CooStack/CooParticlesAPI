@@ -5,6 +5,7 @@ import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.event.CooEventBus
 import cn.coostack.cooparticlesapi.event.events.client.ClientPostTickEvent
 import cn.coostack.cooparticlesapi.event.events.client.ClientPreTickEvent
+import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldChangeEvent
 import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldPostTickEvent
 import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldPreTickEvent
 import net.minecraft.client.Minecraft
@@ -38,6 +39,7 @@ object CooParticlesAPINeoClientListener {
     @SubscribeEvent
     fun onWorldChange(event: PlayerEvent.PlayerChangedDimensionEvent) {
         CooParticlesAPIClient.afterClientWorldChange()
+        CooEventBus.call(ClientWorldChangeEvent(event.entity.level()))
     }
 
     @SubscribeEvent

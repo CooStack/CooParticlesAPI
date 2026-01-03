@@ -4,12 +4,14 @@ import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.datagen.CooItemModelProvider
 import cn.coostack.cooparticlesapi.datagen.LangProvider
 import cn.coostack.cooparticlesapi.network.packet.PacketCameraShakeS2C
+import cn.coostack.cooparticlesapi.network.packet.PacketDisplayEntityS2C
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleEmittersS2C
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleGroupS2C
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleS2C
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleStyleS2C
 import cn.coostack.cooparticlesapi.network.packet.PacketRenderEntityS2C
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientCameraShakeHandler
+import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientDisplayEntityPacketHandler
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientParticleEmittersPacketHandler
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientParticleGroupPacketHandler
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientParticlePacketHandler
@@ -83,6 +85,12 @@ object CooParticlesAPINeoModInitListener {
             PacketCameraShakeS2C.CODEC
         ) { payload, context ->
             ClientCameraShakeHandler.receive(payload, NeoForgeClientContext(context))
+        }
+        registrar.playToClient(
+            PacketDisplayEntityS2C.payloadID,
+            PacketDisplayEntityS2C.CODEC
+        ) { payload, context ->
+            ClientDisplayEntityPacketHandler.receive(payload, NeoForgeClientContext(context))
         }
     }
 }

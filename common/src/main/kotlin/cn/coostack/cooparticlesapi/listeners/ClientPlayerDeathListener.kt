@@ -21,7 +21,6 @@ object ClientPlayerDeathListener {
         accessor.trackedParticleCounts.clear()
         accessor.trackingEmitters.clear()
 
-
         ParticleEmittersManager.clientEmitters.clear()
         ParticleStyleManager.clearAllVisible()
         ClientRenderEntityManager.clear()

@@ -311,6 +311,13 @@ abstract class ClassParticleEmitters(
             this.lifetime = data.maxAge
             this.textureSheet = data.getTextureSheet()
             this.particleAlpha = data.alpha
+            this.faceToCamera = data.faceToCamera
+            this.currentAngleX = data.pitch
+            this.currentAngleY = data.yaw
+            this.currentAngleZ = data.roll
+            this.previewAngleX = data.pitch
+            this.previewAngleY = data.yaw
+            this.previewAngleZ = data.roll
         }
 
         // 事件层

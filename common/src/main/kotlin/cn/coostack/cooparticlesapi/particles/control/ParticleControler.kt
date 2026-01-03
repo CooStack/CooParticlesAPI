@@ -85,13 +85,13 @@ class ParticleControler(private val uuid: UUID) : Controlable<ControlableParticl
         return uuid
     }
 
-    override fun rotateParticlesToPoint(to: RelativeLocation) {
+    override fun rotateToPoint(to: RelativeLocation) {
     }
 
     override fun rotateToWithAngle(to: RelativeLocation, angle: Double) {
     }
 
-    override fun rotateParticlesAsAxis(angle: Double) {
+    override fun rotateAsAxis(angle: Double) {
     }
 
     override fun teleportTo(pos: Vec3) {

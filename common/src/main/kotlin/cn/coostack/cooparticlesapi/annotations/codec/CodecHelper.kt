@@ -1,0 +1,81 @@
+package cn.coostack.cooparticlesapi.annotations.codec
+
+import cn.coostack.cooparticlesapi.barrages.HitBox
+import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableParticleData
+import net.minecraft.network.FriendlyByteBuf
+import net.minecraft.network.codec.StreamCodec
+import net.minecraft.world.item.ItemStack
+import net.minecraft.world.phys.AABB
+import net.minecraft.world.phys.Vec3
+import org.joml.Vector3f
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
+
+object CodecHelper {
+    val supposedTypes = ConcurrentHashMap<String, StreamCodec<out FriendlyByteBuf, *>>()
+
+    init {
+        register(Short::class.java, StreamCodec.of({ buf, i -> buf.writeShort(i.toInt()) }, { it.readShort() }))
+        register(Int::class.java, StreamCodec.of({ buf, i -> buf.writeInt(i) }, { it.readInt() }))
+        register(Long::class.java, StreamCodec.of({ buf, i -> buf.writeLong(i) }, { it.readLong() }))
+        register(Float::class.java, StreamCodec.of({ buf, i -> buf.writeFloat(i) }, { it.readFloat() }))
+        register(Double::class.java, StreamCodec.of({ buf, i -> buf.writeDouble(i) }, { it.readDouble() }))
+        register(String::class.java, StreamCodec.of({ buf, i -> buf.writeUtf(i) }, { it.readUtf() }))
+        register(Byte::class.java, StreamCodec.of({ buf, i -> buf.writeByte(i.toInt()) }, { it.readByte() }))
+        register(ByteArray::class.java, StreamCodec.of({ buf, i -> buf.writeByteArray(i) }, { it.readByteArray() }))
+        register(Char::class.java, StreamCodec.of({ buf, i -> buf.writeChar(i.toInt()) }, { it.readChar() }))
+        register(UUID::class.java, StreamCodec.of({ buf, i -> buf.writeUUID(i) }, { it.readUUID() }))
+        register(ControlableParticleData::class.java, ControlableParticleData.PACKET_CODEC)
+        register(Vector3f::class.java, StreamCodec.of({ buf, i -> buf.writeVector3f(i) }, { it.readVector3f() }))
+        register(Vec3::class.java, StreamCodec.of({ buf, i -> buf.writeVec3(i) }, { it.readVec3() }))
+        register(AABB::class.java, StreamCodec.of({ buf, i ->
+            buf.writeDouble(i.minX)
+            buf.writeDouble(i.minY)
+            buf.writeDouble(i.minZ)
+            buf.writeDouble(i.maxX)
+            buf.writeDouble(i.maxY)
+            buf.writeDouble(i.maxZ)
+
+        }, {
+            AABB(it.readDouble(), it.readDouble(), it.readDouble(), it.readDouble(), it.readDouble(), it.readDouble())
+        }))
+        register(HitBox::class.java, StreamCodec.of({ buf, i ->
+            buf.writeDouble(i.x1)
+            buf.writeDouble(i.y1)
+            buf.writeDouble(i.z1)
+            buf.writeDouble(i.x2)
+            buf.writeDouble(i.y2)
+            buf.writeDouble(i.z2)
+        }, {
+            HitBox(it.readDouble(), it.readDouble(), it.readDouble(), it.readDouble(), it.readDouble(), it.readDouble())
+        }))
+        register(ItemStack::class.java, ItemStack.STREAM_CODEC)
+    }
+
+    /**
+     * 编解码方式注册器
+     *
+     * 可以直接向 codec的 ByteBuf里写入 （大概就是writeInt这些）
+     *
+     * 示例:
+     * ```kotlin
+     * StreamCodec.of<FriendlyByteBuf, CustomOption>(
+     *  { buf,option->
+     *      // 这里假设option有2个参数 一个id: String 一个age：Int
+     *      buf.writeUtf(option.id)
+     *      buf.writeInt(option.age)
+     *  },{
+     *      CustomOption(it.readUtf(),it.readInt())
+     *  }
+     * )
+     * ```
+     *
+     * @param T 要编码的类型
+     * @param type 类型对应的类
+     * @param codec 他的编解码器
+     */
+    fun <T> register(type: Class<T>, codec: StreamCodec<out FriendlyByteBuf, T>) {
+        supposedTypes[type.name] = codec
+    }
+
+}

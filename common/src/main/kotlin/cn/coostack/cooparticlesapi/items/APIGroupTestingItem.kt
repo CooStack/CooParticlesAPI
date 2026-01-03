@@ -21,9 +21,6 @@ import cn.coostack.cooparticlesapi.test.TestManager
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestEventEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.event.TestCollideEventHandler
-import cn.coostack.cooparticlesapi.test.options.particle.emitter.event.TestEntityHitEventHandler
-import cn.coostack.cooparticlesapi.test.options.particle.emitter.event.TestOnGroundEventHandler
-import cn.coostack.cooparticlesapi.test.options.particle.emitter.event.TestOnLiquidEventHandler
 import cn.coostack.cooparticlesapi.test.options.particle.style.RomaMagicTestStyle
 import cn.coostack.cooparticlesapi.test.options.particle.style.RotateTestStyle
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
@@ -38,7 +35,7 @@ import net.minecraft.world.item.Item
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.level.Level
 
-class TestParticleItem(settings: Properties) : Item(settings) {
+class APIGroupTestingItem(settings: Properties) : Item(settings) {
 
     override fun use(world: Level, user: Player, hand: InteractionHand): InteractionResultHolder<ItemStack> {
         if (world.isClientSide) {

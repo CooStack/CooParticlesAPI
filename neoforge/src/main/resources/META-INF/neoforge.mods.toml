@@ -1,6 +1,7 @@
 modLoader = "kotlinforforge" #mandatory
 loaderVersion = "${neoforge_loader_version_range}" #mandatory
-license = "${license}" # Review your options at https://choosealicense.com/.
+license = "${license}" # Review your options at https://choosealicense.com/.+
+accessTransformer = "META-INF/accesstransformer.cfg"
 #issueTrackerURL="https://change.me.to.your.issue.tracker.example.invalid/" #optional
 [[mods]] #mandatory
 modId = "${mod_id}" #mandatory

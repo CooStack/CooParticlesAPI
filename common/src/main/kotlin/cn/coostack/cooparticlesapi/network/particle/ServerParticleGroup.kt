@@ -237,7 +237,7 @@ abstract class ServerParticleGroup(
     /**
      * 出现了一些控制类之外的旋转
      */
-    override fun rotateParticlesAsAxis(angle: Double) {
+    override fun rotateAsAxis(angle: Double) {
         change(
             {}, mapOf(
                 PacketParticleGroupS2C.PacketArgsType.ROTATE_AXIS.ofArgs to ParticleControlerDataBuffers.double(
@@ -268,7 +268,7 @@ abstract class ServerParticleGroup(
     /**
      * 出现了一些控制类之外的旋转
      */
-    override fun rotateParticlesToPoint(to: RelativeLocation) {
+    override fun rotateToPoint(to: RelativeLocation) {
         rotateParticlesToPoint(to.toVector())
     }
 

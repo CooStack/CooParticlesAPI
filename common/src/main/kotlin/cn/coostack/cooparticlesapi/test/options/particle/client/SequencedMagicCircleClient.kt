@@ -65,10 +65,10 @@ class SequencedMagicCircleClient(uuid: UUID, val bindPlayer: UUID) : SequencedPa
                 toggle = !toggle
                 current = 0
             }
-            rotateParticlesAsAxis(Math.toRadians(10.0))
+            rotateAsAxis(Math.toRadians(10.0))
             val player = world!!.getPlayerByUUID(bindPlayer) ?: return@addPreTickAction
             val dir = player.forward
-            rotateParticlesToPoint(RelativeLocation.of(dir))
+            rotateToPoint(RelativeLocation.of(dir))
             teleportTo(player.eyePosition)
         }
     }

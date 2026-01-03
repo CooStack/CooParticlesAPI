@@ -6,7 +6,8 @@
   "compatibilityLevel": "JAVA_21",
   "mixins": [],
   "client": [
-    "DeathScreenOpenListenerMinecraftMixin"
+    "DeathScreenOpenListenerMinecraftMixin",
+    "event.entity.player.ItemStackMixinFabric"
   ],
   "server": [],
   "injectors": {

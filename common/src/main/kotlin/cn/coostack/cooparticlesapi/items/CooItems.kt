@@ -10,12 +10,12 @@ import java.util.function.Supplier
 object CooItems {
     val items = ArrayList<CommonDeferredItem>()
     val itemsWithID = HashMap<ResourceLocation, CommonDeferredItem>()
-    var testParticle = register(
-        "test_particle"
-    ) { TestParticleItem(Item.Properties().stacksTo(1)) }
+    var API_GROUP_TESTING = register(
+        "api_group_testing"
+    ) { APIGroupTestingItem(Item.Properties().stacksTo(1)) }
 
-    var testBarrierItem = register("test_barrier_item") {
-        TestBarrierItem()
+    var SINGLE_TESTING = register("single_testing") {
+        SingleTesting()
     }
 
     val testSequencedParticle = register(

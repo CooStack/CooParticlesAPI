@@ -1,12 +1,10 @@
 package cn.coostack.cooparticlesapi.test.options.particle.client
 
 import cn.coostack.cooparticlesapi.network.buffer.ParticleControlerDataBuffer
-import cn.coostack.cooparticlesapi.particles.CooModParticles
 import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
 import cn.coostack.cooparticlesapi.particles.control.group.ControlableParticleGroup
 import cn.coostack.cooparticlesapi.particles.control.group.ControlableParticleGroupProvider
 import cn.coostack.cooparticlesapi.particles.impl.ControlableCloudEffect
-import cn.coostack.cooparticlesapi.particles.impl.ControlableCloudParticle
 import cn.coostack.cooparticlesapi.particles.impl.ControlableEnchantmentEffect
 import cn.coostack.cooparticlesapi.particles.impl.ControlableEndRodEffect
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
@@ -146,7 +144,7 @@ class ScaleCircleGroupClient(uuid: UUID, val bindPlayer: UUID) : ControlablePart
             // 同步位置
             teleportTo(player.position())
             // 在变大的过程中也能旋转
-            rotateParticlesAsAxis(Math.toRadians(10.0))
+            rotateAsAxis(Math.toRadians(10.0))
             if (tick++ >= maxTick - anMaxTick) {
                 scale(scale - 1.0 / anMaxTick)
                 return@addPreTickAction

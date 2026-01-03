@@ -102,7 +102,7 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
         return uuid
     }
 
-    override fun rotateParticlesToPoint(to: RelativeLocation) {
+    override fun rotateToPoint(to: RelativeLocation) {
         Math3DUtil.rotatePointsToPoint(
             particleLocations.values.toList(), to, axis
         )
@@ -143,7 +143,7 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
         }
     }
 
-    override fun rotateParticlesAsAxis(angle: Double) {
+    override fun rotateAsAxis(angle: Double) {
         Math3DUtil.rotateAsAxis(
             particleLocations.values.toList(), axis, angle
         )

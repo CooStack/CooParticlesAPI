@@ -114,9 +114,9 @@ class BarrierSwordGroupClient(uuid: UUID, var targetEntityID: Int?) : Controlabl
             if (targetEntityID != null) {
                 val entity = world!!.getEntity(targetEntityID!!) ?: return@addPreTickAction
                 val direction = entity.position().subtract(origin)
-                rotateParticlesToPoint(RelativeLocation.of(direction))
+                rotateToPoint(RelativeLocation.of(direction))
             } else {
-                rotateParticlesToPoint(RelativeLocation.of(defaultDirection))
+                rotateToPoint(RelativeLocation.of(defaultDirection))
             }
         }
     }

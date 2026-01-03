@@ -78,7 +78,7 @@ class ExampleSequencedStyle(val bindPlayerUUID: UUID, uuid: UUID = UUID.randomUU
             }
             val player = world!!.getPlayerByUUID(bindPlayerUUID) ?: return@addPreTickAction
             teleportTo(player.eyePosition)
-            rotateParticlesToPoint(RelativeLocation.of(player.forward))
+            rotateToPoint(RelativeLocation.of(player.forward))
             if (!reverse) {
                 addMultiple(3)
             } else {

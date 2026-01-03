@@ -72,6 +72,7 @@ implementation 'cn.coostack:cooparticlesapi-fabric:version'
 我写了一个方法用于手动添加扫描包内容
 
 如果你不写这个 然后直接使用事件系统是无效的
+
 ```kotlin
 CooAPIScanner.registerPacket("cn.coostack") // 包路径 会扫描所有cn.coostack开头的类
 CooAPIScanner.registerPacket(CooParticlesAPI::class.java) // 直接传主类 他会获取这个类所在的包 然后执行上面的方法
@@ -94,76 +95,86 @@ CooEventBus.call(event)
 ```
 
 # 自动生成
+
 ## ParticleEmitter
+
 提供了Emitter 自动Codec选项
+
 ```kotlin
 @EmitterAutoRegister // 自动注册粒子发射器 需要提供空构造函数或者 (pos: Vec3, level: Level) 这样的构造方法
 class CustomEmitters(pos: Vec3, level: Level) : ClassParticleEmitters(pos, level) {
-  @EmitterField
-  var templateData = ControlableParticleData()
+    @EmitterField
+    var templateData = ControlableParticleData()
 
-  @EmitterField // 此注解用于标记这个属性要作为Codec参数传输给客户端
-  var shootDirection: Vec3 = Vec3.ZERO
+    @EmitterField // 此注解用于标记这个属性要作为Codec参数传输给客户端
+    var shootDirection: Vec3 = Vec3.ZERO
 
-  companion object {
-    const val ID = "test-event-particle-emitters"
-  }
-
-  override fun update(emitters: ParticleEmitters) {
-    super.update(emitters)
-  }
-
-  override fun doTick() {
-  }
-
-  override fun genParticles(lerpProgress: Float): List<Pair<ControlableParticleData, RelativeLocation>> {
-    return listOf( // 生成粒子初始位置
-      templateData.clone().apply {
-        velocity = this@TestEventEmitter.shootDirection
-      } to RelativeLocation()
-    )
-  }
-
-  override fun singleParticleAction(
-    controler: ParticleControler,
-    data: ControlableParticleData,
-    spawnPos: RelativeLocation,
-    spawnWorld: Level,
-    particleLerpProgress: Float,
-    posLerpProgress: Float,
-  ) {
-      // 单个粒子的生成tick变化
-    controler.addPreTickAction {
-      updatePhysics(loc, data, this)
+    companion object {
+        const val ID = "test-event-particle-emitters"
     }
-  }
 
-  override fun getEmittersID(): String {
-    return ID
-  }
+    override fun update(emitters: ParticleEmitters) {
+        super.update(emitters)
+    }
 
-  override fun getCodec(): StreamCodec<FriendlyByteBuf, ParticleEmitters> {
-    return ParticleEmittersHelper.generateCodec(this) // 需要调用这个才能使用
-  }
+    override fun doTick() {
+    }
+
+    override fun genParticles(lerpProgress: Float): List<Pair<ControlableParticleData, RelativeLocation>> {
+        return listOf( // 生成粒子初始位置
+            templateData.clone().apply {
+                velocity = this@TestEventEmitter.shootDirection
+            } to RelativeLocation()
+        )
+    }
+
+    override fun singleParticleAction(
+        controler: ParticleControler,
+        data: ControlableParticleData,
+        spawnPos: RelativeLocation,
+        spawnWorld: Level,
+        particleLerpProgress: Float,
+        posLerpProgress: Float,
+    ) {
+        // 单个粒子的生成tick变化
+        controler.addPreTickAction {
+            updatePhysics(loc, data, this)
+        }
+    }
+
+    override fun getEmittersID(): String {
+        return ID
+    }
+
+    override fun getCodec(): StreamCodec<FriendlyByteBuf, ParticleEmitters> {
+        return ParticleEmittersHelper.generateCodec(this) // 需要调用这个才能使用
+    }
 }
 ```
+
 ## 注意
+
 **Codec 生成器不是什么类型都能正确传输**
 
 如果你需要自定义一个新的发射器参数
 
 则需要执行下面的方法
+
 ```kotlin
 fun <T> register(type: Class<T>, codec: StreamCodec<out FriendlyByteBuf, T>) {
-        supposedTypes[type.name] = codec
+    supposedTypes[type.name] = codec
 }
 ```
 
 ```kotlin
 // 需要在你的模组初始化方法里执行
 fun init() {
-// 假设这里不兼容Int 然后兼容Int的方法
-  ParticleEmittersHelper.register(Int::class.java, StreamCodec.of({ b, i -> b.writeInt(i) }, { b.readInt() }))
+    // 假设这里不兼容Int 然后兼容Int的方法
+    // 最开始是ParticleEmittersHelper
+    // 没有考虑其他的自动Codec可以公用这段数据 
+    // （导致我需要进行API修改）
+    // 我再也不当Ojng了
+    CodecHelper.register(Int::class.java, StreamCodec.of({ b, i -> b.writeInt(i) }, { b.readInt() }))
 }
 ```
 

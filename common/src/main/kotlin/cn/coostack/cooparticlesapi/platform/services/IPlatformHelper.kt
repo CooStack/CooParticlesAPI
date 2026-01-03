@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi.platform.services
 
+import cn.coostack.cooparticlesapi.display.CooRenderTypesProvider
 import cn.coostack.cooparticlesapi.enums.DistType
 
 interface IPlatformHelper {
@@ -35,5 +36,7 @@ interface IPlatformHelper {
         return if (isDevelopmentEnvironment()) "development" else "production"
     }
 
+
+    fun getRenderTypesProvider(): CooRenderTypesProvider
 
 }

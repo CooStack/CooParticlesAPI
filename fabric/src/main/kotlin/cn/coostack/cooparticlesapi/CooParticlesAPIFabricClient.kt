@@ -5,14 +5,18 @@ import cn.coostack.cooparticlesapi.entities.renderer.TestRenderEntityRenderer
 import cn.coostack.cooparticlesapi.event.CooEventBus
 import cn.coostack.cooparticlesapi.event.events.client.ClientPostTickEvent
 import cn.coostack.cooparticlesapi.event.events.client.ClientPreTickEvent
+import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldChangeEvent
 import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldPostTickEvent
 import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldPreTickEvent
+import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldRenderEvent
 import cn.coostack.cooparticlesapi.network.packet.*
 import cn.coostack.cooparticlesapi.network.packet.client.listener.*
 import cn.coostack.cooparticlesapi.particles.CooModParticles
 import cn.coostack.cooparticlesapi.particles.impl.*
 import cn.coostack.cooparticlesapi.platform.network.FabricClientContext
 import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
+import com.mojang.blaze3d.vertex.DefaultVertexFormat
+import com.mojang.blaze3d.vertex.PoseStack
 import net.fabricmc.api.ClientModInitializer
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
@@ -21,6 +25,15 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
 import net.fabricmc.fabric.api.client.particle.v1.ParticleFactoryRegistry
 import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry
+import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents
+import net.fabricmc.fabric.api.resource.ResourceManagerHelper
+import net.minecraft.client.renderer.RenderType
+import net.minecraft.client.renderer.ShaderInstance
+import net.minecraft.resources.ResourceLocation
+import net.minecraft.server.packs.PackType
+import net.minecraft.server.packs.resources.ResourceManager
+import net.minecraft.server.packs.resources.SimplePreparableReloadListener
+import net.minecraft.util.profiling.ProfilerFiller
 
 
 object CooParticlesAPIFabricClient : ClientModInitializer {
@@ -41,7 +54,6 @@ object CooParticlesAPIFabricClient : ClientModInitializer {
             val event = ClientWorldPreTickEvent(it)
             CooEventBus.call(event)
         }
-
         ClientTickEvents.END_WORLD_TICK.register {
             val event = ClientWorldPostTickEvent(it)
             CooEventBus.call(event)
@@ -52,13 +64,32 @@ object CooParticlesAPIFabricClient : ClientModInitializer {
             CooEventBus.call(event)
         }
 
+        /**
+         * 兼容 sodium
+         */
+        WorldRenderEvents.AFTER_ENTITIES.register {
+            CooEventBus.call(
+                ClientWorldRenderEvent(
+                    it.world(), ClientWorldRenderEvent.RenderStage.AFTER_ENTITY,
+                    it.positionMatrix(),
+                    it.projectionMatrix(),
+                    it.matrixStack() ?: return@register,
+                    it.consumers() ?: return@register,
+                    it.worldRenderer(),
+                    it.camera(),
+                    it.tickCounter()
+                )
+            )
+        }
+
         ClientTickEvents.END_CLIENT_TICK.register {
             val event = ClientPostTickEvent(it)
             CooEventBus.call(event)
         }
 
-        ClientWorldEvents.AFTER_CLIENT_WORLD_CHANGE.register { _, _ ->
+        ClientWorldEvents.AFTER_CLIENT_WORLD_CHANGE.register { _, world ->
             CooParticlesAPIClient.afterClientWorldChange()
+            CooEventBus.call(ClientWorldChangeEvent(world))
         }
 
         ClientLifecycleEvents.CLIENT_STARTED.register { client ->
@@ -72,6 +103,8 @@ object CooParticlesAPIFabricClient : ClientModInitializer {
 
     private fun registerEntityRenderer() {
         EntityRendererRegistry.register(CooModEntityTypes.TEST_RENDER.get(), ::TestRenderEntityRenderer)
+
+
     }
 
     private fun registerParticleFabric() {
@@ -119,6 +152,9 @@ object CooParticlesAPIFabricClient : ClientModInitializer {
         }
         ClientPlayNetworking.registerGlobalReceiver(PacketCameraShakeS2C.payloadID) { payload, context ->
             ClientCameraShakeHandler.receive(payload, FabricClientContext(context))
+        }
+        ClientPlayNetworking.registerGlobalReceiver(PacketDisplayEntityS2C.payloadID) { payload, context ->
+            ClientDisplayEntityPacketHandler.receive(payload, FabricClientContext(context))
         }
     }
 }

@@ -107,7 +107,6 @@ dependencies {
     jarJar(implementation 'io.github.classgraph:classgraph:4.8.184')
     additionalRuntimeClasspath fileTree(dir: "../depend", includes: ["*.jar"])
     additionalRuntimeClasspath 'io.github.classgraph:classgraph:4.8.184'
-
 }
 sourceSets.main.resources {
     srcDir 'src/generated/resources'

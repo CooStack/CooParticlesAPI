@@ -7,6 +7,8 @@ import cn.coostack.cooparticlesapi.utils.GraphMathHelper
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.PhysicsUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
+import com.mojang.blaze3d.platform.GlStateManager
+import com.mojang.blaze3d.systems.RenderSystem
 import com.mojang.blaze3d.vertex.VertexConsumer
 import net.minecraft.client.Camera
 import net.minecraft.client.multiplayer.ClientLevel
@@ -33,10 +35,8 @@ abstract class ControlableParticle(
     velocity: Vec3,
     val controlUUID: UUID,
     /** 是否始终转向玩家(默认实现) */
-    val faceToCamera: Boolean = true
+    var faceToCamera: Boolean = true
 ) : TextureSheetParticle(world, pos.x, pos.y, pos.z, velocity.x, velocity.y, velocity.z) {
-
-
     companion object {
         @JvmStatic
         val LINEAR_INTERPOLATOR: ParticleLerpInterpolator = ParticleLerpInterpolator { p1, p2, delta ->
@@ -406,7 +406,7 @@ abstract class ControlableParticle(
         }
         // 构建顶点几何
         if (faceToCamera) {
-            this.renderRotatedQuad(vertexConsumer, q, lerpPos.x, lerpPos.y, lerpPos.z, tickDelta);
+            this.renderRotatedQuad(vertexConsumer, q, lerpPos.x, lerpPos.y, lerpPos.z, tickDelta)
             return
         }
         val light = this.getLightColor(tickDelta)
@@ -424,7 +424,6 @@ abstract class ControlableParticle(
     ) {
         val s = getQuadSize(tickDelta)
         u1
-
         addVertex(
             vertexConsumer, q, x, y, z, 1f, -1f, u1, v1, s, light
         )
@@ -491,7 +490,8 @@ abstract class ControlableParticle(
         light: Int
     ) {
         val pos = Vector3f(vx, vy, 0f).rotate(q).mul(size).add(dx, dy, dz)
-        consumer.addVertex(pos.x, pos.y, pos.z)
+        consumer
+            .addVertex(pos.x, pos.y, pos.z)
             .setUv(tu, tv)
             .setColor(rCol, gCol, bCol, alpha)
             .setLight(light)

@@ -11,6 +11,7 @@ import cn.coostack.cooparticlesapi.event.events.server.ServerPreTickEvent
 import cn.coostack.cooparticlesapi.items.CooItemFabric
 import cn.coostack.cooparticlesapi.items.group.CooItemGroup
 import cn.coostack.cooparticlesapi.network.packet.PacketCameraShakeS2C
+import cn.coostack.cooparticlesapi.network.packet.PacketDisplayEntityS2C
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleEmittersS2C
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleGroupS2C
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleS2C
@@ -18,6 +19,7 @@ import cn.coostack.cooparticlesapi.network.packet.PacketParticleStyleS2C
 import cn.coostack.cooparticlesapi.network.packet.PacketRenderEntityS2C
 import cn.coostack.cooparticlesapi.particles.CooModParticles
 import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
+import cn.coostack.cooparticlesapi.test.options.display.MCShaders
 import net.fabricmc.api.ModInitializer
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
@@ -25,9 +27,14 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents
 import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents
 import net.fabricmc.fabric.api.event.player.UseBlockCallback
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry
+import net.fabricmc.fabric.api.resource.ResourceManagerHelper
 import net.minecraft.core.Registry
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.server.MinecraftServer
+import net.minecraft.server.packs.PackType
+import net.minecraft.server.packs.resources.ResourceManager
+import net.minecraft.server.packs.resources.SimplePreparableReloadListener
+import net.minecraft.util.profiling.ProfilerFiller
 import net.minecraft.world.InteractionResult
 
 object CooParticlesAPIFabric : ModInitializer {
@@ -46,6 +53,7 @@ object CooParticlesAPIFabric : ModInitializer {
         PayloadTypeRegistry.playS2C().register(PacketParticleGroupS2C.payloadID, PacketParticleGroupS2C.CODEC)
         PayloadTypeRegistry.playS2C().register(PacketParticleStyleS2C.payloadID, PacketParticleStyleS2C.CODEC)
         PayloadTypeRegistry.playS2C().register(PacketRenderEntityS2C.payloadID, PacketRenderEntityS2C.CODEC)
+        PayloadTypeRegistry.playS2C().register(PacketDisplayEntityS2C.payloadID, PacketDisplayEntityS2C.CODEC)
     }
 
     private fun initRegistries() {
@@ -56,6 +64,9 @@ object CooParticlesAPIFabric : ModInitializer {
         CooModParticles.particleTypes.forEach {
             Registry.register(it.type, it.id, it.get())
         }
+        ResourceManagerHelper.get(PackType.CLIENT_RESOURCES)
+            .registerReloadListener(CooShaderReloadListener)
+
     }
 
     private fun initEvents() {

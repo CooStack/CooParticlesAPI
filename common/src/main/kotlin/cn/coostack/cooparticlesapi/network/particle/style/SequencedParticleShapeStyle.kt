@@ -2,7 +2,6 @@ package cn.coostack.cooparticlesapi.network.particle.style
 
 import cn.coostack.cooparticlesapi.network.buffer.ParticleControlerDataBuffer
 import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
-import cn.coostack.cooparticlesapi.renderer.RenderEntity
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import cn.coostack.cooparticlesapi.utils.builder.PointsBuilder
 import cn.coostack.cooparticlesapi.utils.helper.ScaleHelper
@@ -226,7 +225,7 @@ class SequencedParticleShapeStyle(uuid: UUID) :
 
 
     fun fastRotateToPlayerView(player: Player) {
-        rotateParticlesToPoint(RelativeLocation.of(player.forward))
+        rotateToPoint(RelativeLocation.of(player.forward))
     }
 
     fun fastStyleData(order: Int, color: Vec3, displayer: (UUID) -> ParticleDisplayer): SortedStyleData {

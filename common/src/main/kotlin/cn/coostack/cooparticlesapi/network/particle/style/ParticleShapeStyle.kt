@@ -166,7 +166,7 @@ open class ParticleShapeStyle(uuid: UUID) :
     }
 
     fun fastRotateToPlayerView(player: Player) {
-        rotateParticlesToPoint(RelativeLocation.of(player.forward))
+        rotateToPoint(RelativeLocation.of(player.forward))
     }
 
     fun fastStyleData(color: Vec3, displayer: (UUID) -> ParticleDisplayer): StyleData {

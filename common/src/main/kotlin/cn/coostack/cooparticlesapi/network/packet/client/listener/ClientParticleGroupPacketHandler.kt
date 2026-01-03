@@ -62,11 +62,11 @@ object ClientParticleGroupPacketHandler {
         }
         if (PacketParticleGroupS2C.PacketArgsType.ROTATE_TO.ofArgs in argKeys) {
             val to = args[PacketParticleGroupS2C.PacketArgsType.ROTATE_TO.ofArgs]!!.loadedValue!! as Vec3
-            targetGroup.rotateParticlesToPoint(RelativeLocation.of(to))
+            targetGroup.rotateToPoint(RelativeLocation.of(to))
         }
         if (PacketParticleGroupS2C.PacketArgsType.ROTATE_AXIS.ofArgs in argKeys) {
             val angle = args[PacketParticleGroupS2C.PacketArgsType.ROTATE_AXIS.ofArgs]!!.loadedValue as Double
-            targetGroup.rotateParticlesAsAxis(angle)
+            targetGroup.rotateAsAxis(angle)
         }
         if (PacketParticleGroupS2C.PacketArgsType.AXIS.ofArgs in argKeys) {
             val axis = args[PacketParticleGroupS2C.PacketArgsType.AXIS.ofArgs]!!.loadedValue!! as Vec3

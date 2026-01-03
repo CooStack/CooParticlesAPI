@@ -24,7 +24,6 @@ class FireClassParticleEmitters(var player: UUID, pos: Vec3, world: Level?) : Cl
 
     init {
         airDensity = PhysicConstant.SEA_AIR_DENSITY
-//        mass = 1000.0
         wind = GlobalWindDirection(
             Vec3(0.0, fireForce * 30, 0.0)
         )

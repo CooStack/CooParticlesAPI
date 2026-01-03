@@ -6,13 +6,9 @@ import cn.coostack.cooparticlesapi.network.particle.style.ParticleGroupStyle
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleStyleProvider
 import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
 import cn.coostack.cooparticlesapi.particles.impl.ControlableEndRodEffect
-import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import cn.coostack.cooparticlesapi.utils.builder.PointsBuilder
 import java.util.UUID
-import kotlin.math.PI
-import kotlin.math.cos
-import kotlin.math.sin
 
 class RotateTestStyle(val player: UUID, uuid: UUID = UUID.randomUUID()) :
     ParticleGroupStyle(128.0, uuid) {
@@ -83,7 +79,7 @@ class RotateTestStyle(val player: UUID, uuid: UUID = UUID.randomUUID()) :
             val player = world!!.getPlayerByUUID(player)!!
             val loc = player.position()
             val relativize = loc.subtract(pos)
-            rotateParticlesToPoint(
+            rotateToPoint(
                 RelativeLocation.of(relativize)
             )
         }

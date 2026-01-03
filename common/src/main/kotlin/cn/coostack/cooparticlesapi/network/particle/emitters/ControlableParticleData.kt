@@ -4,6 +4,8 @@ import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.particles.ControlableParticleEffect
 import cn.coostack.cooparticlesapi.particles.ControlableParticleEffectManager
 import cn.coostack.cooparticlesapi.particles.impl.ControlableEndRodEffect
+import cn.coostack.cooparticlesapi.utils.Math3DUtil
+import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import net.minecraft.client.particle.ParticleRenderType
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
@@ -38,6 +40,10 @@ open class ControlableParticleData {
             buf.writeDouble(data.speedLimit)
             buf.writeInt(data.sign)
             buf.writeInt(data.light)
+            buf.writeBoolean(data.faceToCamera)
+            buf.writeFloat(data.yaw)
+            buf.writeFloat(data.pitch)
+            buf.writeFloat(data.roll)
         }
 
         private fun decode(
@@ -62,6 +68,10 @@ open class ControlableParticleData {
             val speedLimit = buf.readDouble()
             val sign = buf.readInt()
             val light = buf.readInt()
+            val faceToCamera = buf.readBoolean()
+            val yaw = buf.readFloat()
+            val pitch = buf.readFloat()
+            val roll = buf.readFloat()
             return ControlableParticleData().apply {
                 this.uuid = uuid
                 this.velocity = velocity
@@ -77,6 +87,10 @@ open class ControlableParticleData {
                 this.sign = sign
                 this.speedLimit = speedLimit
                 this.light = light
+                this.faceToCamera = faceToCamera
+                this.yaw = yaw
+                this.pitch = pitch
+                this.roll = roll
             }
         }
 
@@ -99,6 +113,7 @@ open class ControlableParticleData {
 
     }
 
+
     /**
      * 粒子生成时会传输的控制UUID
      */
@@ -107,33 +122,81 @@ open class ControlableParticleData {
     /**
      * 粒子的移动向量
      * 在粒子发射器中 会不断调用这次的参数
+     *
+     * 此选项会一直赋值给实际粒子
+     *
      */
     var velocity: Vec3 = Vec3.ZERO
+
+    /**
+     * 生成的粒子是否始终面向摄像头
+     *
+     * 此选项会一直赋值给实际粒子
+     */
+    var faceToCamera = true
+
+    /**
+     * 如果faceToCamera为false
+     * 则此参数代表了粒子水平朝向
+     *
+     * 弧度制
+     *
+     * 此选项会一直赋值给实际粒子
+     */
+    var yaw = 0.0f
+
+    /**
+     * 如果faceToCamera为false
+     * 则此参数代表了粒子垂直朝向
+     *
+     * 弧度制
+     *
+     * 此选项会一直赋值给实际粒子
+     */
+    var pitch = 0.0f
+
+    /**
+     * 此参数代表了粒子滚动朝向
+     *
+     * 弧度制
+     *
+     * 此选项会一直赋值给实际粒子
+     */
+    var roll = 0.0f
+
+    /**
+     * 粒子大小
+     *
+     * 此选项会一直赋值给实际粒子
+     */
     var size = 0.2f
 
     /**
-     * 粒子生成时采用的颜色，后续控制不生效
-     */
-    var color = Vector3f(1f, 1f, 1f)
-
-    /**
      * 粒子生成时采用的不透明度
+     *
+     * 此选项会一直赋值给实际粒子
      */
     var alpha = 1f
 
     /**
      * 粒子生成时设置的age
+     *
+     * 此选项会一直赋值给实际粒子
      */
     var age = 0
 
     /**
      * 粒子最大生命周期
+     *
+     * 此选项会一直赋值给实际粒子
      */
     var maxAge = 120
 
     /**
      * 粒子生成时的亮度
      * (修改粒子亮度时请修改该数据)
+     *
+     * 此选项会一直赋值给实际粒子
      */
     var light = 15
 
@@ -144,6 +207,8 @@ open class ControlableParticleData {
 
     /**
      * 粒子样式 （必须是可控制的粒子）
+     *
+     * 此选项只生效一次
      */
     var effect: ControlableParticleEffect = ControlableEndRodEffect(uuid)
 
@@ -159,6 +224,13 @@ open class ControlableParticleData {
      */
     var speedLimit = 32.0
 
+    /**
+     * 粒子生成时采用的颜色，后续控制不生效
+     *
+     * 此选项只应用一次
+     */
+    var color = Vector3f(1f, 1f, 1f)
+
     // 脑瘫东西设置了客户端专属
     // 粒子渲染方式 只生效一次
     private var textureSheet: String = "PARTICLE_SHEET_TRANSLUCENT"
@@ -172,9 +244,38 @@ open class ControlableParticleData {
         return particleTexturesMapper[sheet]
     }
 
+    /**
+     * 快速旋转 yaw pitch 到目标点
+     *
+     * @param to 目标相对位置
+     */
+    fun setRotationTo(to: Vector3f) {
+        val (x, y, z) = Math3DUtil.calculateEulerAnglesToPoint(to)
+        this.yaw = y
+        this.pitch = x
+    }
+
+    /**
+     * 快速旋转 yaw pitch 到目标点
+     *
+     * @param to 目标相对位置
+     */
+    fun setRotationTo(to: Vec3) {
+        setRotationTo(to.toVector3f())
+    }
+
+    /**
+     * 快速旋转 yaw pitch 到目标点
+     *
+     * @param to 目标相对位置
+     */
+    fun setRotationTo(to: RelativeLocation) {
+        setRotationTo(to.toVector3f())
+    }
+
     fun getTextureSheet(): ParticleRenderType {
         return textureSheetFromString(textureSheet) ?: let {
-            CooParticlesConstants.logger.error("can not find textureSheet $textureSheet")
+            CooParticlesConstants.logger.error("can not find textureSheet $textureSheet you need use ControlableParticleData.registerRenderType() to register mapper")
             ParticleRenderType.PARTICLE_SHEET_OPAQUE
         }
     }
@@ -200,7 +301,6 @@ open class ControlableParticleData {
             it.color = this.color
             it.alpha = this.alpha
             it.visibleRange = this.visibleRange
-            it.effect = this.effect
             it.age = this.age
             it.maxAge = this.maxAge
             it.effect = this.effect.clone()
@@ -209,6 +309,10 @@ open class ControlableParticleData {
             it.sign = this.sign
             it.speedLimit = this.speedLimit
             it.light = this.light
+            it.yaw = this.yaw
+            it.pitch = this.pitch
+            it.roll = this.roll
+            it.faceToCamera = this.faceToCamera
         }
     }
 }

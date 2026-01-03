@@ -91,7 +91,7 @@ class ExampleStyle(val bindPlayer: UUID, uuid: UUID = UUID.randomUUID()) :
             }
             val player = world!!.getPlayerByUUID(bindPlayer) ?: return@addPreTickAction
             teleportTo(player.position())
-            rotateParticlesAsAxis(angleSpeed)
+            rotateAsAxis(angleSpeed)
         }
     }
 

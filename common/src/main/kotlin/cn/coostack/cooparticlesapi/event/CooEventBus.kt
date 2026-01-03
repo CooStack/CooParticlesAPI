@@ -54,6 +54,10 @@ object CooEventBus {
 
     @JvmStatic
     fun <T : CooEvent> call(event: T): T {
+        if (!init) {
+            return event
+        }
+
         var currentEvent: Class<*> = event::class.java
         singleEvent@ while (CooEvent::class.java.isAssignableFrom(currentEvent)) {
             val handleList = handlerLists[currentEvent] ?: let {
