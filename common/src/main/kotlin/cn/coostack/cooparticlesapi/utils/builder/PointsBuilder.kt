@@ -3,6 +3,7 @@ package cn.coostack.cooparticlesapi.utils.builder
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleGroupStyle
 import cn.coostack.cooparticlesapi.network.particle.style.SequencedParticleStyle
 import cn.coostack.cooparticlesapi.extend.ofFloored
+import cn.coostack.cooparticlesapi.network.particle.composition.CompositionData
 import cn.coostack.cooparticlesapi.particles.control.group.ControlableParticleGroup
 import cn.coostack.cooparticlesapi.particles.control.group.SequencedParticleGroup
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
@@ -11,6 +12,7 @@ import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import net.minecraft.core.BlockPos
 import net.minecraft.world.phys.Vec3
 import java.util.SortedMap
+import java.util.TreeMap
 
 class PointsBuilder {
     companion object {
@@ -289,6 +291,30 @@ class PointsBuilder {
         Math3DUtil.getLineLocations(origin, direction, step, count)
     )
 
+    fun addSpiral(
+        startRadius: Double,
+        endRadius: Double,
+        height: Double,
+        step: Double,
+        rotateSpeed: Double,
+        radiusBias: Double = 1.0,
+        heightBias: Double = 1.0
+    ): PointsBuilder =
+        addWith {
+            generateSpiralCircleXZ(startRadius, endRadius, height, step, rotateSpeed, radiusBias, heightBias)
+        }
+
+    fun addSpiral(
+        startRadius: Double,
+        endRadius: Double,
+        height: Double,
+        count: Int,
+        rotateSpeed: Double,
+        radiusBias: Double = 1.0,
+        heightBias: Double = 1.0
+    ): PointsBuilder = addWith {
+        generateSpiralCircleXZ(startRadius, endRadius, height, count, rotateSpeed, radiusBias, heightBias)
+    }
 
     fun rotateAsAxis(radius: Double): PointsBuilder {
         Math3DUtil.rotateAsAxis(points, axis, radius)
@@ -335,6 +361,16 @@ class PointsBuilder {
                 dataBuilder(it) to it
             }.toTypedArray()
         )
+    }
+
+    fun createWithCompositionData(builder: (RelativeLocation) -> CompositionData): Map<CompositionData, RelativeLocation> {
+        return mapOf(*create().map { builder(it) to it }.toTypedArray())
+    }
+
+    fun createWithCompositionDataSorted(builder: (RelativeLocation) -> CompositionData): SortedMap<CompositionData, RelativeLocation> {
+        return TreeMap<CompositionData, RelativeLocation>().apply {
+            putAll(create().associateBy { builder(it) })
+        }
     }
 
     fun createWithSequencedStyleData(

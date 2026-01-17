@@ -1,13 +1,17 @@
 package cn.coostack.cooparticlesapi.annotations.codec
 
+import cn.coostack.cooparticlesapi.annotations.CodecField
 import cn.coostack.cooparticlesapi.barrages.HitBox
 import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableParticleData
+import cn.coostack.cooparticlesapi.network.particle.emitters.SimpleRandomParticleData
+import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
+import java.lang.reflect.Modifier
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -50,6 +54,16 @@ object CodecHelper {
             HitBox(it.readDouble(), it.readDouble(), it.readDouble(), it.readDouble(), it.readDouble(), it.readDouble())
         }))
         register(ItemStack::class.java, ItemStack.STREAM_CODEC)
+        register(SimpleRandomParticleData::class.java, SimpleRandomParticleData.PACKET_CODEC)
+        register(RelativeLocation::class.java, StreamCodec.of({ buf, r ->
+            buf.apply {
+                writeDouble(r.x)
+                writeDouble(r.y)
+                writeDouble(r.z)
+            }
+        }, { buf ->
+            RelativeLocation(buf.readDouble(), buf.readDouble(), buf.readDouble())
+        }))
     }
 
     /**
@@ -77,5 +91,17 @@ object CodecHelper {
     fun <T> register(type: Class<T>, codec: StreamCodec<out FriendlyByteBuf, T>) {
         supposedTypes[type.name] = codec
     }
+
+    fun updateFields(current: Any, other: Any) {
+        if (current::class.java != other::class.java) return
+        val fields = current::class.java.declaredFields
+        fields.filter {
+            it.isAnnotationPresent(CodecField::class.java) && !Modifier.isFinal(it.modifiers)
+        }.forEach { field ->
+            field.isAccessible = true
+            field.set(current, field.get(other))
+        }
+    }
+
 
 }

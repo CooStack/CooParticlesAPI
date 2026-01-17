@@ -33,6 +33,6 @@ class StyleBezierValueScaleHelper(
     }
 
     override fun scale(scale: Double) {
-        group.scale(scale.coerceIn(minScale, maxScale))
+        group.scale(scale)
     }
 }

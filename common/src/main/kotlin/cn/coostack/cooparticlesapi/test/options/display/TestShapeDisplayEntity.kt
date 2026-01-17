@@ -1,23 +1,19 @@
 package cn.coostack.cooparticlesapi.test.options.display
 
-import cn.coostack.cooparticlesapi.annotations.display.DisplayEntityRegister
-import cn.coostack.cooparticlesapi.annotations.display.DisplayField
+import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
+import cn.coostack.cooparticlesapi.annotations.CodecField
 import cn.coostack.cooparticlesapi.annotations.display.handle.DisplayEntityHelper
 import cn.coostack.cooparticlesapi.display.DisplayEntity
-import cn.coostack.cooparticlesapi.extend.minus
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
-import cn.coostack.cooparticlesapi.renderer.shader.utils.ShaderUtil
 import com.mojang.blaze3d.systems.RenderSystem
 import com.mojang.blaze3d.vertex.PoseStack
 import com.mojang.blaze3d.vertex.VertexConsumer
 import net.minecraft.client.Camera
 import net.minecraft.client.renderer.LightTexture
 import net.minecraft.client.renderer.MultiBufferSource
-import net.minecraft.client.renderer.RenderType
 import net.minecraft.client.renderer.texture.OverlayTexture
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
-import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
 import org.joml.Matrix4f
@@ -36,9 +32,9 @@ import kotlin.math.sin
  * @param pos
  * @param world
  */
-@DisplayEntityRegister
+@CooAutoRegister
 class TestShapeDisplayEntity(pos: Vec3, world: Level?) : DisplayEntity(pos, world) {
-    @DisplayField
+    @CodecField
     var direction = Vec3(0.0, 1.0, 0.0)
     override fun render(
         view: Matrix4f,

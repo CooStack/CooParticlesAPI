@@ -23,7 +23,7 @@ class NestedBuffersControlerBuffer : ParticleControlerDataBuffer<Map<String, Par
     }
 
     override var loadedValue: Map<String, ParticleControlerDataBuffer<*>>? = null
-    override fun encode(): ByteArray? {
+    override fun encode(): ByteArray {
         return encode(loadedValue!!)
     }
 

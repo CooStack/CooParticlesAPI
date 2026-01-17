@@ -10,6 +10,10 @@ class GamingTestGroup(val testPlayer: Player, val id: String) : TestGroup {
     val options = ArrayList<Supplier<TestOption>>()
     var currentOption: TestOption? = null
     var testingIndex = 0
+    override fun getUser(): Player {
+        return testPlayer
+    }
+
     override fun appendOption(sup: Supplier<TestOption>): GamingTestGroup {
         options.add(sup)
         return this
@@ -24,8 +28,20 @@ class GamingTestGroup(val testPlayer: Player, val id: String) : TestGroup {
         currentOption?.start()
     }
 
+    override fun skipCurrent(): TestOption? {
+        val option = currentOption ?: return null
+        onOptionSuccess(option)
+        option.stop()
+        currentOption = options.getOrNull(testingIndex++)?.get()
+        currentOption?.start()
+        if (isDone()) {
+            onGroupFinished()
+        }
+        return option
+    }
+
     override fun isDone(): Boolean {
-        return testingIndex >= options.size && !(currentOption?.isValid() ?: true)
+        return testingIndex > options.size
     }
 
     override fun doTick() {

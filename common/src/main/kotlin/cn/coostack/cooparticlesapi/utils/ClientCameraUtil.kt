@@ -18,6 +18,10 @@ object ClientCameraUtil {
     var currentYOffset = 0.0
     var currentZOffset = 0.0
 
+    var tick = 0
+    var ampStep = 0.0
+    var amp = 0.0
+
     fun setOffsetPosition(offset: Vec3) {
         currentXOffset = offset.x
         currentYOffset = offset.y
@@ -46,22 +50,21 @@ object ClientCameraUtil {
     fun startShakeCamera(
         tick: Int, amplitude: Double
     ) {
-        var currentAmplitude = amplitude
-        val decreaseStep = amplitude / tick
-        val random = Random(System.currentTimeMillis())
-        CooParticlesAPIClient.scheduler.runTaskTimerMaxTick(tick) {
-            shakeXOffset = currentAmplitude * random.nextDouble(-0.5, 0.5)
-            shakeYOffset = currentAmplitude * random.nextDouble(-0.5, 0.5)
-            shakeZOffset = currentAmplitude * random.nextDouble(-0.5, 0.5)
-            shakeYawOffset = (currentAmplitude * random.nextDouble(-2.0, 2.0)).toFloat()
-            shakePitchOffset = (currentAmplitude * random.nextDouble(-2.0, 2.0)).toFloat()
-            currentAmplitude -= decreaseStep
-        }.setFinishCallback {
-            shakeYawOffset = 0f
-            shakePitchOffset = 0f
-            shakeXOffset = 0.0
-            shakeYOffset = 0.0
-            shakeZOffset = 0.0
+        amp = amplitude
+        ampStep = amp / tick
+        this.tick = tick
+    }
+
+    fun tick() {
+        if (tick > 0) {
+            shakeXOffset = amp * Random.nextDouble(-0.5, 0.5)
+            shakeYOffset = amp * Random.nextDouble(-0.5, 0.5)
+            shakeZOffset = amp * Random.nextDouble(-0.5, 0.5)
+            shakeYawOffset = (amp * Random.nextDouble(-2.0, 2.0)).toFloat()
+            shakePitchOffset = (amp * Random.nextDouble(-2.0, 2.0)).toFloat()
+            amp -= ampStep
+            tick--
         }
     }
+
 }

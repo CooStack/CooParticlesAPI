@@ -64,15 +64,12 @@ operator fun Vector3f.minus(other: Vector3f): Vector3f {
     return this.add(other.mul(-1f, Vector3f()), Vector3f())
 }
 
-operator fun Vector3f.times(other: Float): Vector3f {
-    return this.mul(other, Vector3f())
-}
 
 operator fun Float.times(other: Vector3f): Vector3f {
     return other * this
 }
 
-operator fun Vector3f.times(other: Double): Vector3f {
+operator fun Vector3f.times(other: Number): Vector3f {
     return this.mul(other.toFloat(), Vector3f())
 }
 
@@ -96,16 +93,12 @@ operator fun Vec3.unaryPlus(): Vec3 {
     return this
 }
 
-operator fun Vec3.times(other: Float): Vec3 {
-    return this.scale(other.toDouble())
-}
-
 operator fun Float.times(other: Vec3): Vec3 {
     return other * this
 }
 
-operator fun Vec3.times(other: Double): Vec3 {
-    return this.scale(other)
+operator fun Vec3.times(other: Number): Vec3 {
+    return this.scale(other.toDouble())
 }
 
 operator fun Double.times(other: Vec3): Vec3 {

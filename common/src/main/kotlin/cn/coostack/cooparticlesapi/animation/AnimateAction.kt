@@ -7,7 +7,7 @@ abstract class AnimateAction {
      * 在加入一个node时， 在这个node需要多少个tick才会开始播放
      * 相当于时间间隔
      */
-    var timeStart = 0
+    var timeInterval = 0
 
     var tickCount = 0
 
@@ -20,7 +20,6 @@ abstract class AnimateAction {
 
     abstract fun tick()
 
-
     fun doTick() {
         tick()
         tickCount++
@@ -31,13 +30,11 @@ abstract class AnimateAction {
      *
      * 所有动画元素必须在这里可以得到全部重置
      * 否则二次播放就会出问题
-     *
      */
     abstract fun onStart()
 
     /**
      * 执行完毕进行数据释放 (比如删除一些多余的发射器什么的)
-     *
      */
     abstract fun onDone()
 
@@ -51,6 +48,10 @@ abstract class AnimateAction {
             done = true
         }
         return done
+    }
+
+    fun cancel() {
+        done = true
     }
 
 }

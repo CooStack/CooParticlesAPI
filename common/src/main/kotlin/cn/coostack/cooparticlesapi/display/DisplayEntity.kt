@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi.display
 
+import cn.coostack.cooparticlesapi.annotations.codec.CodecHelper
 import cn.coostack.cooparticlesapi.annotations.display.handle.DisplayEntityHelper
 import cn.coostack.cooparticlesapi.network.particle.ServerControler
 import cn.coostack.cooparticlesapi.particles.Controlable
@@ -143,7 +144,6 @@ abstract class DisplayEntity(
         while (delta < -180f) delta += 360f
         while (delta >= 180f) delta -= 360f
         return prevYaw + lerp * delta
-//        return GraphMathHelper.lerp(lerp, prevYaw, yaw)
     }
 
     /**
@@ -250,7 +250,7 @@ abstract class DisplayEntity(
         this.pitch = other.pitch
         this.roll = other.roll
         this.scale = other.scale
-        DisplayEntityHelper.updateEmitter(this, other)
+        CodecHelper.updateFields(this, other)
     }
 
     override fun spawn(world: Level, pos: Vec3) {

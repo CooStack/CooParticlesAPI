@@ -1,9 +1,9 @@
 package cn.coostack.cooparticlesapi.display
 
 import cn.coostack.cooparticlesapi.CooParticlesAPI
-import cn.coostack.cooparticlesapi.annotations.display.DisplayEntityRegister
+import cn.coostack.cooparticlesapi.CooParticlesConstants
+import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
 import cn.coostack.cooparticlesapi.extend.plus
-import cn.coostack.cooparticlesapi.extend.unaryMinus
 import cn.coostack.cooparticlesapi.network.packet.PacketDisplayEntityS2C
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
@@ -25,7 +25,6 @@ object DisplayEntityManager {
     val clientView = ConcurrentHashMap<UUID, DisplayEntity>()
 
     val serverView = ConcurrentHashMap<UUID, DisplayEntity>()
-
 
     val registeredTypes = ConcurrentHashMap<String, StreamCodec<FriendlyByteBuf, DisplayEntity>>()
 
@@ -51,10 +50,15 @@ object DisplayEntityManager {
     }
 
     fun registerScanner() {
-        CooAPIScanner.getWithAnnotation(DisplayEntityRegister::class.java)
+        CooParticlesConstants.logger.info("正在自动注册 DisplayEntity")
+
+        CooAPIScanner.getWithAnnotation(CooAutoRegister::class.java)
             .iterator()
             .forEach {
                 val clazz = it.toClass()
+                if (!DisplayEntity::class.java.isAssignableFrom(clazz)) {
+                    return@forEach
+                }
                 // 获取instance
                 val instance =
                     clazz.declaredConstructors.find {

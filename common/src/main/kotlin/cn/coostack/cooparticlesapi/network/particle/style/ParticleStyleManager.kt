@@ -14,6 +14,11 @@ import java.util.HashSet
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
+/**
+ * TODO 重构Style使得让自动更新默认打开(如果更新时发现不存在那就重新生成)
+ *
+ * @constructor Create empty Particle style manager
+ */
 object ParticleStyleManager {
 
     /**
@@ -37,6 +42,7 @@ object ParticleStyleManager {
     /**
      * 在ClientModInitializer 注册ParticleStyle 用于服务器同步
      */
+    @JvmStatic
     fun register(
         type: Class<out ParticleGroupStyle>,
         provider: ParticleStyleProvider
@@ -48,6 +54,7 @@ object ParticleStyleManager {
         return registerBuilders[type]
     }
 
+    @JvmStatic
     fun spawnStyle(world: Level, pos: Vec3, style: ParticleGroupStyle) {
         if (world.isClientSide) {
             // 生成粒子

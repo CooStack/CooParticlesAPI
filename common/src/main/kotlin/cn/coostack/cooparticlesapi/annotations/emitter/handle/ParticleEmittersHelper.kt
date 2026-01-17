@@ -1,7 +1,7 @@
 package cn.coostack.cooparticlesapi.annotations.emitter.handle
 
+import cn.coostack.cooparticlesapi.annotations.CodecField
 import cn.coostack.cooparticlesapi.annotations.codec.CodecHelper
-import cn.coostack.cooparticlesapi.annotations.emitter.EmitterField
 import cn.coostack.cooparticlesapi.barrages.HitBox
 import cn.coostack.cooparticlesapi.network.particle.emitters.ClassParticleEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableParticleData
@@ -41,14 +41,7 @@ object ParticleEmittersHelper {
      */
     fun updateEmitter(current: ClassParticleEmitters, other: ClassParticleEmitters) {
         if (current.getEmittersID() != other.getEmittersID()) return
-        if (current::class.java != other::class.java) return
-        val fields = current::class.java.declaredFields
-        fields.filter {
-            it.isAnnotationPresent(EmitterField::class.java) && !Modifier.isFinal(it.modifiers)
-        }.forEach { field ->
-            field.isAccessible = true
-            field.set(current, field.get(other))
-        }
+        CodecHelper.updateFields(current, other)
     }
 
     /**
@@ -68,7 +61,7 @@ object ParticleEmittersHelper {
                 ClassParticleEmitters.encodeBase(emitter, buf)
                 val fields =
                     type.declaredFields.filter {
-                        it.isAnnotationPresent(EmitterField::class.java) && !Modifier.isFinal(
+                        it.isAnnotationPresent(CodecField::class.java) && !Modifier.isFinal(
                             it.modifiers
                         )
                     }
@@ -88,7 +81,7 @@ object ParticleEmittersHelper {
                     ClassParticleEmitters.decodeBase(this, buf)
                     val fields =
                         type.declaredFields.filter {
-                            it.isAnnotationPresent(EmitterField::class.java) && !Modifier.isFinal(
+                            it.isAnnotationPresent(CodecField::class.java) && !Modifier.isFinal(
                                 it.modifiers
                             )
                         }

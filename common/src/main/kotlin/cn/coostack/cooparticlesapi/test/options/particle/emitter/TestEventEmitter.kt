@@ -1,7 +1,7 @@
 package cn.coostack.cooparticlesapi.test.options.particle.emitter
 
-import cn.coostack.cooparticlesapi.annotations.emitter.EmitterAutoRegister
-import cn.coostack.cooparticlesapi.annotations.emitter.EmitterField
+import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
+import cn.coostack.cooparticlesapi.annotations.CodecField
 import cn.coostack.cooparticlesapi.annotations.emitter.handle.ParticleEmittersHelper
 import cn.coostack.cooparticlesapi.network.particle.emitters.ClassParticleEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableParticleData
@@ -13,12 +13,12 @@ import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
 
-@EmitterAutoRegister
+@CooAutoRegister
 class TestEventEmitter(pos: Vec3, world: Level?) : ClassParticleEmitters(pos, world) {
-    @EmitterField
+    @CodecField
     var templateData = ControlableParticleData()
 
-    @EmitterField
+    @CodecField
     var shootDirection: Vec3 = Vec3.ZERO
 
     companion object {

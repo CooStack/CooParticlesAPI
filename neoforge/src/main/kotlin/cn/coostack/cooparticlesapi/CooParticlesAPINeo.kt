@@ -1,14 +1,9 @@
 package cn.coostack.cooparticlesapi
 
-import cn.coostack.cooparticlesapi.annotations.events.EventListener
 import cn.coostack.cooparticlesapi.entities.CooModEntityTypes
 import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
-import cn.coostack.cooparticlesapi.event.CooEventBus
-import cn.coostack.cooparticlesapi.event.api.CooEvent
 import cn.coostack.cooparticlesapi.items.CooItemNeoForge
 import cn.coostack.cooparticlesapi.items.group.CooItemGroup
-import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersManager
-import cn.coostack.cooparticlesapi.network.particle.emitters.event.ParticleEventHandlerManager
 import cn.coostack.cooparticlesapi.particles.CooModParticles
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import cn.coostack.cooparticlesapi.reflect.SimpleClassInfo
@@ -17,9 +12,7 @@ import net.neoforged.fml.ModList
 import net.neoforged.fml.common.Mod
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent
 import net.neoforged.neoforge.registries.RegisterEvent
-import org.objectweb.asm.Type
 import thedarkcolour.kotlinforforge.neoforge.forge.MOD_BUS
-import java.lang.annotation.ElementType
 
 @Mod(CooParticlesConstants.MOD_ID)
 object CooParticlesAPINeo {

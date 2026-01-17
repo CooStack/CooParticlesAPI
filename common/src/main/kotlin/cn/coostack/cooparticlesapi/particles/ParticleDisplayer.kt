@@ -2,6 +2,7 @@ package cn.coostack.cooparticlesapi.particles
 
 import cn.coostack.cooparticlesapi.display.DisplayEntity
 import cn.coostack.cooparticlesapi.display.DisplayEntityManager
+import cn.coostack.cooparticlesapi.network.particle.composition.ParticleComposition
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleGroupStyle
 import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
 import cn.coostack.cooparticlesapi.particles.control.group.ControlableParticleGroup
@@ -33,6 +34,10 @@ interface ParticleDisplayer {
             return DisplayEntityDisplayer(entity)
         }
 
+        @JvmStatic
+        fun withComposition(composition: ParticleComposition): ParticleDisplayer {
+            return ParticleCompositionDisplayer(composition)
+        }
     }
 
     fun display(loc: Vec3, world: ClientLevel): Controlable<*>?
@@ -43,6 +48,16 @@ interface ParticleDisplayer {
         ): Controlable<*> {
             style.display(loc, world)
             return style
+        }
+    }
+
+    class ParticleCompositionDisplayer(val composition: ParticleComposition) : ParticleDisplayer {
+        override fun display(
+            loc: Vec3,
+            world: ClientLevel
+        ): Controlable<*> {
+            composition.display()
+            return composition
         }
     }
 

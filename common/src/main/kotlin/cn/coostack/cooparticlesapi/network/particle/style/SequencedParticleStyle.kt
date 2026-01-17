@@ -381,7 +381,7 @@ abstract class SequencedParticleStyle(visibleRange: Double = 32.0, uuid: UUID = 
         val locations = getCurrentFramesSequenced()
         beforeDisplay(locations)
         toggleScale(locations)
-        sequencedParticles.addAll(locations.map { it.key to it.value })
+        sequencedParticles.addAll(locations.toList())
         Math3DUtil.rotateAsAxis(locations.values.toList(), axis, rotate)
     }
 
@@ -452,6 +452,7 @@ abstract class SequencedParticleStyle(visibleRange: Double = 32.0, uuid: UUID = 
             if (len in -1e-3..1e-3) return@forEach
             value.multiply(len * scale / value.length())
         }
+        toggleRelative()
     }
 
     private fun createWithIndex(index: Int) {

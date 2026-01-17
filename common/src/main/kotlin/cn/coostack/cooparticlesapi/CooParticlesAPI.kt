@@ -7,6 +7,7 @@ import cn.coostack.cooparticlesapi.event.CooEventBus
 import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
 import cn.coostack.cooparticlesapi.network.animation.PathMotionManager
 import cn.coostack.cooparticlesapi.network.particle.ServerParticleGroupManager
+import cn.coostack.cooparticlesapi.network.particle.composition.manager.ParticleCompositionManager
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersManager
 import cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind.WindDirections
 import cn.coostack.cooparticlesapi.network.particle.emitters.event.ParticleEventHandlerManager
@@ -51,10 +52,10 @@ object CooParticlesAPI {
     fun loadScannerPackages() {
         CooEventBus.scanListeners()
         CooEventBus.initListeners()
-
         ParticleEventHandlerManager.registerScanner()
         ParticleEmittersManager.registerScanner()
         DisplayEntityManager.registerScanner()
+        ParticleCompositionManager.registerScanner()
     }
 
     fun onServerStart(server: MinecraftServer) {
@@ -78,9 +79,11 @@ object CooParticlesAPI {
         ParticleEmittersManager.doTickServer()
         BarrageManager.doTick()
         PathMotionManager.tick()
+        AnimateManager.tickServer()
         ServerRenderEntityManager.tick()
         scheduler.doTick()
         DisplayEntityManager.tickServer()
+        ParticleCompositionManager.tickServer()
         TestManager.doTickServer()
     }
 }

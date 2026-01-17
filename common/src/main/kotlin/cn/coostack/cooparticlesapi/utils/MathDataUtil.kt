@@ -3,6 +3,7 @@ package cn.coostack.cooparticlesapi.utils
 /**
  * 服务于
  * @see cn.coostack.cooparticlesapi.particles.control.group.SequencedParticleGroup
+ * @see cn.coostack.cooparticlesapi.network.particle.style.SequencedParticleStyle
  *
  * 为了在SequenceServerParticleGroup中能够自由的修改 SequencedParticleGroup 某个粒子是否显示
  * 同时优化内存防止创建拥有超高容量的数组

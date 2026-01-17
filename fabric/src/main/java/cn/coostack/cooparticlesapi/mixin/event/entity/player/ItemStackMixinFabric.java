@@ -21,6 +21,10 @@ public class ItemStackMixinFabric {
     public void onBreak(int damage, ServerLevel level, ServerPlayer player, Consumer<Item> onBreak, CallbackInfo ci) {
         ItemStack stack = (ItemStack) (Object) this;
         var before = stack.copy();
+        // 防止空指针异常
+        if (before == null || player == null) {
+            return;
+        }
         var event = new PlayerItemDestroyEvent(player, before);
         CooEventBus.call(event);
     }

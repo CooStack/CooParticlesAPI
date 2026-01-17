@@ -19,6 +19,7 @@ import cn.coostack.cooparticlesapi.utils.PhysicsUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import cn.coostack.cooparticlesapi.utils.interpolator.Interpolator
 import cn.coostack.cooparticlesapi.utils.interpolator.emitters.LineEmitterInterpolator
+import net.minecraft.client.Minecraft
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
@@ -219,7 +220,7 @@ abstract class ClassParticleEmitters(
                 val count = res.size
                 res.forEachIndexed { index, it ->
                     val pos = it.toVector()
-                    val lerpProgress = (index + 1f) / count
+                    val lerpProgress = index / (count - 1f)
                     doSubtick(pos, lerpProgress) // 用于设置其他插值
                     spawnParticle(pos, lerpProgress)
                 }
@@ -300,6 +301,11 @@ abstract class ClassParticleEmitters(
         particleLerpProgress: Float,
         posLerpProgress: Float
     ) {
+
+        val player = Minecraft.getInstance().player ?: return
+        if (player.position().distanceTo(pos) > data.visibleRange) {
+            return
+        }
         val effect = data.effect
         effect.controlUUID = data.uuid
         val displayer = ParticleDisplayer.withSingle(effect)
@@ -309,15 +315,16 @@ abstract class ClassParticleEmitters(
             this.color = data.color
             this.currentAge = data.age
             this.lifetime = data.maxAge
+            this.light = data.light
             this.textureSheet = data.getTextureSheet()
             this.particleAlpha = data.alpha
             this.faceToCamera = data.faceToCamera
-            this.currentAngleX = data.pitch
-            this.currentAngleY = data.yaw
-            this.currentAngleZ = data.roll
-            this.previewAngleX = data.pitch
-            this.previewAngleY = data.yaw
-            this.previewAngleZ = data.roll
+            this.currentPitch = data.pitch
+            this.currentYaw = data.yaw
+            this.currentRoll = data.roll
+            this.previewPitch = data.pitch
+            this.previewYaw = data.yaw
+            this.previewRoll = data.roll
         }
 
         // 事件层
@@ -380,6 +387,7 @@ abstract class ClassParticleEmitters(
             }
             if (minecraftTick) return@addPreTickAction
             if (bounding.hasNaN()) return@addPreTickAction
+
             data.velocity = data.velocity.lengthCoerceAtMost(data.speedLimit)
             val prepareMove = this.loc.add(data.velocity)
             val clipRes = if (data.velocity.lengthSqr() > 0.001) {

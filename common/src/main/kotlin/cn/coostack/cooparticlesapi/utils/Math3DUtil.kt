@@ -776,7 +776,7 @@ object Math3DUtil {
     /** 获取在start-end线段内的count个点集合 */
     fun getLineLocations(start: Vec3, end: Vec3, count: Int): List<RelativeLocation> {
         val origin = RelativeLocation.of(start)
-        val res = mutableListOf(origin, RelativeLocation.of(end))
+        val res = mutableListOf(origin)
         val step = start.distanceTo(end) / count
         val direction = end.subtract(start).normalize().scale(step)
         val relativeDirection = RelativeLocation.of(direction)
@@ -786,6 +786,7 @@ object Math3DUtil {
             next = pos.clone()
             res.add(next)
         }
+        res.add(end.asRelative())
         return res
     }
 
@@ -1010,6 +1011,71 @@ object Math3DUtil {
 
         return Triple(pitch, yaw, roll)
     }
+
+    /**
+     * 生成螺旋上升的一个图案
+     *
+     * @param startRadius 起始半径
+     * @param endRadius 到达height时结束半径
+     * @param height 螺旋高度
+     * @param step 上升时从0-height的点数
+     * @param rotateSpeed 螺旋速度 弧度制
+     * @param radiusBias 半径变化曲线系数 (设置为1则是平均分布在start-end)
+     * @param heightBias 高度变化曲线系数 (设置为1则是平均分布在0-height)
+     * @return 图案集合
+     */
+    fun generateSpiralCircleXZ(
+        startRadius: Double,
+        endRadius: Double,
+        height: Double,
+        step: Double,
+        rotateSpeed: Double,
+        radiusBias: Double = 1.0,
+        heightBias: Double = 1.0
+    ): List<RelativeLocation> {
+        val count = (height / step).roundToInt()
+        return generateSpiralCircleXZ(startRadius, endRadius, height, count, rotateSpeed, radiusBias, heightBias)
+    }
+
+    /**
+     * 生成螺旋上升的一个图案
+     *
+     * @param startRadius 起始半径
+     * @param endRadius 到达height时结束半径
+     * @param height 螺旋高度
+     * @param count 点的个数
+     * @param rotateSpeed 螺旋速度 弧度制
+     * @param radiusBias 半径变化曲线系数 (设置为1则是平均分布在start-end)
+     * @param heightBias 高度变化曲线系数 (设置为1则是平均分布在0-height)
+     * @return 图案集合
+     */
+    fun generateSpiralCircleXZ(
+        startRadius: Double,
+        endRadius: Double,
+        height: Double,
+        count: Int,
+        rotateSpeed: Double,
+        radiusBias: Double = 1.0,
+        heightBias: Double = 1.0
+    ): List<RelativeLocation> {
+        val res = mutableListOf<RelativeLocation>()
+        var currentRadian = 0.0
+        repeat(count) {
+            val process = it.toDouble() / (count - 1).coerceAtLeast(1)
+            val biasedRadius = process.pow(radiusBias)
+            val biasedHeight = process.pow(heightBias)
+            val currentRadius = GraphMathHelper.lerp(biasedRadius, startRadius, endRadius)
+            val currentHeight = GraphMathHelper.lerp(biasedHeight, 0.0, height)
+            res.add(
+                RelativeLocation(
+                    cos(currentRadian) * currentRadius, currentHeight, sin(currentRadian) * currentRadius
+                )
+            )
+            currentRadian += rotateSpeed
+        }
+        return res
+    }
+
 
     /**
      * 生成爆炸曲线点

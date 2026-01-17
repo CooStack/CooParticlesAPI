@@ -12,6 +12,7 @@ import cn.coostack.cooparticlesapi.items.CooItemFabric
 import cn.coostack.cooparticlesapi.items.group.CooItemGroup
 import cn.coostack.cooparticlesapi.network.packet.PacketCameraShakeS2C
 import cn.coostack.cooparticlesapi.network.packet.PacketDisplayEntityS2C
+import cn.coostack.cooparticlesapi.network.packet.PacketParticleCompositionS2C
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleEmittersS2C
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleGroupS2C
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleS2C
@@ -54,6 +55,8 @@ object CooParticlesAPIFabric : ModInitializer {
         PayloadTypeRegistry.playS2C().register(PacketParticleStyleS2C.payloadID, PacketParticleStyleS2C.CODEC)
         PayloadTypeRegistry.playS2C().register(PacketRenderEntityS2C.payloadID, PacketRenderEntityS2C.CODEC)
         PayloadTypeRegistry.playS2C().register(PacketDisplayEntityS2C.payloadID, PacketDisplayEntityS2C.CODEC)
+        PayloadTypeRegistry.playS2C()
+            .register(PacketParticleCompositionS2C.payloadID, PacketParticleCompositionS2C.CODEC)
     }
 
     private fun initRegistries() {

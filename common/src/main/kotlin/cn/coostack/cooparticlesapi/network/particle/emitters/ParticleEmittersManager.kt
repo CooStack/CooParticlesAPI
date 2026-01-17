@@ -1,7 +1,8 @@
 package cn.coostack.cooparticlesapi.network.particle.emitters
 
 import cn.coostack.cooparticlesapi.CooParticlesAPI
-import cn.coostack.cooparticlesapi.annotations.emitter.EmitterAutoRegister
+import cn.coostack.cooparticlesapi.CooParticlesConstants
+import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
 import cn.coostack.cooparticlesapi.event.CooEventBus
 import cn.coostack.cooparticlesapi.event.events.particle.emitter.EmitterRemoveEvent
 import cn.coostack.cooparticlesapi.event.events.particle.emitter.EmitterSpawnEvent
@@ -19,7 +20,6 @@ import cn.coostack.cooparticlesapi.network.particle.emitters.impl.SimpleParticle
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import cn.coostack.cooparticlesapi.reflect.SimpleClassInfo
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestEmitter
-import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestEventEmitter
 import io.netty.buffer.Unpooled
 import net.minecraft.client.Minecraft
 import net.minecraft.network.FriendlyByteBuf
@@ -27,9 +27,7 @@ import net.minecraft.network.codec.StreamCodec
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
-import java.lang.reflect.Modifier
 import java.util.HashSet
-import java.util.TreeMap
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -73,6 +71,7 @@ object ParticleEmittersManager {
     }
 
 
+    @JvmStatic
     fun addEmitters(emitters: ParticleEmitters) {
         if (emitters.world == null) return
         if (!emitters.world!!.isClientSide) return
@@ -81,6 +80,7 @@ object ParticleEmittersManager {
         CooEventBus.call(EmitterSpawnEvent(emitters, true))
     }
 
+    @JvmStatic
     fun spawnEmitters(emitters: ParticleEmitters) {
         if (emitters.world == null) return
         if (emitters.world!!.isClientSide) return
@@ -257,16 +257,23 @@ object ParticleEmittersManager {
         if (handled) {
             return
         }
+        val start = System.currentTimeMillis()
         handled = true
+        CooParticlesConstants.logger.info("正在自动注册 Emitters")
         CooAPIScanner.getWithAnnotation(
-            EmitterAutoRegister::class.java
+            CooAutoRegister::class.java
         ).forEach {
             findListenerHandlers(it)
         }
+        val end = System.currentTimeMillis()
+        CooParticlesConstants.logger.info("Emitters 注册完成 耗时 ${end - start} ms")
     }
 
     private fun findListenerHandlers(target: SimpleClassInfo) {
         val clazz = target.toClass()
+        if (!ParticleEmitters::class.java.isAssignableFrom(clazz)) {
+            return
+        }
         // 获取instance
         val instance =
             clazz.declaredConstructors.find {

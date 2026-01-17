@@ -103,10 +103,10 @@ CooEventBus.call(event)
 ```kotlin
 @EmitterAutoRegister // 自动注册粒子发射器 需要提供空构造函数或者 (pos: Vec3, level: Level) 这样的构造方法
 class CustomEmitters(pos: Vec3, level: Level) : ClassParticleEmitters(pos, level) {
-    @EmitterField
+    @CodecField
     var templateData = ControlableParticleData()
 
-    @EmitterField // 此注解用于标记这个属性要作为Codec参数传输给客户端
+    @CodecField // 此注解用于标记这个属性要作为Codec参数传输给客户端
     var shootDirection: Vec3 = Vec3.ZERO
 
     companion object {
@@ -1114,7 +1114,7 @@ abstract class ClassParticleEmitters(
         }
         val world = world as ClientWorld
         // 生成粒子样式
-        genParticles(lerpProgress: Float).forEach {
+        genParticles(lerpProgress).forEach {
             spawnParticle(world, pos.add(it.value.toVector()), it.key)
         }
     }

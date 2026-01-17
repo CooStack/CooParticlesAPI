@@ -1,6 +1,7 @@
-package cn.coostack.cooparticlesapi.particles.impl
+package cn.coostack.cooparticlesapi.particles.impl.particles
 
 import cn.coostack.cooparticlesapi.particles.ControlableParticle
+import cn.coostack.cooparticlesapi.particles.impl.ControlableFlashEffect
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.client.particle.Particle
 import net.minecraft.client.particle.ParticleProvider
@@ -8,13 +9,13 @@ import net.minecraft.client.particle.SpriteSet
 import net.minecraft.world.phys.Vec3
 import java.util.UUID
 
-class ControlableCloudParticle(
+class ControlableFlashParticle(
     world: ClientLevel,
     pos: Vec3,
     velocity: Vec3,
     controlUUID: UUID,
     faceToCamera: Boolean,
-    val provider: SpriteSet,
+    val provider: SpriteSet
 ) :
     ControlableParticle(world, pos, velocity, controlUUID, faceToCamera) {
 
@@ -32,9 +33,9 @@ class ControlableCloudParticle(
         }
     }
 
-    class Factory(val provider: SpriteSet) : ParticleProvider<ControlableCloudEffect> {
+    class Factory(val provider: SpriteSet) : ParticleProvider<ControlableFlashEffect> {
         override fun createParticle(
-            parameters: ControlableCloudEffect,
+            parameters: ControlableFlashEffect,
             world: ClientLevel,
             x: Double,
             y: Double,
@@ -43,13 +44,13 @@ class ControlableCloudParticle(
             velocityY: Double,
             velocityZ: Double
         ): Particle {
-            return ControlableCloudParticle(
+            return ControlableFlashParticle(
                 world,
                 Vec3(x, y, z),
                 Vec3(velocityX, velocityY, velocityZ),
                 parameters.controlUUID,
                 parameters.faceToPlayer,
-                provider,
+                provider
             )
         }
     }

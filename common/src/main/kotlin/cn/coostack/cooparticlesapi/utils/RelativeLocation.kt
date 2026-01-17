@@ -1,17 +1,13 @@
 package cn.coostack.cooparticlesapi.utils
 
 
-import cn.coostack.cooparticlesapi.extend.times
 import io.netty.buffer.Unpooled
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3d
 import org.joml.Vector3f
-import java.util.Vector
-import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.pow
 import kotlin.math.sqrt
-import kotlin.ranges.contains
 
 
 /** 描述粒子之间相对位置的类 相对位置 又名向量 草 */
@@ -143,23 +139,20 @@ data class RelativeLocation(var x: Double, var y: Double, var z: Double) {
     }
 
 
-
     operator fun plus(other: RelativeLocation): RelativeLocation {
         return RelativeLocation(x + other.x, y + other.y, z + other.z)
     }
 
-    fun multiply(m: Double): RelativeLocation {
-        x *= m
-        y *= m
-        z *= m
+    fun multiply(m: Number): RelativeLocation {
+        val s = m.toDouble()
+        x *= s
+        y *= s
+        z *= s
         return this
     }
 
-    fun multiply(m: Int): RelativeLocation {
-        return multiply(m.toDouble())
-    }
-
-    fun multiplyClone(m: Double): RelativeLocation {
+    fun multiplyClone(s: Number): RelativeLocation {
+        val m = s.toDouble()
         return RelativeLocation(x * m, y * m, z * m)
     }
 

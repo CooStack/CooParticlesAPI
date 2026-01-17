@@ -79,9 +79,10 @@ repositories {
 publishing {
     publications {
         mavenJava(MavenPublication) {
-            groupId = rootProject.group
+            groupId = rootProject.group.toString()
             artifactId = "${rootProject.artifact}-neoforge"
-            version = "${rootProject.version}"
+            version = rootProject.version.toString()
+
             artifact(tasks.named("jar"))
             artifact(tasks.named("sourceWithCommon")) {
                 classifier = "sources"
@@ -92,7 +93,15 @@ publishing {
     repositories {
         maven {
             name = "repo"
-            url = uri("https://nexus.jsdu.cn/repository/maven-releases/")
+
+            def isSnapshot = rootProject.version.toString().endsWith("SNAPSHOT")
+
+            url = uri(
+                    isSnapshot
+                            ? "https://nexus.jsdu.cn/repository/maven-snapshots/"
+                            : "https://nexus.jsdu.cn/repository/maven-releases/"
+            )
+
             credentials {
                 username = properties.getProperty("repo.user") ?: ""
                 password = properties.getProperty("repo.password") ?: ""
@@ -100,6 +109,7 @@ publishing {
         }
     }
 }
+
 dependencies {
     compileOnly fileTree(dir: "../compile_only_depend", includes: ["*.jar"])
     implementation "thedarkcolour:kotlinforforge-neoforge:5.10.0"

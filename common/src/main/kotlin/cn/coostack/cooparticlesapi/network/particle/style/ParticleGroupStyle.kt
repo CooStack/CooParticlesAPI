@@ -1,10 +1,12 @@
 package cn.coostack.cooparticlesapi.network.particle.style
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
+import cn.coostack.cooparticlesapi.display.DisplayEntity
 import cn.coostack.cooparticlesapi.network.buffer.ParticleControlerDataBuffer
 import cn.coostack.cooparticlesapi.network.buffer.ParticleControlerDataBuffers
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleStyleS2C
 import cn.coostack.cooparticlesapi.network.particle.ServerControler
+import cn.coostack.cooparticlesapi.network.particle.composition.ParticleComposition
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersManager
 import cn.coostack.cooparticlesapi.particles.Controlable
 import cn.coostack.cooparticlesapi.particles.ControlableParticle
@@ -40,6 +42,8 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
             field = value.coerceAtLeast(0.001)
         }
 
+    var positionDirty = false
+
 
     /**
      * 上一次更新的游戏时间
@@ -62,8 +66,6 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
     val particles = ConcurrentHashMap<UUID, Controlable<*>>()
     val particleLocations = ConcurrentHashMap<Controlable<*>, RelativeLocation>()
 
-    // 在Particle 被标记为死亡时 重新生成该粒子作为数据依据
-    val particleDataBuffers = ConcurrentHashMap<UUID, StyleData>()
 
     /** 当粒子组合初始化时, 存储1倍缩放粒子组与原点的距离 */
     val particleDefaultLength = ConcurrentHashMap<UUID, Double>()
@@ -108,7 +110,6 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
         )
         axis = to
         toggleRelative()
-
         if (!client) {
             // 同步到其他客户端
             change(
@@ -268,6 +269,7 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
                 )
             )
         }
+        positionDirty = false
     }
 
 
@@ -307,6 +309,14 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
                 }
 
                 is ParticleGroupStyle -> {
+                    value.tick()
+                }
+
+                is ParticleComposition -> {
+                    value.tick()
+                }
+
+                is DisplayEntity -> {
                     value.tick()
                 }
             }
@@ -401,7 +411,6 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
         locations.forEach {
             val data = it.key
             val uuid = it.key.uuid
-            particleDataBuffers[uuid] = data
             val rl = it.value
             val displayer = it.key.displayerBuilder(uuid)
             if (displayer is ParticleDisplayer.SingleParticleDisplayer) {
@@ -426,7 +435,6 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
         particles.clear()
         particleLocations.clear()
         particleDefaultLength.clear()
-        particleDataBuffers.clear()
         this.valid = valid
     }
 

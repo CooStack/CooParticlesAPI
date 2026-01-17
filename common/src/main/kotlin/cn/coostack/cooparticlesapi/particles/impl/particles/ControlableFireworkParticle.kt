@@ -1,6 +1,7 @@
-package cn.coostack.cooparticlesapi.particles.impl
+package cn.coostack.cooparticlesapi.particles.impl.particles
 
 import cn.coostack.cooparticlesapi.particles.ControlableParticle
+import cn.coostack.cooparticlesapi.particles.impl.ControlableFireworkEffect
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.client.particle.Particle
 import net.minecraft.client.particle.ParticleProvider
@@ -8,7 +9,7 @@ import net.minecraft.client.particle.SpriteSet
 import net.minecraft.world.phys.Vec3
 import java.util.UUID
 
-class ControlableFlashParticle(
+class ControlableFireworkParticle(
     world: ClientLevel,
     pos: Vec3,
     velocity: Vec3,
@@ -32,9 +33,9 @@ class ControlableFlashParticle(
         }
     }
 
-    class Factory(val provider: SpriteSet) : ParticleProvider<ControlableFlashEffect> {
+    class Factory(val provider: SpriteSet) : ParticleProvider<ControlableFireworkEffect> {
         override fun createParticle(
-            parameters: ControlableFlashEffect,
+            parameters: ControlableFireworkEffect,
             world: ClientLevel,
             x: Double,
             y: Double,
@@ -43,7 +44,7 @@ class ControlableFlashParticle(
             velocityY: Double,
             velocityZ: Double
         ): Particle {
-            return ControlableFlashParticle(
+            return ControlableFireworkParticle(
                 world,
                 Vec3(x, y, z),
                 Vec3(velocityX, velocityY, velocityZ),

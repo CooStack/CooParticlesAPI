@@ -1,9 +1,10 @@
 package cn.coostack.cooparticlesapi.network.particle.emitters.event
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
-import cn.coostack.cooparticlesapi.annotations.emitter.EmitterEventAutoRegister
+import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
 import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
 import cn.coostack.cooparticlesapi.reflect.SimpleClassInfo
+import cn.coostack.cooparticlesapi.utils.ReflectUtil
 import java.lang.reflect.Modifier
 
 object ParticleEventHandlerManager {
@@ -24,22 +25,34 @@ object ParticleEventHandlerManager {
         if (handled) {
             return
         }
+        val before = registerHandlers.size
+        CooParticlesConstants.logger.info("正在自动注册 ParticleEventHandler")
+        var count = 0
+        val start = System.currentTimeMillis()
         CooAPIScanner.getWithAnnotation(
-            EmitterEventAutoRegister::class.java
+            CooAutoRegister::class.java
         ).forEach {
-            findListenerHandlers(it)
+            count++
+            ReflectUtil.infoTimeWith("寻找注册器") { findListenerHandlers(it) }
         }
+        val end = System.currentTimeMillis()
+        CooParticlesConstants.logger.info("EmittersEvents 注册完成 耗时 ${end - start} ms 扫描了 $count 个类 实际注册 :${registerHandlers.size - before}")
     }
 
     private fun findListenerHandlers(target: SimpleClassInfo) {
-        val clazz = target.toClass()
+        val clazz = ReflectUtil.infoTimeCallable("获取class") {
+            CooParticlesConstants.logger.info("加载类 :${target.type}")
+            target.toClass()
+        }
+        if (!ParticleEvent::class.java.isAssignableFrom(clazz)) {
+            return
+        }
         // 获取instance
         val instance =
             clazz.declaredFields.find { it.name == "INSTANCE" && Modifier.isStatic(it.modifiers) }?.get(null)
                 ?: clazz.getDeclaredConstructor()
                     .apply { isAccessible = true }
                     .newInstance()
-
         register(instance as ParticleEventHandler)
         CooParticlesConstants.logger.info("自动注册: ${clazz.name} 成功！")
     }

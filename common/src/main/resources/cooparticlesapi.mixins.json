@@ -4,7 +4,6 @@
   "plugin": "cn.coostack.cooparticlesapi.mixin.plugin.CooParticleMixinLoaderPlugin",
   "compatibilityLevel": "JAVA_18",
   "mixins": [
-    "events.entity.EnderManMixin",
     "events.entity.EntityMixin",
     "events.entity.player.PlayerListMixin",
     "events.entity.player.ServerPlayerGameModeMixin"

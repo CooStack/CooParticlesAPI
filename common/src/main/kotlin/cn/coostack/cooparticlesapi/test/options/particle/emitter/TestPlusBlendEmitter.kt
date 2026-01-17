@@ -1,7 +1,7 @@
 package cn.coostack.cooparticlesapi.test.options.particle.emitter
 
-import cn.coostack.cooparticlesapi.annotations.emitter.EmitterAutoRegister
-import cn.coostack.cooparticlesapi.annotations.emitter.EmitterField
+import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
+import cn.coostack.cooparticlesapi.annotations.CodecField
 import cn.coostack.cooparticlesapi.annotations.emitter.handle.ParticleEmittersHelper
 import cn.coostack.cooparticlesapi.extend.PIF
 import cn.coostack.cooparticlesapi.extend.plus
@@ -9,31 +9,27 @@ import cn.coostack.cooparticlesapi.extend.times
 import cn.coostack.cooparticlesapi.network.particle.emitters.ClassParticleEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableParticleData
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmitters
-import cn.coostack.cooparticlesapi.particles.CooParticleTextureSheet
 import cn.coostack.cooparticlesapi.particles.control.ParticleControler
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import cn.coostack.cooparticlesapi.utils.builder.PointsBuilder
-import net.minecraft.client.particle.ParticleRenderType
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
-import kotlin.math.PI
-import kotlin.math.roundToInt
 import kotlin.random.Random
 
-@EmitterAutoRegister
+@CooAutoRegister
 class TestPlusBlendEmitter(pos: Vec3, world: Level?) : ClassParticleEmitters(pos, world) {
-    @EmitterField
+    @CodecField
     var template = ControlableParticleData()
         .apply {
-            setTextureSheet(CooParticleTextureSheet.ADDITION_BLEND)
+            setTextureSheet("ADDITION_BLEND")
         }
 
-    @EmitterField
+    @CodecField
     var shootMovement = Vec3.ZERO
 
-    @EmitterField
+    @CodecField
     var shootStep = 0.01
 
     val random = Random(System.currentTimeMillis())
@@ -78,9 +74,9 @@ class TestPlusBlendEmitter(pos: Vec3, world: Level?) : ClassParticleEmitters(pos
     ) {
         controler.addPreTickAction {
             updatePhysics(this.loc, data, this)
-            currentAngleY += PIF / 32
-            currentAngleZ += PIF / 64
-            currentAngleX += PIF / 48
+            currentYaw += PIF / 32
+            currentRoll += PIF / 64
+            currentPitch += PIF / 48
         }
     }
 

@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi.test.options.particle.emitter
 
-import cn.coostack.cooparticlesapi.annotations.emitter.EmitterField
+import cn.coostack.cooparticlesapi.annotations.CodecField
 import cn.coostack.cooparticlesapi.annotations.emitter.handle.ParticleEmittersHelper
 import cn.coostack.cooparticlesapi.extend.multiply
 import cn.coostack.cooparticlesapi.extend.plus
@@ -26,21 +26,21 @@ import kotlin.random.Random
 
 class TestEmitter(pos: Vec3, world: Level?) : ClassParticleEmitters(pos, world) {
 
-    @EmitterField
+    @CodecField
     var templateData = ControlableParticleData()
 
-    @EmitterField
+    @CodecField
     var emitterMoveDirection = Vec3.ZERO
     val particleVelocity = DirectParticleInterpolator()
         .setRefiner(5.0)
 
-    @EmitterField
+    @CodecField
     var particleMoveDirection: Vec3 = Vec3.ZERO
 
-    @EmitterField
+    @CodecField
     var particleRotateX: Double = 0.0
 
-    @EmitterField
+    @CodecField
     var lastParticleRotateX: Double = 0.0
 
     companion object {

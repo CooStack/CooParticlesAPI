@@ -1,6 +1,8 @@
 package cn.coostack.cooparticlesapi
 
+import cn.coostack.cooparticlesapi.animation.AnimateManager
 import cn.coostack.cooparticlesapi.display.DisplayEntityManager
+import cn.coostack.cooparticlesapi.network.particle.composition.manager.ParticleCompositionManager
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersManager
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleStyleManager
 import cn.coostack.cooparticlesapi.particles.CooModParticles
@@ -19,6 +21,7 @@ import cn.coostack.cooparticlesapi.test.options.particle.client.SequencedMagicCi
 import cn.coostack.cooparticlesapi.test.options.particle.client.TestGroupClient
 import cn.coostack.cooparticlesapi.test.options.particle.style.*
 import cn.coostack.cooparticlesapi.test.options.renderer.TestRendererEntity
+import cn.coostack.cooparticlesapi.utils.ClientCameraUtil
 import net.irisshaders.iris.api.v0.IrisApi
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.client.renderer.RenderType
@@ -162,7 +165,10 @@ object CooParticlesAPIClient {
                 ParticleEmittersManager.doTickClient()
                 ClientRenderEntityManager.tick()
                 DisplayEntityManager.tickClient()
+                ClientCameraUtil.tick()
+                ParticleCompositionManager.tickClient()
                 TestManager.doTickClient()
+                AnimateManager.tickClient()
             }
         }
     }

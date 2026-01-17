@@ -15,6 +15,15 @@ object TestManager {
         builders[id] = group
     }
 
+
+    fun getTestFromServer(user: Player): TestGroup? {
+        return validGroupsServer.find { it.getUser().uuid == user.uuid }
+    }
+
+    fun getTestFromClient(user: Player): TestGroup? {
+        return validGroupsClient.find { it.getUser().uuid == user.uuid }
+    }
+
     fun startTest(id: String, user: Player): TestGroup? {
         if (!builders.containsKey(id)) {
             return null

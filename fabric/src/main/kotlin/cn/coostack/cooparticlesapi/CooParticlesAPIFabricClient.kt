@@ -12,11 +12,15 @@ import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldRenderEv
 import cn.coostack.cooparticlesapi.network.packet.*
 import cn.coostack.cooparticlesapi.network.packet.client.listener.*
 import cn.coostack.cooparticlesapi.particles.CooModParticles
-import cn.coostack.cooparticlesapi.particles.impl.*
+import cn.coostack.cooparticlesapi.particles.impl.particles.ControlableCloudParticle
+import cn.coostack.cooparticlesapi.particles.impl.particles.ControlableEnchantmentParticle
+import cn.coostack.cooparticlesapi.particles.impl.particles.ControlableEndRodParticle
+import cn.coostack.cooparticlesapi.particles.impl.particles.ControlableFallingDustParticle
+import cn.coostack.cooparticlesapi.particles.impl.particles.ControlableFireworkParticle
+import cn.coostack.cooparticlesapi.particles.impl.particles.ControlableSplashParticle
+import cn.coostack.cooparticlesapi.particles.impl.particles.ControlableFlashParticle
 import cn.coostack.cooparticlesapi.platform.network.FabricClientContext
 import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
-import com.mojang.blaze3d.vertex.DefaultVertexFormat
-import com.mojang.blaze3d.vertex.PoseStack
 import net.fabricmc.api.ClientModInitializer
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
@@ -26,14 +30,6 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
 import net.fabricmc.fabric.api.client.particle.v1.ParticleFactoryRegistry
 import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents
-import net.fabricmc.fabric.api.resource.ResourceManagerHelper
-import net.minecraft.client.renderer.RenderType
-import net.minecraft.client.renderer.ShaderInstance
-import net.minecraft.resources.ResourceLocation
-import net.minecraft.server.packs.PackType
-import net.minecraft.server.packs.resources.ResourceManager
-import net.minecraft.server.packs.resources.SimplePreparableReloadListener
-import net.minecraft.util.profiling.ProfilerFiller
 
 
 object CooParticlesAPIFabricClient : ClientModInitializer {
@@ -103,8 +99,6 @@ object CooParticlesAPIFabricClient : ClientModInitializer {
 
     private fun registerEntityRenderer() {
         EntityRendererRegistry.register(CooModEntityTypes.TEST_RENDER.get(), ::TestRenderEntityRenderer)
-
-
     }
 
     private fun registerParticleFabric() {
@@ -132,6 +126,10 @@ object CooParticlesAPIFabricClient : ClientModInitializer {
             .register(CooModParticles.controlableFallingDust.get(), ParticleFactoryRegistry.PendingParticleFactory {
                 return@PendingParticleFactory ControlableFallingDustParticle.Factory()
             })
+        ParticleFactoryRegistry.getInstance()
+            .register(CooModParticles.controlableSplash.get(), ParticleFactoryRegistry.PendingParticleFactory {
+                return@PendingParticleFactory ControlableSplashParticle.Factory(it)
+            })
     }
 
     private fun registerNetworkFabric() {
@@ -143,6 +141,9 @@ object CooParticlesAPIFabricClient : ClientModInitializer {
         }
         ClientPlayNetworking.registerGlobalReceiver(PacketParticleEmittersS2C.payloadID) { payload, context ->
             ClientParticleEmittersPacketHandler.receive(payload, FabricClientContext(context))
+        }
+        ClientPlayNetworking.registerGlobalReceiver(PacketParticleCompositionS2C.payloadID) { payload, context ->
+            ClientParticleCompositionHandler.receive(payload, FabricClientContext(context))
         }
         ClientPlayNetworking.registerGlobalReceiver(PacketParticleStyleS2C.payloadID) { payload, context ->
             ClientParticleStylePacketHandler.receive(payload, FabricClientContext(context))

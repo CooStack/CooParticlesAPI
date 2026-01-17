@@ -1,7 +1,7 @@
 package cn.coostack.cooparticlesapi.test.options.display
 
-import cn.coostack.cooparticlesapi.annotations.display.DisplayEntityRegister
-import cn.coostack.cooparticlesapi.annotations.display.DisplayField
+import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
+import cn.coostack.cooparticlesapi.annotations.CodecField
 import cn.coostack.cooparticlesapi.annotations.display.handle.DisplayEntityHelper
 import cn.coostack.cooparticlesapi.display.DisplayEntity
 import cn.coostack.cooparticlesapi.extend.minus
@@ -33,9 +33,9 @@ import org.joml.Matrix4f
  * @param pos
  * @param world
  */
-@DisplayEntityRegister
+@CooAutoRegister
 class TestBlockDisplayEntity(pos: Vec3, world: Level?) : DisplayEntity(pos, world) {
-    @DisplayField
+    @CodecField
     var direction = Vec3(0.0, 1.0, 0.0)
 
     override fun render(

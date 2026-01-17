@@ -7,6 +7,7 @@ import net.minecraft.world.entity.Entity
 /**
  * 粒子接触实体事件
  */
+
 class ParticleHitEntityEvent(
     override var particle: ControlableParticle, override var particleData: ControlableParticleData, var hit: Entity,
 ) : ParticleEvent {

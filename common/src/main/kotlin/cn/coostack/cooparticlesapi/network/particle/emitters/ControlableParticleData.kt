@@ -98,19 +98,6 @@ open class ControlableParticleData {
         fun registerRenderType(type: ParticleRenderType) {
             particleTexturesMapper[type.toString()] = type
         }
-
-        init {
-            particleTexturesMapper[ParticleRenderType.PARTICLE_SHEET_TRANSLUCENT.toString()] =
-                ParticleRenderType.PARTICLE_SHEET_TRANSLUCENT
-            particleTexturesMapper[ParticleRenderType.PARTICLE_SHEET_OPAQUE.toString()] =
-                ParticleRenderType.PARTICLE_SHEET_OPAQUE
-            particleTexturesMapper[ParticleRenderType.CUSTOM.toString()] = ParticleRenderType.CUSTOM
-            particleTexturesMapper[ParticleRenderType.NO_RENDER.toString()] = ParticleRenderType.NO_RENDER
-            particleTexturesMapper[ParticleRenderType.PARTICLE_SHEET_LIT.toString()] =
-                ParticleRenderType.PARTICLE_SHEET_LIT
-            particleTexturesMapper[ParticleRenderType.TERRAIN_SHEET.toString()] = ParticleRenderType.TERRAIN_SHEET
-        }
-
     }
 
 
@@ -124,14 +111,12 @@ open class ControlableParticleData {
      * 在粒子发射器中 会不断调用这次的参数
      *
      * 此选项会一直赋值给实际粒子
-     *
      */
     var velocity: Vec3 = Vec3.ZERO
 
     /**
      * 生成的粒子是否始终面向摄像头
      *
-     * 此选项会一直赋值给实际粒子
      */
     var faceToCamera = true
 
@@ -140,8 +125,6 @@ open class ControlableParticleData {
      * 则此参数代表了粒子水平朝向
      *
      * 弧度制
-     *
-     * 此选项会一直赋值给实际粒子
      */
     var yaw = 0.0f
 
@@ -151,7 +134,6 @@ open class ControlableParticleData {
      *
      * 弧度制
      *
-     * 此选项会一直赋值给实际粒子
      */
     var pitch = 0.0f
 
@@ -160,35 +142,30 @@ open class ControlableParticleData {
      *
      * 弧度制
      *
-     * 此选项会一直赋值给实际粒子
      */
     var roll = 0.0f
 
     /**
      * 粒子大小
      *
-     * 此选项会一直赋值给实际粒子
      */
     var size = 0.2f
 
     /**
      * 粒子生成时采用的不透明度
      *
-     * 此选项会一直赋值给实际粒子
      */
     var alpha = 1f
 
     /**
      * 粒子生成时设置的age
      *
-     * 此选项会一直赋值给实际粒子
      */
     var age = 0
 
     /**
      * 粒子最大生命周期
      *
-     * 此选项会一直赋值给实际粒子
      */
     var maxAge = 120
 
@@ -196,7 +173,6 @@ open class ControlableParticleData {
      * 粒子生成时的亮度
      * (修改粒子亮度时请修改该数据)
      *
-     * 此选项会一直赋值给实际粒子
      */
     var light = 15
 

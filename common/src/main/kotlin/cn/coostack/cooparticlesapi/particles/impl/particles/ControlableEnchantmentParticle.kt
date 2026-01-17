@@ -1,15 +1,15 @@
-package cn.coostack.cooparticlesapi.particles.impl
+package cn.coostack.cooparticlesapi.particles.impl.particles
 
 import cn.coostack.cooparticlesapi.particles.ControlableParticle
+import cn.coostack.cooparticlesapi.particles.impl.ControlableEnchantmentEffect
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.client.particle.Particle
 import net.minecraft.client.particle.ParticleProvider
 import net.minecraft.client.particle.SpriteSet
 import net.minecraft.world.phys.Vec3
-import java.util.*
-import kotlin.js.ExperimentalJsStatic
+import java.util.UUID
 
-class ControlableEndRodParticle(
+class ControlableEnchantmentParticle(
     world: ClientLevel,
     pos: Vec3,
     velocity: Vec3,
@@ -19,6 +19,12 @@ class ControlableEndRodParticle(
 ) :
     ControlableParticle(world, pos, velocity, controlUUID, faceToCamera) {
 
+    init {
+        setSprite(provider.get(age, lifetime))
+        controler.addPreTickAction {
+            setSpriteFromAge(provider)
+        }
+    }
 
     init {
         setSprite(provider.get(age, lifetime))
@@ -27,9 +33,9 @@ class ControlableEndRodParticle(
         }
     }
 
-    class Factory(val provider: SpriteSet) : ParticleProvider<ControlableEndRodEffect> {
+    class Factory(val provider: SpriteSet) : ParticleProvider<ControlableEnchantmentEffect> {
         override fun createParticle(
-            parameters: ControlableEndRodEffect,
+            parameters: ControlableEnchantmentEffect,
             world: ClientLevel,
             x: Double,
             y: Double,
@@ -38,7 +44,7 @@ class ControlableEndRodParticle(
             velocityY: Double,
             velocityZ: Double
         ): Particle {
-            return ControlableEndRodParticle(
+            return ControlableEnchantmentParticle(
                 world,
                 Vec3(x, y, z),
                 Vec3(velocityX, velocityY, velocityZ),
@@ -48,4 +54,5 @@ class ControlableEndRodParticle(
             )
         }
     }
+
 }

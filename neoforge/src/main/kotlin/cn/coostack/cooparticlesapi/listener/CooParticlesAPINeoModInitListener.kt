@@ -5,6 +5,7 @@ import cn.coostack.cooparticlesapi.datagen.CooItemModelProvider
 import cn.coostack.cooparticlesapi.datagen.LangProvider
 import cn.coostack.cooparticlesapi.network.packet.PacketCameraShakeS2C
 import cn.coostack.cooparticlesapi.network.packet.PacketDisplayEntityS2C
+import cn.coostack.cooparticlesapi.network.packet.PacketParticleCompositionS2C
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleEmittersS2C
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleGroupS2C
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleS2C
@@ -12,21 +13,15 @@ import cn.coostack.cooparticlesapi.network.packet.PacketParticleStyleS2C
 import cn.coostack.cooparticlesapi.network.packet.PacketRenderEntityS2C
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientCameraShakeHandler
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientDisplayEntityPacketHandler
+import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientParticleCompositionHandler
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientParticleEmittersPacketHandler
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientParticleGroupPacketHandler
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientParticlePacketHandler
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientParticleStylePacketHandler
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientRenderEntityPacketHandler
-import cn.coostack.cooparticlesapi.particles.CooModParticles
-import cn.coostack.cooparticlesapi.particles.impl.ControlableCloudParticle
-import cn.coostack.cooparticlesapi.particles.impl.ControlableEnchantmentParticle
-import cn.coostack.cooparticlesapi.particles.impl.ControlableEndRodParticle
-import cn.coostack.cooparticlesapi.particles.impl.ControlableFireworkParticle
-import cn.coostack.cooparticlesapi.particles.impl.ControlableFlashParticle
 import cn.coostack.cooparticlesapi.platform.network.NeoForgeClientContext
 import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.fml.common.EventBusSubscriber
-import net.neoforged.neoforge.client.event.RegisterParticleProvidersEvent
 import net.neoforged.neoforge.data.event.GatherDataEvent
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent
 
@@ -67,6 +62,12 @@ object CooParticlesAPINeoModInitListener {
             PacketParticleEmittersS2C.CODEC
         ) { payload, context ->
             ClientParticleEmittersPacketHandler.receive(payload, NeoForgeClientContext(context))
+        }
+        registrar.playToClient(
+            PacketParticleCompositionS2C.payloadID,
+            PacketParticleCompositionS2C.CODEC
+        ) { payload, context ->
+            ClientParticleCompositionHandler.receive(payload, NeoForgeClientContext(context))
         }
         registrar.playToClient(
             PacketParticleStyleS2C.payloadID,

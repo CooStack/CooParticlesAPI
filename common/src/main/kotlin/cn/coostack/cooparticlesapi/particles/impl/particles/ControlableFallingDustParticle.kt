@@ -1,6 +1,7 @@
-package cn.coostack.cooparticlesapi.particles.impl
+package cn.coostack.cooparticlesapi.particles.impl.particles
 
 import cn.coostack.cooparticlesapi.particles.ControlableParticle
+import cn.coostack.cooparticlesapi.particles.impl.ControlableFallingDustEffect
 import net.minecraft.client.Minecraft
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.client.particle.Particle

@@ -60,18 +60,6 @@ tasks.named('remapJar') {
     destinationDirectory.set(file("../builds/jar")) // 输出到 build/customLibs
     archiveFileName.set("${rootProject.mod_name}-Fabric-${rootProject.minecraft_version}-${rootProject.version}.jar")
 }
-//tasks.register("remapYarnJar", RemapJarTask) {
-//    dependsOn tasks.jar
-//
-//    inputFile.set(tasks.named("jar").flatMap { it.archiveFile })
-//
-//    destinationDirectory.set(file("../builds/jar"))
-//    archiveFileName.set(
-//            "${rootProject.mod_name}-Fabric-Yarn-${rootProject.minecraft_version}-${rootProject.version}.jar"
-//    )
-//
-//    targetNamespace.set("named") // Yarn
-//}
 fabricApi {
     configureDataGeneration {
         client = true
@@ -99,7 +87,15 @@ publishing {
     repositories {
         maven {
             name = "repo"
-            url = uri("https://nexus.jsdu.cn/repository/maven-releases/")
+
+            def isSnapshot = rootProject.version.toString().endsWith("SNAPSHOT")
+
+            url = uri(
+                    isSnapshot
+                            ? "https://nexus.jsdu.cn/repository/maven-snapshots/"
+                            : "https://nexus.jsdu.cn/repository/maven-releases/"
+            )
+
             credentials {
                 username = properties.getProperty("repo.user") ?: ""
                 password = properties.getProperty("repo.password") ?: ""

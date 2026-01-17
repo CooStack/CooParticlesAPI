@@ -26,6 +26,7 @@ import cn.coostack.cooparticlesapi.test.options.particle.style.RotateTestStyle
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.ServerCameraUtil
 import net.minecraft.client.particle.ParticleRenderType
+import net.minecraft.network.chat.Component
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.InteractionHand
@@ -42,7 +43,14 @@ class APIGroupTestingItem(settings: Properties) : Item(settings) {
             return InteractionResultHolder.success(user.getItemInHand(hand))
         }
 
-        TestManager.startTest(APITestGroupBuilder.ID, user)
+        val test = TestManager.getTestFromServer(user)
+        if (test == null) {
+            user.sendSystemMessage(Component.literal("开始测试"))
+            TestManager.startTest(APITestGroupBuilder.ID, user)
+        } else {
+            val old = test.skipCurrent()
+            user.sendSystemMessage(Component.literal("跳过测试选项: ${old?.optionID()}"))
+        }
 
 //        testEvents(world, user)
 //        testEmitter(world as ServerLevel, user as ServerPlayer)

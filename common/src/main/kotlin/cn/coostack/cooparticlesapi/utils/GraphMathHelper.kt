@@ -2,12 +2,18 @@ package cn.coostack.cooparticlesapi.utils
 
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
+import kotlin.math.cos
+import kotlin.math.ln
 import kotlin.math.pow
+import kotlin.math.sqrt
+import kotlin.random.Random
 
 /**
  * 数学插值工具提供
  */
 object GraphMathHelper {
+    private val rng = java.util.Random()
+
     /**
      * gen <= min 返回 0.0
      * gen >= max 返回 1.0
@@ -194,6 +200,62 @@ object GraphMathHelper {
 
     @JvmStatic
     fun levelLerp(): LinerLevelLerp = LinerLevelLerp()
+
+    /**
+     * 区间范围内进行随机三角分布
+     *
+     * @param left 区间最小值
+     * @param right 区间最大值
+     * @param target 峰值目标
+     * @return
+     */
+    @JvmStatic
+    fun biasedRandomTriangle(
+        left: Double,
+        right: Double,
+        target: Double
+    ): Double {
+        if (left == right) {
+            return left
+        }
+        val u = Random.nextDouble()
+        val c = (target - left) / (right - left)
+
+        return if (u < c) {
+            left + sqrt(u * (right - left) * (target - left))
+        } else {
+            right - sqrt((1 - u) * (right - left) * (right - target))
+        }.coerceIn(left, right)
+    }
+
+    /**
+     * 区间范围内进行随机正态分布
+     *
+     * @param left 区间最小值
+     * @param right 区间最大值
+     * @param target 峰值目标
+     * @return
+     */
+    fun biasedRandomGaussian(
+        left: Double,
+        right: Double,
+        target: Double
+    ): Double {
+        if (left == right) return left
+
+        val min = minOf(left, right)
+        val max = maxOf(left, right)
+        val range = max - min
+        val sigma = range / 6.0
+
+        var v = target + rng.nextGaussian() * sigma
+
+        if (v < min) v = min + (min - v)
+        if (v > max) v = max - (v - max)
+
+        return v.coerceIn(min, max)
+    }
+
 
 }
 

@@ -7,8 +7,6 @@ import cn.coostack.cooparticlesapi.utils.GraphMathHelper
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.PhysicsUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
-import com.mojang.blaze3d.platform.GlStateManager
-import com.mojang.blaze3d.systems.RenderSystem
 import com.mojang.blaze3d.vertex.VertexConsumer
 import net.minecraft.client.Camera
 import net.minecraft.client.multiplayer.ClientLevel
@@ -196,21 +194,21 @@ abstract class ControlableParticle(
             alpha = value.coerceIn(0f, 1f)
         }
 
-    var previewAngleX: Float = 0f
-    var currentAngleX: Float = 0f
+    var previewPitch: Float = 0f
+    var currentPitch: Float = 0f
 
-    var previewAngleY: Float = 0f
-    var currentAngleY: Float = 0f
+    var previewYaw: Float = 0f
+    var currentYaw: Float = 0f
 
     /** @see prevAngle */
-    var previewAngleZ: Float
+    var previewRoll: Float
         get() = oRoll
         set(value) {
             oRoll = value
         }
 
     /** @see angle */
-    var currentAngleZ: Float
+    var currentRoll: Float
         get() = roll
         set(value) {
             super.roll = value
@@ -251,7 +249,7 @@ abstract class ControlableParticle(
         controler.particleInit()
     }
 
-    var lastRotate = Vector3f(previewAngleX, previewAngleY, previewAngleZ)
+    var lastRotate = Vector3f(previewPitch, previewYaw, previewRoll)
     var updateRotate = false
     fun rotateParticleTo(target: RelativeLocation) {
         rotateParticleTo(Vector3f(target.x.toFloat(), target.y.toFloat(), target.z.toFloat()))
@@ -357,13 +355,13 @@ abstract class ControlableParticle(
             this.loc = lastPreview
             update = false
         }
-        previewAngleX = currentAngleX
-        previewAngleY = currentAngleY
-        previewAngleZ = currentAngleZ
+        previewPitch = currentPitch
+        previewYaw = currentYaw
+        previewRoll = currentRoll
         if (updateRotate) {
-            currentAngleX = lastRotate.x
-            currentAngleY = lastRotate.y
-            currentAngleZ = lastRotate.z
+            currentPitch = lastRotate.x
+            currentYaw = lastRotate.y
+            currentRoll = lastRotate.z
             updateRotate = false
         }
     }
@@ -399,9 +397,9 @@ abstract class ControlableParticle(
             }
         } else {
             q.rotateXYZ(
-                Mth.lerp(tickDelta, this.previewAngleX, this.currentAngleX),
-                Mth.lerp(tickDelta, this.previewAngleY, this.currentAngleY),
-                Mth.lerp(tickDelta, this.previewAngleZ, this.currentAngleZ)
+                Mth.lerp(tickDelta, this.previewPitch, this.currentPitch),
+                Mth.lerp(tickDelta, this.previewYaw, this.currentYaw),
+                Mth.lerp(tickDelta, this.previewRoll, this.currentRoll)
             )
         }
         // 构建顶点几何

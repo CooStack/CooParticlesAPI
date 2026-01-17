@@ -1,0 +1,394 @@
+package cn.coostack.cooparticlesapi.network.particle.composition
+
+import cn.coostack.cooparticlesapi.CooParticlesConstants
+import cn.coostack.cooparticlesapi.annotations.codec.CodecHelper
+import cn.coostack.cooparticlesapi.display.DisplayEntity
+import cn.coostack.cooparticlesapi.extend.asRelative
+import cn.coostack.cooparticlesapi.extend.plus
+import cn.coostack.cooparticlesapi.network.particle.ServerControler
+import cn.coostack.cooparticlesapi.network.particle.composition.manager.ParticleCompositionManager
+import cn.coostack.cooparticlesapi.network.particle.style.ParticleGroupStyle
+import cn.coostack.cooparticlesapi.particles.Controlable
+import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
+import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
+import cn.coostack.cooparticlesapi.particles.control.ParticleControler
+import cn.coostack.cooparticlesapi.particles.control.group.ControlableParticleGroup
+import cn.coostack.cooparticlesapi.utils.Math3DUtil
+import cn.coostack.cooparticlesapi.utils.RelativeLocation
+import net.minecraft.client.Minecraft
+import net.minecraft.client.multiplayer.ClientLevel
+import net.minecraft.network.FriendlyByteBuf
+import net.minecraft.network.codec.StreamCodec
+import net.minecraft.world.level.Level
+import net.minecraft.world.phys.Vec3
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.PI
+
+/**
+ * 因为不想写太多的ControlableBuffer， 而改用Codec自动生成数据 （同时避免写一万个Provider内部类）
+ *
+ * 所以重构ParticleStyle
+ *
+ * 首先强制 auto update
+ *
+ * 使用自动注册
+ * @see cn.coostack.cooparticlesapi.annotations.composition.ParticleCompositionRegister
+ */
+abstract class ParticleComposition(var position: Vec3, var world: Level? = null) : ServerControler<ParticleComposition>,
+    Controlable<ParticleComposition> {
+    companion object {
+        @JvmStatic
+        fun encodeBase(data: ParticleComposition, buf: FriendlyByteBuf) {
+            buf.writeUUID(data.controlUUID)
+            buf.writeDouble(data.visibleRange)
+            buf.writeBoolean(data.canceled)
+            buf.writeVec3(data.position)
+            buf.writeVec3(data.axis.toVector())
+            buf.writeDouble(data.scale)
+            buf.writeDouble(data.roll)
+        }
+
+        @JvmStatic
+        fun decodeBase(instance: ParticleComposition, buf: FriendlyByteBuf) {
+            instance.apply {
+                controlUUID = buf.readUUID()
+                visibleRange = buf.readDouble()
+                canceled = buf.readBoolean()
+                position = buf.readVec3()
+                axis = buf.readVec3().asRelative()
+                scale = buf.readDouble()
+                roll = buf.readDouble()
+            }
+        }
+    }
+
+    /**
+     * 粒子可视范围
+     */
+    var visibleRange = 128.0
+
+    var scale = 1.0
+
+    var client = false
+
+    var displayed = false
+        protected set
+
+    var canceled = false
+
+    var controlUUID = UUID.randomUUID()
+        internal set
+
+    var axis = RelativeLocation.yAxis()
+
+    var roll = 0.0
+
+    val particles = ConcurrentHashMap<UUID, Controlable<*>>()
+
+    val particleLocations = ConcurrentHashMap<Controlable<*>, RelativeLocation>()
+
+    /** 当粒子组合初始化时, 存储1倍缩放粒子组与原点的距离 */
+    val particleDefaultLength = ConcurrentHashMap<UUID, Double>()
+
+    internal val invokeQueue = ArrayList<ParticleComposition.() -> Unit>()
+
+    abstract fun getCodec(): StreamCodec<FriendlyByteBuf, ParticleComposition>
+
+    abstract fun getParticles(): Map<CompositionData, RelativeLocation>
+
+    abstract fun onDisplay()
+
+    open fun beforeDisplay(map: Map<CompositionData, RelativeLocation>) {}
+
+    open fun tick() {
+        if (canceled || !displayed) {
+            return
+        }
+        if (client) {
+            Minecraft.getInstance().player?.let {
+                if (it.position().distanceTo(position) > visibleRange) {
+                    canceled = true
+                    return
+                }
+            }
+        }
+
+        invokeQueue.forEach { it() }
+        val iterator = particles.iterator()
+        while (iterator.hasNext()) {
+            val style = iterator.next()
+            when (val value = style.value) {
+                is ControlableParticleGroup -> {
+                    value.tick()
+                }
+
+                is ParticleGroupStyle -> {
+                    value.tick()
+                }
+
+                is ParticleComposition -> {
+                    value.tick()
+                }
+
+                is DisplayEntity -> {
+                    value.tick()
+                }
+            }
+        }
+    }
+
+    open fun scale(new: Double) {
+        if (new < 0.0) {
+            CooParticlesConstants.logger.error("scale can not be less than zero")
+            return
+        }
+        scale = new
+        // 如果没有创建, 那么此处的环境100%是创建此对象时使用的环境
+        // 多为服务端(除非有人使在Client环境创建了这个类)
+        if (displayed) {
+            toggleScaleDisplayed()
+        }
+        // 发包有效
+        if (!canceled) {
+            // remove过后 无法同步
+            return
+        }
+    }
+
+    open fun preRotateTo(map: Map<CompositionData, RelativeLocation>, to: RelativeLocation) {
+        Math3DUtil.rotatePointsToPoint(
+            map.values.toList(), to, axis
+        )
+        this.axis = to
+    }
+
+    open fun preRotateAsAxis(map: Map<CompositionData, RelativeLocation>, axis: RelativeLocation, angle: Double) {
+        Math3DUtil.rotateAsAxis(
+            map.values.toList(), axis, angle
+        )
+        this.axis = axis
+    }
+
+    open fun preRotateAsAxis(map: Map<CompositionData, RelativeLocation>, angle: Double) {
+        Math3DUtil.rotateAsAxis(
+            map.values.toList(), axis, angle
+        )
+    }
+
+    protected fun toggleScaleDisplayed() {
+        if (!displayed) {
+            return
+        }
+        particleLocations.forEach {
+            val uuid = it.key.controlUUID()
+            val len = particleDefaultLength[uuid]!!
+            val value = it.value
+            if (len in -1e-3..1e-3) return@forEach
+            value.multiply(len * scale / value.length())
+        }
+        toggleRelative()
+    }
+
+    open fun update(other: ParticleComposition) {
+        this.visibleRange = other.visibleRange
+        this.position = other.position
+        this.canceled = other.canceled
+        this.roll = other.roll
+        this.controlUUID = other.controlUUID
+        this.axis = other.axis
+        CodecHelper.updateFields(this, other)
+    }
+
+    fun addPreTickAction(action: ParticleComposition.() -> Unit): ParticleComposition {
+        invokeQueue.add(action)
+        return this
+    }
+
+    open fun clear(cancel: Boolean) {
+        particles.forEach {
+            it.value.remove()
+        }
+        particles.clear()
+        particleLocations.clear()
+        particleDefaultLength.clear()
+        this.canceled = cancel
+    }
+
+    open fun display() {
+        if (displayed) {
+            return
+        }
+        displayed = true
+        this.client = world!!.isClientSide
+        // 在服务器需要用来更新粒子个数 所以需要参与一次计算
+        flush()
+        if (!client) {
+            // 服务器只负责数据同步 不负责粒子生成
+            onDisplay()
+            return
+        }
+        onDisplay()
+    }
+
+    fun toggleScale(locations: Map<CompositionData, RelativeLocation>) {
+        if (!canceled) {
+            return
+        }
+        if (particleDefaultLength.isEmpty()) {
+            locations.forEach {
+                val uuid = it.key.uuid
+                particleDefaultLength[uuid] = it.value.length()
+            }
+        }
+        locations.forEach {
+            val uuid = it.key.uuid
+            val len = particleDefaultLength[uuid] ?: return@forEach
+            if (len <= 0.0) {
+                return@forEach
+            }
+            val value = it.value
+            value.multiply(len * scale / value.length())
+        }
+    }
+
+    open fun flush() {
+        if (particles.isNotEmpty()) {
+            clear(false)
+        }
+        displayParticles()
+    }
+
+    open fun toggleRelative() {
+        if (!client) {
+            return
+        }
+        val iterator = particleLocations.iterator()
+        while (iterator.hasNext()) {
+            val entry = iterator.next()
+            val particle = entry.key
+            val rl = entry.value
+            particle.teleportTo(
+                position + rl.toVector()
+            )
+        }
+    }
+
+    override fun teleportTo(to: Vec3) {
+        position = to
+        toggleRelative()
+    }
+
+    override fun teleportTo(x: Double, y: Double, z: Double) {
+        teleportTo(Vec3(x, y, z))
+    }
+
+    override fun rotateToPoint(to: RelativeLocation) {
+        if (!client) {
+            axis = to
+            return
+        }
+        Math3DUtil.rotatePointsToPoint(
+            particleLocations.values.toList(), to, axis
+        )
+        axis = to
+        toggleRelative()
+    }
+
+    override fun rotateToWithAngle(to: RelativeLocation, radian: Double) {
+        this.roll += radian
+        if (this.roll >= 2 * PI) {
+            this.roll -= 2 * PI
+        } else if (this.roll <= 2 * PI) {
+            this.roll += 2 * PI
+        }
+        if (!client) {
+            axis = to
+            return
+        }
+        Math3DUtil.rotateAsAxis(
+            particleLocations.values.toList(), axis, radian
+        )
+        Math3DUtil.rotatePointsToPoint(
+            particleLocations.values.toList(), to, axis
+        )
+        axis = to
+        toggleRelative()
+    }
+
+    override fun rotateAsAxis(radian: Double) {
+        this.roll += radian
+        if (this.roll >= 2 * PI) {
+            this.roll -= 2 * PI
+        } else if (this.roll <= 2 * PI) {
+            this.roll += 2 * PI
+        }
+        if (!client) {
+            return
+        }
+        Math3DUtil.rotateAsAxis(
+            particleLocations.values.toList(), axis, radian
+        )
+        toggleRelative()
+    }
+
+    override fun remove() {
+        clear(true)
+    }
+
+    override fun spawn(world: Level, pos: Vec3) {
+        this.world = world
+        this.position = pos
+        // display
+        ParticleCompositionManager.spawn(this)
+    }
+
+    override fun getValue(): ParticleComposition {
+        return this
+    }
+
+    override fun controlUUID(): UUID {
+        return controlUUID
+    }
+
+    override fun getControlObject(): ParticleComposition {
+        return this
+    }
+
+    protected fun displayEntry(data: CompositionData, pos: RelativeLocation) {
+        val uuid = data.uuid
+        val displayer = data.displayerBuilder(uuid)
+        if (displayer is ParticleDisplayer.SingleParticleDisplayer) {
+            val controler = ControlParticleManager.createControl(uuid)
+            controler.initInvoker = {
+                for (function in data.singleParticleHandlers) {
+                    function(this)
+                }
+            }
+        }
+        val toPos = position + pos.toVector()
+        val controler = displayer.display(toPos, world as ClientLevel) ?: return
+        if (controler is ParticleControler) {
+            data.particleControlerHandlers.forEach { handler ->
+                handler(controler)
+            }
+        }
+
+        particles[uuid] = controler
+        particleLocations[controler] = pos
+    }
+
+
+    protected open fun displayParticles() {
+        if (!client) {
+            return
+        }
+        val locations = getParticles()
+        beforeDisplay(locations)
+        toggleScale(locations)
+        Math3DUtil.rotateAsAxis(locations.values.toList(), axis, roll)
+        locations.forEach {
+            displayEntry(it.key, it.value)
+        }
+    }
+}

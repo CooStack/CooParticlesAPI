@@ -10,7 +10,7 @@ import java.util.UUID
 interface Controlable<T> {
     fun controlUUID(): UUID
     fun rotateToPoint(to: RelativeLocation)
-    fun rotateToWithAngle(to: RelativeLocation, angle: Double)
+    fun rotateToWithAngle(to: RelativeLocation, radian: Double)
 
     /**
      * 将图形绕着他的轴旋转 radian弧度
@@ -20,7 +20,7 @@ interface Controlable<T> {
      * @param radian 弧度
      */
     fun rotateAsAxis(radian: Double)
-    fun teleportTo(pos: Vec3)
+    fun teleportTo(to: Vec3)
     fun teleportTo(x: Double, y: Double, z: Double)
     fun remove()
     fun getControlObject(): T

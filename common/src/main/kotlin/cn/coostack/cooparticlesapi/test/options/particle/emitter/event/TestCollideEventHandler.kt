@@ -1,16 +1,13 @@
 package cn.coostack.cooparticlesapi.test.options.particle.emitter.event
 
-import cn.coostack.cooparticlesapi.annotations.emitter.EmitterEventAutoRegister
-import cn.coostack.cooparticlesapi.extend.asAbs
+import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
 import cn.coostack.cooparticlesapi.extend.asVec3
-import cn.coostack.cooparticlesapi.extend.plus
-import cn.coostack.cooparticlesapi.extend.times
 import cn.coostack.cooparticlesapi.network.particle.emitters.event.ParticleCollideEvent
 import cn.coostack.cooparticlesapi.network.particle.emitters.event.ParticleEvent
 import cn.coostack.cooparticlesapi.network.particle.emitters.event.ParticleEventHandler
 import cn.coostack.cooparticlesapi.utils.PhysicsUtil
 
-@EmitterEventAutoRegister
+@CooAutoRegister
 object TestCollideEventHandler : ParticleEventHandler {
     override fun handle(event: ParticleEvent) {
         if (event !is ParticleCollideEvent) {

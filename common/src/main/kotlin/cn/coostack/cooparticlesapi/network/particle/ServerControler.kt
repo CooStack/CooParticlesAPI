@@ -11,9 +11,9 @@ interface ServerControler<T> {
 
     fun rotateToPoint(to: RelativeLocation)
 
-    fun rotateToWithAngle(to: RelativeLocation, angle: Double)
+    fun rotateToWithAngle(to: RelativeLocation, radian: Double)
 
-    fun rotateAsAxis(angle: Double)
+    fun rotateAsAxis(radian: Double)
 
     fun remove()
 

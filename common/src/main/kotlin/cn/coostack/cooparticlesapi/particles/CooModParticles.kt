@@ -7,6 +7,7 @@ import cn.coostack.cooparticlesapi.particles.impl.ControlableFireworkEffect
 import cn.coostack.cooparticlesapi.particles.impl.ControlableFlashEffect
 import cn.coostack.cooparticlesapi.particles.impl.ControlableEndRodEffect
 import cn.coostack.cooparticlesapi.particles.impl.ControlableFallingDustEffect
+import cn.coostack.cooparticlesapi.particles.impl.ControlableSplashEffect
 import cn.coostack.cooparticlesapi.platform.registry.CommonDeferredRegistry
 import com.mojang.serialization.MapCodec
 import net.minecraft.core.particles.ParticleOptions
@@ -49,6 +50,14 @@ object CooModParticles {
         { ControlableFallingDustEffect.codec },
         { ControlableFallingDustEffect.packetCode }
     )
+
+    val controlableSplash = register(
+        "controlable_splash",
+        false,
+        { ControlableSplashEffect.codec },
+        { ControlableSplashEffect.packetCode }
+    )
+
 
     fun reg() {
     }
