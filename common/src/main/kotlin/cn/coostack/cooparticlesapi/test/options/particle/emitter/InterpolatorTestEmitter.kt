@@ -6,7 +6,6 @@ import cn.coostack.cooparticlesapi.extend.plus
 import cn.coostack.cooparticlesapi.network.particle.emitters.AutoParticleEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableParticleData
 import cn.coostack.cooparticlesapi.particles.control.ParticleControler
-import cn.coostack.cooparticlesapi.utils.GraphMathHelper
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import cn.coostack.cooparticlesapi.utils.builder.PointsBuilder
@@ -16,6 +15,7 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 import cn.coostack.cooparticlesapi.extend.*
+import cn.coostack.cooparticlesapi.utils.interpolator.data.InterpolatorDouble
 
 /**
  * 测试一下粒子插值
@@ -37,8 +37,7 @@ class InterpolatorTestEmitter(pos: Vec3, world: Level?) : AutoParticleEmitters(p
     var rotateSpeed = PI / 4
 
     @CodecField
-    var radian = 0.0
-
+    var radian = InterpolatorDouble(0.0)
 
     @CodecField
     var ticking = 0
@@ -64,8 +63,7 @@ class InterpolatorTestEmitter(pos: Vec3, world: Level?) : AutoParticleEmitters(p
      * @return
      */
     override fun genParticles(lerpProgress: Float): List<Pair<ControlableParticleData, RelativeLocation>> {
-        val last = radian - rotateSpeed
-        val current = GraphMathHelper.lerp(lerpProgress, last, radian)
+        val current = radian.getWithInterpolator(lerpProgress)
 
         val x = cos(current) * 3.0
         val z = sin(current) * 3.0

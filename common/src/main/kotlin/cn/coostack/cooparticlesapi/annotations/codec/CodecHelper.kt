@@ -4,6 +4,10 @@ import cn.coostack.cooparticlesapi.annotations.CodecField
 import cn.coostack.cooparticlesapi.barrages.HitBox
 import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableParticleData
 import cn.coostack.cooparticlesapi.network.particle.emitters.SimpleRandomParticleData
+import cn.coostack.cooparticlesapi.utils.interpolator.data.InterpolatorDouble
+import cn.coostack.cooparticlesapi.utils.interpolator.data.InterpolatorFloat
+import cn.coostack.cooparticlesapi.utils.interpolator.data.InterpolatorVec3d
+import cn.coostack.cooparticlesapi.utils.interpolator.data.InterpolatorVector3f
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
@@ -64,6 +68,10 @@ object CodecHelper {
         }, { buf ->
             RelativeLocation(buf.readDouble(), buf.readDouble(), buf.readDouble())
         }))
+        register(InterpolatorDouble::class.java, InterpolatorDouble.CODEC)
+        register(InterpolatorFloat::class.java, InterpolatorFloat.CODEC)
+        register(InterpolatorVec3d::class.java, InterpolatorVec3d.CODEC)
+        register(InterpolatorVector3f::class.java, InterpolatorVector3f.CODEC)
     }
 
     /**
