@@ -9,6 +9,7 @@ import cn.coostack.cooparticlesapi.utils.interpolator.data.InterpolatorFloat
 import cn.coostack.cooparticlesapi.utils.interpolator.data.InterpolatorVec3d
 import cn.coostack.cooparticlesapi.utils.interpolator.data.InterpolatorVector3f
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
+import cn.coostack.cooparticlesapi.utils.interpolator.data.InterpolatorRelativeLocation
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.item.ItemStack
@@ -72,6 +73,7 @@ object CodecHelper {
         register(InterpolatorFloat::class.java, InterpolatorFloat.CODEC)
         register(InterpolatorVec3d::class.java, InterpolatorVec3d.CODEC)
         register(InterpolatorVector3f::class.java, InterpolatorVector3f.CODEC)
+        register(InterpolatorRelativeLocation::class.java, InterpolatorRelativeLocation.CODEC)
     }
 
     /**

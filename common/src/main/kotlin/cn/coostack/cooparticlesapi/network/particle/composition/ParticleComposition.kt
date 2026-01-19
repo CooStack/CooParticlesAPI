@@ -15,6 +15,7 @@ import cn.coostack.cooparticlesapi.particles.control.ParticleControler
 import cn.coostack.cooparticlesapi.particles.control.group.ControlableParticleGroup
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
+import cn.coostack.cooparticlesapi.utils.helper.impl.composition.CompositionStatusHelper
 import net.minecraft.client.Minecraft
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.network.FriendlyByteBuf
@@ -47,6 +48,9 @@ abstract class ParticleComposition(var position: Vec3, var world: Level? = null)
             buf.writeVec3(data.axis.toVector())
             buf.writeDouble(data.scale)
             buf.writeDouble(data.roll)
+            buf.writeInt(data.status.displayStatus)
+            buf.writeInt(data.status.closedInternal)
+            buf.writeInt(data.status.current)
         }
 
         @JvmStatic
@@ -59,6 +63,9 @@ abstract class ParticleComposition(var position: Vec3, var world: Level? = null)
                 axis = buf.readVec3().asRelative()
                 scale = buf.readDouble()
                 roll = buf.readDouble()
+                status.setStatus(buf.readInt())
+                status.closedInternal = buf.readInt()
+                status.updateCurrent(buf.readInt())
             }
         }
     }
@@ -88,6 +95,8 @@ abstract class ParticleComposition(var position: Vec3, var world: Level? = null)
 
     val particleLocations = ConcurrentHashMap<Controlable<*>, RelativeLocation>()
 
+    val status = CompositionStatusHelper()
+
     /** 当粒子组合初始化时, 存储1倍缩放粒子组与原点的距离 */
     val particleDefaultLength = ConcurrentHashMap<UUID, Double>()
 
@@ -98,6 +107,17 @@ abstract class ParticleComposition(var position: Vec3, var world: Level? = null)
     abstract fun getParticles(): Map<CompositionData, RelativeLocation>
 
     abstract fun onDisplay()
+
+    /**
+     * 快捷设置 链式调用
+     *
+     * @param interval
+     * @return
+     */
+    fun setDisabledInterval(interval: Int): ParticleComposition {
+        this.status.closedInternal = interval
+        return this
+    }
 
     open fun beforeDisplay(map: Map<CompositionData, RelativeLocation>) {}
 
@@ -197,6 +217,9 @@ abstract class ParticleComposition(var position: Vec3, var world: Level? = null)
         this.roll = other.roll
         this.controlUUID = other.controlUUID
         this.axis = other.axis
+        this.status.setStatus(other.status.displayStatus)
+        this.status.closedInternal = other.status.closedInternal
+        this.status.updateCurrent(other.status.current)
         CodecHelper.updateFields(this, other)
     }
 
@@ -223,6 +246,8 @@ abstract class ParticleComposition(var position: Vec3, var world: Level? = null)
         this.client = world!!.isClientSide
         // 在服务器需要用来更新粒子个数 所以需要参与一次计算
         flush()
+        status.loadControler(this)
+        status.initHelper()
         if (!client) {
             // 服务器只负责数据同步 不负责粒子生成
             onDisplay()
@@ -232,7 +257,7 @@ abstract class ParticleComposition(var position: Vec3, var world: Level? = null)
     }
 
     fun toggleScale(locations: Map<CompositionData, RelativeLocation>) {
-        if (!canceled) {
+        if (canceled) {
             return
         }
         if (particleDefaultLength.isEmpty()) {

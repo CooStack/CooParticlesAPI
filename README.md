@@ -98,10 +98,9 @@ CooEventBus.call(event)
 
 ## ParticleEmitter
 
-提供了Emitter 自动Codec选项
-
+提供了Emitters, Composition, DisplayEntity 等 自动Codec选项
 ```kotlin
-@EmitterAutoRegister // 自动注册粒子发射器 需要提供空构造函数或者 (pos: Vec3, level: Level) 这样的构造方法
+@CooAutoRegister // 自动注册粒子发射器 需要提供空构造函数或者 (pos: Vec3, level: Level) 这样的构造方法
 class CustomEmitters(pos: Vec3, level: Level) : ClassParticleEmitters(pos, level) {
     @CodecField
     var templateData = ControlableParticleData()

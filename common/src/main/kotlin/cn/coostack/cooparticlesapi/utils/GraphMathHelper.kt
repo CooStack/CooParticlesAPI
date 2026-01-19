@@ -114,6 +114,28 @@ object GraphMathHelper {
     }
 
     @JvmStatic
+    fun lerp(delta: Float, min: RelativeLocation, max: RelativeLocation): RelativeLocation {
+        val stepX = max.x - min.x
+        val stepY = max.y - min.y
+        val stepZ = max.z - min.z
+        val mixX = lerp(delta, 0.0, stepX)
+        val mixY = lerp(delta, 0.0, stepY)
+        val mixZ = lerp(delta, 0.0, stepZ)
+        return min.add(RelativeLocation(mixX, mixY, mixZ))
+    }
+
+    @JvmStatic
+    fun lerp(delta: Double, min: RelativeLocation, max: RelativeLocation): RelativeLocation {
+        val stepX = max.x - min.x
+        val stepY = max.y - min.y
+        val stepZ = max.z - min.z
+        val mixX = lerp(delta, 0.0, stepX)
+        val mixY = lerp(delta, 0.0, stepY)
+        val mixZ = lerp(delta, 0.0, stepZ)
+        return min.add(RelativeLocation(mixX, mixY, mixZ))
+    }
+
+    @JvmStatic
     fun lerp(delta: Float, min: Vector3f, max: Vector3f): Vector3f {
         return lerp(delta, Vec3(min), Vec3(max)).toVector3f()
     }

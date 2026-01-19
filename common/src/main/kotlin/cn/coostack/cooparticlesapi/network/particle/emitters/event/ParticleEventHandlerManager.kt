@@ -33,17 +33,14 @@ object ParticleEventHandlerManager {
             CooAutoRegister::class.java
         ).forEach {
             count++
-            ReflectUtil.infoTimeWith("寻找注册器") { findListenerHandlers(it) }
+            findListenerHandlers(it)
         }
         val end = System.currentTimeMillis()
         CooParticlesConstants.logger.info("EmittersEvents 注册完成 耗时 ${end - start} ms 扫描了 $count 个类 实际注册 :${registerHandlers.size - before}")
     }
 
     private fun findListenerHandlers(target: SimpleClassInfo) {
-        val clazz = ReflectUtil.infoTimeCallable("获取class") {
-            CooParticlesConstants.logger.info("加载类 :${target.type}")
-            target.toClass()
-        }
+        val clazz = target.toClass()
         if (!ParticleEvent::class.java.isAssignableFrom(clazz)) {
             return
         }
@@ -54,7 +51,6 @@ object ParticleEventHandlerManager {
                     .apply { isAccessible = true }
                     .newInstance()
         register(instance as ParticleEventHandler)
-        CooParticlesConstants.logger.info("自动注册: ${clazz.name} 成功！")
     }
 
 }

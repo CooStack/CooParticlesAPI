@@ -52,6 +52,14 @@ abstract class StatusHelper : ParticleHelper {
         changeStatus(status.id)
     }
 
+    fun getCurrentStatus(): Status {
+        return when (displayStatus) {
+            1 -> Status.ENABLE
+            2 -> Status.DISABLE
+            else -> Status.DISABLE
+        }
+    }
+
     fun toArgsPairs(): List<Pair<String, ParticleControlerDataBuffer<Int>>> {
         return listOf(
             "display_status" to ParticleControlerDataBuffers.int(displayStatus),

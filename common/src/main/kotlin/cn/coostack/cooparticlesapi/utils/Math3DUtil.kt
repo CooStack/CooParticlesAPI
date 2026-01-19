@@ -533,26 +533,26 @@ object Math3DUtil {
 
     fun getBallLocations(r: Double, countPow: Int): MutableList<RelativeLocation> {
         val result = ArrayList<RelativeLocation>()
-        var rx = 0.0
-        var ry = 0.0
-        val step = 2 * PI / countPow
+        val step = PI / countPow
+        var ry = -PI / 2
+
         for (i in 1..countPow) {
+            var rx = 0.0
             for (j in 1..countPow) {
-                // 将PI 分割成 countPow份
                 result.add(
                     RelativeLocation(
-                        r * cos(rx) * cos(ry),
-                        r * sin(rx),
-                        r * sin(ry) * cos(rx)
+                        r * cos(ry) * cos(rx),
+                        r * sin(ry),
+                        r * cos(ry) * sin(rx)
                     )
                 )
-                ry += step
+                rx += 2 * PI / countPow
             }
-            ry = 0.0
-            rx += step
+            ry += step
         }
         return result
     }
+
 
     /**
      * from new bing 将一个相对位置按照axis旋转 n度

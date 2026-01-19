@@ -9,6 +9,7 @@ import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
 import java.util.SortedMap
 import java.util.UUID
+import kotlin.math.PI
 import kotlin.math.max
 import kotlin.math.min
 
@@ -65,7 +66,7 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
     var serverCurrentIndex: Int = 0
         protected set
     protected val sequencedParticlesData = ArrayList<Pair<CompositionData, RelativeLocation>>()
-
+    protected val locations = ArrayList<RelativeLocation>()
     override fun getParticles(): SortedMap<CompositionData, RelativeLocation> {
         return getParticleSequenced()
     }
@@ -90,6 +91,7 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
     override fun clear(cancel: Boolean) {
         super.clear(cancel)
         sequencedParticlesData.clear()
+        locations.clear()
     }
 
     override fun display() {
@@ -107,6 +109,10 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
             return
         }
         onDisplay()
+    }
+
+    open fun beforeDisplaySequenced(map: SortedMap<CompositionData, RelativeLocation>) {
+
     }
 
     /**
@@ -128,13 +134,13 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
             return
         }
 
-        beforeDisplay(locations)
+        beforeDisplaySequenced(locations)
         toggleScale(locations)
         Math3DUtil.rotateAsAxis(locations.values.toList(), axis, roll)
 
         sequencedParticlesData.clear()
         sequencedParticlesData.addAll(locations.toList())
-
+        this.locations.addAll(locations.values)
         // client：准备 index->uuid 数组
         if (indexToUuid.size != count) {
             indexToUuid = arrayOfNulls(count)
@@ -151,10 +157,8 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
         this.displayedParticleCount = other.displayedParticleCount
         this.serverCurrentIndex = other.serverCurrentIndex
 
-        // 替换 index 引用（Memo 的意义）
         this.index.setMemoValue(other.index.get())
 
-        // client 才能应用 diff
         if (!client) return
 
         // 如果 count 变化，保证本地缓存容量；且需要重新 flush 计算 sequencedParticlesData（因为位置可能也变了）
@@ -200,58 +204,209 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
 
     /**
      * 服务端：生成下一个粒子（只改 bitset 和计数，不生成粒子对象）
-     * 客户端会在 update(diff) 中真正生成
+     *
+     * waring 如果你的style不是client only （也就是要在服务器里面调用生成的，在调用此方法前
+     * 一定要在非client作用域执行
+     * ```kotlin
+     * if (!client){
+     *  addSingle()
+     * }
+     * ```
+     * 如果你使用的是单纯的客户端 比如 SequencedParticleShapeComposition 则无需此判断
      */
     fun addSingle() {
-        if (client) return
         if (count <= 0) return
         if (serverCurrentIndex !in 0 until count) return
 
-        if (!getGenerated(serverCurrentIndex)) {
-            setGenerated(serverCurrentIndex, true)
+        val idx = serverCurrentIndex
+        if (!isParticleDisplayed(idx)) {
+            setParticleStatus(idx, true)
             displayedParticleCount++
+
+            // client: 立即生成该 index 对应的粒子
+            if (client) {
+                createWithIndex(idx)
+            }
         }
-        serverCurrentIndex = min(serverCurrentIndex + 1, max(count - 1, 0))
+
+        serverCurrentIndex = min(idx + 1, max(count - 1, 0))
     }
 
+    /**
+     * 服务端：生成多个粒子（只改 bitset 和计数，不生成粒子对象）
+     *
+     * waring 如果你的style不是client only （也就是要在服务器里面调用生成的，在调用此方法前
+     * 一定要在非client作用域执行
+     * ```kotlin
+     * if (!client){
+     *  addMultiple(amount)
+     * }
+     * ```
+     * 如果你使用的是单纯的客户端 比如 SequencedParticleShapeComposition 则无需此判断
+     *
+     * @param amount 生成数量（<=0 会直接 return）
+     */
     fun addMultiple(amount: Int) {
-        if (client) return
         if (amount <= 0) return
         repeat(amount) { addSingle() }
     }
 
+    /**
+     * 服务端：移除上一个粒子（只改 bitset 和计数，不删除粒子对象）
+     *
+     * waring 如果你的style不是client only （也就是要在服务器里面调用生成的，在调用此方法前
+     * 一定要在非client作用域执行
+     * ```kotlin
+     * if (!client){
+     *  removeSingle()
+     * }
+     * ```
+     * 如果你使用的是单纯的客户端 比如 SequencedParticleShapeComposition 则无需此判断
+     *
+     * 说明：
+     * - 使用 serverCurrentIndex 作为删除指针
+     * - 若对应 index 已显示，则置为 false 并减少 displayedParticleCount
+     * - client 场景下会立即 removeWithIndex(idx) 以本地预览/嵌套使用
+     */
     fun removeSingle() {
-        if (client) return
         if (count <= 0) return
         val idx = min(serverCurrentIndex, count - 1)
         if (idx !in 0 until count) return
 
-        if (getGenerated(idx)) {
-            setGenerated(idx, false)
+        if (isParticleDisplayed(idx)) {
+            setParticleStatus(idx, false)
             displayedParticleCount--
+
+            // client: 立即删除该 index 对应的粒子
+            if (client) {
+                removeWithIndex(idx)
+            }
         }
+
         serverCurrentIndex = max(idx - 1, 0)
     }
 
+    /**
+     * 服务端：移除多个粒子（只改 bitset 和计数，不删除粒子对象）
+     *
+     * waring 如果你的style不是client only （也就是要在服务器里面调用生成的，在调用此方法前
+     * 一定要在非client作用域执行
+     * ```kotlin
+     * if (!client){
+     *  removeMultiple(amount)
+     * }
+     * ```
+     * 如果你使用的是单纯的客户端 比如 SequencedParticleShapeComposition 则无需此判断
+     *
+     * @param amount 移除数量（<=0 会直接 return）
+     */
     fun removeMultiple(amount: Int) {
-        if (client) return
         if (amount <= 0) return
         repeat(amount) { removeSingle() }
     }
 
-    fun resetAllGenerated() {
+    /**
+     * 重置所有粒子状态（清空 bitset、计数器、指针）
+     *
+     * waring 如果你的style不是client only （也就是要在服务器里面调用生成的，在调用此方法前
+     * 一定要在非client作用域执行
+     * ```kotlin
+     * if (!client){
+     *  resetAll()
+     * }
+     * ```
+     * 如果你使用的是单纯的客户端 比如 SequencedParticleShapeComposition 则无需此判断
+     *
+     * 说明：
+     * - server：只清 bitset/计数/指针，等待同步到客户端由 diff 处理
+     * - client：会先遍历 bitset，把已生成的粒子对象全部 removeWithIndex(i)，再清 bitset
+     *
+     * 注意：
+     * - resetAll() 会把 serverCurrentIndex 重置为 0
+     * - displayedParticleCount 会重置为 0
+     */
+    fun resetAll() {
+        // client: 先删掉所有已经生成的粒子对象
+        if (client && count > 0) {
+            val pages = pagesFor(count)
+            val bits = index.get()
+            for (page in 0 until min(bits.size, pages)) {
+                var v = bits[page]
+                if (v == 0L) continue
+                val base = page shl 6
+                while (v != 0L) {
+                    val bit = java.lang.Long.numberOfTrailingZeros(v)
+                    val i = base + bit
+                    if (i >= count) break
+                    removeWithIndex(i)
+                    v = v and (v - 1)
+                }
+            }
+        }
+
+        // 清 bitset
         val arr = index.get()
         for (i in arr.indices) arr[i] = 0L
+
         displayedParticleCount = 0
         serverCurrentIndex = 0
     }
 
-    fun setGenerated(index: Int, generated: Boolean) {
+    override fun rotateToPoint(to: RelativeLocation) {
+        if (!client) {
+            axis = to
+            return
+        }
+        Math3DUtil.rotatePointsToPoint(
+            locations, to, axis
+        )
+        axis = to
+        toggleRelative()
+    }
+
+    override fun rotateToWithAngle(to: RelativeLocation, radian: Double) {
+        this.roll += radian
+        if (this.roll >= 2 * PI) {
+            this.roll -= 2 * PI
+        } else if (this.roll <= 2 * PI) {
+            this.roll += 2 * PI
+        }
+        if (!client) {
+            axis = to
+            return
+        }
+        Math3DUtil.rotateAsAxis(
+            locations, axis, radian
+        )
+        Math3DUtil.rotatePointsToPoint(
+            locations, to, axis
+        )
+        axis = to
+        toggleRelative()
+    }
+
+    override fun rotateAsAxis(radian: Double) {
+        this.roll += radian
+        if (this.roll >= 2 * PI) {
+            this.roll -= 2 * PI
+        } else if (this.roll <= 2 * PI) {
+            this.roll += 2 * PI
+        }
+        if (!client) {
+            return
+        }
+        Math3DUtil.rotateAsAxis(
+            locations, axis, radian
+        )
+        toggleRelative()
+    }
+
+    fun setParticleStatus(index: Int, generated: Boolean) {
         if (index !in 0 until count) return
         setBit(this.index.get(), index, generated)
     }
 
-    fun getGenerated(index: Int): Boolean {
+    fun isParticleDisplayed(index: Int): Boolean {
         if (index !in 0..count) return false
         return getBit(this.index.get(), index)
     }

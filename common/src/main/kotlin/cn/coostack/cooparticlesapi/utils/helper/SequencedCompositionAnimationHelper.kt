@@ -14,7 +14,7 @@ class SequencedCompositionAnimationHelper<T : SequencedParticleComposition> {
      * @param displayAnimatePredicate 执行该动画时必须要满足的条件
      * @param nextCount 当满足上面给予的条件时, 会生成的粒子/ 粒子组的个数 (addMultiple / removeMultiple)
      */
-    fun addAnimate(displayAnimatePredicate: Predicate<T>, nextCount: Int): SequencedCompositionAnimationHelper<T> {
+    fun addAnimate(nextCount: Int, displayAnimatePredicate: Predicate<T>): SequencedCompositionAnimationHelper<T> {
         animationConditions.add(displayAnimatePredicate to nextCount)
         return this
     }

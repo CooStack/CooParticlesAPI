@@ -56,6 +56,8 @@ interface ParticleDisplayer {
             loc: Vec3,
             world: ClientLevel
         ): Controlable<*> {
+            composition.position = loc
+            composition.world = world
             composition.display()
             return composition
         }

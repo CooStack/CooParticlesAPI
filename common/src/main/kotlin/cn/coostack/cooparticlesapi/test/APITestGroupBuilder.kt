@@ -13,7 +13,9 @@ import cn.coostack.cooparticlesapi.test.options.animate.TestEmitterAction
 import cn.coostack.cooparticlesapi.test.options.animate.TestStyleAction
 import cn.coostack.cooparticlesapi.test.options.particle.composition.TestComposition
 import cn.coostack.cooparticlesapi.test.options.display.TestBlockDisplayEntity
+import cn.coostack.cooparticlesapi.test.options.particle.composition.TestFourierPhotoComposition
 import cn.coostack.cooparticlesapi.test.options.particle.composition.TestSeqComposition
+import cn.coostack.cooparticlesapi.test.options.particle.composition.TestShapedComposition
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.InterpolatorTestEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestEventEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.event.TestCollideEventHandler
@@ -120,6 +122,11 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
                             maxTick = -1
                         }, -1
                 )
+            }
+            .appendOption {
+                SimpleCompositionOption(TestFourierPhotoComposition(player.eyePosition, player.level()), 1000)
+            }.appendOption {
+                SimpleCompositionOption(TestShapedComposition(player.eyePosition, player.level()), 2000)
             }
     }
 }
