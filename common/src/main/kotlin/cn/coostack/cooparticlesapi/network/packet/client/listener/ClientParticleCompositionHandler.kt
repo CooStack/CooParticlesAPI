@@ -8,7 +8,9 @@ import cn.coostack.cooparticlesapi.network.particle.composition.ParticleComposit
 import cn.coostack.cooparticlesapi.network.particle.composition.manager.ParticleCompositionManager
 import cn.coostack.cooparticlesapi.platform.network.ClientContext
 import io.netty.buffer.Unpooled
+import net.minecraft.client.Minecraft
 import net.minecraft.network.FriendlyByteBuf
+import net.minecraft.network.RegistryFriendlyByteBuf
 
 object ClientParticleCompositionHandler {
     fun receive(
@@ -30,7 +32,12 @@ object ClientParticleCompositionHandler {
         val data = payload.data
         val type = payload.type
         val codec = ParticleCompositionManager.registeredTypes[type]!!
-        val new = codec.decode(FriendlyByteBuf(Unpooled.wrappedBuffer(data)))
+        val new = codec.decode(
+            RegistryFriendlyByteBuf(
+                Unpooled.wrappedBuffer(data),
+                Minecraft.getInstance().player!!.registryAccess()
+            )
+        )
         return new
     }
 

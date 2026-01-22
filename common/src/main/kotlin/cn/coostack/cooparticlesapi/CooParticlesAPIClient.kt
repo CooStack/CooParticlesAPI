@@ -25,6 +25,7 @@ import cn.coostack.cooparticlesapi.utils.ClientCameraUtil
 import net.irisshaders.iris.api.v0.IrisApi
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.client.renderer.RenderType
+import net.minecraft.core.RegistryAccess
 
 object CooParticlesAPIClient {
     @JvmField
@@ -32,6 +33,7 @@ object CooParticlesAPIClient {
 
     @JvmField
     var irisLoaded = false
+    lateinit var access: RegistryAccess
 
     @JvmStatic
     fun init() {
@@ -146,6 +148,11 @@ object CooParticlesAPIClient {
 
     var subTicks = 0.0
     fun tickClient(world: ClientLevel) {
+
+        if (!::access.isInitialized) {
+            access = world.registryAccess()
+        }
+
         // resize test
         val tickManager = world.tickRateManager()
         if (!tickManager.runsNormally()) {

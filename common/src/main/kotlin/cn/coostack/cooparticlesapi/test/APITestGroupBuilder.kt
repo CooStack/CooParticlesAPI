@@ -11,6 +11,7 @@ import cn.coostack.cooparticlesapi.test.api.TestGroup
 import cn.coostack.cooparticlesapi.test.api.TestGroupBuilder
 import cn.coostack.cooparticlesapi.test.options.animate.TestEmitterAction
 import cn.coostack.cooparticlesapi.test.options.animate.TestStyleAction
+import cn.coostack.cooparticlesapi.test.options.display.BarrageItemDisplayEntity
 import cn.coostack.cooparticlesapi.test.options.particle.composition.TestComposition
 import cn.coostack.cooparticlesapi.test.options.display.TestBlockDisplayEntity
 import cn.coostack.cooparticlesapi.test.options.particle.composition.TestFourierPhotoComposition
@@ -127,6 +128,8 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
                 SimpleCompositionOption(TestFourierPhotoComposition(player.eyePosition, player.level()), 1000)
             }.appendOption {
                 SimpleCompositionOption(TestShapedComposition(player.eyePosition, player.level()), 2000)
+            }.appendOption {
+                SimpleDisplayEntityOption(BarrageItemDisplayEntity(player.eyePosition, player.level()), -1)
             }
     }
 }

@@ -16,6 +16,12 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
+/**
+ * 世界坐标变换
+ * T * R * S * Local
+ * 位移 - 旋转 - 缩放 - 相对位置
+ *
+ */
 object MinecraftRendererUtil {
     /**
      * 变换相对渲染位置到世界坐标位置

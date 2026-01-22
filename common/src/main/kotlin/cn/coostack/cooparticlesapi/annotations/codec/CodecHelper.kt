@@ -4,17 +4,23 @@ import cn.coostack.cooparticlesapi.annotations.CodecField
 import cn.coostack.cooparticlesapi.barrages.HitBox
 import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableParticleData
 import cn.coostack.cooparticlesapi.network.particle.emitters.SimpleRandomParticleData
+import cn.coostack.cooparticlesapi.network.particle.emitters.data.DoubleRangeData
+import cn.coostack.cooparticlesapi.network.particle.emitters.data.FloatRangeData
+import cn.coostack.cooparticlesapi.network.particle.emitters.data.IntRangeData
 import cn.coostack.cooparticlesapi.utils.interpolator.data.InterpolatorDouble
 import cn.coostack.cooparticlesapi.utils.interpolator.data.InterpolatorFloat
 import cn.coostack.cooparticlesapi.utils.interpolator.data.InterpolatorVec3d
 import cn.coostack.cooparticlesapi.utils.interpolator.data.InterpolatorVector3f
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import cn.coostack.cooparticlesapi.utils.interpolator.data.InterpolatorRelativeLocation
+import net.minecraft.client.Minecraft
 import net.minecraft.network.FriendlyByteBuf
+import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
+import org.joml.Quaternionf
 import org.joml.Vector3f
 import java.lang.reflect.Modifier
 import java.util.UUID
@@ -27,16 +33,19 @@ object CodecHelper {
         register(Short::class.java, StreamCodec.of({ buf, i -> buf.writeShort(i.toInt()) }, { it.readShort() }))
         register(Int::class.java, StreamCodec.of({ buf, i -> buf.writeInt(i) }, { it.readInt() }))
         register(Long::class.java, StreamCodec.of({ buf, i -> buf.writeLong(i) }, { it.readLong() }))
+        register(LongArray::class.java, StreamCodec.of({ buf, i -> buf.writeLongArray(i) }, { it.readLongArray() }))
         register(Float::class.java, StreamCodec.of({ buf, i -> buf.writeFloat(i) }, { it.readFloat() }))
         register(Double::class.java, StreamCodec.of({ buf, i -> buf.writeDouble(i) }, { it.readDouble() }))
         register(String::class.java, StreamCodec.of({ buf, i -> buf.writeUtf(i) }, { it.readUtf() }))
         register(Byte::class.java, StreamCodec.of({ buf, i -> buf.writeByte(i.toInt()) }, { it.readByte() }))
+        register(Boolean::class.java, StreamCodec.of({ buf, i -> buf.writeBoolean(i) }, { it.readBoolean() }))
         register(ByteArray::class.java, StreamCodec.of({ buf, i -> buf.writeByteArray(i) }, { it.readByteArray() }))
         register(Char::class.java, StreamCodec.of({ buf, i -> buf.writeChar(i.toInt()) }, { it.readChar() }))
         register(UUID::class.java, StreamCodec.of({ buf, i -> buf.writeUUID(i) }, { it.readUUID() }))
         register(ControlableParticleData::class.java, ControlableParticleData.PACKET_CODEC)
         register(Vector3f::class.java, StreamCodec.of({ buf, i -> buf.writeVector3f(i) }, { it.readVector3f() }))
         register(Vec3::class.java, StreamCodec.of({ buf, i -> buf.writeVec3(i) }, { it.readVec3() }))
+        register(Quaternionf::class.java, StreamCodec.of({ buf, q -> buf.writeQuaternion(q) }, { it.readQuaternion() }))
         register(AABB::class.java, StreamCodec.of({ buf, i ->
             buf.writeDouble(i.minX)
             buf.writeDouble(i.minY)
@@ -44,7 +53,6 @@ object CodecHelper {
             buf.writeDouble(i.maxX)
             buf.writeDouble(i.maxY)
             buf.writeDouble(i.maxZ)
-
         }, {
             AABB(it.readDouble(), it.readDouble(), it.readDouble(), it.readDouble(), it.readDouble(), it.readDouble())
         }))
@@ -74,6 +82,24 @@ object CodecHelper {
         register(InterpolatorVec3d::class.java, InterpolatorVec3d.CODEC)
         register(InterpolatorVector3f::class.java, InterpolatorVector3f.CODEC)
         register(InterpolatorRelativeLocation::class.java, InterpolatorRelativeLocation.CODEC)
+        register(
+            DoubleRangeData::class.java,
+            StreamCodec.of({ buf, i -> buf.writeDouble(i.min); buf.writeDouble(i.max) }, {
+                DoubleRangeData(it.readDouble(), it.readDouble())
+            })
+        )
+        register(
+            IntRangeData::class.java,
+            StreamCodec.of({ buf, i -> buf.writeInt(i.min); buf.writeInt(i.max) }, {
+                IntRangeData(it.readInt(), it.readInt())
+            })
+        )
+        register(
+            FloatRangeData::class.java,
+            StreamCodec.of({ buf, i -> buf.writeFloat(i.min); buf.writeFloat(i.max) }, {
+                FloatRangeData(it.readFloat(), it.readFloat())
+            })
+        )
     }
 
     /**

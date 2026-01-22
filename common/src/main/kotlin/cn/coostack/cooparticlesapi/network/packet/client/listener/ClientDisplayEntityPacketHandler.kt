@@ -6,7 +6,9 @@ import cn.coostack.cooparticlesapi.network.packet.PacketDisplayEntityS2C
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleEmittersS2C
 import cn.coostack.cooparticlesapi.platform.network.ClientContext
 import io.netty.buffer.Unpooled
+import net.minecraft.client.Minecraft
 import net.minecraft.network.FriendlyByteBuf
+import net.minecraft.network.RegistryFriendlyByteBuf
 
 object ClientDisplayEntityPacketHandler {
     fun receive(
@@ -28,7 +30,12 @@ object ClientDisplayEntityPacketHandler {
         val data = payload.data
         val type = payload.type
         val codec = DisplayEntityManager.registeredTypes[type]!!
-        val new = codec.decode(FriendlyByteBuf(Unpooled.wrappedBuffer(data)))
+        val new = codec.decode(
+            RegistryFriendlyByteBuf(
+                Unpooled.wrappedBuffer(data),
+                Minecraft.getInstance().player!!.registryAccess()
+            )
+        )
         return new
     }
 

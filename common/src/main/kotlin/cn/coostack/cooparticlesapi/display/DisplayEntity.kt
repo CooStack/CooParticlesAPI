@@ -28,6 +28,8 @@ import kotlin.math.PI
  *
  * 如果是直接从Manager spawn 则会进行客户端/服务器 数据包同步
  *
+ * 注意 由于此类默认会管理旋转， 如果想要自己写旋转顺序，应该在init函数中 manageRotation = false
+ *
  * @constructor 继承者必须提供相同的构造函数 （否则无法使用codec生成器)
  *
  * 注册时会使用全称引用作为键值， 然后保存Codec
@@ -85,7 +87,10 @@ abstract class DisplayEntity(
 
     /**
      * 由 DisplayEntityManager计算模型旋转
+     *
      * 以 renderCenterOffset 为中心进行旋转 yaw pitch roll
+     *
+     * 如果想要自己应用旋转， 请设置 manageRotation = false
      */
     var manageRotation = true
 
@@ -94,6 +99,28 @@ abstract class DisplayEntity(
      *
      * 此方法已经为modelMatrixStack执行了位移变换
      *
+     * 如果你在此方法内应用了类似
+     * ```kotlin
+     * MinecraftRendererUtil.applyAtPoint(
+     *         offset, this
+     *     ) {
+     *         MinecraftRendererUtil.applyRotation(
+     *             this, entity.yaw(lerp), entity.pitch(lerp), entity.roll(lerp)
+     *         )
+     *     }
+     * ```
+     * 请调用
+     * ```kotlin
+     * init{
+     *  manageRotation = false
+     * }
+     * ```
+     * 否则会出现旋转冲突， 也就是会有两倍速度的旋转 同时在前面写的translate也会出现问题
+     *
+     * 要是发现 当直接设置transformOffset的结果不等同于在rotate前写translate的结果时，
+     * 那一定是 manageRotation = true
+     *
+     * 如果要使用自动旋转，世界坐标位移变换请重写 transformOffset
      * @param view 观察矩阵
      * @param proj 透视矩阵
      * @param modelMatrixStack 模型变换矩阵

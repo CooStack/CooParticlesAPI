@@ -20,12 +20,14 @@ import cn.coostack.cooparticlesapi.test.APITestGroupBuilder
 import cn.coostack.cooparticlesapi.test.TestManager
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.event.TestCollideEventHandler
 import com.ezylang.evalex.Expression
+import net.minecraft.core.RegistryAccess
 import net.minecraft.server.MinecraftServer
 
 object CooParticlesAPI {
     var subTicks = 0.0
     var renderInit = false
     lateinit var server: MinecraftServer
+    lateinit var registryAccess: RegistryAccess
 
     @JvmField
     val scheduler = CooScheduler()
@@ -60,6 +62,7 @@ object CooParticlesAPI {
 
     fun onServerStart(server: MinecraftServer) {
         this.server = server
+        this.registryAccess = server.registryAccess()
     }
 
 

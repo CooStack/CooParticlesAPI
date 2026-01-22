@@ -9,6 +9,7 @@ import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
 import io.netty.buffer.Unpooled
 import net.minecraft.network.FriendlyByteBuf
+import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
@@ -88,7 +89,6 @@ object ParticleCompositionManager {
 
     fun tickServer() {
         val iterator = serverView.entries.iterator()
-        val server = CooParticlesAPI.server
         while (iterator.hasNext()) {
             val entry = iterator.next()
             if (entry.value.canceled) {
@@ -105,7 +105,7 @@ object ParticleCompositionManager {
         val server = CooParticlesAPI.server
         val uuid = entity.controlUUID
         val type = entity::class.java.name
-        val buf = FriendlyByteBuf(Unpooled.buffer())
+        val buf = RegistryFriendlyByteBuf(Unpooled.buffer(), CooParticlesAPI.registryAccess)
         registeredTypes[entity::class.java.name]!!
             .encode(buf, entity)
         val data = ByteArray(buf.readableBytes()).apply {

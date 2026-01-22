@@ -14,6 +14,7 @@ import net.minecraft.client.Camera
 import net.minecraft.client.DeltaTracker
 import net.minecraft.client.renderer.MultiBufferSource
 import net.minecraft.network.FriendlyByteBuf
+import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
@@ -51,7 +52,6 @@ object DisplayEntityManager {
 
     fun registerScanner() {
         CooParticlesConstants.logger.info("正在自动注册 DisplayEntity")
-
         CooAPIScanner.getWithAnnotation(CooAutoRegister::class.java)
             .iterator()
             .forEach {
@@ -73,6 +73,19 @@ object DisplayEntityManager {
     }
 
 
+    /**
+     * 疑似渲染顺序有点问题
+     *
+     * 右乘 T(-off) * R * T(off) * T(up [自定义的一些偏移 在render方法里面会调用]) * T(-off) * T(w) * v
+     *
+     *
+     * @param view
+     * @param proj
+     * @param modelMatrixStack
+     * @param buffer
+     * @param delta
+     * @param camera
+     */
     fun render(
         view: Matrix4f,
         proj: Matrix4f,
@@ -91,7 +104,6 @@ object DisplayEntityManager {
             ) {
                 val entity = it.value
                 val offset = entity.renderCenterOffset()
-                modelMatrixStack.translate(-offset.x, -offset.y, -offset.z)
                 if (entity.manageRotation) {
                     MinecraftRendererUtil.applyAtPoint(
                         offset, this
@@ -141,7 +153,7 @@ object DisplayEntityManager {
         val server = CooParticlesAPI.server
         val uuid = entity.controlUUID
         val type = entity::class.java.name
-        val buf = FriendlyByteBuf(Unpooled.buffer())
+        val buf = RegistryFriendlyByteBuf(Unpooled.buffer(), CooParticlesAPI.registryAccess)
         entity.getCodec().encode(buf, entity)
         val data = ByteArray(buf.readableBytes()).apply {
             buf.readBytes(this)
