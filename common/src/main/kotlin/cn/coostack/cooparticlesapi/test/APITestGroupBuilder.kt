@@ -6,6 +6,7 @@ import cn.coostack.cooparticlesapi.extend.asRelative
 import cn.coostack.cooparticlesapi.extend.plus
 import cn.coostack.cooparticlesapi.extend.times
 import cn.coostack.cooparticlesapi.network.particle.emitters.PhysicConstant
+import cn.coostack.cooparticlesapi.particles.CooParticleTextureSheet
 import cn.coostack.cooparticlesapi.particles.impl.ControlableSplashEffect
 import cn.coostack.cooparticlesapi.test.api.TestGroup
 import cn.coostack.cooparticlesapi.test.api.TestGroupBuilder
@@ -18,6 +19,7 @@ import cn.coostack.cooparticlesapi.test.options.particle.composition.TestFourier
 import cn.coostack.cooparticlesapi.test.options.particle.composition.TestSeqComposition
 import cn.coostack.cooparticlesapi.test.options.particle.composition.TestShapedComposition
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.InterpolatorTestEmitter
+import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestCommandEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestEventEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.event.TestCollideEventHandler
 import cn.coostack.cooparticlesapi.test.options.particle.style.RomaMagicTestStyle
@@ -130,6 +132,27 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
                 SimpleCompositionOption(TestShapedComposition(player.eyePosition, player.level()), 2000)
             }.appendOption {
                 SimpleDisplayEntityOption(BarrageItemDisplayEntity(player.eyePosition, player.level()), -1)
+            }.appendOption {
+                SimpleEmitterOption(
+                    TestCommandEmitter(player.eyePosition, player.level()).apply {
+                        direction = player.forward
+                        gravity = 0.05
+                        template.setTextureSheet(CooParticleTextureSheet.ADDITION_BLEND_TRANSLUCENT)
+                        maxTick = -1
+                        ballRadius = 1.0
+                        ballOption.apply {
+                            minCount = 16
+                            maxCount = 30
+                            minAge = 10
+                            maxAge = 20
+                        }
+                    }, -1
+                ).apply {
+                    ticking = {
+                        testEmitters as TestCommandEmitter
+//                        testEmitters.direction = player.forward
+                    }
+                }
             }
     }
 }

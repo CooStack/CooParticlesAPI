@@ -1,9 +1,11 @@
 package cn.coostack.cooparticlesapi.utils
 
+import cn.coostack.cooparticlesapi.extend.lengthCoerceAtMost
 import net.minecraft.world.phys.Vec3
+import org.joml.Quaternionf
 import org.joml.Vector3f
-import kotlin.math.cos
-import kotlin.math.ln
+import java.lang.Math.pow
+import kotlin.math.exp
 import kotlin.math.pow
 import kotlin.math.sqrt
 import kotlin.random.Random
@@ -202,6 +204,18 @@ object GraphMathHelper {
         return min + (max - min) * mixFix.toFloat()
     }
 
+
+    @JvmStatic
+    fun lerp(delta: Double, min: Quaternionf, max: Quaternionf): Quaternionf {
+        return min.slerp(max, delta.toFloat(), Quaternionf())
+    }
+
+    @JvmStatic
+    fun lerp(delta: Float, min: Quaternionf, max: Quaternionf): Quaternionf {
+        return Quaternionf(min).slerp(max, delta)
+    }
+
+
     /**
      * @param delta 输入一个0..1的值 插值从 min 到 max之间的数值
      */
@@ -278,6 +292,85 @@ object GraphMathHelper {
         return v.coerceIn(min, max)
     }
 
+    fun progress(max: Number, current: Number): Double {
+        val m = max.toDouble()
+        val c = current.toDouble()
+        return if (m > 0) (c / m).coerceIn(0.0, 1.0) else 0.0
+    }
+
+    /** 将数值限制在 [min, max] 范围内 */
+    @JvmStatic
+    fun clamp(v: Float, min: Float, max: Float): Float = v.coerceIn(min, max)
+
+    /** 将 v 从范围 [inMin, inMax] 线性映射到 [outMin, outMax]（不进行范围限制） */
+    @JvmStatic
+    fun remap(v: Double, inMin: Double, inMax: Double, outMin: Double, outMax: Double): Double {
+        if (inMax == inMin) return outMin
+        val t = (v - inMin) / (inMax - inMin)
+        return outMin + (outMax - outMin) * t
+    }
+
+    /** 反向线性插值：将范围 [a,b] 内的 v 转换为 [0,1] 范围内的 t（已限制范围） */
+    @JvmStatic
+    fun invLerpClamped(v: Double, a: Double, b: Double): Double {
+        if (a == b) return 0.0
+        return ((v - a) / (b - a)).coerceIn(0.0, 1.0)
+    }
+
+    /**
+     * 计算每步的指数衰减因子。
+     *
+     * @param damping 阻尼强度（>=0）。值越大，衰减越快。
+     * @param dt 步长时间。在 MC 中，你可以将每次 tick 视为 dt=1.0。
+     * @return 用于乘以速度的因子，范围在 (0,1]。
+     */
+    @JvmStatic
+    fun expDampFactor(damping: Double, dt: Double = 1.0): Double {
+        if (damping <= 0.0) return 1.0
+        // e^(-damping * dt)
+        return exp(-damping * dt)
+    }
+
+    /**
+     * 平滑距离衰减。
+     *
+     * @param distance 当前距离
+     * @param start 效果开始衰减的距离（<= end）
+     * @param end 效果降为 0 的距离
+     * @param power >1 则在起点附近衰减更剧烈，<1 则更平缓
+     * @return 范围在 [0,1] 内的衰减因子
+     */
+    @JvmStatic
+    fun distanceFalloff(distance: Double, start: Double, end: Double, power: Double = 1.0): Double {
+        if (end <= start) return if (distance <= start) 1.0 else 0.0
+        val t = 1.0 - invLerpClamped(distance, start, end) // 靠近起点 => 1，靠近终点 => 0
+        return t.pow(power.coerceAtLeast(1e-9))
+    }
+
+    /**
+     * 反幂函数衰减：1 / (1 + (d/scale)^power)
+     *
+     * @param distance 距离，>=0
+     * @param scale >0，控制有效范围（越大则衰减越慢）
+     * @param power >=1，控制衰减锐度
+     */
+    @JvmStatic
+    fun inversePowerFalloff(distance: Double, scale: Double, power: Double = 2.0): Double {
+        val s = scale.coerceAtLeast(1e-9)
+        val d = (distance.coerceAtLeast(0.0) / s)
+        return 1.0 / (1.0 + d.pow(power.coerceAtLeast(1.0)))
+    }
+
+    /**
+     * 将相位角包裹在 [0, 2π) 范围内。
+     */
+    @JvmStatic
+    fun wrapRadians(rad: Double): Double {
+        val twoPi = 2.0 * kotlin.math.PI
+        var r = rad % twoPi
+        if (r < 0) r += twoPi
+        return r
+    }
 
 }
 

@@ -4,6 +4,8 @@ import cn.coostack.cooparticlesapi.annotations.CodecField
 import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
 import cn.coostack.cooparticlesapi.annotations.display.handle.DisplayEntityHelper
 import cn.coostack.cooparticlesapi.display.DisplayEntity
+import cn.coostack.cooparticlesapi.extend.asRelative
+import cn.coostack.cooparticlesapi.extend.minus
 import cn.coostack.cooparticlesapi.utils.GraphMathHelper
 import cn.coostack.cooparticlesapi.utils.MinecraftRendererUtil
 import com.mojang.blaze3d.vertex.PoseStack
@@ -15,10 +17,14 @@ import net.minecraft.client.renderer.RenderType
 import net.minecraft.client.renderer.texture.OverlayTexture
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
+import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.Items
 import net.minecraft.world.level.Level
+import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import org.joml.Matrix4f
+import org.joml.Quaternionf
+import org.joml.Vector3f
 
 @CooAutoRegister
 class BarrageItemDisplayEntity(pos: Vec3, world: Level?) : DisplayEntity(pos, world) {
@@ -44,6 +50,12 @@ class BarrageItemDisplayEntity(pos: Vec3, world: Level?) : DisplayEntity(pos, wo
         MinecraftRendererUtil.applyAtPoint(
             offset, modelMatrixStack
         ) {
+            MinecraftRendererUtil.applyRotation(
+                this,
+                yaw(delta),
+                pitch(delta),
+                roll(delta)
+            )
             buffer.getBuffer(RenderType.LINES)
                 // Z轴 蓝色
                 .addVertex(modelMatrixStack.last(), 0f, 0f, -2f)
@@ -74,15 +86,13 @@ class BarrageItemDisplayEntity(pos: Vec3, world: Level?) : DisplayEntity(pos, wo
                 .setLight(LightTexture.FULL_BRIGHT)
         }
         modelMatrixStack.popPose()
-
-        modelMatrixStack.pushPose()
         MinecraftRendererUtil.applyAtPoint(
             offset, modelMatrixStack
         ) {
             MinecraftRendererUtil.applyRotation(
                 this,
                 yaw(delta),
-                pitch(delta),
+                pitch(delta) - 90f,
                 roll(delta) + if (isBlock) 0f else 45f
             )
         }
@@ -96,7 +106,6 @@ class BarrageItemDisplayEntity(pos: Vec3, world: Level?) : DisplayEntity(pos, wo
             OverlayTexture.NO_OVERLAY,
             buffer.getBuffer(RenderType.cutout())
         )
-        modelMatrixStack.popPose()
     }
 
 
@@ -111,8 +120,13 @@ class BarrageItemDisplayEntity(pos: Vec3, world: Level?) : DisplayEntity(pos, wo
     override fun tick() {
         super.tick()
         manageRotation = false
-        pitch += 10
-        pitch %= 360
+
+        val player = world!!.getEntitiesOfClass(Player::class.java, AABB.ofSize(pos, 36.0, 36.0, 36.0)) {
+            true
+        }.lastOrNull() ?: return
+
+        val rel = player.eyePosition - pos
+        rotateToPoint(rel.asRelative())
     }
 
 }

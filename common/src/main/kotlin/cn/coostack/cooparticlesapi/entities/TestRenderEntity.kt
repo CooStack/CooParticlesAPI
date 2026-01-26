@@ -20,7 +20,6 @@ class TestRenderEntity(entityType: EntityType<*>, level: Level) : Entity(entityT
     }
 
     override fun tick() {
-
         // 直接漂浮
 
     }

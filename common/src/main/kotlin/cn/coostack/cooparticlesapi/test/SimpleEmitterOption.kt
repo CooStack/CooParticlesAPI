@@ -5,6 +5,7 @@ import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersMan
 import cn.coostack.cooparticlesapi.test.api.TestOption
 
 class SimpleEmitterOption(val testEmitters: ParticleEmitters, var testingTick: Int = 100) : TestOption {
+    var ticking: SimpleEmitterOption.() -> Unit = {}
     override fun start() {
         ParticleEmittersManager.spawnEmitters(testEmitters)
     }
@@ -29,5 +30,6 @@ class SimpleEmitterOption(val testEmitters: ParticleEmitters, var testingTick: I
 
     override fun doTick() {
         if (testingTick != -1) testingTick--
+        ticking()
     }
 }

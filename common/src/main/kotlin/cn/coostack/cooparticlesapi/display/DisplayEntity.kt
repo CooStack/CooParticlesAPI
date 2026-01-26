@@ -1,7 +1,7 @@
 package cn.coostack.cooparticlesapi.display
 
 import cn.coostack.cooparticlesapi.annotations.codec.CodecHelper
-import cn.coostack.cooparticlesapi.annotations.display.handle.DisplayEntityHelper
+import cn.coostack.cooparticlesapi.extend.unaryMinus
 import cn.coostack.cooparticlesapi.network.particle.ServerControler
 import cn.coostack.cooparticlesapi.particles.Controlable
 import cn.coostack.cooparticlesapi.utils.GraphMathHelper
@@ -13,10 +13,11 @@ import net.minecraft.client.Camera
 import net.minecraft.client.renderer.MultiBufferSource
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
-import net.minecraft.util.Graph
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
 import org.joml.Matrix4f
+import org.joml.Quaternionf
+import org.joml.Vector3f
 import java.util.UUID
 import kotlin.math.PI
 
@@ -66,6 +67,7 @@ abstract class DisplayEntity(
     var controlUUID: UUID = UUID.randomUUID()
 
     var prevPos = pos
+
 
     var prevYaw = 0f
 
@@ -167,9 +169,7 @@ abstract class DisplayEntity(
      * @return 插值结果
      */
     fun yaw(lerp: Float): Float {
-        var delta = yaw - prevYaw
-        while (delta < -180f) delta += 360f
-        while (delta >= 180f) delta -= 360f
+        val delta = Math3DUtil.fixAngle(yaw - prevYaw).toFloat()
         return prevYaw + lerp * delta
     }
 
@@ -180,19 +180,13 @@ abstract class DisplayEntity(
      * @return 插值结果
      */
     fun pitch(lerp: Float): Float {
-        var delta = pitch - prevPitch
-        while (delta < -180f) delta += 360f
-        while (delta >= 180f) delta -= 360f
+        val delta = Math3DUtil.fixAngle(pitch - prevPitch).toFloat()
         return prevPitch + lerp * delta
-//        return GraphMathHelper.lerp(lerp, prevPitch, pitch)
     }
 
     fun roll(lerp: Float): Float {
-        var delta = roll - prevRoll
-        while (delta < -180f) delta += 360f
-        while (delta >= 180f) delta -= 360f
+        val delta = Math3DUtil.fixAngle(roll - prevRoll).toFloat()
         return prevRoll + lerp * delta
-//        return GraphMathHelper.lerp(lerp, prevRoll, roll)
     }
 
 
@@ -236,6 +230,7 @@ abstract class DisplayEntity(
         rotateAsAxis(radian)
     }
 
+
     override fun rotateAsAxis(radian: Double) {
         roll += (radian * 180 / PI).toFloat()
     }
@@ -249,13 +244,13 @@ abstract class DisplayEntity(
     fun lookAt(direction: Vec3) {
         val yaw = Math3DUtil.getYawFromLocation(direction) * 180 / PI
         val pitch = Math3DUtil.getPitchFromLocation(direction) * 180 / PI
-        this.yaw = yaw.toFloat() - 90f
+        this.yaw = yaw.toFloat()
         this.pitch = pitch.toFloat()
     }
 
-    override fun teleportTo(pos: Vec3) {
-        this.prevPos = pos
-        this.pos = pos
+    override fun teleportTo(to: Vec3) {
+        this.prevPos = to
+        this.pos = to
     }
 
     override fun teleportTo(x: Double, y: Double, z: Double) {
@@ -270,7 +265,7 @@ abstract class DisplayEntity(
         return this
     }
 
-    fun update(other: DisplayEntity) {
+    open fun update(other: DisplayEntity) {
         this.pos = other.pos
         this.valid = other.valid
         this.yaw = other.yaw

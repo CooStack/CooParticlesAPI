@@ -70,9 +70,13 @@ class SimpleRandomParticleData {
     var maxSpeed = 1.0
 
 
-    fun getRandomParticleMaxAge(): Int = Random.nextInt(minAge, maxAge)
-    fun getRandomCount(): Int = Random.nextInt(minCount, maxCount)
-    fun getRandomSize(): Float = Random.nextDouble(minSize, maxSize).toFloat()
-    fun getRandomSpeed(): Double = Random.nextDouble(minSpeed, maxSpeed)
+    fun getRandomParticleMaxAge(): Int = if (maxAge > minAge) {
+        Random.nextInt(minAge, maxAge)
+    } else minAge
+    fun getRandomCount(): Int = if (maxCount > minCount) Random.nextInt(minCount, maxCount) else minCount
+    fun getRandomSize(): Float =
+        if (maxSize > minSize) Random.nextDouble(minSize, maxSize).toFloat() else minSize.toFloat()
+
+    fun getRandomSpeed(): Double = if (maxSpeed > minSpeed) Random.nextDouble(minSpeed, maxSpeed) else minSpeed
 
 }

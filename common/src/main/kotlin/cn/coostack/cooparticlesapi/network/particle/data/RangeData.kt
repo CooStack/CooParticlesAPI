@@ -1,4 +1,4 @@
-package cn.coostack.cooparticlesapi.network.particle.emitters.data
+package cn.coostack.cooparticlesapi.network.particle.data
 
 abstract class RangeData<T : Comparable<T>>(var min: T, var max: T) {
     init {

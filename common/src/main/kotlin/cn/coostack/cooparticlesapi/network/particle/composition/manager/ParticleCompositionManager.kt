@@ -139,4 +139,11 @@ object ParticleCompositionManager {
         clientView.clear()
     }
 
+
+    fun clearServer() {
+        serverView.onEach {
+            it.value.remove()
+        }.clear()
+    }
+
 }

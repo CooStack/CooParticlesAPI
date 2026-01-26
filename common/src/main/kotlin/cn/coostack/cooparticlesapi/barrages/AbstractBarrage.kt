@@ -42,6 +42,11 @@ abstract class AbstractBarrage(
         return barrage.shooter != shooter && barrage != this
     }
 
+
+    open fun getControlerLocation(): Vec3 {
+        return loc
+    }
+
     override fun tick() {
         if (!lunch || !valid) {
             return
@@ -63,7 +68,7 @@ abstract class AbstractBarrage(
             loc = loc.add(direction)
         }
 
-        bindControl.teleportTo(loc)
+        bindControl.teleportTo(getControlerLocation())
         // 判断击中
         if (options.maxLivingTick != -1) {
             if (currentTick++ > options.maxLivingTick) {
@@ -72,20 +77,26 @@ abstract class AbstractBarrage(
             }
         }
         var hit = false
-        val blockPos = BlockPos(loc.x.toInt(), loc.y.toInt(), loc.z.toInt())
+
         val result = BarrageHitResult()
-        if (world.shouldTickBlocksAt(blockPos) && world.isPositionEntityTicking(blockPos)) {
-            val block = world.getBlockState(blockPos)
-            if (!block.isAir) {
-                val shape = block.getCollisionShape(world, blockPos)
-                if (!block.isSolid) {
-                    if (!options.acrossLiquid) {
+        BlockPos.betweenClosedStream(
+            hitBox.ofBox(loc)
+        ).forEach {
+            if (world.shouldTickBlocksAt(it) && world.isPositionEntityTicking(it)) {
+                val block = world.getBlockState(it)
+                if (!block.isAir) {
+                    val shape = block.getCollisionShape(world, it)
+                    if (!block.isSolid) {
+                        if (!options.acrossLiquid) {
+                            result.hitBlockState = block
+                            result.hitBlocks.add(it)
+                            hit = true
+                        }
+                    } else if (!options.acrossBlock && (!shape.isEmpty || !options.acrossEmptyCollectionShape)) {
                         result.hitBlockState = block
+                        result.hitBlocks.add(it)
                         hit = true
                     }
-                } else if (!options.acrossBlock && (!shape.isEmpty || !options.acrossEmptyCollectionShape)) {
-                    result.hitBlockState = block
-                    hit = true
                 }
             }
         }

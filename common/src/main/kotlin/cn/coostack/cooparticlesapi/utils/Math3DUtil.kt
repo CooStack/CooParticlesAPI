@@ -752,11 +752,22 @@ object Math3DUtil {
         return enter
     }
 
+    /**
+     * 修复输入角度 将他限定在-PI,PI这个区间内
+     *
+     * @param angle 角度制角度
+     * @return 修复后的角度
+     */
+    fun fixAngle(angle: Number): Double {
+        return toMinecraftAngle(angle.toDouble(), false)
+    }
+
+
     /** @param yaw 输入弧度制yaw */
     fun toMinecraftYaw(yaw: Double): Double = yaw - PI / 2
 
     fun getYawFromLocation(loc: Vec3): Double {
-        return atan2(loc.z, loc.x)
+        return atan2(-loc.x, loc.z)
     }
 
     fun getYawFromLocation(loc: RelativeLocation): Double {

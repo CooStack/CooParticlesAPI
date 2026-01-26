@@ -1,7 +1,11 @@
 package cn.coostack.cooparticlesapi.barrages
 
+import cn.coostack.cooparticlesapi.display.DisplayEntity
+import cn.coostack.cooparticlesapi.display.DisplayEntityManager
 import cn.coostack.cooparticlesapi.network.particle.ServerParticleGroup
 import cn.coostack.cooparticlesapi.network.particle.ServerParticleGroupManager
+import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmitters
+import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersManager
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleGroupStyle
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleStyleManager
 import cn.coostack.cooparticlesapi.renderer.RenderEntity
@@ -59,6 +63,17 @@ object BarrageManager {
                     control
                 )
             }
+
+            is ParticleEmitters -> {
+                ParticleEmittersManager.spawnEmitters(
+                    control
+                )
+            }
+
+            is DisplayEntity -> {
+                DisplayEntityManager.spawn(control)
+            }
+
         }
         barrage.lunch = true
     }

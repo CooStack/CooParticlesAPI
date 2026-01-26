@@ -445,7 +445,7 @@ abstract class ClassParticleEmitters(
         displayer.display(p.toVector(), world)
     }
 
-    protected fun updatePhysics(pos: Vec3, data: ControlableParticleData, particle: ControlableParticle) {
+    fun updatePhysics(pos: Vec3, data: ControlableParticleData, particle: ControlableParticle) {
         val v = data.velocity
         val speed = v.length()
         val gravity = if (particle.onTheGround) 0.0 else gravity

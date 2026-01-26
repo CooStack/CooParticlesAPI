@@ -70,6 +70,10 @@ object MinecraftRendererUtil {
         stack.mulPose(q)
     }
 
+    fun applyRotation(stack: PoseStack, q: Quaternionf) {
+        stack.mulPose(q)
+    }
+
     /**
      * TODO 未测试有效性
      *
