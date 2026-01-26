@@ -14,82 +14,177 @@ import net.minecraft.world.phys.Vec3
 import java.util.SortedMap
 import java.util.TreeMap
 
+/**
+ * 点集构建器：用于组合、变换并导出一组 {@link RelativeLocation}。
+ *
+ * ## 它是什么
+ * - 内部维护一个 `points: ArrayList<RelativeLocation>`
+ * - 你可以不断 `addXxx(...)` 往里面塞点
+ * - 也可以对当前点集做 `rotateAsAxis / rotateTo / pointsOnEach` 等批量变换
+ * - 最终用 `create()` 复制导出点集（避免外部修改影响 builder 内部）
+ *
+ * ## 坐标语义
+ * - 这里的点默认是“相对坐标”（RelativeLocation），通常表示以某个发射器/实体为原点的偏移。
+ * - 多数 `addXxx(...)` 方法调用 `Math3DUtil` 生成的点，默认以 (0,0,0) 为中心。
+ *
+ * ## axis 的意义
+ * `axis` 表示“当前图形的对称轴 / 参考轴”：
+ * - `rotateAsAxis(...)`：绕 axis 旋转点集
+ * - `rotateTo(...)`：将 axis 指向某个方向（让图形朝向目标点）
+ */
 class PointsBuilder {
     companion object {
+
+        /**
+         * 创建一个 PointsBuilder，并设置其对称轴为 [axis]。
+         *
+         * @param axis 图形对称轴（相对向量）。常用：`RelativeLocation.yAxis()`
+         */
         @JvmStatic
         fun of(axis: RelativeLocation): PointsBuilder {
             return PointsBuilder().also { it.axis = axis }
         }
 
         /**
-         * 默认对称轴为Y轴
+         * 使用已有点集创建 PointsBuilder。
+         * 默认对称轴为 Y 轴（`RelativeLocation.yAxis()`）。
+         *
+         * @param points 初始点集合（会被 add 进 builder）
          */
         @JvmStatic
         fun of(points: Collection<RelativeLocation>): PointsBuilder {
             return PointsBuilder().also { it.addPoints(points) }
         }
 
+        /**
+         * 使用对称轴与点集一起创建 PointsBuilder。
+         *
+         * @param axis 图形对称轴
+         * @param points 初始点集合
+         */
         @JvmStatic
         fun of(axis: RelativeLocation, points: Collection<RelativeLocation>): PointsBuilder {
             return PointsBuilder().also { it.axis = axis; it.addPoints(points) }
         }
-
     }
 
+    /**
+     * 当前图形对称轴（默认 Y 轴）。
+     *
+     * 主要用于：
+     * - [rotateAsAxis]：绕轴旋转
+     * - [rotateTo]：让轴指向目标方向
+     */
     var axis = RelativeLocation.yAxis()
         private set
+
     private val points = ArrayList<RelativeLocation>()
 
+    /**
+     * 修改当前对称轴。
+     *
+     * @param axis 新的对称轴（相对向量）
+     */
     fun axis(axis: RelativeLocation): PointsBuilder {
         this.axis = axis
         return this
     }
 
-
+    /**
+     * 添加由 [ImagePointBuilder] 构建出的点集。
+     *
+     * @param image 图像点生成器（通常把图片像素映射为点）
+     */
     fun addImage(image: ImagePointBuilder): PointsBuilder = addPoints(image.build())
 
+    /**
+     * 添加由 [FourierSeriesBuilder] 构建出的点集。
+     *
+     * @param builder 傅里叶级数点生成器（生成特定曲线/图形）
+     */
     fun addFourierSeries(builder: FourierSeriesBuilder): PointsBuilder = addPoints(builder.build())
 
     /**
-     * 循环对每一个已经加入到builder的点进行同一个操作
+     * 对当前 builder 已加入的每个点执行一次操作（原地修改点坐标）。
+     *
+     * 典型用途：
+     * - 批量平移/缩放/随机扰动
+     * - 给某些点加高度偏移、扭曲图形等
+     *
+     * @param handler 对单个点的处理逻辑（直接改 RelativeLocation 的 x/y/z）
      */
     fun pointsOnEach(handler: (RelativeLocation) -> Unit): PointsBuilder {
         points.onEach { handler.invoke(it) }
         return this
     }
 
-    fun withPreset(handler: MathPresets.() -> Collection<RelativeLocation>): PointsBuilder = addPoints(
-        handler(MathPresets)
-    )
+    /**
+     * 使用预设库 [MathPresets] 生成点并加入。
+     *
+     * @param handler 在 MathPresets 上取某个预设点集的方法
+     * @return this
+     */
+    fun withPreset(handler: MathPresets.() -> Collection<RelativeLocation>): PointsBuilder =
+        addPoints(handler(MathPresets))
 
+    /**
+     * 添加一批点到 builder。
+     *
+     * @param enter 要加入的点集合（会原样加入，后续可被 rotate/pointsOnEach 修改）
+     */
     fun addPoints(enter: Collection<RelativeLocation>): PointsBuilder {
         points.addAll(enter)
         return this
     }
 
-    fun addWith(handler: Math3DUtil.() -> Collection<RelativeLocation>): PointsBuilder = addPoints(
-        handler(Math3DUtil)
-    )
+    /**
+     * 使用 [Math3DUtil] 生成点并加入。
+     *
+     * @param handler 在 Math3DUtil 上调用的生成函数，例如 `getCircleXZ(...)`
+     */
+    fun addWith(handler: Math3DUtil.() -> Collection<RelativeLocation>): PointsBuilder =
+        addPoints(handler(Math3DUtil))
 
+    /**
+     * 添加单个点到 builder。
+     *
+     * @param point 要加入的点
+     */
     fun addPoint(point: RelativeLocation): PointsBuilder {
         points.add(point)
         return this
     }
 
+    /**
+     * 添加一条三次贝塞尔曲线点集（二维曲线，Z 默认为 0）。
+     *
+     * @param target 终点（相对坐标）
+     * @param startHandle 起点控制柄（影响起点切线方向/弯曲程度）
+     * @param endHandle 终点控制柄（以 target 为原点的控制柄偏移）
+     * @param count 采样点数量（越大越平滑）
+     */
     fun addBezierCurve(
         target: RelativeLocation,
         startHandle: RelativeLocation,
         endHandle: RelativeLocation,
         count: Int
-    ): PointsBuilder = addWith {
-        generateBezierCurve(target, startHandle, endHandle, count)
-    }
+    ): PointsBuilder = addWith { generateBezierCurve(target, startHandle, endHandle, count) }
 
+    /**
+     * 合并另一个 builder 的点集（会复制加入）。
+     *
+     * @param builder 需要合并的 builder
+     */
     fun withBuilder(builder: PointsBuilder): PointsBuilder {
         addPoints(builder.create())
         return this
     }
 
+    /**
+     * 通过回调创建一个临时 builder，并把它的点加入当前 builder。
+     *
+     * @param handler 用于往临时 builder 里 add 点
+     */
     fun withBuilder(handler: (PointsBuilder) -> Unit): PointsBuilder {
         val builder = PointsBuilder()
         handler(builder)
@@ -97,6 +192,12 @@ class PointsBuilder {
         return this
     }
 
+    /**
+     * 通过回调创建一个指定轴的临时 builder，并把它的点加入当前 builder。
+     *
+     * @param axis 临时 builder 的对称轴
+     * @param handler 用于往临时 builder 里 add 点
+     */
     fun withBuilderAxis(axis: RelativeLocation, handler: (PointsBuilder) -> Unit): PointsBuilder {
         val builder = PointsBuilder.of(axis)
         handler(builder)
@@ -104,117 +205,219 @@ class PointsBuilder {
         return this
     }
 
-    fun addDiscreteCircleXZ(r: Double, count: Int, discrete: Double): PointsBuilder = addWith {
-        getDiscreteCircleXZ(r, count, discrete)
-    }
+    /**
+     * 添加一个离散圆环（XZ 平面），点会在圆环附近随机偏移。
+     *
+     * @param r 圆环基础半径
+     * @param count 点数量
+     * @param discrete 最大随机偏移半径（0 表示严格在圆上）
+     */
+    fun addDiscreteCircleXZ(r: Double, count: Int, discrete: Double): PointsBuilder =
+        addWith { getDiscreteCircleXZ(r, count, discrete) }
 
-    fun addCircle(r: Double, count: Int): PointsBuilder = addPoints(
-        Math3DUtil.getCircleXZ(r, count)
-    )
+    /**
+     * 添加一个标准圆（XZ 平面）。
+     *
+     * @param r 半径
+     * @param count 点数量（越大越圆）
+     */
+    fun addCircle(r: Double, count: Int): PointsBuilder = addPoints(Math3DUtil.getCircleXZ(r, count))
 
-    fun addHalfCircle(r: Double, count: Int): PointsBuilder = addWith {
-        getHalfCircleXZ(r, count)
-    }
+    /**
+     * 添加一个半圆（XZ 平面）。
+     *
+     * @param r 半径
+     * @param count 点数量
+     */
+    fun addHalfCircle(r: Double, count: Int): PointsBuilder = addWith { getHalfCircleXZ(r, count) }
 
-    fun addHalfCircle(r: Double, count: Int, rotate: Double): PointsBuilder = addWith {
-        getHalfCircleXZ(r, count, rotate)
-    }
+    /**
+     * 添加一个半圆（XZ 平面），并对其整体旋转。
+     *
+     * @param r 半径
+     * @param count 点数量
+     * @param rotate 旋转角（弧度制）
+     */
+    fun addHalfCircle(r: Double, count: Int, rotate: Double): PointsBuilder =
+        addWith { getHalfCircleXZ(r, count, rotate) }
 
-    fun addBall(r: Double, countPow: Int): PointsBuilder = addPoints(
-        Math3DUtil.getBallLocations(r, countPow)
-    )
+    /**
+     * 添加一个球面点集。
+     *
+     * @param r 半径
+     * @param countPow 分辨率参数（越大点越密）
+     */
+    fun addBall(r: Double, countPow: Int): PointsBuilder = addPoints(Math3DUtil.getBallLocations(r, countPow))
 
+    /**
+     * 添加摆线/旋轮线图形（Cycloid / Hypotrochoid / Epitrochoid 风格）。
+     *
+     * @param r1 主圆半径
+     * @param r2 副圆半径
+     * @param w1 主圆角速度（整数）
+     * @param w2 副圆角速度（整数）
+     * @param count 采样点数量
+     * @param scale 缩放系数（用于整体缩放图形）
+     */
     fun addCycloidGraphic(
-        r1: Double,
-        r2: Double,
-        w1: Int,
-        w2: Int,
-        count: Int,
-        scale: Double
-    ): PointsBuilder = addPoints(
-        Math3DUtil.getCycloidGraphic(
-            r1, r2, w1, w2, count, scale
-        )
-    )
+        r1: Double, r2: Double, w1: Int, w2: Int, count: Int, scale: Double
+    ): PointsBuilder = addPoints(Math3DUtil.getCycloidGraphic(r1, r2, w1, w2, count, scale))
 
+    /**
+     * 将另一个 builder 的点集加上一个平移 [origin] 后加入当前 builder。
+     *
+     * @param origin 平移偏移（相对坐标）
+     * @param builder 被添加的 builder
+     */
     fun addBuilder(origin: RelativeLocation, builder: PointsBuilder): PointsBuilder {
         points.addAll(builder.create().onEach { it.add(origin) })
         return this
     }
 
-    fun addPolygonInCircle(n: Int, edgeCount: Int, r: Double): PointsBuilder = addPoints(
-        Math3DUtil.getPolygonInCircleLocations(n, edgeCount, r)
+    /**
+     * 添加圆内接正 n 边形的边上点集（每条边采样 edgeCount 个点）。
+     *
+     * @param n 边数（>=3）
+     * @param edgeCount 每条边的采样点数量
+     * @param r 外接圆半径
+     */
+    fun addPolygonInCircle(n: Int, edgeCount: Int, r: Double): PointsBuilder =
+        addPoints(Math3DUtil.getPolygonInCircleLocations(n, edgeCount, r))
 
-    )
+    /**
+     * 添加圆内接正 n 边形的顶点点集。
+     *
+     * @param n 边数（>=3）
+     * @param r 外接圆半径
+     */
+    fun addPolygonInCircleVertices(n: Int, r: Double): PointsBuilder =
+        addPoints(Math3DUtil.getPolygonInCircleVertices(n, r))
 
-    fun addPolygonInCircleVertices(n: Int, r: Double): PointsBuilder = addPoints(
-        Math3DUtil.getPolygonInCircleVertices(n, r)
-    )
+    /**
+     * 添加圆面点集（XZ 平面的一圈圈圆环）。
+     *
+     * @param r 最大半径
+     * @param step 相邻圆环半径间距
+     * @param preCircleCount 每个圆环的点数量
+     */
+    fun addRoundShape(r: Double, step: Double, preCircleCount: Int): PointsBuilder =
+        addPoints(Math3DUtil.getRoundScapeLocations(r, step, preCircleCount))
 
-
-    fun addRoundShape(r: Double, step: Double, preCircleCount: Int): PointsBuilder = addPoints(
-        Math3DUtil.getRoundScapeLocations(r, step, preCircleCount)
-    )
-
-
+    /**
+     * 添加圆面点集（XZ 平面），并允许不同半径的圆环点数在区间内变化。
+     *
+     * @param r 最大半径
+     * @param step 相邻圆环半径间距
+     * @param minCircleCount 最小圆环点数
+     * @param maxCircleCount 最大圆环点数
+     */
     fun addRoundShape(r: Double, step: Double, minCircleCount: Int, maxCircleCount: Int): PointsBuilder =
-        addWith {
-            getRoundScapeLocations(r, step, minCircleCount, maxCircleCount)
-        }
+        addWith { getRoundScapeLocations(r, step, minCircleCount, maxCircleCount) }
 
+    /**
+     * 添加线段点集（start -> end）。
+     *
+     * @param start 起点
+     * @param end 终点
+     * @param count 采样点数量（越大越密）
+     */
+    fun addLine(start: RelativeLocation, end: RelativeLocation, count: Int): PointsBuilder =
+        addPoints(Math3DUtil.getLineLocations(start, end, count))
 
-    fun addLine(
-        start: RelativeLocation, end: RelativeLocation, count: Int
-    ): PointsBuilder = addPoints(
-        Math3DUtil.getLineLocations(start, end, count)
-    )
+    /**
+     * 添加线段点集（start -> end）。
+     *
+     * @param start 起点（世界坐标 Vec3）
+     * @param end 终点（世界坐标 Vec3）
+     * @param count 采样点数量
+     */
+    fun addLine(start: Vec3, end: Vec3, count: Int): PointsBuilder =
+        addPoints(Math3DUtil.getLineLocations(start, end, count))
 
+    /**
+     * 添加射线点集（从原点沿 direction 方向生成）。
+     *
+     * @param direction 方向向量（相对坐标）
+     * @param step 相邻点距离
+     * @param count 点数量
+     */
+    fun addLine(direction: RelativeLocation, step: Double, count: Int): PointsBuilder =
+        addPoints(Math3DUtil.getLineLocations(Vec3.ZERO, direction.toVector(), step, count))
 
-    fun addLine(
-        start: Vec3, end: Vec3, count: Int
-    ): PointsBuilder = addPoints(
-        Math3DUtil.getLineLocations(start, end, count)
-    )
+    /**
+     * 添加射线点集（从原点沿 direction 方向生成）。
+     *
+     * @param direction 方向向量（Vec3）
+     * @param step 相邻点距离
+     * @param count 点数量
+     */
+    fun addLine(direction: Vec3, step: Double, count: Int): PointsBuilder =
+        addPoints(Math3DUtil.getLineLocations(Vec3.ZERO, direction, step, count))
 
+    /**
+     * 添加射线点集（从 origin 沿 direction 方向生成）。
+     *
+     * @param origin 起点
+     * @param direction 方向向量
+     * @param step 相邻点距离
+     * @param count 点数量
+     */
+    fun addLine(origin: RelativeLocation, direction: RelativeLocation, step: Double, count: Int): PointsBuilder =
+        addPoints(Math3DUtil.getLineLocations(origin.toVector(), direction.toVector(), step, count))
 
-    fun addLine(
-        direction: RelativeLocation, step: Double, count: Int
-    ): PointsBuilder = addPoints(
-        Math3DUtil.getLineLocations(Vec3.ZERO, direction.toVector(), step, count)
-    )
-
-
-    fun addLine(
-        direction: Vec3, step: Double, count: Int
-    ): PointsBuilder = addPoints(
-        Math3DUtil.getLineLocations(Vec3.ZERO, direction, step, count)
-    )
-
-
-    fun addLine(
-        origin: RelativeLocation, direction: RelativeLocation, step: Double, count: Int
-    ): PointsBuilder = addPoints(
-        Math3DUtil.getLineLocations(origin.toVector(), direction.toVector(), step, count)
-    )
-
+    /**
+     * 添加带衰减的闪电节点（递归二分生成的折线节点）。
+     *
+     * @param start 起点
+     * @param end 终点
+     * @param counts 二分次数（越大节点越多、越“碎”）
+     * @param maxOffset 第一次二分的最大随机偏移范围
+     * @param attenuation 偏移衰减系数（每次二分偏移范围乘以它，范围通常 (0,1]）
+     */
     fun addLightningNodesAttenuation(
         start: RelativeLocation, end: RelativeLocation, counts: Int, maxOffset: Double, attenuation: Double
-    ): PointsBuilder = addWith {
-        this.getLightningNodesEffectAttenuation(start, end, counts, maxOffset, attenuation)
-    }
+    ): PointsBuilder = addWith { getLightningNodesEffectAttenuation(start, end, counts, maxOffset, attenuation) }
 
+    /**
+     * 添加从原点到 end 的带衰减闪电节点。
+     */
     fun addLightningNodesAttenuation(
         end: RelativeLocation, counts: Int, maxOffset: Double, attenuation: Double
-    ): PointsBuilder = addWith {
-        this.getLightningNodesEffectAttenuation(RelativeLocation(), end, counts, maxOffset, attenuation)
-    }
+    ): PointsBuilder =
+        addWith { getLightningNodesEffectAttenuation(RelativeLocation(), end, counts, maxOffset, attenuation) }
 
+    /**
+     * 添加虚线（从原点指向 target）。
+     *
+     * @param target 目标方向/终点（相对坐标）
+     * @param totalCount 总采样点数量
+     * @param dottedCount 虚线段数量（分成多少段“实线”）
+     * @param emptyStep 每段虚线之间的空隙长度
+     */
     fun addDottedLine(target: RelativeLocation, totalCount: Int, dottedCount: Int, emptyStep: Double): PointsBuilder =
         addWith { Math3DUtil.generateDottedLine(target, totalCount, dottedCount, emptyStep) }
 
+    /**
+     * 添加虚线圆环（XZ 平面）。
+     *
+     * @param r 半径
+     * @param totalCount 总采样点数量
+     * @param dottedCount 虚线段数量
+     * @param emptyStep 每段虚线之间的空隙弧度（弧度制）
+     */
     fun addDottedCircle(r: Double, totalCount: Int, dottedCount: Int, emptyStep: Double): PointsBuilder =
         addWith { Math3DUtil.generateDottedCircle(r, totalCount, dottedCount, emptyStep) }
 
+    /**
+     * 添加带衰减的闪电折线点（节点 + 每段连线采样）。
+     *
+     * @param start 起点
+     * @param end 终点
+     * @param counts 二分次数
+     * @param maxOffset 第一次二分最大偏移
+     * @param attenuation 偏移衰减系数
+     * @param preLineCount 每段节点连线的采样点数
+     */
     fun addLightningAttenuationPoints(
         start: RelativeLocation,
         end: RelativeLocation,
@@ -223,9 +426,12 @@ class PointsBuilder {
         attenuation: Double,
         preLineCount: Int
     ): PointsBuilder = addWith {
-        this.getLightningEffectAttenuationPoints(start, end, counts, maxOffset, attenuation, preLineCount)
+        getLightningEffectAttenuationPoints(start, end, counts, maxOffset, attenuation, preLineCount)
     }
 
+    /**
+     * 添加从原点到 end 的带衰减闪电折线点。
+     */
     fun addLightningAttenuationPoints(
         end: RelativeLocation,
         counts: Int,
@@ -233,35 +439,56 @@ class PointsBuilder {
         attenuation: Double,
         preLineCount: Int
     ): PointsBuilder = addWith {
-        this.getLightningEffectAttenuationPoints(RelativeLocation(), end, counts, maxOffset, attenuation, preLineCount)
+        getLightningEffectAttenuationPoints(RelativeLocation(), end, counts, maxOffset, attenuation, preLineCount)
     }
 
-    fun addLightningNodes(end: RelativeLocation, count: Int): PointsBuilder = addWith {
-        getLightningEffectNodes(RelativeLocation(), end, count)
-    }
+    /**
+     * 添加闪电节点（无衰减版本）。
+     *
+     * @param end 终点
+     * @param count 二分次数（越大越“碎”）
+     */
+    fun addLightningNodes(end: RelativeLocation, count: Int): PointsBuilder =
+        addWith { getLightningEffectNodes(RelativeLocation(), end, count) }
 
-    fun addLightningNodes(start: RelativeLocation, end: RelativeLocation, count: Int): PointsBuilder = addWith {
-        getLightningEffectNodes(start, end, count)
-    }
+    /**
+     * 添加闪电节点（start -> end）。
+     */
+    fun addLightningNodes(start: RelativeLocation, end: RelativeLocation, count: Int): PointsBuilder =
+        addWith { getLightningEffectNodes(start, end, count) }
 
-    fun addLightningNodes(end: RelativeLocation, count: Int, offsetRange: Double): PointsBuilder = addWith {
-        getLightningEffectNodes(RelativeLocation(), end, count, offsetRange)
-    }
+    /**
+     * 添加闪电节点（并指定随机偏移范围）。
+     *
+     * @param offsetRange 节点最大随机偏移范围
+     */
+    fun addLightningNodes(end: RelativeLocation, count: Int, offsetRange: Double): PointsBuilder =
+        addWith { getLightningEffectNodes(RelativeLocation(), end, count, offsetRange) }
 
+    /**
+     * 添加闪电节点（start -> end，并指定偏移范围）。
+     */
     fun addLightningNodes(
         start: RelativeLocation,
         end: RelativeLocation,
         count: Int,
         offsetRange: Double
-    ): PointsBuilder = addWith {
-        getLightningEffectNodes(start, end, count, offsetRange)
-    }
+    ): PointsBuilder = addWith { getLightningEffectNodes(start, end, count, offsetRange) }
 
+    /**
+     * 添加闪电折线点（节点 + 连线采样）。
+     *
+     * @param end 终点
+     * @param count 二分次数
+     * @param preLineCount 每段连线采样点数
+     * @param offsetRange 随机偏移范围
+     */
     fun addLightningPoints(end: RelativeLocation, count: Int, preLineCount: Int, offsetRange: Double): PointsBuilder =
-        addWith {
-            getLightningEffectPoints(end, count, preLineCount, offsetRange)
-        }
+        addWith { getLightningEffectPoints(end, count, preLineCount, offsetRange) }
 
+    /**
+     * 添加闪电折线点（start -> end），并将结果整体平移到 start。
+     */
     fun addLightningPoints(
         start: RelativeLocation,
         end: RelativeLocation,
@@ -272,10 +499,15 @@ class PointsBuilder {
         getLightningEffectPoints(end, count, preLineCount, offsetRange).onEach { it.add(start) }
     }
 
-    fun addLightningPoints(end: RelativeLocation, count: Int, preLineCount: Int): PointsBuilder = addWith {
-        getLightningEffectPoints(end, count, preLineCount)
-    }
+    /**
+     * 添加闪电折线点（默认偏移范围）。
+     */
+    fun addLightningPoints(end: RelativeLocation, count: Int, preLineCount: Int): PointsBuilder =
+        addWith { getLightningEffectPoints(end, count, preLineCount) }
 
+    /**
+     * 添加闪电折线点（start -> end），并将结果整体平移到 start。
+     */
     fun addLightningPoints(
         start: RelativeLocation,
         end: RelativeLocation,
@@ -285,12 +517,28 @@ class PointsBuilder {
         getLightningEffectPoints(end, count, preLineCount).onEach { it.add(start) }
     }
 
-    fun addLine(
-        origin: Vec3, direction: Vec3, step: Double, count: Int
-    ): PointsBuilder = addPoints(
-        Math3DUtil.getLineLocations(origin, direction, step, count)
-    )
+    /**
+     * 添加从 origin 出发的射线点集（沿 direction 每 step 生成一个点）。
+     *
+     * @param origin 起点（世界坐标）
+     * @param direction 方向向量（世界坐标）
+     * @param step 相邻点距离
+     * @param count 点数量
+     */
+    fun addLine(origin: Vec3, direction: Vec3, step: Double, count: Int): PointsBuilder =
+        addPoints(Math3DUtil.getLineLocations(origin, direction, step, count))
 
+    /**
+     * 添加螺旋上升点集（XZ 旋转 + Y 上升）。
+     *
+     * @param startRadius 起始半径
+     * @param endRadius 结束半径
+     * @param height 螺旋高度
+     * @param step 高度步长（由此推导点数）
+     * @param rotateSpeed 每步旋转角速度（弧度制）
+     * @param radiusBias 半径变化曲线系数（1 表示线性，>1 前慢后快）
+     * @param heightBias 高度变化曲线系数（1 表示线性，>1 前慢后快）
+     */
     fun addSpiral(
         startRadius: Double,
         endRadius: Double,
@@ -299,11 +547,15 @@ class PointsBuilder {
         rotateSpeed: Double,
         radiusBias: Double = 1.0,
         heightBias: Double = 1.0
-    ): PointsBuilder =
-        addWith {
-            generateSpiralCircleXZ(startRadius, endRadius, height, step, rotateSpeed, radiusBias, heightBias)
-        }
+    ): PointsBuilder = addWith {
+        generateSpiralCircleXZ(startRadius, endRadius, height, step, rotateSpeed, radiusBias, heightBias)
+    }
 
+    /**
+     * 添加螺旋上升点集（显式指定点数）。
+     *
+     * @param count 点数量
+     */
     fun addSpiral(
         startRadius: Double,
         endRadius: Double,
@@ -316,99 +568,226 @@ class PointsBuilder {
         generateSpiralCircleXZ(startRadius, endRadius, height, count, rotateSpeed, radiusBias, heightBias)
     }
 
+    /**
+     * 将当前点集绕当前 [axis] 旋转。
+     *
+     * @param radius 旋转角（弧度制）
+     */
     fun rotateAsAxis(radius: Double): PointsBuilder {
         Math3DUtil.rotateAsAxis(points, axis, radius)
         return this
     }
 
+    /**
+     * 将当前点集绕指定轴旋转。
+     *
+     * @param radius 旋转角（弧度制）
+     * @param axis 旋转轴（相对向量）
+     */
     fun rotateAsAxis(radius: Double, axis: RelativeLocation): PointsBuilder {
         Math3DUtil.rotateAsAxis(points, axis, radius)
         return this
     }
 
+    /**
+     * 将当前点集的对称轴 [axis] 指向 [to]（图形整体朝向变化）。
+     *
+     * @param to 目标方向（相对坐标）
+     */
     fun rotateTo(to: RelativeLocation): PointsBuilder {
         Math3DUtil.rotatePointsToPoint(points, to, axis)
         return this
     }
 
+    /**
+     * 将当前点集的对称轴 [axis] 指向 [to]。
+     *
+     * @param to 目标方向（世界坐标）
+     */
     fun rotateTo(to: Vec3): PointsBuilder {
-        Math3DUtil.rotatePointsToPoint(points, RelativeLocation.Companion.of(to), axis)
+        Math3DUtil.rotatePointsToPoint(points, RelativeLocation.of(to), axis)
         return this
     }
 
+    /**
+     * 以 origin 为参照，让 [axis] 指向 (origin -> end)。
+     *
+     * @param origin 起点
+     * @param end 目标点
+     */
     fun rotateTo(origin: RelativeLocation, end: RelativeLocation): PointsBuilder {
         Math3DUtil.rotatePointsToPoint(points, origin.toVector(), end.toVector(), axis)
         return this
     }
 
+    /**
+     * 以 origin 为参照，让 [axis] 指向 (origin -> end)。
+     *
+     * @param origin 起点（世界坐标）
+     * @param end 目标点（世界坐标）
+     */
     fun rotateTo(origin: Vec3, end: Vec3): PointsBuilder {
         Math3DUtil.rotatePointsToPoint(points, origin, end, axis)
         return this
     }
 
+    /**
+     * 清空当前点集。
+     */
     fun clear(): PointsBuilder {
         points.clear()
         return this
     }
 
+    /**
+     * 导出点集副本（每个点 clone 一份），避免外部修改影响 builder。
+     */
     fun create(): List<RelativeLocation> = points.asSequence().map { it.clone() }.toList()
 
+    /**
+     * 导出点集合，但是不clone （节约性能）
+     */
+    fun createWithoutClone(): List<RelativeLocation> = points
+
+    /**
+     * 导出点集并为每个点生成粒子数据（用于 ControlableParticleGroup）。
+     *
+     * @param dataBuilder 根据相对点生成粒子数据的函数
+     * @return key 为粒子数据，value 为对应的相对点
+     */
     fun createWithParticleEffects(
         dataBuilder: (relative: RelativeLocation) -> ControlableParticleGroup.ParticleRelativeData
-    ): Map<ControlableParticleGroup.ParticleRelativeData, RelativeLocation> {
-        return mapOf(
-            *create().map {
-                dataBuilder(it) to it
-            }.toTypedArray()
-        )
-    }
+    ): Map<ControlableParticleGroup.ParticleRelativeData, RelativeLocation> =
+        mapOf(*createWithoutClone().map { dataBuilder(it) to it }.toTypedArray())
 
-    fun createWithCompositionData(builder: (RelativeLocation) -> CompositionData): Map<CompositionData, RelativeLocation> {
-        return mapOf(*create().map { builder(it) to it }.toTypedArray())
-    }
+    /**
+     * 导出点集并为每个点生成 CompositionData。
+     *
+     * @param builder 根据相对点生成 CompositionData 的函数
+     */
+    fun createWithCompositionData(builder: (RelativeLocation) -> CompositionData): Map<CompositionData, RelativeLocation> =
+        mapOf(*createWithoutClone().map { builder(it) to it }.toTypedArray())
 
-    fun createWithCompositionDataSorted(builder: (RelativeLocation) -> CompositionData): SortedMap<CompositionData, RelativeLocation> {
-        return TreeMap<CompositionData, RelativeLocation>().apply {
-            putAll(create().associateBy { builder(it) })
+    /**
+     * 导出点集并以 CompositionData 为 key 构建有序映射（TreeMap）。
+     *
+     * @param builder 根据相对点生成 CompositionData 的函数（需保证 key 可比较/排序）
+     */
+    fun createWithCompositionDataSorted(builder: (RelativeLocation) -> CompositionData): SortedMap<CompositionData, RelativeLocation> =
+        TreeMap<CompositionData, RelativeLocation>().apply {
+            putAll(createWithoutClone().associateBy { builder(it) })
         }
-    }
 
+    /**
+     * 导出点集并生成 SequencedParticleStyle 的排序数据（通常用于按顺序播放/生长）。
+     *
+     * @param dataBuilder 生成 SortedStyleData 的函数，其中 order 为点的顺序编号（从 0 开始）
+     */
     fun createWithSequencedStyleData(
         dataBuilder: (relative: RelativeLocation, order: Int) -> SequencedParticleStyle.SortedStyleData
     ): SortedMap<SequencedParticleStyle.SortedStyleData, RelativeLocation> {
         var order = 0
-        return sortedMapOf(
-            *create().map {
-                dataBuilder(it, order++) to it
-            }.toTypedArray()
-        )
+        return sortedMapOf(*createWithoutClone().map { dataBuilder(it, order++) to it }.toTypedArray())
     }
 
+    /**
+     * 导出点集并为每个点生成 SequencedParticleGroup 的粒子数据。
+     *
+     * @param dataBuilder 根据相对点生成 SequencedParticleRelativeData 的函数
+     */
     fun createWithSequencedParticleEffects(
         dataBuilder: (relative: RelativeLocation) -> SequencedParticleGroup.SequencedParticleRelativeData
-    ): Map<SequencedParticleGroup.SequencedParticleRelativeData, RelativeLocation> {
-        return mapOf(
-            *create().map {
-                dataBuilder(it) to it
-            }.toTypedArray()
-        )
-    }
+    ): Map<SequencedParticleGroup.SequencedParticleRelativeData, RelativeLocation> =
+        mapOf(*createWithoutClone().map { dataBuilder(it) to it }.toTypedArray())
 
+    /**
+     * 导出点集并为每个点生成 ParticleGroupStyle 的样式数据。
+     *
+     * @param dataBuilder 根据相对点生成 StyleData 的函数
+     */
     fun createWithStyleData(
         dataBuilder: (relative: RelativeLocation) -> ParticleGroupStyle.StyleData
-    ): Map<ParticleGroupStyle.StyleData, RelativeLocation> {
-        return mapOf(
-            *create().map {
-                dataBuilder(it) to it
-            }.toTypedArray()
+    ): Map<ParticleGroupStyle.StyleData, RelativeLocation> =
+        mapOf(*createWithoutClone().map { dataBuilder(it) to it }.toTypedArray())
+
+    /**
+     * 导出点集并为每个点生成 CompositionData（不 clone 点对象）。
+     *
+     * @param builder 根据相对点生成 CompositionData 的函数
+     */
+    fun createWithCompositionDataWithoutClone(
+        builder: (RelativeLocation) -> CompositionData
+    ): Map<CompositionData, RelativeLocation> =
+        mapOf(*createWithoutClone().map { builder(it) to it }.toTypedArray())
+
+    /**
+     * 导出点集并以 CompositionData 为 key 构建有序映射（不 clone 点对象）。
+     *
+     * @param builder 根据相对点生成 CompositionData 的函数（需保证 key 可比较/排序）
+     */
+    fun createWithCompositionDataSortedWithoutClone(
+        builder: (RelativeLocation) -> CompositionData
+    ): SortedMap<CompositionData, RelativeLocation> =
+        TreeMap<CompositionData, RelativeLocation>().apply {
+            putAll(createWithoutClone().associateBy { builder(it) })
+        }
+
+    /**
+     * 导出点集并生成 SequencedParticleStyle 的排序数据（不 clone 点对象）。
+     *
+     * @param dataBuilder 生成 SortedStyleData 的函数，其中 order 为点的顺序编号（从 0 开始）
+     */
+    fun createWithSequencedStyleDataWithoutClone(
+        dataBuilder: (relative: RelativeLocation, order: Int) -> SequencedParticleStyle.SortedStyleData
+    ): SortedMap<SequencedParticleStyle.SortedStyleData, RelativeLocation> {
+        var order = 0
+        return sortedMapOf(
+            *createWithoutClone().map { dataBuilder(it, order++) to it }.toTypedArray()
         )
     }
 
-    fun createAsBlockPos(): Set<BlockPos> = points.asSequence().map {
-        ofFloored(it.toVector())
-    }.toMutableSet()
+    /**
+     * 导出点集并为每个点生成粒子数据（用于 ControlableParticleGroup）（不 clone 点对象）。
+     *
+     * @param dataBuilder 根据相对点生成粒子数据的函数
+     * @return key 为粒子数据，value 为对应的相对点
+     */
+    fun createWithParticleEffectsWithoutClone(
+        dataBuilder: (relative: RelativeLocation) -> ControlableParticleGroup.ParticleRelativeData
+    ): Map<ControlableParticleGroup.ParticleRelativeData, RelativeLocation> =
+        mapOf(*createWithoutClone().map { dataBuilder(it) to it }.toTypedArray())
 
-    fun cloneBuilder(): PointsBuilder {
-        return of(axis, create())
-    }
+    /**
+     * 导出点集并为每个点生成 SequencedParticleGroup 的粒子数据（不 clone 点对象）。
+     *
+     * @param dataBuilder 根据相对点生成 SequencedParticleRelativeData 的函数
+     */
+    fun createWithSequencedParticleEffectsWithoutClone(
+        dataBuilder: (relative: RelativeLocation) -> SequencedParticleGroup.SequencedParticleRelativeData
+    ): Map<SequencedParticleGroup.SequencedParticleRelativeData, RelativeLocation> =
+        mapOf(*createWithoutClone().map { dataBuilder(it) to it }.toTypedArray())
+
+    /**
+     * 导出点集并为每个点生成 ParticleGroupStyle 的样式数据（不 clone 点对象）。
+     *
+     * @param dataBuilder 根据相对点生成 StyleData 的函数
+     */
+    fun createWithStyleDataWithoutClone(
+        dataBuilder: (relative: RelativeLocation) -> ParticleGroupStyle.StyleData
+    ): Map<ParticleGroupStyle.StyleData, RelativeLocation> =
+        mapOf(*createWithoutClone().map { dataBuilder(it) to it }.toTypedArray())
+
+    /**
+     * 将当前点集转换为方块坐标集合（BlockPos）。
+     *
+     * - 会对每个点执行 ofFloored（向下取整）
+     * - 适合：用于方块高亮、碰撞采样、块级别效果定位等
+     */
+    fun createAsBlockPos(): Set<BlockPos> =
+        points.asSequence().map { ofFloored(it.toVector()) }.toMutableSet()
+
+    /**
+     * 克隆一个新的 builder（包含当前 axis 与点集副本）。
+     */
+    fun cloneBuilder(): PointsBuilder = of(axis, create())
 }
