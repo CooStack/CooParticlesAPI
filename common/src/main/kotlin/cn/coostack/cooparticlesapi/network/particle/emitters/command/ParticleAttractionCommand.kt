@@ -24,7 +24,7 @@ class ParticleAttractionCommand() : ParticleCommand {
      *
      * - 0.1 ~ 0.5：轻微牵引（像磁力）
      * - 0.5 ~ 3.0：明显吸附（像黑洞）
-     * - >3.0：非常暴力（需要配合 speedLimit / damping）
+     * - 3.0+：非常暴力（需要配合 speedLimit / damping）
      *
      * 负数则变成排斥力。
      */
@@ -83,7 +83,7 @@ class ParticleAttractionCommand() : ParticleCommand {
      *
      * - 0.1 ~ 0.5：轻微牵引（像磁力）
      * - 0.5 ~ 3.0：明显吸附（像黑洞）
-     * - >3.0：非常暴力（需要配合 speedLimit / damping）
+     * - 3.0+：非常暴力（需要配合 speedLimit / damping）
      *
      * 负数则变成排斥力。
      */

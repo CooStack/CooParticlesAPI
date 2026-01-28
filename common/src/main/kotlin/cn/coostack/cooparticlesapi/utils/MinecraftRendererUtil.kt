@@ -14,6 +14,7 @@ import net.minecraft.world.phys.Vec3
 import org.joml.Quaternionf
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.max
 import kotlin.math.sin
 
 /**
@@ -212,4 +213,30 @@ object MinecraftRendererUtil {
         return Vec3(x, y.toDouble(), z)
     }
 
+    /**
+     * 在三角形 ABC 上按网格采样（density 越大点越密）
+     * 采样点数约为 (density+1)(density+2)/2
+     */
+    fun sampleTriangle(a: Vec3, b: Vec3, c: Vec3, density: Int, out: MutableList<Vec3>): MutableList<Vec3> {
+        val d = max(1, density)
+        for (i in 0..d) {
+            for (j in 0..(d - i)) {
+                val u = i.toDouble() / d
+                val v = j.toDouble() / d
+                val w = 1.0 - u - v
+
+                // p = a*w + b*u + c*v
+                val p = a.scale(w).add(b.scale(u)).add(c.scale(v))
+                out.add(p)
+            }
+        }
+        return out
+    }
+
+    /** 四边形拆成两个三角形：(0,1,2) + (0,2,3) */
+    fun sampleQuad(v0: Vec3, v1: Vec3, v2: Vec3, v3: Vec3, density: Int, out: MutableList<Vec3>): MutableList<Vec3> {
+        sampleTriangle(v0, v1, v2, density, out)
+        sampleTriangle(v0, v2, v3, density, out)
+        return out
+    }
 }

@@ -85,13 +85,13 @@ interface ParticleEmitters : ServerControler<ParticleEmitters> {
         ParticleEmittersManager.spawnEmitters(this)
     }
 
-    override fun rotateAsAxis(angle: Double) {
+    override fun rotateAsAxis(radian: Double) {
     }
 
     override fun rotateToPoint(to: RelativeLocation) {
     }
 
-    override fun rotateToWithAngle(to: RelativeLocation, angle: Double) {
+    override fun rotateToWithAngle(to: RelativeLocation, radian: Double) {
     }
 
     override fun teleportTo(to: Vec3) {

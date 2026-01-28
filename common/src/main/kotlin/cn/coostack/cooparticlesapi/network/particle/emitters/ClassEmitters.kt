@@ -5,13 +5,16 @@ import cn.coostack.cooparticlesapi.extend.asVec3
 import cn.coostack.cooparticlesapi.extend.lengthCoerceAtMost
 import cn.coostack.cooparticlesapi.extend.ofFloored
 import cn.coostack.cooparticlesapi.extend.times
+import cn.coostack.cooparticlesapi.network.particle.data.SerializableData
 import cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind.GlobalWindDirection
 import cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind.WindDirection
 import cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind.WindDirections
 import cn.coostack.cooparticlesapi.network.particle.emitters.event.*
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.PhysicsParticleEmitters.Companion.CROSS_SECTIONAL_AREA
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.PhysicsParticleEmitters.Companion.DRAG_COEFFICIENT
+import cn.coostack.cooparticlesapi.particles.Controlable
 import cn.coostack.cooparticlesapi.particles.ControlableParticle
+import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
 import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
 import cn.coostack.cooparticlesapi.particles.control.ParticleControler
 import cn.coostack.cooparticlesapi.utils.PhysicsUtil
@@ -33,8 +36,10 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.max
 import kotlin.math.pow
 
-/** 通过自定义类来实现一些发散性粒子样式 (实在懒得写表达式了) */
-abstract class ClassParticleEmitters(
+/**
+ * 支持其他的 Displayable TODO 未完成
+ * */
+abstract class ClassEmitters(
     override var pos: Vec3,
     override var world: Level?,
 ) : ParticleEmitters {
@@ -64,8 +69,6 @@ abstract class ClassParticleEmitters(
 
     override fun addEventHandler(handler: ParticleEventHandler, innerClass: Boolean) {
         val handlerID = handler.getHandlerID()
-        // 自动注册不适用于多人
-        // TODO
         if (!ParticleEventHandlerManager.hasRegister(handlerID)) {
             ParticleEventHandlerManager.register(handler)
         }
@@ -101,7 +104,7 @@ abstract class ClassParticleEmitters(
 
 
     companion object {
-        fun encodeBase(data: ClassParticleEmitters, buf: FriendlyByteBuf) {
+        fun encodeBase(data: ClassEmitters, buf: FriendlyByteBuf) {
             val handles = data.collectEventHandles()
             buf.writeInt(handles.size)
             handles.forEach {
@@ -125,7 +128,7 @@ abstract class ClassParticleEmitters(
         }
 
         /** 写法 先在codec的 decode方法中 创建此对象 然后将buf和container 传入此方法 然后继续decode自己的参数 */
-        fun decodeBase(container: ClassParticleEmitters, buf: FriendlyByteBuf) {
+        fun decodeBase(container: ClassEmitters, buf: FriendlyByteBuf) {
             val handlerCount = buf.readInt()
             val handlerList = ArrayList<ParticleEventHandler>()
             repeat(handlerCount) {
@@ -264,7 +267,7 @@ abstract class ClassParticleEmitters(
      * 粒子样式生成器
      * @param lerpProgress 粒子发射器位移插值器的插值进度
      * */
-    abstract fun genParticles(lerpProgress: Float): List<Pair<ControlableParticleData, RelativeLocation>>
+    abstract fun genParticles(lerpProgress: Float): List<Pair<SerializableData, RelativeLocation>>
 
     /**
      * 在一次粒子生成前会执行
@@ -285,8 +288,8 @@ abstract class ClassParticleEmitters(
      * @param posLerpProgress 当发射器进行发射插值时， 插值的偏移 如果不使用插值则永远为1
      */
     abstract fun singleParticleAction(
-        controler: ParticleControler,
-        data: ControlableParticleData,
+        controler: Controlable<*>,
+        data: SerializableData,
         spawnPos: RelativeLocation,
         spawnWorld: Level,
         particleLerpProgress: Float,
@@ -296,152 +299,17 @@ abstract class ClassParticleEmitters(
     private fun spawnParticle(
         world: ClientLevel,
         pos: Vec3,
-        data: ControlableParticleData,
+        data: SerializableData,
         particleLerpProgress: Float,
         posLerpProgress: Float
     ) {
 
         val player = Minecraft.getInstance().player ?: return
-        if (player.position().distanceTo(pos) > data.visibleRange) {
-            return
-        }
-        val effect = data.effect
-        effect.controlUUID = data.uuid
         val displayer = data.createDisplayer()
-        val control = ControlParticleManager.createControl(effect.controlUUID)
-        control.initInvoker = {
-            this.size = data.size
-            this.color = data.color
-            this.currentAge = data.age
-            this.lifetime = data.maxAge
-            this.light = data.light
-            this.textureSheet = data.getTextureSheet()
-            this.particleAlpha = data.alpha
-            this.faceToCamera = data.faceToCamera
-            this.currentPitch = data.pitch
-            this.currentYaw = data.yaw
-            this.currentRoll = data.roll
-            this.previewPitch = data.pitch
-            this.previewYaw = data.yaw
-            this.previewRoll = data.roll
-        }
 
-        // 事件层
-        control.addPreTickAction {
-            // 针对 ParticleHitEntityEvent
-            val hitEntityHandlers = handlerList[ParticleHitEntityEvent.EVENT_ID] ?: return@addPreTickAction
-            if (hitEntityHandlers.isEmpty()) return@addPreTickAction
-            // 判断事件触发
-            val entities =
-                world.getEntitiesOfClass(Entity::class.java, this.bounding.expandTowards(0.5, 0.5, 0.5)) { true }
-            if (entities.isEmpty()) return@addPreTickAction
-            val first = entities.first()
-            val event = ParticleHitEntityEvent(this, data, first)
-            for ((handler, _) in hitEntityHandlers) {
-                if (handler.getTargetEventID() != ParticleHitEntityEvent.EVENT_ID) {
-                    continue
-                }
-                handler.handle(event)
-                if (event.canceled) {
-                    break
-                }
-            }
-        }
-
-        control.addPreTickAction {
-            // 针对 ParticleOnLiquidEvent
-            val hitEntityHandlers = handlerList[ParticleOnLiquidEvent.EVENT_ID] ?: return@addPreTickAction
-            if (hitEntityHandlers.isEmpty()) return@addPreTickAction
-            // 判断事件触发
-            val blockPos = ofFloored(this.loc)
-            // 更新前上一个位置
-            val beforeLiquid = (control.bufferedData["cross_liquid"] as? Boolean) ?: false
-            // 判断现在的位置是不是液体
-            if (!world.shouldTickBlocksAt(blockPos)) {
-                return@addPreTickAction
-            }
-            val state = world.getBlockState(blockPos)
-            val currentLiquid = !state.isSolid
-            control.bufferedData["cross_liquid"] = currentLiquid
-            if (beforeLiquid || !currentLiquid) {
-                return@addPreTickAction
-            }
-            // 前一个tick不是液体 当前tick是液体则触发事件
-            val event = ParticleOnLiquidEvent(this, data, blockPos)
-            for ((handler, _) in hitEntityHandlers) {
-                if (handler.getTargetEventID() != ParticleOnLiquidEvent.EVENT_ID) {
-                    continue
-                }
-                handler.handle(event)
-                if (event.canceled) {
-                    break
-                }
-            }
-        }
         val p = RelativeLocation.of(pos)
+        val control = displayer.display(p.toVector(), world) ?: return
         singleParticleAction(control, data, p, world, particleLerpProgress, posLerpProgress)
-        control.addPreTickAction {
-            if (currentAge++ >= lifetime) {
-                remove()
-            }
-            if (minecraftTick) return@addPreTickAction
-            if (bounding.hasNaN()) return@addPreTickAction
-
-            data.velocity = data.velocity.lengthCoerceAtMost(data.speedLimit)
-            val prepareMove = this.loc.add(data.velocity)
-            val clipRes = if (data.velocity.lengthSqr() > 0.001) {
-                if (data.velocity.length() <= 200) {
-                    PhysicsUtil.collide(this.loc, data.velocity, world)
-                } else {
-                    BlockHitResult.miss(this.loc, Direction.UP, BlockPos.containing(this.loc))
-                }
-            } else {
-                BlockHitResult.miss(this.loc, Direction.UP, BlockPos.containing(this.loc))
-            }
-            onTheGround = clipRes.type != HitResult.Type.MISS && clipRes.direction == Direction.UP
-            // 模拟粒子运动 速度
-            moveSingleParticleWithVelocity(this, data, prepareMove, clipRes)
-            if (onTheGround) {
-                // 找方向 velocity
-                handlerList[ParticleOnGroundEvent.EVENT_ID]?.let {
-                    val offset = clipRes.direction.normal.asVec3() * 0.1
-                    val event = ParticleOnGroundEvent(
-                        this,
-                        data,
-                        ofFloored(prepareMove),
-                        clipRes.location.add(offset),
-                        clipRes
-                    )
-                    for ((handler, _) in it) {
-                        if (handler.getTargetEventID() != ParticleOnGroundEvent.EVENT_ID) {
-                            continue
-                        }
-                        handler.handle(event)
-                        if (event.canceled) {
-                            break
-                        }
-                    }
-                }
-            }
-
-            if (clipRes.type != HitResult.Type.MISS) {
-                handlerList[ParticleCollideEvent.EVENT_ID]?.let {
-                    val event = ParticleCollideEvent(
-                        this, data, clipRes
-                    )
-                    for ((handler, _) in it) {
-                        if (handler.getTargetEventID() != ParticleCollideEvent.EVENT_ID) {
-                            continue
-                        }
-                        handler.handle(event)
-                        if (event.canceled) {
-                            break
-                        }
-                    }
-                }
-            }
-        }
-        displayer.display(p.toVector(), world)
     }
 
     fun updatePhysics(pos: Vec3, data: ControlableParticleData, particle: ControlableParticle) {
@@ -485,8 +353,8 @@ abstract class ClassParticleEmitters(
      * @param collide 粒子的碰撞情况 （如果显示碰撞，则代表to位置存在方块 loc不存在）
      */
     protected open fun moveSingleParticleWithVelocity(
-        particle: ControlableParticle,
-        data: ControlableParticleData,
+        particle: Controlable<*>,
+        data: SerializableData,
         to: Vec3,
         collide: BlockHitResult
     ) {
@@ -499,7 +367,7 @@ abstract class ClassParticleEmitters(
      * @param emitters 更新的模板发射器
      */
     override fun update(emitters: ParticleEmitters) {
-        if (emitters !is ClassParticleEmitters) return
+        if (emitters !is ClassEmitters) return
         this.pos = emitters.pos
         this.world = emitters.world
         this.tick = emitters.tick
@@ -511,8 +379,7 @@ abstract class ClassParticleEmitters(
         this.handlerList.putAll(emitters.handlerList)
         this.emittersInterpolator.setRefiner(emitters.emittersInterpolator.refinerCount)
 
-        ParticleEmittersHelper.updateEmitter(this, emitters)
-
+//        ParticleEmittersHelper.updateEmitter(this, emitters)
     }
 
 }

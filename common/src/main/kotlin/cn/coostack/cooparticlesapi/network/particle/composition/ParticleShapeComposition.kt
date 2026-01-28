@@ -10,7 +10,7 @@ import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.phys.Vec3
 
-class ParticleShapeComposition() : ParticleComposition(Vec3.ZERO, null) {
+class ParticleShapeComposition : ParticleComposition(Vec3.ZERO, null) {
     private val points = ArrayList<Pair<PointsBuilder, (RelativeLocation) -> CompositionData>>()
     private val invokes = ArrayList<ParticleShapeComposition.() -> Unit>()
     private val beforeInvokes =

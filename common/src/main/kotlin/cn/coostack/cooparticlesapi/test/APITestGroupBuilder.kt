@@ -4,6 +4,7 @@ import cn.coostack.cooparticlesapi.animation.Animate
 import cn.coostack.cooparticlesapi.animation.AnimateNode
 import cn.coostack.cooparticlesapi.extend.asRelative
 import cn.coostack.cooparticlesapi.extend.plus
+import cn.coostack.cooparticlesapi.extend.random
 import cn.coostack.cooparticlesapi.extend.times
 import cn.coostack.cooparticlesapi.network.particle.emitters.PhysicConstant
 import cn.coostack.cooparticlesapi.particles.CooParticleTextureSheet
@@ -16,17 +17,23 @@ import cn.coostack.cooparticlesapi.test.options.display.BarrageItemDisplayEntity
 import cn.coostack.cooparticlesapi.test.options.particle.composition.TestComposition
 import cn.coostack.cooparticlesapi.test.options.display.TestBlockDisplayEntity
 import cn.coostack.cooparticlesapi.test.options.particle.composition.TestFourierPhotoComposition
+import cn.coostack.cooparticlesapi.test.options.particle.composition.TestGlowingAnimationComposition
+import cn.coostack.cooparticlesapi.test.options.particle.composition.TestModelComposition
+import cn.coostack.cooparticlesapi.test.options.particle.composition.TestNoiseLightComposition
 import cn.coostack.cooparticlesapi.test.options.particle.composition.TestSeqComposition
 import cn.coostack.cooparticlesapi.test.options.particle.composition.TestShapedComposition
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.InterpolatorTestEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestCommandEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestEventEmitter
+import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestWaveEmitters
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.event.TestCollideEventHandler
 import cn.coostack.cooparticlesapi.test.options.particle.style.RomaMagicTestStyle
 import cn.coostack.cooparticlesapi.test.options.renderer.TestRendererEntity
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.phys.Vec3
+import org.joml.Vector3f
+import kotlin.random.Random
 
 class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
     companion object {
@@ -138,11 +145,10 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
                         direction = player.forward
                         gravity = 0.05
                         template.setTextureSheet(CooParticleTextureSheet.ADDITION_BLEND_TRANSLUCENT)
+                        template.color = Vector3f(0.35f, 0.70f, 1.00f)
                         maxTick = -1
                         ballRadius = 1.0
                         ballOption.apply {
-                            minCount = 16
-                            maxCount = 30
                             minAge = 10
                             maxAge = 20
                         }
@@ -150,9 +156,30 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
                 ).apply {
                     ticking = {
                         testEmitters as TestCommandEmitter
-//                        testEmitters.direction = player.forward
                     }
                 }
+            }
+            .appendOption {
+                SimpleEmitterOption(TestWaveEmitters(player.eyePosition, player.level()).apply {
+                }, -1)
+            }
+            .appendOption {
+                SimpleCompositionOption(TestNoiseLightComposition(player.eyePosition, player.level()).apply {
+                    end = Vec3.ZERO.random() * Random.nextDouble(10.0, 60.0) + player.eyePosition
+                    nodeCount = 32
+                }, -1)
+            }.appendOption {
+                SimpleCompositionOption(
+                    TestGlowingAnimationComposition(
+                        player.position() + player.forward * 10,
+                        player.level()
+                    ).apply {
+                        glowingTick = 20
+                        glowedCount = 32
+                    }, -1
+                )
+            }.appendOption {
+                SimpleCompositionOption(TestModelComposition(player.position(), player.level()), -1)
             }
     }
 }

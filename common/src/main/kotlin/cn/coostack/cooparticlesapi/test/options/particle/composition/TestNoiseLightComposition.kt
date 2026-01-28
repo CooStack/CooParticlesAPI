@@ -1,7 +1,9 @@
 package cn.coostack.cooparticlesapi.test.options.particle.composition
 
-import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
 import cn.coostack.cooparticlesapi.annotations.CodecField
+import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
+import cn.coostack.cooparticlesapi.extend.asRelative
+import cn.coostack.cooparticlesapi.extend.minus
 import cn.coostack.cooparticlesapi.network.particle.composition.AutoParticleComposition
 import cn.coostack.cooparticlesapi.network.particle.composition.CompositionData
 import cn.coostack.cooparticlesapi.particles.CooParticleTextureSheet
@@ -10,30 +12,34 @@ import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import cn.coostack.cooparticlesapi.utils.builder.PointsBuilder
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
-import kotlin.math.PI
 
 @CooAutoRegister
-class TestComposition(position: Vec3, world: Level? = null) : AutoParticleComposition(position, world) {
+class TestNoiseLightComposition(position: Vec3, world: Level? = null) : AutoParticleComposition(position, world) {
     @CodecField
-    var movement = RelativeLocation.yAxis()
+    var end = Vec3.ZERO
+
+    @CodecField
+    var nodeCount = 8
     override fun getParticles(): Map<CompositionData, RelativeLocation> {
+        val relEnd = end - position
         return PointsBuilder()
-            .addSpiral(3.0, 0.0, 5.0, 360, PI / 16, 0.5, 3.0)
-            .addSpiral(3.0, 0.0, 5.0, 360, -PI / 16, 0.5, 3.0)
-            .applyNoiseOffset(Vec3(0.30, 0.30, 0.30), NoiseMode.SHELL_UNIFORM, 10)
-            .createWithCompositionData {
+            .addWith {
+                connectLineWithNodes(
+                    PointsBuilder()
+                        .addLine(Vec3.ZERO, relEnd, nodeCount)
+                        .applyNoiseOffset(Vec3(8.0, 4.0, 4.0), NoiseMode.SPHERE_UNIFORM, 1145)
+                        .addPoint(relEnd.asRelative())
+                        .createWithoutClone(), 40
+                )
+            }
+            .createWithCompositionDataWithoutClone {
                 CompositionData()
                     .addParticleInstanceInit {
                         textureSheet = CooParticleTextureSheet.ADDITION_BLEND_TRANSLUCENT
-                        colorOfRGBA(255, 128, 230, 1f)
                     }
             }
     }
 
     override fun onDisplay() {
-        addPreTickAction {
-            rotateToWithAngle(movement, PI / 32)
-        }
     }
-
 }

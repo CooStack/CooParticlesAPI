@@ -238,6 +238,13 @@ object Math3DUtil {
         return connectLineWithNodes(nodes, preLineCount)
     }
 
+    /**
+     * 输入节点， 让节点之间按照节点顺序连线
+     *
+     * @param nodes 输入的节点坐标
+     * @param preLineCount 每个线段的采样点个数
+     * @return
+     */
     fun connectLineWithNodes(nodes: List<RelativeLocation>, preLineCount: Int): List<RelativeLocation> {
         val res = ArrayList<RelativeLocation>()
         var i = 0
@@ -1087,6 +1094,119 @@ object Math3DUtil {
         return res
     }
 
+    /**
+     * 让输入的点集合进行随机偏移，会修改原有列表内的点对象
+     *
+     * @param points 点集合（会被原地修改）
+     * @param noiseX X轴最大偏移幅度（最终偏移范围约为 [-noiseX, +noiseX]）
+     * @param noiseY Y轴最大偏移幅度
+     * @param noiseZ Z轴最大偏移幅度
+     * @param seed 传入则结果可复现；为 null 则每次不同
+     * @param mode 噪声分布模式：
+     *        AXIS_UNIFORM：xyz 各自均匀随机（立方体噪声）
+     *        SPHERE_UNIFORM：在单位球内均匀随机，再按 noiseX/Y/Z 拉伸
+     *        SHELL_UNIFORM：在单位球面均匀随机（方向随机），再按 noiseX/Y/Z 拉伸
+     * @param offsetLenMin 对最终偏移向量长度做下限（null 表示不限制）
+     * @param offsetLenMax 对最终偏移向量长度做上限（null 表示不限制）
+     */
+    fun applyNoiseOffset(
+        points: List<RelativeLocation>,
+        noiseX: Double,
+        noiseY: Double = noiseX,
+        noiseZ: Double = noiseX,
+        seed: Long? = null,
+        mode: NoiseMode = NoiseMode.AXIS_UNIFORM,
+        offsetLenMin: Double? = null,
+        offsetLenMax: Double? = null,
+    ) {
+        if (points.isEmpty()) return
+        if (noiseX == 0.0 && noiseY == 0.0 && noiseZ == 0.0) return
+
+        // 统一检查一下长度限制参数
+        if (offsetLenMin != null && offsetLenMax != null) {
+            require(offsetLenMin <= offsetLenMax) { "offsetLenMin must <= offsetLenMax" }
+        }
+
+        // 基础随机源：不传 seed 就用当前时间（或者 Random.Default 也行）
+        val baseRand = if (seed != null) Random(seed) else Random(System.nanoTime())
+
+        for (i in points.indices) {
+            val p = points[i]
+
+            val rnd = if (seed != null) Random(seed + i * 0x9E3779B97F4A7C15_UL.toLong()) else baseRand
+
+            var ox: Double
+            var oy: Double
+            var oz: Double
+
+            when (mode) {
+                NoiseMode.AXIS_UNIFORM -> {
+                    // 立方体噪声：xyz 各自独立均匀
+                    ox = (rnd.nextDouble() * 2.0 - 1.0) * noiseX
+                    oy = (rnd.nextDouble() * 2.0 - 1.0) * noiseY
+                    oz = (rnd.nextDouble() * 2.0 - 1.0) * noiseZ
+                }
+
+                NoiseMode.SPHERE_UNIFORM -> {
+                    // 单位球内均匀：用 rejection sampling
+                    var x: Double
+                    var y: Double
+                    var z: Double
+                    while (true) {
+                        x = rnd.nextDouble() * 2.0 - 1.0
+                        y = rnd.nextDouble() * 2.0 - 1.0
+                        z = rnd.nextDouble() * 2.0 - 1.0
+                        val r2 = x * x + y * y + z * z
+                        if (r2 > 1e-12 && r2 <= 1.0) {
+                            // 按轴拉伸到椭球噪声
+                            ox = x * noiseX
+                            oy = y * noiseY
+                            oz = z * noiseZ
+                            break
+                        }
+                    }
+                }
+
+                NoiseMode.SHELL_UNIFORM -> {
+                    val u = rnd.nextDouble()
+                    val v = rnd.nextDouble()
+                    val theta = 2.0 * Math.PI * u
+                    val n = 2.0 * v - 1.0
+                    val t = sqrt(1.0 - n * n)
+                    val xDir = t * cos(theta)
+                    val yDir = t * sin(theta)
+                    val w = rnd.nextDouble()
+                    val r = cbrt(w)
+                    val (x, y, z) = Triple(xDir * r, yDir * r, n * r)
+                    ox = x * noiseX
+                    oy = y * noiseY
+                    oz = z * noiseZ
+                }
+            }
+
+            // 可选：对偏移向量长度做限制（注意：这里限制的是偏移量，不是点本身）
+            if (offsetLenMin != null || offsetLenMax != null) {
+                val len = sqrt(ox * ox + oy * oy + oz * oz)
+                if (len > 1e-12) {
+                    var scale = 1.0
+                    if (offsetLenMin != null && len < offsetLenMin) scale = offsetLenMin / len
+                    if (offsetLenMax != null && len > offsetLenMax) scale = offsetLenMax / len
+                    ox *= scale
+                    oy *= scale
+                    oz *= scale
+                } else {
+                    // len 太小，直接不偏移（也可以改成给一个固定方向的最小偏移）
+                    ox = 0.0; oy = 0.0; oz = 0.0
+                }
+            }
+
+            // 就地修改点对象
+            p.x += ox
+            p.y += oy
+            p.z += oz
+        }
+    }
+
 
     /**
      * 生成爆炸曲线点
@@ -1175,6 +1295,5 @@ object Math3DUtil {
             4
         }
     }
-
 
 }

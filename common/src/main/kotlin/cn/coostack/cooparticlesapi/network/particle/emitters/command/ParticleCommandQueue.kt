@@ -2,6 +2,7 @@ package cn.coostack.cooparticlesapi.network.particle.emitters.command
 
 import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableParticleData
 import cn.coostack.cooparticlesapi.particles.ControlableParticle
+import java.util.function.Predicate
 
 /**
  * `ParticleCommand` 的顺序队列：用于把多个“粒子模块/预设”组合成一个可复用的执行链。
@@ -34,7 +35,8 @@ import cn.coostack.cooparticlesapi.particles.ControlableParticle
  * ```
  */
 class ParticleCommandQueue {
-    val commands = ArrayDeque<ParticleCommand>()
+    val commands =
+        ArrayDeque<Pair<ParticleCommand, ParticleCommand.(ControlableParticleData, ControlableParticle) -> Boolean>>()
 
     /**
      * 对当前粒子执行队列中的所有命令。
@@ -44,7 +46,9 @@ class ParticleCommandQueue {
      */
     fun applyVelocity(data: ControlableParticleData, particle: ControlableParticle) {
         commands.forEach {
-            it.execute(data, particle)
+            if (it.second(it.first, data, particle)) {
+                it.first.execute(data, particle)
+            }
         }
     }
 
@@ -80,11 +84,26 @@ class ParticleCommandQueue {
     /**
      * 向队列末尾追加一个命令，并返回自身以支持链式调用。
      *
-     * @param command 要追加的粒子命令/module
+     * @param command 要追加的粒子命令
      * @return this（便于 `.add(...).add(...)` 链式写法）
      */
     fun add(command: ParticleCommand): ParticleCommandQueue {
-        commands.add(command)
+        commands.add(command to { data, particle -> true })
+        return this
+    }
+
+    /**
+     * 向队列末尾追加一个命令，并返回自身以支持链式调用。
+     *
+     * @param command 要追加的粒子命令
+     * @param predicate 执行这个命令的条件
+     * @return this（便于 `.add(...).add(...)` 链式写法）
+     */
+    fun add(
+        command: ParticleCommand,
+        predicate: ParticleCommand.(ControlableParticleData, ControlableParticle) -> Boolean
+    ): ParticleCommandQueue {
+        commands.add(command to predicate)
         return this
     }
 }

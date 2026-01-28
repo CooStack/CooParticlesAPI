@@ -8,6 +8,7 @@ import cn.coostack.cooparticlesapi.particles.control.group.ControlableParticleGr
 import cn.coostack.cooparticlesapi.particles.control.group.SequencedParticleGroup
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.MathPresets
+import cn.coostack.cooparticlesapi.utils.NoiseMode
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import net.minecraft.core.BlockPos
 import net.minecraft.world.phys.Vec3
@@ -96,6 +97,108 @@ class PointsBuilder {
      * @param image 图像点生成器（通常把图片像素映射为点）
      */
     fun addImage(image: ImagePointBuilder): PointsBuilder = addPoints(image.build())
+
+    /**
+     * 修改builder内所有的点，进行偏移
+     *
+     * @param noiseX X轴最大偏移幅度（最终偏移范围约为 [-noiseX, +noiseX]）
+     * @param noiseY Y轴最大偏移幅度
+     * @param noiseZ Z轴最大偏移幅度
+     * @param seed 传入则结果可复现；为 null 则每次不同
+     * @param mode 噪声分布模式：
+     *        AXIS_UNIFORM：xyz 各自均匀随机（立方体噪声）
+     *        SPHERE_UNIFORM：在单位球内均匀随机，再按 noiseX/Y/Z 拉伸
+     *        SHELL_UNIFORM：在单位球面均匀随机（方向随机），再按 noiseX/Y/Z 拉伸
+     * @param offsetLenMin 对最终偏移向量长度做下限（null 表示不限制）
+     * @param offsetLenMax 对最终偏移向量长度做上限（null 表示不限制）
+     */
+    fun applyNoiseOffset(
+        noiseX: Double,
+        noiseY: Double = noiseX,
+        noiseZ: Double = noiseX,
+        mode: NoiseMode = NoiseMode.AXIS_UNIFORM,
+        seed: Long? = null,
+        offsetLenMin: Double? = null,
+        offsetLenMax: Double? = null,
+    ) = apply {
+        Math3DUtil.applyNoiseOffset(points, noiseX, noiseY, noiseZ, seed, mode, offsetLenMin, offsetLenMax)
+    }
+
+    /**
+     * 修改builder内所有的点，进行偏移
+     *
+     * @param noise 最大偏移幅度（最终偏移范围约为 [-noise, +noise]）
+     * @param seed 传入则结果可复现；为 null 则每次不同
+     * @param mode 噪声分布模式：
+     *        AXIS_UNIFORM：xyz 各自均匀随机（立方体噪声）
+     *        SPHERE_UNIFORM：在单位球内均匀随机，再按 noiseX/Y/Z 拉伸
+     *        SHELL_UNIFORM：在单位球面均匀随机（方向随机），再按 noiseX/Y/Z 拉伸
+     * @param offsetLenMin 对最终偏移向量长度做下限（null 表示不限制）
+     * @param offsetLenMax 对最终偏移向量长度做上限（null 表示不限制）
+     */
+    fun applyNoiseOffset(
+        noise: Vec3,
+        mode: NoiseMode = NoiseMode.AXIS_UNIFORM,
+        seed: Long? = null,
+        offsetLenMin: Double? = null,
+        offsetLenMax: Double? = null,
+    ) = apply {
+        Math3DUtil.applyNoiseOffset(points, noise.x, noise.y, noise.z, seed, mode, offsetLenMin, offsetLenMax)
+    }
+
+    /**
+     * 让输入的点集合进行随机偏移，会修改原有列表内的点对象
+     *
+     * @param points 点集合（会被原地修改）
+     * @param noiseX X轴最大偏移幅度（最终偏移范围约为 [-noiseX, +noiseX]）
+     * @param noiseY Y轴最大偏移幅度
+     * @param noiseZ Z轴最大偏移幅度
+     * @param seed 传入则结果可复现；为 null 则每次不同
+     * @param mode 噪声分布模式：
+     *        AXIS_UNIFORM：xyz 各自均匀随机（立方体噪声）
+     *        SPHERE_UNIFORM：在单位球内均匀随机，再按 noiseX/Y/Z 拉伸
+     *        SHELL_UNIFORM：在单位球面均匀随机（方向随机），再按 noiseX/Y/Z 拉伸
+     * @param offsetLenMin 对最终偏移向量长度做下限（null 表示不限制）
+     * @param offsetLenMax 对最终偏移向量长度做上限（null 表示不限制）
+     */
+    fun applyNoiseOffset(
+        points: List<RelativeLocation>,
+        noiseX: Double,
+        noiseY: Double = noiseX,
+        noiseZ: Double = noiseX,
+        mode: NoiseMode = NoiseMode.AXIS_UNIFORM,
+        seed: Long? = null,
+        offsetLenMin: Double? = null,
+        offsetLenMax: Double? = null,
+    ) = addWith {
+        applyNoiseOffset(points.map { it.clone() }, noiseX, noiseY, noiseZ, seed, mode, offsetLenMin, offsetLenMax)
+        points
+    }
+
+    /**
+     * 让输入的点集合进行随机偏移，会修改原有列表内的点对象
+     *
+     * @param points 点集合（会被原地修改）
+     * @param noise 最大偏移幅度（最终偏移范围约为 [-noise, +noise]）
+     * @param seed 传入则结果可复现；为 null 则每次不同
+     * @param mode 噪声分布模式：
+     *        AXIS_UNIFORM：xyz 各自均匀随机（立方体噪声）
+     *        SPHERE_UNIFORM：在单位球内均匀随机，再按 noiseX/Y/Z 拉伸
+     *        SHELL_UNIFORM：在单位球面均匀随机（方向随机），再按 noiseX/Y/Z 拉伸
+     * @param offsetLenMin 对最终偏移向量长度做下限（null 表示不限制）
+     * @param offsetLenMax 对最终偏移向量长度做上限（null 表示不限制）
+     */
+    fun applyNoiseOffset(
+        points: List<RelativeLocation>,
+        noise: Vec3,
+        mode: NoiseMode = NoiseMode.AXIS_UNIFORM,
+        seed: Long? = null,
+        offsetLenMin: Double? = null,
+        offsetLenMax: Double? = null,
+    ) = addWith {
+        applyNoiseOffset(points.map { it.clone() }, noise.x, noise.y, noise.z, seed, mode, offsetLenMin, offsetLenMax)
+        points
+    }
 
     /**
      * 添加由 [FourierSeriesBuilder] 构建出的点集。

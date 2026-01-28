@@ -1,8 +1,10 @@
 package cn.coostack.cooparticlesapi.network.particle.emitters
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
+import cn.coostack.cooparticlesapi.network.particle.data.SerializableData
 import cn.coostack.cooparticlesapi.particles.ControlableParticleEffect
 import cn.coostack.cooparticlesapi.particles.ControlableParticleEffectManager
+import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
 import cn.coostack.cooparticlesapi.particles.impl.ControlableEndRodEffect
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
@@ -13,7 +15,7 @@ import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
 import java.util.UUID
 
-open class ControlableParticleData {
+open class ControlableParticleData : SerializableData {
     companion object {
         @JvmStatic
         val particleTexturesMapper: MutableMap<String, ParticleRenderType> = mutableMapOf()
@@ -264,12 +266,15 @@ open class ControlableParticleData {
         this.textureSheet = value.toString()
     }
 
-    open fun getCodec(): StreamCodec<FriendlyByteBuf, out ControlableParticleData> {
+    override fun getCodec(): StreamCodec<FriendlyByteBuf, out ControlableParticleData> {
         return PACKET_CODEC
     }
 
+    override fun createDisplayer(): ParticleDisplayer {
+        return ParticleDisplayer.withSingle(effect)
+    }
 
-    open fun clone(): ControlableParticleData {
+    override fun clone(): ControlableParticleData {
         return ControlableParticleData().also {
             it.uuid = UUID.randomUUID()
             it.velocity = this.velocity
