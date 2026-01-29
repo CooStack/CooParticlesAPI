@@ -15,6 +15,6 @@ class ParticleGravityCommand(val emitter: ClassParticleEmitters) : ParticleComma
         data: ControlableParticleData,
         particle: ControlableParticle
     ) {
-        emitter.updatePhysics(particle.loc, data, particle)
+        data.velocity.add(0.0, -emitter.gravity, 0.0)
     }
 }
