@@ -134,7 +134,7 @@ class ParticleVortexCommand() : ParticleCommand {
 
         // remove axial component -> radial vector to axis line
         val axialComp = ax.scale(r.dot(ax))
-        var radial = r.subtract(axialComp)
+        val radial = r.subtract(axialComp)
 
         var dist = radial.length()
         if (dist < 1e-9) dist = 0.0

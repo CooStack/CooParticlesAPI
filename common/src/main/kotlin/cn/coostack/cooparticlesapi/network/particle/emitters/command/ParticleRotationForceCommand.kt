@@ -69,7 +69,9 @@ class ParticleRotationForceCommand() : ParticleCommand {
         this.falloffPower = falloffPower
     }
 
-    fun center(v: Supplier<Vec3>) = apply { center = v }
+    fun center(v: Supplier<Vec3>) = apply {
+        center = v
+    }
     fun axis(v: Vec3) = apply { axis = v }
     fun strength(v: Double) = apply { strength = v }
     fun range(v: Double) = apply { range = v }

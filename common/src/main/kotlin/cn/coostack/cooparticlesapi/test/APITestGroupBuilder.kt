@@ -149,8 +149,8 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
                         maxTick = -1
                         ballRadius = 1.0
                         ballOption.apply {
-                            minAge = 10
-                            maxAge = 20
+                            minAge = 80
+                            maxAge = 100
                         }
                     }, -1
                 ).apply {

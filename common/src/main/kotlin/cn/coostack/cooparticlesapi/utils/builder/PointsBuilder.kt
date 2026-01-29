@@ -302,7 +302,7 @@ class PointsBuilder {
      * @param handler 用于往临时 builder 里 add 点
      */
     fun withBuilderAxis(axis: RelativeLocation, handler: (PointsBuilder) -> Unit): PointsBuilder {
-        val builder = PointsBuilder.of(axis)
+        val builder = of(axis)
         handler(builder)
         addPoints(builder.create())
         return this

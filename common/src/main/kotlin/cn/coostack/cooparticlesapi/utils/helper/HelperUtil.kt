@@ -12,6 +12,8 @@ import cn.coostack.cooparticlesapi.utils.helper.impl.StyleBezierValueScaleHelper
 import cn.coostack.cooparticlesapi.utils.helper.impl.StyleProgressSequencedHelper
 import cn.coostack.cooparticlesapi.utils.helper.impl.StyleScaleHelper
 import cn.coostack.cooparticlesapi.utils.helper.impl.StyleStatusHelper
+import cn.coostack.cooparticlesapi.utils.helper.impl.composition.CompositionBezierScaleHelper
+import cn.coostack.cooparticlesapi.utils.helper.impl.composition.CompositionStatusHelper
 
 /**
  * 所有Helper使用规范
@@ -44,6 +46,16 @@ object HelperUtil {
         c2: RelativeLocation
     ): BezierValueScaleHelper {
         return StyleBezierValueScaleHelper(scaleTick, minScale, maxScale, c1, c2)
+    }
+
+    fun bezierValueScaleComposition(
+        minScale: Double,
+        maxScale: Double,
+        scaleTick: Int,
+        c1: RelativeLocation,
+        c2: RelativeLocation
+    ): CompositionBezierScaleHelper {
+        return CompositionBezierScaleHelper(scaleTick, minScale, maxScale, c1, c2)
     }
 
     fun bezierValueScaleGroup(

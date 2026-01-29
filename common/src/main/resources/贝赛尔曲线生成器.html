@@ -1,0 +1,1111 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Bezier Curve Editor (AE-style) → Kotlin</title>
+  <style>
+    :root{
+      --bg:#0b0f14;
+      --panel:#111823;
+      --panel2:#0e141d;
+      --line:#223149;
+      --line2:#2a3a54;
+      --text:#e7edf6;
+      --muted:#9fb2cf;
+      --muted2:#b8c7df;
+      --accent:#47a2ed;
+      --accent2:#c1b5d7;
+      --warn:#ff8a65;
+      --radius:14px;
+      --radius2:12px;
+      --shadow: 0 14px 40px rgba(0,0,0,.38);
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+    }
+    *{ box-sizing: border-box; }
+    html,body{ height:100%; }
+    body{
+      margin:0;
+      background: radial-gradient(1200px 800px at 20% 10%, rgba(71,162,237,.10), transparent 55%),
+                  radial-gradient(1000px 700px at 90% 20%, rgba(193,181,215,.10), transparent 60%),
+                  var(--bg);
+      color:var(--text);
+      font-family:var(--sans);
+    }
+
+    .app{
+      max-width: 1220px;
+      margin: 0 auto;
+      padding: 18px;
+      display:grid;
+      grid-template-columns: 1fr minmax(360px, 460px);
+      gap: 14px;
+    }
+
+    .surface{
+      background: linear-gradient(180deg, rgba(255,255,255,.03), transparent 26%),
+                  var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+
+    .topbar{
+      padding: 12px 14px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap: 10px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(0,0,0,.10);
+    }
+    .title{
+      display:flex;
+      align-items:baseline;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .title h1{
+      margin:0;
+      font-size: 14px;
+      font-weight: 750;
+      letter-spacing:.2px;
+      color: #d9e7ff;
+    }
+    .badge{
+      padding: 4px 8px;
+      border: 1px solid var(--line2);
+      border-radius: 999px;
+      background: rgba(0,0,0,.18);
+      color: var(--muted2);
+      font-size: 12px;
+      font-family: var(--mono);
+      white-space: nowrap;
+    }
+    .badge.accent{
+      border-color: rgba(71,162,237,.55);
+      color:#cfe8ff;
+      background: rgba(71,162,237,.12);
+    }
+
+    /* canvas */
+    canvas{
+      display:block;
+      width:100%;
+      height: 720px;
+      background: #080c12;
+    }
+
+    /* inspector */
+    .inspector{
+      display:flex;
+      flex-direction:column;
+      gap: 12px;
+      padding: 12px;
+    }
+
+    .tabs{
+      display:flex;
+      gap: 8px;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(0,0,0,.18);
+    }
+    .tab{
+      flex:1;
+      border-radius: 12px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--muted2);
+      padding: 9px 10px;
+      font-weight: 750;
+      font-size: 12px;
+      cursor: pointer;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap: 8px;
+      letter-spacing:.2px;
+    }
+    .tab.active{
+      background: linear-gradient(180deg, rgba(71,162,237,.18), rgba(71,162,237,.08));
+      border-color: rgba(71,162,237,.45);
+      color:#e9f4ff;
+    }
+    .dot{
+      width: 8px; height: 8px; border-radius: 999px;
+      background: rgba(159,178,207,.35);
+    }
+    .tab.active .dot{ background: var(--accent); }
+
+    .group{
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: linear-gradient(180deg, rgba(255,255,255,.02), transparent 35%),
+                  rgba(0,0,0,.14);
+      overflow:hidden;
+    }
+    .groupHeader{
+      padding: 10px 12px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap: 10px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(0,0,0,.10);
+    }
+    .groupHeader .name{
+      font-size: 12px;
+      font-weight: 800;
+      color:#d9e7ff;
+      letter-spacing:.3px;
+    }
+    .groupBody{
+      padding: 10px 12px 12px 12px;
+      display:grid;
+      gap: 10px;
+    }
+
+    .row{
+      display:grid;
+      grid-template-columns: 120px 1fr;
+      gap: 10px;
+      align-items:center;
+    }
+    .label{
+      color: var(--muted2);
+      font-size: 12px;
+      letter-spacing:.2px;
+    }
+
+    .ctrl{
+      display:flex;
+      justify-content:flex-end;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .miniGrid{
+      display:grid;
+      grid-template-columns: auto 86px auto 86px;
+      gap: 8px;
+      align-items:center;
+      justify-content:end;
+    }
+    .miniGrid3{
+      display:grid;
+      grid-template-columns: auto 86px auto 86px auto 86px;
+      gap: 8px;
+      align-items:center;
+      justify-content:end;
+    }
+
+    .tag{
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted2);
+      border: 1px solid var(--line2);
+      border-radius: 999px;
+      padding: 3px 8px;
+      background: rgba(0,0,0,.18);
+    }
+
+    input[type="number"]{
+      width: 86px;
+      padding: 7px 8px;
+      border-radius: 10px;
+      border: 1px solid var(--line2);
+      background: rgba(0,0,0,.18);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 12px;
+      outline: none;
+    }
+    input[type="number"]:focus{
+      border-color: rgba(71,162,237,.70);
+      box-shadow: 0 0 0 3px rgba(71,162,237,.14);
+    }
+
+    /* ✅ 关键：select 高对比 + 自定义箭头 + 去掉系统外观 */
+    select{
+      width: 100%;
+      max-width: 260px;
+      padding: 9px 36px 9px 10px;
+      border-radius: 12px;
+      border: 1px solid rgba(71,162,237,.35);
+      background: rgba(10,16,24,.92);
+      color: #eef5ff;              /* 文字亮一点 */
+      font-family: var(--sans);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .2px;
+      outline: none;
+      appearance: none;
+      -webkit-appearance: none;
+      -moz-appearance: none;
+
+      /* 下拉箭头（用渐变画一个小三角） */
+      background-image:
+        linear-gradient(45deg, transparent 50%, rgba(238,245,255,.95) 50%),
+        linear-gradient(135deg, rgba(238,245,255,.95) 50%, transparent 50%),
+        linear-gradient(to right, rgba(71,162,237,.18), rgba(71,162,237,0));
+      background-position:
+        calc(100% - 18px) 50%,
+        calc(100% - 12px) 50%,
+        0 0;
+      background-size:
+        6px 6px,
+        6px 6px,
+        100% 100%;
+      background-repeat: no-repeat;
+    }
+    select:hover{
+      border-color: rgba(71,162,237,.60);
+      background: rgba(12,20,32,.95);
+    }
+    select:focus{
+      border-color: rgba(71,162,237,.85);
+      box-shadow: 0 0 0 3px rgba(71,162,237,.16);
+    }
+
+    /* ✅ 下拉列表里的 option 颜色（很多浏览器会吃这个） */
+    select option{
+      background: #0b1017;
+      color: #eef5ff;
+    }
+
+    /* ✅ Windows 高对比：下拉弹层通常不吃样式，但至少 option 文字别发灰 */
+    @media (prefers-contrast: more){
+      select{ border-color: rgba(238,245,255,.45); }
+    }
+
+    select{
+      width: 100%;
+      max-width: 260px;
+      font-family: var(--sans);
+      font-size: 12px;
+    }
+
+    .btn{
+      padding: 8px 10px;
+      border-radius: 12px;
+      border: 1px solid var(--line2);
+      background: rgba(0,0,0,.18);
+      color: var(--text);
+      cursor:pointer;
+      font-weight: 750;
+      font-size: 12px;
+      letter-spacing:.2px;
+      display:inline-flex;
+      align-items:center;
+      gap: 8px;
+    }
+    .btn:hover{ background: rgba(255,255,255,.05); }
+    .btn.primary{
+      border-color: rgba(71,162,237,.55);
+      background: rgba(71,162,237,.12);
+      color:#e9f4ff;
+    }
+    .btn.ghost{
+      background: transparent;
+    }
+
+    .toggle{
+      display:inline-flex;
+      align-items:center;
+      gap: 10px;
+      padding: 8px 10px;
+      border-radius: 12px;
+      border: 1px solid var(--line2);
+      background: rgba(0,0,0,.18);
+      user-select:none;
+      cursor:pointer;
+    }
+    .toggle input{ transform: translateY(1px); }
+    .toggle span{
+      color: var(--muted2);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .help{
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    textarea{
+      width:100%;
+      min-height: 200px;
+      resize: vertical;
+      border-radius: var(--radius);
+      border: 1px solid var(--line);
+      background: rgba(0,0,0,.26);
+      color: var(--text);
+      padding: 10px 12px;
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.45;
+      outline:none;
+    }
+    textarea:focus{
+      border-color: rgba(71,162,237,.65);
+      box-shadow: 0 0 0 3px rgba(71,162,237,.12);
+    }
+
+    .footerBtns{
+      display:flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content:flex-end;
+    }
+
+    @media (max-width: 980px){
+      .app{ grid-template-columns: 1fr; }
+      canvas{ height: 560px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- LEFT: Canvas -->
+    <div class="surface">
+      <div class="topbar">
+        <div class="title">
+          <h1>Bezier Curve Editor</h1>
+          <span id="modeBadge" class="badge accent">VALUE</span>
+          <span id="targetBadge" class="badge">target=(1.00,1.00)</span>
+          <span id="handleBadge" class="badge">handles=P1/P2</span>
+        </div>
+        <div class="title">
+          <span class="badge">Drag: P1/P2 or S1/S2</span>
+        </div>
+      </div>
+      <canvas id="c"></canvas>
+    </div>
+
+    <!-- RIGHT: Inspector -->
+    <div class="surface">
+      <div class="topbar">
+        <div class="title"><h1>Inspector</h1></div>
+        <div class="title"><span class="badge">AE-style</span></div>
+      </div>
+
+      <div class="inspector">
+        <div class="tabs">
+          <button id="tabValue" class="tab active"><span class="dot"></span>Value</button>
+          <button id="tabSpeed" class="tab"><span class="dot"></span>Speed</button>
+        </div>
+
+        <div class="group">
+          <div class="groupHeader">
+            <div class="name">Curve</div>
+            <span class="badge">P0=(0,0)</span>
+          </div>
+          <div class="groupBody">
+            <div class="row">
+              <div class="label">Target</div>
+              <div class="ctrl">
+                <div class="miniGrid">
+                  <span class="tag">x</span><input id="tx" type="number" step="0.01" value="1.0" />
+                  <span class="tag">y</span><input id="ty" type="number" step="0.01" value="1.0" />
+                </div>
+              </div>
+            </div>
+
+            <div class="row">
+              <div class="label">Samples</div>
+              <div class="ctrl">
+                <div class="miniGrid">
+                  <span class="tag">count</span><input id="countNum" type="number" min="2" max="4096" step="1" value="256" />
+                  <span class="tag"> </span><span class="badge">128–512 推荐</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="row">
+              <div class="label">Clamp</div>
+              <div class="ctrl">
+                <label class="toggle" title="开启后：Value clamp 到 [0..target]；Speed clamp influence x 到 [0..target.x]">
+                  <input id="clampToggle" type="checkbox" checked />
+                  <span>Clamp to Target</span>
+                </label>
+              </div>
+            </div>
+
+            <div class="row">
+              <div class="label">Helpers</div>
+              <div class="ctrl">
+                <button id="btnToggleHelpers" class="btn">Toggle</button>
+                <button id="btnReset" class="btn">Reset</button>
+              </div>
+            </div>
+
+            <div class="help">
+              Value：拖 <b>P1/P2</b>（控制点）。<br/>
+              Speed：显示 <b>dy/dx</b> 速度图（映射到 0..target.y），拖 <b>S1/S2</b>（影响+斜率）会反算更新 P1/P2（参数同一份）。
+            </div>
+          </div>
+        </div>
+
+        <div class="group">
+          <div class="groupHeader">
+            <div class="name">View</div>
+            <span class="badge">manual range</span>
+          </div>
+          <div class="groupBody">
+            <div class="row">
+              <div class="label">Range</div>
+              <div class="ctrl">
+                <div class="miniGrid">
+                  <span class="tag">min</span><input id="viewMin" type="number" step="0.1" value="-0.5" />
+                  <span class="tag">max</span><input id="viewMax" type="number" step="0.1" value="1.5" />
+                </div>
+              </div>
+            </div>
+            <div class="row">
+              <div class="label">Note</div>
+              <div class="ctrl">
+                <span id="viewLabel" class="badge">[-0.50, 1.50]</span>
+              </div>
+            </div>
+            <div class="help">
+              这是显示范围，不影响导出。想看更大范围就把 max/min 拉开。
+            </div>
+          </div>
+        </div>
+
+        <div class="group">
+          <div class="groupHeader">
+            <div class="name">Export</div>
+            <span class="badge">Kotlin</span>
+          </div>
+          <div class="groupBody">
+            <div class="row">
+              <div class="label">Format</div>
+              <div class="ctrl" style="justify-content:flex-end;">
+                <select id="format">
+                  <option value="simple">1. simple</option>
+                  <option value="pointsBuilder">2. PointsBuilder</option>
+                  <option value="pointsBuilderChain">3. PointsBuilder 链式</option>
+                  <option value="styleScale">4. StyleScaleHelper</option>
+                  <option value="groupScale">5. GroupScaleHelper</option>
+                  <option value="compositionScale">6. CompositionScaleHelper</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="footerBtns">
+              <button id="btnExport" class="btn primary">Generate</button>
+              <button id="btnCopy" class="btn">Copy</button>
+            </div>
+
+            <textarea id="out" spellcheck="false"></textarea>
+
+            <div class="help">
+              导出参数：<b>start=P1</b>，<b>end=P2-target</b>（endHandle 以 target 为原点）。<br/>
+              你在 Speed 模式拖 S1/S2，本质也在更新同一份 P1/P2，所以导出始终一致。
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+<script>
+(function(){
+  var canvas = document.getElementById("c");
+  var ctx = canvas.getContext("2d", { alpha:false });
+
+  var modeBadge = document.getElementById("modeBadge");
+  var targetBadge = document.getElementById("targetBadge");
+  var handleBadge = document.getElementById("handleBadge");
+
+  var tabValue = document.getElementById("tabValue");
+  var tabSpeed = document.getElementById("tabSpeed");
+
+  var tx = document.getElementById("tx");
+  var ty = document.getElementById("ty");
+  var countNum = document.getElementById("countNum");
+
+  var clampToggle = document.getElementById("clampToggle");
+  var btnToggleHelpers = document.getElementById("btnToggleHelpers");
+  var btnReset = document.getElementById("btnReset");
+
+  var viewMinInput = document.getElementById("viewMin");
+  var viewMaxInput = document.getElementById("viewMax");
+  var viewLabel = document.getElementById("viewLabel");
+
+  var formatSel = document.getElementById("format");
+  var btnExport = document.getElementById("btnExport");
+  var btnCopy = document.getElementById("btnCopy");
+  var out = document.getElementById("out");
+
+  // state
+  var mode = "value"; // value | speed
+  var showHelpers = true;
+  var clampOn = true;
+  var count = 256;
+
+  var target = { x:1.0, y:1.0, z:0.0 };
+  // canonical bezier control points (one set)
+  var P1 = { x:0.33, y:0.0 };
+  var P2 = { x:0.66, y:1.0 };
+
+  var dragging = null; // p1,p2,s1,s2
+  var lastClient = null;
+
+  // view
+  var pad = 52;
+  var viewMin = -0.5;
+  var viewMax = 1.5;
+
+  // speed normalization
+  var speedMin = -1;
+  var speedMax = 1;
+
+  // helpers
+  function clamp(v, lo, hi){ return Math.min(hi, Math.max(lo, v)); }
+  function isFiniteNum(x){ return typeof x === "number" && isFinite(x); }
+
+  function resize(){
+    var dpr = Math.max(1, window.devicePixelRatio || 1);
+    var rect = canvas.getBoundingClientRect();
+    canvas.width = Math.floor(rect.width * dpr);
+    canvas.height = Math.floor(rect.height * dpr);
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+  window.addEventListener("resize", resize);
+
+  function setViewRangeFromInputs(){
+    var a = Number(viewMinInput.value);
+    var b = Number(viewMaxInput.value);
+    if (!isFiniteNum(a)) a = -0.5;
+    if (!isFiniteNum(b)) b = 1.5;
+    if (Math.abs(b-a) < 1e-6) b = a + 1.0;
+    viewMin = Math.min(a,b);
+    viewMax = Math.max(a,b);
+    viewLabel.textContent = "[" + viewMin.toFixed(2) + ", " + viewMax.toFixed(2) + "]";
+  }
+
+  function updateBadges(){
+    modeBadge.textContent = (mode === "value") ? "VALUE" : "SPEED";
+    targetBadge.textContent = "target=(" + target.x.toFixed(2) + "," + target.y.toFixed(2) + ")";
+    handleBadge.textContent = (mode === "value") ? "handles=P1/P2" : "handles=S1/S2";
+  }
+
+  function setMode(m){
+    mode = m;
+    tabValue.classList.toggle("active", mode === "value");
+    tabSpeed.classList.toggle("active", mode === "speed");
+    applyClampIfNeeded();
+    updateBadges();
+    refreshExport();
+  }
+
+  function screenW(){ return canvas.getBoundingClientRect().width; }
+  function screenH(){ return canvas.getBoundingClientRect().height; }
+
+  function toScreen(pt){
+    var w = screenW(), h = screenH();
+    var nx = (pt.x - viewMin) / (viewMax - viewMin);
+    var ny = (pt.y - viewMin) / (viewMax - viewMin);
+    return {
+      x: pad + nx * (w - pad*2),
+      y: (h - pad) - ny * (h - pad*2)
+    };
+  }
+
+  function screenDeltaToWorld(dx, dy){
+    var w = screenW(), h = screenH();
+    var ww = (w - pad*2);
+    var hh = (h - pad*2);
+    var range = (viewMax - viewMin);
+    return {
+      x: (dx / ww) * range,
+      y: (-dy / hh) * range
+    };
+  }
+
+  function P0(){ return { x:0, y:0 }; }
+  function P3(){ return { x:target.x, y:target.y }; }
+
+  function applyClampIfNeeded(){
+    if(!clampOn) return;
+
+    // clamp range follows target
+    var loX = Math.min(0, target.x), hiX = Math.max(0, target.x);
+    var loY = Math.min(0, target.y), hiY = Math.max(0, target.y);
+
+    if (mode === "value") {
+      P1.x = clamp(P1.x, loX, hiX);
+      P1.y = clamp(P1.y, loY, hiY);
+      P2.x = clamp(P2.x, loX, hiX);
+      P2.y = clamp(P2.y, loY, hiY);
+    } else {
+      // speed mode: clamp influence x only
+      P1.x = clamp(P1.x, loX, hiX);
+      P2.x = clamp(P2.x, loX, hiX);
+    }
+  }
+
+  function bezierPoint(t){
+    var p0 = P0();
+    var p3 = P3();
+    var u = 1 - t;
+    var u2 = u*u;
+    var t2 = t*t;
+    var x = (u2*u*p0.x) + (3*u2*t*P1.x) + (3*u*t2*P2.x) + (t2*t*p3.x);
+    var y = (u2*u*p0.y) + (3*u2*t*P1.y) + (3*u*t2*P2.y) + (t2*t*p3.y);
+    return { x:x, y:y };
+  }
+
+  function bezierDeriv(t){
+    var p0 = P0();
+    var p3 = P3();
+    var u = 1 - t;
+    var a = 3*u*u;
+    var b = 6*u*t;
+    var c = 3*t*t;
+    var dx = a*(P1.x - p0.x) + b*(P2.x - P1.x) + c*(p3.x - P2.x);
+    var dy = a*(P1.y - p0.y) + b*(P2.y - P1.y) + c*(p3.y - P2.y);
+    return { x:dx, y:dy };
+  }
+
+  function recomputeSpeedRange(n){
+    var minS = Infinity, maxS = -Infinity;
+    for(var i=0;i<n;i++){
+      var t = (n===1)?1:(i/(n-1));
+      var d = bezierDeriv(t);
+      var s = (Math.abs(d.x) < 1e-9) ? 0 : (d.y / d.x);
+      if (s < minS) minS = s;
+      if (s > maxS) maxS = s;
+    }
+    if (!isFiniteNum(minS) || !isFiniteNum(maxS) || Math.abs(maxS-minS) < 1e-9) {
+      minS = -1; maxS = 1;
+    }
+    speedMin = minS;
+    speedMax = maxS;
+  }
+
+  function slopeToDisplayY(s){
+    var range = speedMax - speedMin;
+    if (range < 1e-9) return target.y * 0.5;
+    var yn = (s - speedMin) / range;
+    return yn * target.y;
+  }
+
+  function displayYToSlope(y){
+    var range = speedMax - speedMin;
+    if (range < 1e-9) return 0;
+    var yn = (target.y === 0) ? 0.5 : (y / target.y);
+    return speedMin + yn * range;
+  }
+
+  // speed handles (derived from canonical P1/P2)
+  function getS1(){
+    var x = P1.x;
+    var s = (Math.abs(P1.x) < 1e-9) ? 0 : (P1.y / P1.x);
+    return { x:x, slope:s, y:slopeToDisplayY(s) };
+  }
+  function getS2(){
+    var p3 = P3();
+    var dx = (p3.x - P2.x);
+    var s = (Math.abs(dx) < 1e-9) ? 0 : ((p3.y - P2.y) / dx);
+    return { x:P2.x, slope:s, y:slopeToDisplayY(s) };
+  }
+
+  function drawBackground(){
+    var w = screenW(), h = screenH();
+    // base
+    ctx.fillStyle = "#080c12";
+    ctx.fillRect(0,0,w,h);
+
+    // subtle vignette
+    var g = ctx.createRadialGradient(w*0.35, h*0.25, 50, w*0.35, h*0.25, Math.max(w,h));
+    g.addColorStop(0, "rgba(71,162,237,0.08)");
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0,0,w,h);
+  }
+
+  function drawGrid(){
+    var w = screenW(), h = screenH();
+
+    // box
+    ctx.strokeStyle = "rgba(34,49,73,1)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(pad, pad, w-pad*2, h-pad*2);
+
+    // grid lines
+    ctx.strokeStyle = "rgba(34,49,73,0.55)";
+    for (var i=1;i<10;i++){
+      var gx = pad + (w-pad*2)*(i/10);
+      var gy = pad + (h-pad*2)*(i/10);
+      ctx.beginPath(); ctx.moveTo(gx,pad); ctx.lineTo(gx,h-pad); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(pad,gy); ctx.lineTo(w-pad,gy); ctx.stroke();
+    }
+
+    // axes labels
+    ctx.fillStyle = "rgba(159,178,207,0.9)";
+    ctx.font = "12px " + getComputedStyle(document.documentElement).getPropertyValue("--mono");
+    ctx.fillText(viewMin.toFixed(2), pad-18, h-pad+18);
+    ctx.fillText(viewMax.toFixed(2), w-pad-54, h-pad+18);
+    ctx.fillText(viewMax.toFixed(2), pad-54, pad+6);
+  }
+
+  function drawPoint(pt, label, accent){
+    var s = toScreen(pt);
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, 7, 0, Math.PI*2);
+    ctx.fillStyle = accent ? "rgba(71,162,237,0.95)" : "rgba(207,224,255,0.95)";
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, 12, 0, Math.PI*2);
+    ctx.strokeStyle = accent ? "rgba(71,162,237,0.30)" : "rgba(207,224,255,0.28)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.fillStyle = "rgba(207,224,255,0.92)";
+    ctx.font = "12px " + getComputedStyle(document.documentElement).getPropertyValue("--mono");
+    ctx.fillText(label, s.x + 10, s.y - 10);
+  }
+
+  function drawCurve(){
+    var n = Math.max(2, count|0);
+
+    if (mode === "value") {
+      // glow underlay
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = "rgba(71,162,237,0.18)";
+      ctx.beginPath();
+      for(var i=0;i<n;i++){
+        var t = (n===1)?1:(i/(n-1));
+        var p = bezierPoint(t);
+        var s = toScreen(p);
+        if(i===0) ctx.moveTo(s.x,s.y);
+        else ctx.lineTo(s.x,s.y);
+      }
+      ctx.stroke();
+
+      // main line
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = "rgba(71,162,237,0.95)";
+      ctx.beginPath();
+      for(var j=0;j<n;j++){
+        var tt = (n===1)?1:(j/(n-1));
+        var pp = bezierPoint(tt);
+        var ss = toScreen(pp);
+        if(j===0) ctx.moveTo(ss.x,ss.y);
+        else ctx.lineTo(ss.x,ss.y);
+      }
+      ctx.stroke();
+
+      return;
+    }
+
+    // speed
+    recomputeSpeedRange(n);
+
+    // baseline at mid
+    ctx.strokeStyle = "rgba(255,255,255,0.10)";
+    ctx.lineWidth = 2;
+    var z0 = toScreen({ x:0, y: target.y*0.5 });
+    var z1 = toScreen({ x:target.x, y: target.y*0.5 });
+    ctx.beginPath(); ctx.moveTo(z0.x,z0.y); ctx.lineTo(z1.x,z1.y); ctx.stroke();
+
+    // glow underlay
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = "rgba(71,162,237,0.18)";
+    ctx.beginPath();
+    for(var i2=0;i2<n;i2++){
+      var t2 = (n===1)?1:(i2/(n-1));
+      var bp = bezierPoint(t2);
+      var d = bezierDeriv(t2);
+      var s = (Math.abs(d.x) < 1e-9) ? 0 : (d.y / d.x);
+      var yDisp = slopeToDisplayY(s);
+      var sc = toScreen({ x: bp.x, y: yDisp });
+      if(i2===0) ctx.moveTo(sc.x,sc.y);
+      else ctx.lineTo(sc.x,sc.y);
+    }
+    ctx.stroke();
+
+    // main line
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "rgba(71,162,237,0.95)";
+    ctx.beginPath();
+    for(var j2=0;j2<n;j2++){
+      var t3 = (n===1)?1:(j2/(n-1));
+      var bp2 = bezierPoint(t3);
+      var d2 = bezierDeriv(t3);
+      var s2 = (Math.abs(d2.x) < 1e-9) ? 0 : (d2.y / d2.x);
+      var yDisp2 = slopeToDisplayY(s2);
+      var sc2 = toScreen({ x: bp2.x, y: yDisp2 });
+      if(j2===0) ctx.moveTo(sc2.x,sc2.y);
+      else ctx.lineTo(sc2.x,sc2.y);
+    }
+    ctx.stroke();
+  }
+
+  function drawHelpers(){
+    if(!showHelpers) return;
+
+    if (mode === "value") {
+      // control polygon
+      var p0s = toScreen({x:0,y:0});
+      var p1s = toScreen(P1);
+      var p2s = toScreen(P2);
+      var p3s = toScreen(P3());
+
+      ctx.strokeStyle = "rgba(159,178,207,0.28)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(p0s.x,p0s.y);
+      ctx.lineTo(p1s.x,p1s.y);
+      ctx.lineTo(p2s.x,p2s.y);
+      ctx.lineTo(p3s.x,p3s.y);
+      ctx.stroke();
+
+      // endpoints
+      ctx.fillStyle = "rgba(159,178,207,0.85)";
+      ctx.beginPath(); ctx.arc(p0s.x,p0s.y,4,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(p3s.x,p3s.y,4,0,Math.PI*2); ctx.fill();
+
+      drawPoint(P1, "P1", true);
+      drawPoint(P2, "P2", false);
+      return;
+    }
+
+    // speed handles
+    recomputeSpeedRange(Math.max(64, count|0));
+    var s1 = getS1();
+    var s2 = getS2();
+    drawPoint({x:s1.x, y:s1.y}, "S1", true);
+    drawPoint({x:s2.x, y:s2.y}, "S2", false);
+  }
+
+  function hitTest(mx,my){
+    var r = 14;
+    if (mode === "value") {
+      var a = toScreen(P1);
+      var b = toScreen(P2);
+      var d1 = Math.hypot(mx-a.x, my-a.y);
+      var d2 = Math.hypot(mx-b.x, my-b.y);
+      if (d1 <= r && d1 <= d2) return "p1";
+      if (d2 <= r) return "p2";
+      return null;
+    }
+
+    recomputeSpeedRange(Math.max(64, count|0));
+    var s1 = getS1();
+    var s2 = getS2();
+    var A = toScreen({ x:s1.x, y:s1.y });
+    var B = toScreen({ x:s2.x, y:s2.y });
+    var ds1 = Math.hypot(mx-A.x, my-A.y);
+    var ds2 = Math.hypot(mx-B.x, my-B.y);
+    if (ds1 <= r && ds1 <= ds2) return "s1";
+    if (ds2 <= r) return "s2";
+    return null;
+  }
+
+  canvas.addEventListener("pointerdown", function(e){
+    var rect = canvas.getBoundingClientRect();
+    var mx = e.clientX - rect.left;
+    var my = e.clientY - rect.top;
+    var which = hitTest(mx,my);
+    if(!which) return;
+    dragging = which;
+    lastClient = { x:e.clientX, y:e.clientY };
+    canvas.setPointerCapture(e.pointerId);
+  });
+
+  canvas.addEventListener("pointermove", function(e){
+    if(!dragging || !lastClient) return;
+
+    var dx = e.clientX - lastClient.x;
+    var dy = e.clientY - lastClient.y;
+    lastClient = { x:e.clientX, y:e.clientY };
+
+    var dw = screenDeltaToWorld(dx,dy);
+
+    if (mode === "value") {
+      if (dragging === "p1") { P1.x += dw.x; P1.y += dw.y; }
+      if (dragging === "p2") { P2.x += dw.x; P2.y += dw.y; }
+      applyClampIfNeeded();
+      refreshExport();
+      return;
+    }
+
+    // speed mode: drag S1/S2 and invert to P1/P2
+    recomputeSpeedRange(Math.max(64, count|0));
+
+    if (dragging === "s1") {
+      var cur = getS1();
+      var nx = cur.x + dw.x;
+      var ny = cur.y + dw.y;
+
+      if (clampOn) {
+        var loX = Math.min(0, target.x), hiX = Math.max(0, target.x);
+        nx = clamp(nx, loX, hiX);
+      }
+      var slope = displayYToSlope(ny);
+      P1.x = nx;
+      P1.y = slope * nx;
+      applyClampIfNeeded();
+      refreshExport();
+      return;
+    }
+
+    if (dragging === "s2") {
+      var cur2 = getS2();
+      var nx2 = cur2.x + dw.x;
+      var ny2 = cur2.y + dw.y;
+
+      if (clampOn) {
+        var loX2 = Math.min(0, target.x), hiX2 = Math.max(0, target.x);
+        nx2 = clamp(nx2, loX2, hiX2);
+      }
+      var slope2 = displayYToSlope(ny2);
+
+      P2.x = nx2;
+      var dxEnd = (target.x - nx2);
+      if (Math.abs(dxEnd) >= 1e-9) {
+        P2.y = target.y - slope2 * dxEnd;
+      }
+      applyClampIfNeeded();
+      refreshExport();
+      return;
+    }
+  });
+
+  canvas.addEventListener("pointerup", function(){ dragging=null; lastClient=null; });
+  canvas.addEventListener("pointercancel", function(){ dragging=null; lastClient=null; });
+
+  // export
+  function fmtK(n){
+    var s = Number(n).toFixed(6);
+    s = s.replace(/0+$/,"").replace(/\.$/,".0");
+    if (s.indexOf(".") < 0) s = s + ".0";
+    return s;
+  }
+  function targetRL(){ return "RelativeLocation(" + fmtK(target.x) + "," + fmtK(target.y) + ",0.0)"; }
+  function startRL(){ return "RelativeLocation(" + fmtK(P1.x) + "," + fmtK(P1.y) + ",0.0)"; }
+  function endRL(){
+    var ex = P2.x - target.x;
+    var ey = P2.y - target.y;
+    return "RelativeLocation(" + fmtK(ex) + "," + fmtK(ey) + ",0.0)";
+  }
+
+  function codeByFormat(){
+    var start = startRL();
+    var end = endRL();
+    var t = targetRL();
+    var c = (count|0);
+
+    var simpleCall = "Math3DUtil.generateBezierCurve(" + t + "," + start + "," + end + "," + c + ")";
+
+    var fmt = formatSel.value;
+    if (fmt === "simple") return simpleCall;
+    if (fmt === "pointsBuilder") return "PointsBuilder().addBezierCurve(" + t + "," + start + "," + end + "," + c + ")";
+    if (fmt === "pointsBuilderChain") return ".addBezierCurve(" + t + "," + start + "," + end + "," + c + ")";
+    if (fmt === "styleScale") return "HelperUtil.bezierValueScaleStyle(" + c + ",0.01,1.0," + start + "," + end + ")";
+    if (fmt === "groupScale") return "HelperUtil.bezierValueScaleGroup(" + c + ",0.01,1.0," + start + "," + end + ")";
+    if (fmt === "compositionScale") return "HelperUtil.bezierValueScaleComposition(" + c + ",0.01,1.0," + start + "," + end + ")";
+    return simpleCall;
+  }
+  function refreshExport(){ out.value = codeByFormat(); }
+
+  // UI wiring
+  tabValue.addEventListener("click", function(){ setMode("value"); });
+  tabSpeed.addEventListener("click", function(){ setMode("speed"); });
+
+  function setTargetFromInputs(){
+    var x = Number(tx.value);
+    var y = Number(ty.value);
+    if (!isFiniteNum(x)) x = 1.0;
+    if (!isFiniteNum(y)) y = 1.0;
+    target.x = x; target.y = y;
+    applyClampIfNeeded();
+    updateBadges();
+    refreshExport();
+  }
+  tx.addEventListener("input", setTargetFromInputs);
+  ty.addEventListener("input", setTargetFromInputs);
+
+  function setCountFromInput(){
+    var n = Number(countNum.value);
+    if (!isFiniteNum(n)) n = 256;
+    n = Math.max(2, Math.min(4096, Math.floor(n)));
+    count = n;
+    countNum.value = String(n);
+    refreshExport();
+  }
+  countNum.addEventListener("input", setCountFromInput);
+
+  clampToggle.addEventListener("change", function(){
+    clampOn = !!clampToggle.checked;
+    applyClampIfNeeded();
+    refreshExport();
+  });
+
+  btnToggleHelpers.addEventListener("click", function(){ showHelpers = !showHelpers; });
+
+  btnReset.addEventListener("click", function(){
+    P1.x = 0.33; P1.y = 0.0;
+    P2.x = 0.66; P2.y = 1.0;
+    applyClampIfNeeded();
+    refreshExport();
+  });
+
+  viewMinInput.addEventListener("input", function(){ setViewRangeFromInputs(); });
+  viewMaxInput.addEventListener("input", function(){ setViewRangeFromInputs(); });
+
+  formatSel.addEventListener("change", refreshExport);
+  btnExport.addEventListener("click", refreshExport);
+
+  btnCopy.addEventListener("click", function(){
+    refreshExport();
+    navigator.clipboard.writeText(out.value).then(function(){
+      btnCopy.textContent = "Copied";
+      setTimeout(function(){ btnCopy.textContent = "Copy"; }, 900);
+    }).catch(function(){
+      btnCopy.textContent = "Copy failed";
+      setTimeout(function(){ btnCopy.textContent = "Copy"; }, 1200);
+    });
+  });
+
+  // render loop
+  function loop(){
+    drawBackground();
+    drawGrid();
+    drawCurve();
+    drawHelpers();
+    requestAnimationFrame(loop);
+  }
+
+  // init
+  resize();
+  setViewRangeFromInputs();
+
+  target.x = 1.0; target.y = 1.0;
+  tx.value = "1.0"; ty.value = "1.0";
+
+  clampOn = true;
+  clampToggle.checked = true;
+
+  setCountFromInput();
+  setMode("value");
+  updateBadges();
+  applyClampIfNeeded();
+  refreshExport();
+
+  loop();
+})();
+</script>
+</body>
+</html>
