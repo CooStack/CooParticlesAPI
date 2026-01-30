@@ -64,7 +64,7 @@ class ParticleCommandQueue {
             if (index !in commands.indices) {
                 return@apply
             }
-            val command = commands[index]
+            val command = commands[index].first
             runCatching { applier(command as T) }
         }
 
@@ -75,7 +75,7 @@ class ParticleCommandQueue {
      * @param applier 对所有匹配 Command 执行的更新逻辑
      */
     inline fun <reified T : ParticleCommand> updateWithTypes(applier: T.() -> Unit): ParticleCommandQueue = apply {
-        commands.filterIsInstance<T>()
+        commands.map { it.first }.filterIsInstance<T>()
             .forEach {
                 applier(it)
             }
