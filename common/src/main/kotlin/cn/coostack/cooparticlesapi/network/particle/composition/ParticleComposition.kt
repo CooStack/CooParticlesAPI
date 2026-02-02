@@ -100,7 +100,10 @@ abstract class ParticleComposition(var position: Vec3, var world: Level? = null)
     /** 当粒子组合初始化时, 存储1倍缩放粒子组与原点的距离 */
     val particleDefaultLength = ConcurrentHashMap<UUID, Double>()
 
+    // 防止频繁的toList造成的性能浪费
+
     internal val invokeQueue = ArrayList<ParticleComposition.() -> Unit>()
+    protected val particleRotatedLocations = ArrayList<RelativeLocation>()
 
     abstract fun getCodec(): StreamCodec<FriendlyByteBuf, ParticleComposition>
 
@@ -234,6 +237,7 @@ abstract class ParticleComposition(var position: Vec3, var world: Level? = null)
         }
         particles.clear()
         particleLocations.clear()
+        particleRotatedLocations.clear()
         particleDefaultLength.clear()
         this.canceled = cancel
     }
@@ -314,7 +318,7 @@ abstract class ParticleComposition(var position: Vec3, var world: Level? = null)
             return
         }
         Math3DUtil.rotatePointsToPoint(
-            particleLocations.values.toList(), to, axis
+            particleRotatedLocations, to, axis
         )
         axis = to
         toggleRelative()
@@ -332,10 +336,10 @@ abstract class ParticleComposition(var position: Vec3, var world: Level? = null)
             return
         }
         Math3DUtil.rotateAsAxis(
-            particleLocations.values.toList(), axis, radian
+            particleRotatedLocations, axis, radian
         )
         Math3DUtil.rotatePointsToPoint(
-            particleLocations.values.toList(), to, axis
+            particleRotatedLocations, to, axis
         )
         axis = to
         toggleRelative()
@@ -352,7 +356,7 @@ abstract class ParticleComposition(var position: Vec3, var world: Level? = null)
             return
         }
         Math3DUtil.rotateAsAxis(
-            particleLocations.values.toList(), axis, radian
+            particleRotatedLocations, axis, radian
         )
         toggleRelative()
     }
@@ -398,7 +402,7 @@ abstract class ParticleComposition(var position: Vec3, var world: Level? = null)
                 handler(controler)
             }
         }
-
+        particleRotatedLocations.add(pos)
         particles[uuid] = controler
         particleLocations[controler] = pos
     }

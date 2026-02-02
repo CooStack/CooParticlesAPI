@@ -259,6 +259,22 @@ class PointsBuilder {
     }
 
     /**
+     * 根据当前的大小进行百分比缩放
+     *
+     * @param factor 缩放的百分比 不能小于等于0 否则会破坏所有的点
+     */
+    fun scale(factor: Number): PointsBuilder {
+        val f = factor.toDouble()
+        if (f <= 0) {
+            return this
+        }
+        points.forEach {
+            it.multiply(f)
+        }
+        return this
+    }
+
+    /**
      * 添加一条三次贝塞尔曲线点集（二维曲线，Z 默认为 0）。
      *
      * @param target 终点（相对坐标）
@@ -333,6 +349,31 @@ class PointsBuilder {
      * @param count 点数量
      */
     fun addHalfCircle(r: Double, count: Int): PointsBuilder = addWith { getHalfCircleXZ(r, count) }
+
+    /**
+     * 添加一个弧线 从-radian/2 到 radian/2
+     * 以X轴为对称轴设置弧度
+     *
+     * @param r 弧长
+     * @param count 采样点个数
+     * @param radian 弧度
+     */
+    fun addRadianCenter(r: Double, count: Int, radian: Double, rotate: Double = 0.0) = addWith {
+        getRadianXZCenter(r, count, radian, rotate)
+    }
+
+    /**
+     * 添加一个弧线 从startRadian 到 endRadian
+     *
+     * @param r 弧长
+     * @param count 采样点个数
+     * @param startRadian  弧度
+     * @param endRadian  弧度
+     */
+    fun addRadian(r: Double, count: Int, startRadian: Double, endRadian: Double, rotate: Double = 0.0) = addWith {
+        getRadianXZ(r, count, startRadian, endRadian, rotate)
+    }
+
 
     /**
      * 添加一个半圆（XZ 平面），并对其整体旋转。

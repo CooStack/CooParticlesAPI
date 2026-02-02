@@ -4,7 +4,6 @@ accessible method net/minecraft/client/renderer/RenderType create (Ljava/lang/St
 
 accessible class net/minecraft/client/renderer/RenderType$CompositeState
 
-accessible class net/minecraft/client/renderer/RenderType$CompositeState$Builder
 accessible field net/minecraft/client/model/geom/ModelPart$Cube polygons [Lnet/minecraft/client/model/geom/ModelPart$Polygon;
 accessible field net/minecraft/client/model/geom/ModelPart cubes Ljava/util/List;
 accessible field net/minecraft/client/model/geom/ModelPart children Ljava/util/Map;

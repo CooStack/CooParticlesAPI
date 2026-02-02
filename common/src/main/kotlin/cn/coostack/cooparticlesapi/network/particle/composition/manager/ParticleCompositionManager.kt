@@ -101,34 +101,36 @@ object ParticleCompositionManager {
         }
     }
 
-    fun sendCreateOrUpdate(entity: ParticleComposition) {
+    fun sendCreateOrUpdate(composition: ParticleComposition) {
         val server = CooParticlesAPI.server
-        val uuid = entity.controlUUID
-        val type = entity::class.java.name
+        val uuid = composition.controlUUID
+        val type = composition::class.java.name
         val buf = RegistryFriendlyByteBuf(Unpooled.buffer(), CooParticlesAPI.registryAccess)
-        registeredTypes[entity::class.java.name]!!
-            .encode(buf, entity)
+        registeredTypes[composition::class.java.name]!!
+            .encode(buf, composition)
         val data = ByteArray(buf.readableBytes()).apply {
             buf.readBytes(this)
         }
         val packet = PacketParticleCompositionS2C(uuid, type, data)
         server.playerList.players.forEach {
-            if (it.level() != entity.world) {
+            if (it.level() != composition.world) {
                 return@forEach
             }
 
             val compositions = playerPlayerVisibleSet.getOrPut(it.uuid) { HashSet() }
-            val shouldJoinOrUpdate = entity.position.distanceTo(it.position()) <= entity.visibleRange
-            if (compositions.contains(entity)) {
+            val shouldJoinOrUpdate = composition.position.distanceTo(it.position()) <= composition.visibleRange
+            if (compositions.contains(composition)) {
                 if (shouldJoinOrUpdate) {
                     CooParticlesServices.SERVER_NETWORK.send(packet, it)
                 } else {
                     // remove
-                    compositions.remove(entity)
+                    compositions.remove(composition)
+                    packet.distanceRemove = true
+                    CooParticlesServices.SERVER_NETWORK.send(packet, it)
                 }
             } else if (shouldJoinOrUpdate) {
                 // join
-                compositions.add(entity)
+                compositions.add(composition)
                 // 发包
                 CooParticlesServices.SERVER_NETWORK.send(packet, it)
             }

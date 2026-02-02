@@ -12,6 +12,7 @@ import kotlinx.coroutines.newFixedThreadPoolContext
 import kotlinx.coroutines.runBlocking
 import net.minecraft.world.phys.Vec3
 import org.joml.Quaterniond
+import org.joml.Quaternionf
 import org.joml.Vector3d
 import org.joml.Vector3f
 import java.util.ArrayList
@@ -333,16 +334,50 @@ object Math3DUtil {
      * @return 在xz平面上的半圆的点
      */
     fun getHalfCircleXZ(r: Double, count: Int, rotate: Double = 0.0): List<RelativeLocation> {
+        return getRadianXZCenter(r, count, PI, rotate)
+    }
+
+    /**
+     * 获取弧线，从 -radian/2 .. radian/2
+     * 以X轴为中心 向左右扩散 radian / 2弧度
+     *
+     * @param r 弧长半径
+     * @param count 弧度采样点个数
+     * @param radian 弧度
+     * @param rotate 初始旋转
+     * @return
+     */
+    fun getRadianXZCenter(r: Double, count: Int, radian: Double, rotate: Double = 0.0): List<RelativeLocation> {
+        return getRadianXZ(r, count, -radian / 2, radian / 2, rotate)
+    }
+
+    /**
+     * 获取弧线， 从 startRadian .. endRadian
+     *
+     * @param r 弧长半径
+     * @param count 采样点个数
+     * @param startRadian 起始弧度 （< endRadian)
+     * @param endRadian 结束弧度
+     * @param rotate 初始旋转
+     * @return
+     */
+    fun getRadianXZ(
+        r: Double,
+        count: Int,
+        startRadian: Double,
+        endRadian: Double,
+        rotate: Double = 0.0
+    ): List<RelativeLocation> {
         val res = ArrayList<RelativeLocation>()
-        val step = PI / count
-        var radius = 0.0
+        val step = (endRadian - startRadian) / count
+        var rad = startRadian
         repeat(count) {
             res.add(
                 RelativeLocation(
-                    r * cos(radius), 0.0, r * sin(radius),
+                    r * cos(rad), 0.0, r * sin(rad),
                 )
             )
-            radius += step
+            rad += step
         }
         if (rotate != 0.0) {
             rotateAsAxis(res, RelativeLocation.yAxis(), rotate)
@@ -652,6 +687,7 @@ object Math3DUtil {
             CooParticlesServices.API_CONFIG_MANAGER.getConfig().calculateThreadCount
         )
     }
+
 
     /**
      * 让图形的对称轴指向某个点(图形跟着转变)
@@ -1265,6 +1301,86 @@ object Math3DUtil {
         }
 
         return points
+    }
+
+    fun rotateQuatToPoint(rotation: Quaternionf, to: Vec3) {
+        rotateQuatToPoint(rotation, to.toVector3f())
+    }
+
+    fun rotateQuatToPoint(rotation: Quaternionf, to: RelativeLocation) {
+        rotateQuatToPoint(rotation, to.toVector3f())
+    }
+
+    fun rotateQuatToPoint(rotation: Quaternionf, to: Vector3f) {
+        if (to.length() < 1e-6) return
+        to.normalize()
+
+        // 你希望的世界 Up（永远用 +Y，不要用 -Y）
+        val worldUp = Vector3f(0f, 1f, 0f)
+
+        // 1) 先把“局部 forward”对齐到目标方向
+        // 你画的是 +Z(蓝) 当 forward，所以 from = +Z
+        val localForward = Vector3f(0f, 0f, 1f)
+
+        val qAlign = Quaternionf().rotateTo(localForward, to)
+
+        // 2) 再修正 twist：让“局部 up”尽量贴近 worldUp（消除滚动）
+        val localUp = Vector3f(0f, 1f, 0f)
+        val curUp = localUp.rotate(qAlign, Vector3f()) // 当前 up（世界空间）
+
+        // 把 up 投影到与 forward 垂直的平面，避免 forward//up 时数值退化
+        val upProj = projectOnPlane(worldUp, to)
+        val curUpProj = projectOnPlane(curUp, to)
+
+        // 若投影退化（t≈worldUp），选择一个备用 up 参考，避免跳变
+        if (upProj.lengthSquared() < 1e-8f || curUpProj.lengthSquared() < 1e-8f) {
+            // 备用参考：世界 Z（也可以换 X）
+            val altUp = Vector3f(0f, 0f, 1f)
+            val upProj2 = projectOnPlane(altUp, to)
+            val curUpProj2 = projectOnPlane(curUp, to)
+            if (upProj2.lengthSquared() >= 1e-8f && curUpProj2.lengthSquared() >= 1e-8f) {
+                upProj2.normalize()
+                curUpProj2.normalize()
+                val twist = signedAngleAroundAxis(curUpProj2, upProj2, to)
+                val qTwist = Quaternionf().rotateAxis(twist, to.x, to.y, to.z)
+                rotation.set(qTwist.mul(qAlign))
+                return
+            }
+            // 实在退化就只用对齐
+            rotation.set(qAlign)
+            return
+        }
+
+        upProj.normalize()
+        curUpProj.normalize()
+
+        val twist = signedAngleAroundAxis(curUpProj, upProj, to)
+        val qTwist = Quaternionf().rotateAxis(twist, to.x, to.y, to.z)
+
+        // 组合：先对齐 forward，再绕 forward 修正 up
+        rotation.set(qTwist.mul(qAlign))
+    }
+
+    private fun projectOnPlane(v: Vector3f, nUnit: Vector3f): Vector3f {
+        // v_proj = v - n*(v·n)
+        val dot = v.dot(nUnit)
+        return Vector3f(
+            v.x - nUnit.x * dot,
+            v.y - nUnit.y * dot,
+            v.z - nUnit.z * dot
+        )
+    }
+
+    /**
+     * 返回把 a 绕 axisUnit 旋转到 b 的有符号角度（-pi..pi）
+     * axisUnit 必须单位化
+     */
+    private fun signedAngleAroundAxis(a: Vector3f, b: Vector3f, axisUnit: Vector3f): Float {
+        // atan2( axis·(a×b), a·b )
+        val cross = Vector3f(a).cross(b)
+        val sin = cross.dot(axisUnit)
+        val cos = a.dot(b)
+        return atan2(sin.toDouble(), cos.toDouble()).toFloat()
     }
 
     /** 旋转是通过旋转x/z 轴来坐标值的 由于sqrt pow 是恒大于0的值因此不能用于坐标求值 */

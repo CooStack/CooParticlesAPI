@@ -4,10 +4,13 @@ import cn.coostack.cooparticlesapi.annotations.CodecField
 import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
 import cn.coostack.cooparticlesapi.annotations.display.handle.DisplayEntityHelper
 import cn.coostack.cooparticlesapi.display.DisplayEntity
+import cn.coostack.cooparticlesapi.extend.PIF
 import cn.coostack.cooparticlesapi.extend.asRelative
 import cn.coostack.cooparticlesapi.extend.minus
 import cn.coostack.cooparticlesapi.utils.GraphMathHelper
+import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.MinecraftRendererUtil
+import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import com.mojang.blaze3d.vertex.PoseStack
 import net.minecraft.client.Camera
 import net.minecraft.client.Minecraft
@@ -25,6 +28,8 @@ import net.minecraft.world.phys.Vec3
 import org.joml.Matrix4f
 import org.joml.Quaternionf
 import org.joml.Vector3f
+import kotlin.math.PI
+import kotlin.math.atan2
 
 @CooAutoRegister
 class BarrageItemDisplayEntity(pos: Vec3, world: Level?) : DisplayEntity(pos, world) {
@@ -33,6 +38,14 @@ class BarrageItemDisplayEntity(pos: Vec3, world: Level?) : DisplayEntity(pos, wo
 
     @CodecField
     var isBlock = false
+
+
+    @CodecField
+    var rotation = Quaternionf()
+    var prevRotation = Quaternionf()
+
+    @CodecField
+    var modelOffset = Quaternionf()
 
     override fun render(
         view: Matrix4f,
@@ -50,12 +63,7 @@ class BarrageItemDisplayEntity(pos: Vec3, world: Level?) : DisplayEntity(pos, wo
         MinecraftRendererUtil.applyAtPoint(
             offset, modelMatrixStack
         ) {
-            MinecraftRendererUtil.applyRotation(
-                this,
-                yaw(delta),
-                pitch(delta),
-                roll(delta)
-            )
+            modelMatrixStack.mulPose(rotation(delta))
             buffer.getBuffer(RenderType.LINES)
                 // Z轴 蓝色
                 .addVertex(modelMatrixStack.last(), 0f, 0f, -2f)
@@ -89,12 +97,7 @@ class BarrageItemDisplayEntity(pos: Vec3, world: Level?) : DisplayEntity(pos, wo
         MinecraftRendererUtil.applyAtPoint(
             offset, modelMatrixStack
         ) {
-            MinecraftRendererUtil.applyRotation(
-                this,
-                yaw(delta),
-                pitch(delta) - 90f,
-                roll(delta) + if (isBlock) 0f else 45f
-            )
+            modelMatrixStack.mulPose(rotation(delta))
         }
 
         MinecraftRendererUtil.renderItemModel(
@@ -117,16 +120,54 @@ class BarrageItemDisplayEntity(pos: Vec3, world: Level?) : DisplayEntity(pos, wo
         return GraphMathHelper.lerp(delta, min, max)
     }
 
+    private fun rotation(delta: Float): Quaternionf {
+        return GraphMathHelper.lerp(delta, prevRotation, rotation)
+    }
+
+
+    fun applyModelOffsetEuler(yawDeg: Float, pitchDeg: Float, rollDeg: Float) {
+
+        val yaw = (-yawDeg) * (Math.PI.toFloat() / 180f)
+        val pitch = (-pitchDeg) * (Math.PI.toFloat() / 180f)
+        val roll = (rollDeg) * (Math.PI.toFloat() / 180f)
+
+        modelOffset.identity()
+            .rotateY(yaw)
+            .rotateX(pitch)
+            .rotateZ(roll)
+            .normalize()
+    }
+
     override fun tick() {
         super.tick()
         manageRotation = false
+        prevRotation.set(rotation)
 
         val player = world!!.getEntitiesOfClass(Player::class.java, AABB.ofSize(pos, 36.0, 36.0, 36.0)) {
             true
         }.lastOrNull() ?: return
 
         val rel = player.eyePosition - pos
+        applyModelOffsetEuler(0f, -90f, 45f)
         rotateToPoint(rel.asRelative())
+
+//        roll += 10f
+//        rotateAsAxis(roll * PI / 180.0)
+
     }
 
+    override fun rotateToPoint(to: RelativeLocation) {
+        Math3DUtil.rotateQuatToPoint(rotation, to)
+        rotation.mul(modelOffset).normalize()
+    }
+
+    override fun rotateAsAxis(radian: Double) {
+        if (kotlin.math.abs(radian) < 1e-12) return
+
+        val dq = Quaternionf().rotateZ(radian.toFloat())
+
+        rotation.mul(dq)
+
+        rotation.normalize()
+    }
 }

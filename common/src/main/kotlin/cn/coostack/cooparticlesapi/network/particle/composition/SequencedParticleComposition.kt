@@ -66,7 +66,6 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
     var serverCurrentIndex: Int = 0
         protected set
     protected val sequencedParticlesData = ArrayList<Pair<CompositionData, RelativeLocation>>()
-    protected val locations = ArrayList<RelativeLocation>()
     override fun getParticles(): SortedMap<CompositionData, RelativeLocation> {
         return getParticleSequenced()
     }
@@ -91,7 +90,7 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
     override fun clear(cancel: Boolean) {
         super.clear(cancel)
         sequencedParticlesData.clear()
-        locations.clear()
+        particleRotatedLocations.clear()
     }
 
     override fun display() {
@@ -140,7 +139,7 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
 
         sequencedParticlesData.clear()
         sequencedParticlesData.addAll(locations.toList())
-        this.locations.addAll(locations.values)
+        this.particleRotatedLocations.addAll(locations.values)
         // client：准备 index->uuid 数组
         if (indexToUuid.size != count) {
             indexToUuid = arrayOfNulls(count)
@@ -358,7 +357,7 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
             return
         }
         Math3DUtil.rotatePointsToPoint(
-            locations, to, axis
+            particleRotatedLocations, to, axis
         )
         axis = to
         toggleRelative()
@@ -376,10 +375,10 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
             return
         }
         Math3DUtil.rotateAsAxis(
-            locations, axis, radian
+            particleRotatedLocations, axis, radian
         )
         Math3DUtil.rotatePointsToPoint(
-            locations, to, axis
+            particleRotatedLocations, to, axis
         )
         axis = to
         toggleRelative()
@@ -396,7 +395,7 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
             return
         }
         Math3DUtil.rotateAsAxis(
-            locations, axis, radian
+            particleRotatedLocations, axis, radian
         )
         toggleRelative()
     }
