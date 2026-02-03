@@ -27,6 +27,9 @@
 ---
 
 ## 开发者：文档导航
+> 你最好看看对应的类的定义
+> 
+> 用AI写的DOC， 全是幻觉 不过有些是对的 文档我有空再去修改一下
 
 - **快速上手**：[`docs/getting-started.md`](docs/getting-started.md)
 - **平台差异（Fabric / NeoForge）**：[`docs/fabric-neoforge.md`](docs/fabric-neoforge.md)

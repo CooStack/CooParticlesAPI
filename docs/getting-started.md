@@ -22,17 +22,14 @@
 - 在**你的 mod 主类初始化**时，做一次 “CooParticlesAPI 的初始化入口调用”（如果 API 提供）
 - 注册你的发射器/组合/实体等（推荐用 `@CooAutoRegister`，见 [`annotations.md`](annotations.md)）
 
-> 由于我无法在 GitHub 页面稳定加载源码树，本教程不会假设某个“统一入口函数”的确切名字。  
-> 你在 IDE 里搜索 `init` / `bootstrap` / `register` / `CooParticlesAPI` 主类即可定位。
-
 ---
 
 ## 3) Fabric：必须注册扫描包（重点）
 
-Fabric 缺少 NeoForge 那种“自动扫描 Mod 类”的能力，你的 README 已经写得很清楚：
+Fabric 缺少 NeoForge 那种“自动扫描 Mod 类”的能力：
 
 ```kotlin
-import cn.coostack.cooparticlesapi.CooAPIScanner
+import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
 
 object YourModInit {
     fun init() {

@@ -19,18 +19,14 @@
 示例（来自 README 结构，细节做了 Kotlin 化整理）：
 
 ```kotlin
-import cn.coostack.cooparticlesapi.codec.CodecField
-import net.minecraft.world.phys.Vec3
 
-class TestEventEmitter(pos: Vec3, level: net.minecraft.world.level.Level) :
-    cn.coostack.cooparticlesapi.emitters.ClassParticleEmitters(pos, level) {
+class TestEventEmitter(pos: Vec3, level: net.minecraft.world.level.Level) : ClassParticleEmitters(pos, level) {
 
     @CodecField
     var shootDirection: Vec3 = Vec3.ZERO
 
     @CodecField
-    var templateData: cn.coostack.cooparticlesapi.particles.ControlableParticleData =
-        cn.coostack.cooparticlesapi.particles.ControlableParticleData()
+    var templateData: ControlableParticleData = ControlableParticleData()
 }
 ```
 
@@ -54,13 +50,8 @@ class TestEventEmitter(pos: Vec3, level: net.minecraft.world.level.Level) :
 示例：
 
 ```kotlin
-import cn.coostack.cooparticlesapi.autoregister.CooAutoRegister
-import net.minecraft.world.level.Level
-import net.minecraft.world.phys.Vec3
-
 @CooAutoRegister
-class CustomEmitters(pos: Vec3, level: Level) :
-    cn.coostack.cooparticlesapi.emitters.ClassParticleEmitters(pos, level) {
+class CustomEmitters(pos: Vec3, level: Level) :ClassParticleEmitters(pos, level) {
 
     companion object {
         const val ID = "custom-emitters-demo"
@@ -77,7 +68,6 @@ class CustomEmitters(pos: Vec3, level: Level) :
 ## 3) Fabric 必做：注册扫描包（否则自动注册无效）
 
 ```kotlin
-import cn.coostack.cooparticlesapi.CooAPIScanner
 
 object YourModMain {
     fun init() {
@@ -98,7 +88,6 @@ object YourModMain {
 
 然后在 Fabric 里只注册一次根包：
 - `registerPacket("com.yourmod")`
-
 ---
 
 下一篇：

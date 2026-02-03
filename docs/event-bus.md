@@ -16,7 +16,7 @@
 ## 1) 定义事件
 
 ```kotlin
-import cn.coostack.cooparticlesapi.event.CooEvent
+import cn.coostack.cooparticlesapi.event.api.CooEvent
 
 data class TestEvent(val name: String) : CooEvent()
 ```
@@ -26,7 +26,7 @@ data class TestEvent(val name: String) : CooEvent()
 ## 2) 编写监听器
 
 ```kotlin
-import cn.coostack.cooparticlesapi.event.CooEvent
+import cn.coostack.cooparticlesapi.event.api.CooEvent
 import cn.coostack.cooparticlesapi.event.CooEventBus
 import cn.coostack.cooparticlesapi.event.annotation.EventHandler
 import cn.coostack.cooparticlesapi.event.annotation.EventListener
@@ -68,15 +68,6 @@ CooAPIScanner.registerPacket(YourModMain::class.java)
 
 见：[`fabric-neoforge.md`](fabric-neoforge.md)
 
----
-
-## 5) 事件系统适用场景（建议）
-
-- “粒子效果播放请求” -> 发事件 -> 若干监听器决定怎么播放
-- “服务器技能释放” -> 事件携带参数 -> 客户端效果监听器渲染
-- 作为你自己 mod 内部的轻量总线（比 Fabric 的回调事件更像 Forge 的体验）
-
----
 
 下一篇：
 - [注解：@CodecField / @CooAutoRegister](annotations.md)

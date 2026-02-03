@@ -20,7 +20,6 @@
 - `tick()`：服务端/客户端逻辑更新
 - `renderTick(lerp)`：客户端插值生成粒子
 - `addEmitter(...)` / `removeEmitter(...)`
-- 支持被挂在 `DisplayEntity` 上
 
 ---
 
@@ -43,21 +42,19 @@
 ### 3.1 普通组合
 
 ```kotlin
-import cn.coostack.cooparticlesapi.autoregister.CooAutoRegister
 
 @CooAutoRegister
-class DemoAuraComposition : cn.coostack.cooparticlesapi.composition.ParticleComposition() {
+class DemoAuraComposition : AutoParticleComposition() {
 
     private val auraEmitter = DemoAuraEmitter()
-
-    override fun build() {
-        // 伪代码：你的 API 可能是 addEmitter / emitters += ...
-        addEmitter(auraEmitter)
+    
+    fun getParticles(): Map<CompositionData, RelativeLocation>{
+        return mapof() // 你的粒子样式点
     }
-
-    override fun tick() {
-        super.tick()
-        // 在这里调节参数（颜色、半径、强度……）
+    fun onDisplay(){
+        addPreTickAction{
+            // 在这里添加tick方法
+        }
     }
 }
 ```
@@ -66,7 +63,7 @@ class DemoAuraComposition : cn.coostack.cooparticlesapi.composition.ParticleComp
 
 ```kotlin
 @CooAutoRegister
-class DemoSpellSequence : cn.coostack.cooparticlesapi.composition.SequencedParticleComposition() {
+class DemoSpellSequence : SequencedParticleComposition() {
 
     override fun buildSequence() {
         // 伪代码：你可能有 stage("charge", duration=20) { ... }
