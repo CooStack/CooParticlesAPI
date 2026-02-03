@@ -99,6 +99,13 @@ data class RelativeLocation(var x: Double, var y: Double, var z: Double) {
         return this
     }
 
+    fun add(x: Double, y: Double, z: Double): RelativeLocation {
+        this.x += x
+        this.y += y
+        this.z += z
+        return this
+    }
+
     fun remove(other: RelativeLocation): RelativeLocation {
         x -= other.x
         y -= other.y

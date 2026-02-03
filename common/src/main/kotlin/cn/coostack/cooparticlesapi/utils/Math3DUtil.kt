@@ -334,7 +334,7 @@ object Math3DUtil {
      * @return 在xz平面上的半圆的点
      */
     fun getHalfCircleXZ(r: Double, count: Int, rotate: Double = 0.0): List<RelativeLocation> {
-        return getRadianXZCenter(r, count, PI, rotate)
+        return getRadianXZ(r, count, 0.0, PI, rotate)
     }
 
     /**
