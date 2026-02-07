@@ -1,6 +1,7 @@
 package cn.coostack.cooparticlesapi.listener.client
 
 import cn.coostack.cooparticlesapi.CooParticlesAPIClient
+import cn.coostack.cooparticlesapi.client.KeyBindingManager
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.event.CooEventBus
 import cn.coostack.cooparticlesapi.event.events.client.ClientPostTickEvent
@@ -54,6 +55,7 @@ object CooParticlesAPINeoClientListener {
 
     @SubscribeEvent
     fun tickClientPre(event: ClientTickEvent.Pre) {
+        KeyBindingManager.tick()
         val e = ClientPreTickEvent(Minecraft.getInstance())
         CooEventBus.call(e)
     }

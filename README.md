@@ -1,11 +1,13 @@
-# CooParticlesAPI
+﻿# CooParticlesAPI
 
-> 给玩家：这是一个粒子库。**只有当服务端与客户端都需要同步粒子表现时，才需要双方都安装。**  
-> 如果只是客户端本地特效（不需要服务器同步），通常只装客户端即可。  
+一个面向 Fabric / NeoForge 的粒子与渲染框架，提供组合粒子、发射器、事件系统、DisplayEntity / RenderEntity、ShaderPipe 等能力。
+
+> 给玩家：这是一个粒子库。只有当服务端与客户端都需要同步粒子表现时，才需要双方都安装。  
+> 如果只是客户端本地特效（不需要服务端同步），通常只装客户端即可。
 
 ---
 
-## 玩家须知
+## 玩家告知
 
 ### 安装
 
@@ -26,31 +28,37 @@
 
 ---
 
-## 开发者：文档导航
-> 你最好看看对应的类的定义
-> 
-> 用AI写的DOC， 全是幻觉 不过有些是对的 文档我有空再去修改一下
+## 开发者快速开始
+1. 在你的 mod 中引入依赖（见下方“仓库/依赖设置”）。
+2. 直接使用 `@CooAutoRegister` + `@CodecField` 的 Auto 类（如 `AutoParticleEmitters` / `AutoParticleComposition`）。
+3. 自动注册无需手动扫描；Fabric 只需注册包：
 
-- **快速上手**：[`docs/getting-started.md`](docs/getting-started.md)
-- **平台差异（Fabric / NeoForge）**：[`docs/fabric-neoforge.md`](docs/fabric-neoforge.md)
-- **事件系统（CooEventBus）**：[`docs/event-bus.md`](docs/event-bus.md)
-- **注解（@CodecField / @CooAutoRegister）**：[`docs/annotations.md`](docs/annotations.md)
-- **实体框架（DisplayEntity / RenderEntity）**：[`docs/entities.md`](docs/entities.md)
-- **组合系统（ParticleComposition / SequencedParticleComposition）**：[`docs/compositions.md`](docs/compositions.md)
-- **发射器（ParticleEmitters）**：[`docs/emitters.md`](docs/emitters.md)
-- **自定义 ShaderPipe**：[`docs/shaderpipe.md`](docs/shaderpipe.md)
-- **Utils（不含 buffers）**：[`docs/utils.md`](docs/utils.md)
-- **完整示例（从 0 到可跑）**：[`docs/framework-example.md`](docs/framework-example.md)
+### Fabric 扫描
+```kotlin
+CooAPIScanner.registerPacket("your.mod.package")
+```
 
-> 本文档集**不覆盖** `ParticleGroup` / `ParticleStyle`（按你的要求排除）。  
-> 其它你点名的模块都在上面的文档里。
+### NeoForge
+无需额外调用。
+
+
+---
+
+## 文档导航
+- ParticleComposition：[`docs/particle-composition.md`](docs/particle-composition.md)
+- AutoParticleEmitters：[`docs/auto-particle-emitters.md`](docs/auto-particle-emitters.md)
+- CodecField 自动注册：[`docs/codecfield-auto-register.md`](docs/codecfield-auto-register.md)
+- CooEventBus：[`docs/event-bus.md`](docs/event-bus.md)
+- DisplayEntity：[`docs/display-entity.md`](docs/display-entity.md)
+- RenderEntity：[`docs/render-entity.md`](docs/render-entity.md)
+- ShaderPipe：[`docs/shader-pipe.md`](docs/shader-pipe.md)
+- Utils：[`docs/utils.md`](docs/utils.md)
 
 ---
 
 ## 仓库/依赖设置（保留原 README 的“仓库设置”信息）
 
 ### 仓库（Gradle）
-
 ```gradle
 repositories {
     maven {
@@ -61,9 +69,7 @@ repositories {
 ```
 
 ### 依赖（Gradle）
-
 版本号请以最新 Release 为准。
-
 ```gradle
 dependencies {
     // neoforge
@@ -72,5 +78,3 @@ dependencies {
     implementation("cn.coostack:cooparticlesapi-fabric:<version>")
 }
 ```
-
-下一步建议直接看：[`docs/getting-started.md`](docs/getting-started.md)

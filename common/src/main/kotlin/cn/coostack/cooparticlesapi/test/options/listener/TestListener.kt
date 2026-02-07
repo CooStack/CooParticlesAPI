@@ -4,25 +4,9 @@ import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.annotations.events.EventHandler
 import cn.coostack.cooparticlesapi.annotations.events.EventListener
 import cn.coostack.cooparticlesapi.event.api.EventPriority
-import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldRenderEvent
-import cn.coostack.cooparticlesapi.extend.plus
-import cn.coostack.cooparticlesapi.mixin.events.world.client.ItemRendererInvoker
 import cn.coostack.cooparticlesapi.test.options.event.TestChildEvent
 import cn.coostack.cooparticlesapi.test.options.event.TestEvent
-import cn.coostack.cooparticlesapi.utils.GraphMathHelper
-import cn.coostack.cooparticlesapi.utils.MinecraftRendererUtil
-import net.minecraft.client.Minecraft
-import net.minecraft.client.model.geom.ModelLayers
-import net.minecraft.client.renderer.LightTexture
-import net.minecraft.client.renderer.RenderType
-import net.minecraft.client.renderer.texture.OverlayTexture
 import net.minecraft.network.chat.Component
-import net.minecraft.world.inventory.InventoryMenu
-import net.minecraft.world.item.Items
-import net.minecraft.world.level.lighting.LightEngine
-import net.minecraft.world.phys.Vec3
-import kotlin.math.abs
-import kotlin.math.sin
 
 @EventListener(CooParticlesConstants.MOD_ID)
 class TestListener {
@@ -42,6 +26,7 @@ class TestListener {
     fun onTestChildCanceled(event: TestChildEvent) {
         event.isInterrupted = true
     }
+
 
 //    /**
 //     * 这是一个生成展示实体的样例

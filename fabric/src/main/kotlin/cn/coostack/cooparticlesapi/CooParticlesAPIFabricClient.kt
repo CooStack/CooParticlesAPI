@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi
 
+import cn.coostack.cooparticlesapi.client.KeyBindingManager
 import cn.coostack.cooparticlesapi.entities.CooModEntityTypes
 import cn.coostack.cooparticlesapi.entities.renderer.TestRenderEntityRenderer
 import cn.coostack.cooparticlesapi.event.CooEventBus
@@ -25,6 +26,7 @@ import net.fabricmc.api.ClientModInitializer
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientWorldEvents
+import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
 import net.fabricmc.fabric.api.client.particle.v1.ParticleFactoryRegistry
@@ -34,6 +36,7 @@ import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents
 
 object CooParticlesAPIFabricClient : ClientModInitializer {
     override fun onInitializeClient() {
+        KeyBindingManager.setRegistrar { KeyBindingHelper.registerKeyBinding(it) }
         registerParticleFabric()
         registerNetworkFabric()
         CooParticlesAPIClient.init()
@@ -56,6 +59,7 @@ object CooParticlesAPIFabricClient : ClientModInitializer {
         }
 
         ClientTickEvents.START_CLIENT_TICK.register {
+            KeyBindingManager.tick()
             val event = ClientPreTickEvent(it)
             CooEventBus.call(event)
         }

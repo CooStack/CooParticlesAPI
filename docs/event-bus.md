@@ -1,73 +1,61 @@
-# 事件系统：CooEventBus
+﻿# CooEventBus 事件系统
 
-> 回到索引：[`index.md`](index.md)
+`CooEventBus` 提供轻量的事件分发能力，支持优先级、可取消与可中断事件，并且支持自动扫描监听器。
 
-这套事件系统是“Forge 风格”的：你定义事件类 -> 写监听器类 -> 标注注解 -> 启动时自动注册 -> 触发时广播。
-
-来自仓库 README 的关键点：
-- 监听器类需要 `@EventListener`
-- 监听方法需要 `@EventHandler`
-- 监听方法必须**只有一个参数**，且该参数类型必须继承 `CooEvent`
-- 监听器类必须有**空构造**，或提供 `static INSTANCE`（Kotlin `object` 最方便）
-- 一般不需要手动注册：启动时会自动注册（Fabric 记得先注册扫描包）
-
----
-
-## 1) 定义事件
+## 核心用法
+### 1. 定义事件
+所有事件必须继承 `CooEvent`。需要可取消/可中断时实现对应接口。
 
 ```kotlin
-import cn.coostack.cooparticlesapi.event.api.CooEvent
-
-data class TestEvent(val name: String) : CooEvent()
+data class MyEvent(val player: ServerPlayer) : CooEvent(), EventCancelable {
+    override var isCancelled: Boolean = false
+}
 ```
 
----
-
-## 2) 编写监听器
+### 2. 编写监听器
+类上标注 `@EventListener(modId)`，方法上标注 `@EventHandler`。方法参数必须是 **单一事件类型**。
 
 ```kotlin
-import cn.coostack.cooparticlesapi.event.api.CooEvent
-import cn.coostack.cooparticlesapi.event.CooEventBus
-import cn.coostack.cooparticlesapi.event.annotation.EventHandler
-import cn.coostack.cooparticlesapi.event.annotation.EventListener
-
-@EventListener
-object DemoListener {
-
-    @EventHandler
-    fun onTest(e: TestEvent) {
-        // 你的逻辑
-        // e.name ...
+@EventListener("your_mod_id")
+object MyEventListener {
+    @EventHandler(EventPriority.HIGH)
+    fun onMyEvent(event: MyEvent) {
+        if (/* ... */) {
+            event.isCancelled = true
+        }
     }
 }
 ```
 
-> Kotlin `object` 自动满足“单例 + 无参构造”的要求。
-
----
-
-## 3) 触发事件
-
+### 3. 触发事件
 ```kotlin
-import cn.coostack.cooparticlesapi.event.CooEventBus
-
-fun fire() {
-    CooEventBus.call(TestEvent("hello"))
+val event = CooEventBus.call(MyEvent(player))
+if (event.isCancelled) {
+    return
 }
 ```
 
----
+## 事件优先级与中断
+- `EventPriority` 顺序：`HIGHEST -> HIGH -> NORMAL -> LOW -> LOWEST`。
+- 若事件实现 `EventInterruptible`，当 `isInterrupted = true` 时，**当前事件类型后续监听器不会再执行**，但仍会继续处理父类事件链。
+- `EventCancelable` 只是状态字段，是否取消由调用方自行判断。
 
-## 4) Fabric 特别提醒
-
-如果你在 Fabric 下发现监听不触发，99% 是你忘了：
-
+## 扫描与注册
+扫描由 API 自动触发，无需手动调用 `scan()` 或 `loadScannerPackages()`。
+### Fabric
+只需要注册扫描包：
 ```kotlin
-CooAPIScanner.registerPacket(YourModMain::class.java)
+CooAPIScanner.registerPacket("your.mod.package")
 ```
 
-见：[`fabric-neoforge.md`](fabric-neoforge.md)
+### NeoForge
+无需额外调用。
 
+## 手动注册（不走扫描）
+如果你想完全手动控制监听器：
+```kotlin
+CooEventBus.appendListenerTarget("your_mod_id", "com.example.MyEventListener")
+CooEventBus.initListeners()
+```
 
-下一篇：
-- [注解：@CodecField / @CooAutoRegister](annotations.md)
+> 提示：扫描与手动注册可以混用，但要确保 `initListeners()` 在所有监听器都已注册之后执行。
