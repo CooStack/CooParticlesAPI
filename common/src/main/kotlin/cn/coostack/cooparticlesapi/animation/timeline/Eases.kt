@@ -40,7 +40,10 @@ object Eases {
      * - 大多数「出现型」动画（非常常用）
      */
     @JvmField
-    val outCubic: Ease = Ease { t -> 1 - (1 - t) * (1 - t) * (1 - t) }
+    val outCubic: Ease = Ease { x ->
+        val t = x.coerceIn(0.0, 1.0)
+        1 - (1 - t) * (1 - t) * (1 - t)
+    }
 
     /**
      * 正弦缓入缓出（慢 → 快 → 慢）
@@ -58,7 +61,10 @@ object Eases {
      * - UI 或需要高度平滑的粒子运动
      */
     @JvmField
-    val inOutSine: Ease = Ease { t -> (1 - cos(Math.PI * t)) / 2.0 }
+    val inOutSine: Ease = Ease { x ->
+        val t = x.coerceIn(0.0, 1.0)
+        (1 - cos(Math.PI * t)) / 2.0
+    }
 
     /**
      * 指数缓出（爆发式启动，快速到位）
@@ -79,7 +85,10 @@ object Eases {
      * - 动感很强，滥用会显得生硬
      */
     @JvmField
-    val outExpo: Ease = Ease { t -> if (t >= 1.0) 1.0 else 1 - 2.0.pow(-10.0 * t) }
+    val outExpo: Ease = Ease { x ->
+        val t = x.coerceIn(0.0, 1.0)
+        if (t >= 1.0) 1.0 else 1 - 2.0.pow(-10.0 * t)
+    }
 
     /**
      * 缓入立方（先慢后快）
@@ -95,7 +104,10 @@ object Eases {
      * - 剑阵即将爆发前的“压缩感”
      */
     @JvmField
-    val inCubic: Ease = Ease { t -> t * t * t }
+    val inCubic: Ease = Ease { x ->
+        val t = x.coerceIn(0.0, 1.0)
+        t * t * t
+    }
 
     /**
      * 立方缓入缓出（慢 → 快 → 慢，比 sine 更有力量）
@@ -109,7 +121,8 @@ object Eases {
      * - 剑阵展开 + 回收
      */
     @JvmField
-    val inOutCubic: Ease = Ease { t ->
+    val inOutCubic: Ease = Ease { x ->
+        val t = x.coerceIn(0.0, 1.0)
         if (t < 0.5)
             4 * t * t * t
         else
@@ -126,7 +139,10 @@ object Eases {
      * - 需要一点点动画感但不抢戏的场合
      */
     @JvmField
-    val outQuad: Ease = Ease { t -> 1 - (1 - t) * (1 - t) }
+    val outQuad: Ease = Ease { x ->
+        val t = x.coerceIn(0.0, 1.0)
+        1 - (1 - t) * (1 - t)
+    }
 
     /**
      * 回弹缓出（略微超出后回弹）
@@ -161,7 +177,8 @@ object Eases {
      */
     @JvmStatic
     @JvmOverloads
-    fun outBack(overshoot: Double = 1.70158): Ease = Ease { t ->
+    fun outBack(overshoot: Double = 1.70158): Ease = Ease { x ->
+        val t = x.coerceIn(0.0, 1.0)
         val c3 = overshoot + 1
         1 + c3 * (t - 1).pow(3) + overshoot * (t - 1).pow(2)
     }
@@ -213,7 +230,8 @@ object Eases {
         period: Double = (2 * Math.PI) / 3,
         decay: Double = 10.0,
         shift: Double = 0.75
-    ): Ease = Ease { t ->
+    ): Ease = Ease { x ->
+        val t = x.coerceIn(0.0, 1.0)
         if (t == 0.0 || t == 1.0) t
         else 2.0.pow(-decay * t) * sin((t * 10 - shift) * period) + 1
     }
@@ -246,7 +264,9 @@ object Eases {
      */
     @JvmStatic
     @JvmOverloads
-    fun outBounce(n1: Double = 7.5625, d1: Double = 2.75): Ease = Ease { t ->
+    fun outBounce(n1: Double = 7.5625, d1: Double = 2.75): Ease = Ease { x ->
+        val t = x.coerceIn(0.0, 1.0)
+
         when {
             t < 1 / d1 -> n1 * t * t
             t < 2 / d1 -> {
@@ -283,7 +303,9 @@ object Eases {
         val target = RelativeLocation(1, 1, 0)
         val end = target + endHandle
 
-        return Ease { t ->
+        return Ease { x ->
+            val t = x.coerceIn(0.0, 1.0)
+
             val u = 1.0 - t
             val u2 = u * u
             val t2 = t * t
@@ -316,7 +338,9 @@ object Eases {
         val target = Vec3(1.0, 1.0, 0.0)
         val end = target.add(endHandle)
 
-        return Ease { t ->
+        return Ease { x ->
+            val t = x.coerceIn(0.0, 1.0)
+
             val u = 1.0 - t
             val u2 = u * u
             val t2 = t * t
@@ -349,7 +373,9 @@ object Eases {
         val target = Vec2(1f, 1f)
         val end = target.add(endHandle)
 
-        return Ease { t ->
+        return Ease { x ->
+            val t = x.coerceIn(0.0, 1.0)
+
             val u = 1.0 - t
             val u2 = u * u
             val t2 = t * t

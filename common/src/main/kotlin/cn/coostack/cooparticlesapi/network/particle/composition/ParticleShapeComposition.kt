@@ -9,8 +9,13 @@ import cn.coostack.cooparticlesapi.utils.helper.impl.composition.CompositionScal
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.phys.Vec3
+import java.util.UUID
 
-class ParticleShapeComposition : ParticleComposition(Vec3.ZERO, null) {
+class ParticleShapeComposition(uuid: UUID) : ParticleComposition(Vec3.ZERO, null) {
+    init {
+        this.controlUUID = uuid
+    }
+
     private val points = ArrayList<Pair<PointsBuilder, (RelativeLocation) -> CompositionData>>()
     private val invokes = ArrayList<ParticleShapeComposition.() -> Unit>()
     private val beforeInvokes =

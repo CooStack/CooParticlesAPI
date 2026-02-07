@@ -28,7 +28,10 @@ import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestEventEmitte
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestWaveEmitters
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.event.TestCollideEventHandler
 import cn.coostack.cooparticlesapi.test.options.particle.style.RomaMagicTestStyle
+import cn.coostack.cooparticlesapi.test.options.renderer.TestBillboardSmokeEntity
+import cn.coostack.cooparticlesapi.test.options.renderer.TestGlowSphereEntity
 import cn.coostack.cooparticlesapi.test.options.renderer.TestRendererEntity
+import cn.coostack.cooparticlesapi.test.options.renderer.TestTexturedBeamEntity
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.phys.Vec3
@@ -180,6 +183,18 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
                 )
             }.appendOption {
                 SimpleCompositionOption(TestModelComposition(player.position(), player.level()), -1)
+            }.appendOption {
+                SimpleRendererEntityOption(TestBillboardSmokeEntity(player.level()).apply {
+                    this.setPosition(player.position())
+                }, 100)
+            }.appendOption {
+                SimpleRendererEntityOption(TestGlowSphereEntity(player.level()).apply {
+                    this.setPosition(player.position())
+                }, 100)
+            }.appendOption {
+                SimpleRendererEntityOption(TestTexturedBeamEntity(player.level()).apply {
+                    this.setPosition(player.position())
+                }, 100)
             }
     }
 }

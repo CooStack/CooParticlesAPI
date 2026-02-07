@@ -50,7 +50,7 @@ object ServerRenderEntityManager {
                 iterator.remove()
                 continue
             }
-            if (entity.alwaysToggle || entity.dirty) {
+            if (entity.shouldSync()) {
                 toggle(entity)
             }
         }
@@ -94,10 +94,16 @@ object ServerRenderEntityManager {
     }
 
     fun toggle(entity: RenderEntity) {
-        val packet = entity.getTogglePacket() ?: return
-        CooParticlesAPI.server.playerList.players.filter { playerCanView(it.uuid, entity) }.forEach {
+        val packet = entity.getTogglePacket(entity.alwaysToggle) ?: return
+        val targets = CooParticlesAPI.server.playerList.players.filter { playerCanView(it.uuid, entity) }
+        if (targets.isEmpty()) {
+            entity.onSynced()
+            return
+        }
+        targets.forEach {
             CooParticlesServices.SERVER_NETWORK.send(packet, it)
         }
+        entity.onSynced()
     }
 
     fun addVisible(who: ServerPlayer, entity: RenderEntity) {

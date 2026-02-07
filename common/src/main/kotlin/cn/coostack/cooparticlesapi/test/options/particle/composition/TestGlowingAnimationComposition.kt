@@ -77,7 +77,7 @@ class TestGlowingAnimationComposition(position: Vec3, world: Level? = null) : Au
                     CompositionData()
                         .setDisplayerSupplier {
                             ParticleDisplayer.withComposition(
-                                ParticleShapeComposition()
+                                ParticleShapeComposition(it)
                                     .applyBuilder(
                                         PointsBuilder.of(sword).cloneBuilder()
                                             .applyNoiseOffset(0.1, 0.1, 0.1, NoiseMode.SPHERE_UNIFORM)
@@ -130,7 +130,7 @@ class TestGlowingAnimationComposition(position: Vec3, world: Level? = null) : Au
                 CompositionData()
                     .setDisplayerSupplier {
                         ParticleDisplayer.withComposition(
-                            SequencedParticleShapeComposition()
+                            SequencedParticleShapeComposition(it)
                                 .applyBuilder(
                                     PointsBuilder()
                                         .addFourierSeries(

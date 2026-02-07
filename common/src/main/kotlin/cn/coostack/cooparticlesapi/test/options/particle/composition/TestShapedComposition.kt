@@ -27,7 +27,7 @@ class TestShapedComposition(position: Vec3, world: Level? = null) : AutoParticle
             CompositionData()
                 .setDisplayerSupplier {
                     ParticleDisplayer.withComposition(
-                        ParticleShapeComposition()
+                        ParticleShapeComposition(it)
                             .applyBuilder(
                                 PointsBuilder()
                                     .addSpiral(0.0, 10.0, 10.0, 1800, PI / 32)
@@ -49,7 +49,7 @@ class TestShapedComposition(position: Vec3, world: Level? = null) : AutoParticle
             CompositionData()
                 .setDisplayerSupplier {
                     ParticleDisplayer.withComposition(
-                        ParticleShapeComposition()
+                        ParticleShapeComposition(it)
                             .applyBuilder(
                                 PointsBuilder()
                                     .addSpiral(0.0, 10.0, 10.0, 1800, PI / 32)
@@ -75,7 +75,7 @@ class TestShapedComposition(position: Vec3, world: Level? = null) : AutoParticle
             CompositionData()
                 .setDisplayerSupplier {
                     ParticleDisplayer.withComposition(
-                        SequencedParticleShapeComposition()
+                        SequencedParticleShapeComposition(it)
                             .applyBuilderI(
                                 PointsBuilder()
                                     .addCircle(10.0, 1080)

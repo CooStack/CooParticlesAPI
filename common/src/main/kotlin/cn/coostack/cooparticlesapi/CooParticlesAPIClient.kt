@@ -21,6 +21,7 @@ import cn.coostack.cooparticlesapi.test.options.particle.client.SequencedMagicCi
 import cn.coostack.cooparticlesapi.test.options.particle.client.TestGroupClient
 import cn.coostack.cooparticlesapi.test.options.particle.style.*
 import cn.coostack.cooparticlesapi.test.options.renderer.TestRendererEntity
+import cn.coostack.cooparticlesapi.test.options.renderer.TestShaderInit
 import cn.coostack.cooparticlesapi.utils.ClientCameraUtil
 import net.irisshaders.iris.api.v0.IrisApi
 import net.minecraft.client.multiplayer.ClientLevel
@@ -125,6 +126,7 @@ object CooParticlesAPIClient {
     private fun initRender() {
         ClientRenderEntityManager.register(TestRendererEntity.id, TestRendererEntity.codec)
         ClientRenderEntityManager.bindEntityRenderPipe(TestRendererEntity.id, ShaderPipeManagers.simpleBloom.pipeID)
+        TestShaderInit.initOnClient()
         CooParticleTextureSheet.init()
     }
 

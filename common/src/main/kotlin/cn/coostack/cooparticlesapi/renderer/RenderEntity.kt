@@ -2,7 +2,6 @@ package cn.coostack.cooparticlesapi.renderer
 
 import cn.coostack.cooparticlesapi.network.packet.PacketRenderEntityS2C
 import cn.coostack.cooparticlesapi.network.particle.ServerControler
-import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersManager
 import cn.coostack.cooparticlesapi.renderer.server.ServerRenderEntityManager
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import com.mojang.blaze3d.systems.RenderSystem
@@ -16,6 +15,8 @@ import net.minecraft.world.phys.Vec3
 import org.joml.Matrix4f
 import org.joml.Matrix4fStack
 import java.util.UUID
+import kotlin.properties.ReadWriteProperty
+import kotlin.reflect.KProperty
 
 /**
  * 为了方便设置
@@ -32,6 +33,7 @@ abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) : Serv
 
     var init = false
     var alwaysToggle = false
+    private var syncOnce = false
 
     companion object {
         fun decodeBase(buf: FriendlyByteBuf, instance: RenderEntity) {
@@ -48,6 +50,30 @@ abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) : Serv
             buf.writeBoolean(entity.canceled)
             buf.writeInt(entity.age)
         }
+
+        /**
+         * Helper to build a codec that always includes base fields.
+         */
+        fun <T : RenderEntity> createCodec(
+            factory: () -> T,
+            encodeExtra: (FriendlyByteBuf, T) -> Unit = { _, _ -> },
+            decodeExtra: (FriendlyByteBuf, T) -> Unit = { _, _ -> }
+        ): StreamCodec<FriendlyByteBuf, RenderEntity> {
+            return StreamCodec.of(
+                { buf, entity ->
+                    encodeBase(buf, entity)
+                    @Suppress("UNCHECKED_CAST")
+                    val typed = entity as T
+                    encodeExtra(buf, typed)
+                },
+                { buf ->
+                    val instance = factory()
+                    decodeBase(buf, instance)
+                    decodeExtra(buf, instance)
+                    instance
+                }
+            )
+        }
     }
 
     var lastRenderPos = pos
@@ -59,15 +85,40 @@ abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) : Serv
     open fun tick() {
         if (canceled) return
         age++
+        if (client) {
+            clientTick()
+        } else {
+            serverTick()
+        }
+    }
+
+    /**
+     * Client-only update hook. Override for visual-only logic.
+     */
+    open fun clientTick() {
+    }
+
+    /**
+     * Server-only update hook. Override for sync or gameplay logic.
+     */
+    open fun serverTick() {
     }
 
     fun getTogglePacket(): PacketRenderEntityS2C? {
-        return getPacket(PacketRenderEntityS2C.Method.TOGGLE)
+        return getTogglePacket(false)
+    }
+
+    fun getTogglePacket(force: Boolean): PacketRenderEntityS2C? {
+        return getPacket(PacketRenderEntityS2C.Method.TOGGLE, force)
     }
 
     fun getPacket(method: PacketRenderEntityS2C.Method): PacketRenderEntityS2C? {
+        return getPacket(method, false)
+    }
+
+    fun getPacket(method: PacketRenderEntityS2C.Method, force: Boolean): PacketRenderEntityS2C? {
         // 判断数据有没有发生改变
-        if (!dirty && method == PacketRenderEntityS2C.Method.TOGGLE) {
+        if (!force && !dirty && method == PacketRenderEntityS2C.Method.TOGGLE) {
             return null
         }
         val buf = FriendlyByteBuf(Unpooled.buffer())
@@ -91,6 +142,63 @@ abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) : Serv
      */
     fun markDirty() {
         dirty = true
+    }
+
+    /**
+     * One-shot sync request. Clears after a successful toggle send.
+     */
+    fun requestSync() {
+        dirty = true
+        syncOnce = true
+    }
+
+    /**
+     * Manually clear dirty state.
+     */
+    fun clearDirty() {
+        dirty = false
+        syncOnce = false
+    }
+
+    /**
+     * Server hook to clear a one-shot sync.
+     */
+    internal fun onSynced() {
+        if (syncOnce) {
+            dirty = false
+            syncOnce = false
+        }
+    }
+
+    /**
+     * Override to control when the server should sync this entity.
+     */
+    open fun shouldSync(): Boolean {
+        return alwaysToggle || dirty
+    }
+
+    /**
+     * Delegate that marks dirty when the value changes.
+     * Set syncOnce to true for one-shot syncing.
+     */
+    protected fun <T> tracked(initial: T, syncOnce: Boolean = false): ReadWriteProperty<Any?, T> {
+        return object : ReadWriteProperty<Any?, T> {
+            private var value = initial
+
+            override fun getValue(thisRef: Any?, property: KProperty<*>): T {
+                return value
+            }
+
+            override fun setValue(thisRef: Any?, property: KProperty<*>, value: T) {
+                if (this.value == value) return
+                this.value = value
+                if (syncOnce) {
+                    requestSync()
+                } else {
+                    markDirty()
+                }
+            }
+        }
     }
 
     /**
@@ -148,11 +256,11 @@ abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) : Serv
     }
 
 
-    override fun rotateToWithAngle(to: RelativeLocation, angle: Double) {
+    override fun rotateToWithAngle(to: RelativeLocation, radian: Double) {
 
     }
 
-    override fun rotateAsAxis(angle: Double) {
+    override fun rotateAsAxis(radian: Double) {
 
     }
 

@@ -3,6 +3,7 @@ package cn.coostack.cooparticlesapi.renderer.client
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.exceptions.RenderPipeNotFoundException
 import cn.coostack.cooparticlesapi.renderer.RenderEntity
+import cn.coostack.cooparticlesapi.renderer.shader.pipe.manager.ShaderPipeManager
 import com.mojang.blaze3d.systems.RenderSystem
 import net.minecraft.client.Minecraft
 import net.minecraft.client.Minecraft.*
@@ -37,13 +38,26 @@ object ClientRenderEntityManager {
         entityCodecs[entity.getRenderID()] = entity.getCodec()
     }
 
+    fun register(entity: RenderEntity, pipeID: ResourceLocation) {
+        register(entity.getRenderID(), entity.getCodec(), pipeID)
+    }
+
     fun bindEntityRenderPipe(type: ResourceLocation, pipeID: ResourceLocation) {
         entityPipeType[type] = pipeID
+    }
+
+    fun bindEntityRenderPipe(type: ResourceLocation, pipe: ShaderPipeManager) {
+        bindEntityRenderPipe(type, pipe.pipeID)
     }
 
     fun register(id: ResourceLocation, codec: StreamCodec<FriendlyByteBuf, RenderEntity>) {
         entityCodecs[id] = codec
         bindEntityRenderPipe(id, ShaderPipeManagers.default.pipeID)
+    }
+
+    fun register(id: ResourceLocation, codec: StreamCodec<FriendlyByteBuf, RenderEntity>, pipeID: ResourceLocation) {
+        entityCodecs[id] = codec
+        bindEntityRenderPipe(id, pipeID)
     }
 
     fun getCodecFromID(id: ResourceLocation): StreamCodec<FriendlyByteBuf, RenderEntity>? {

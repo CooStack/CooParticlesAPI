@@ -26,6 +26,20 @@ interface PipeLinker {
     fun link(input: PipeLinkerNode, output: PipeLinkerNode): PipeLinker
 
     /**
+     * Output-first helper to improve readability: output -> input.
+     */
+    fun connect(outputPipe: ShaderPipe, outputChannel: Int, inputPipe: ShaderPipe, inputChannel: Int): PipeLinker {
+        return link(inputPipe, inputChannel, outputPipe, outputChannel)
+    }
+
+    /**
+     * Output-first helper to improve readability: output -> input.
+     */
+    fun connect(output: PipeLinkerNode, input: PipeLinkerNode): PipeLinker {
+        return connect(output.pipe, output.channel, input.pipe, input.channel)
+    }
+
+    /**
      * 找到这个渲染管线的所有提供者
      * @param input 需要输入的渲染管线
      * @return 索引代表输入的通道 值代表提供者

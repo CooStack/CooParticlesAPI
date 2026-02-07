@@ -84,8 +84,10 @@ abstract class ParticleComposition(var position: Vec3, var world: Level? = null)
 
     var canceled = false
 
+    /**
+     * 如果作为子 composition输入就一定要修改这个
+     */
     var controlUUID = UUID.randomUUID()
-        internal set
 
     var axis = RelativeLocation.yAxis()
 

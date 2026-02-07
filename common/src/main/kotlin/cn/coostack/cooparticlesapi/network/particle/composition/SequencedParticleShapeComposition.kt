@@ -11,12 +11,16 @@ import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.phys.Vec3
 import java.util.SortedMap
 import java.util.TreeMap
+import java.util.UUID
 
 /**
  * - 只用于客户端嵌套（不允许单独发包生成）
  * - 继承 SequencedParticleComposition：提供 SortedMap 序列数据（按 CompositionData.order 排序）
  */
-class SequencedParticleShapeComposition() : SequencedParticleComposition(Vec3.ZERO, null) {
+class SequencedParticleShapeComposition(uuid: UUID) : SequencedParticleComposition(Vec3.ZERO, null) {
+    init {
+        this.controlUUID = uuid
+    }
 
     private val points = ArrayList<Pair<PointsBuilder, (RelativeLocation, Int) -> CompositionData>>()
 

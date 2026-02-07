@@ -8,6 +8,7 @@ import cn.coostack.cooparticlesapi.renderer.shader.data.CooVertexFormat
 import cn.coostack.cooparticlesapi.renderer.shader.texture.IdentifierTexture
 import cn.coostack.cooparticlesapi.renderer.shader.utils.ShaderUtil
 import com.mojang.blaze3d.systems.RenderSystem
+import com.mojang.blaze3d.vertex.PoseStack
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.resources.ResourceLocation
@@ -75,6 +76,7 @@ class TestRendererEntity(world: Level?) : RenderEntity(world) {
         projMatrix: Matrix4f, tickDelta: Float
     ) {
         RenderSystem.disableCull()
+        val stack = PoseStack()
         ballShader.useOnContext {
             matrices.pushMatrix()
             setMatrix4("projMat", projMatrix)

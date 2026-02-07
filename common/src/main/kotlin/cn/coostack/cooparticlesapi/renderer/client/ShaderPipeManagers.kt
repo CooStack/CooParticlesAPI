@@ -3,6 +3,7 @@ package cn.coostack.cooparticlesapi.renderer.client
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.renderer.client.ClientRenderPipelineManager.minecraft
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlShaderType
+import cn.coostack.cooparticlesapi.renderer.shader.api.pipe.from
 import cn.coostack.cooparticlesapi.renderer.shader.glsl.IdentifierShader
 import cn.coostack.cooparticlesapi.renderer.shader.pipe.manager.ShaderPipeManager
 import cn.coostack.cooparticlesapi.renderer.shader.pipe.pipes.PingPongShaderPipe
@@ -38,7 +39,7 @@ object ShaderPipeManagers {
         valueOutput(ShaderPipes.simpleScreenOutput {
             minecraft.mainRenderTarget.depthTextureId
         })
-        it.link(valueOutput!!, 0, valueInputPipe!!, 0)
+        it.from(valueInputPipe!!, 0).to(valueOutput!!, 0)
     }
     val simpleBloom =
         ShaderPipeManager(
@@ -77,7 +78,6 @@ object ShaderPipeManagers {
             ).addRenderHandler {
                 it.setFloat("threshold", bloomIntensity)
             }.useMipmap()
-
         )
 
         val blur = addPipe(
@@ -128,9 +128,9 @@ object ShaderPipeManagers {
                 program.setInt("levels", lodLevel.toInt())
             }
         )
-        linker.link(tent, 0, valueInputPipe!!, 1)
-        linker.link(accumulate, 0, tent, 0)
-        linker.link(blur, 0, accumulate, 0)
+        linker.from(valueInputPipe!!, 1).to(tent, 0)
+        linker.from(tent, 0).to(accumulate, 0)
+        linker.from(accumulate, 0).to(blur, 0)
         // 添加Bloom混合管道
         valueOutput(
             SimpleShaderPipe(
@@ -146,15 +146,8 @@ object ShaderPipeManagers {
             }
         )
 
-        linker.link(valueOutput!!, 0, valueInputPipe!!, 0)
-        linker.link(valueOutput!!, 1, blur, 0)
-//        linker.link( 如果有一个自定义材质纹理要作为pipe输入 则使用这个 bloom不需要多余的材质纹理 所以这里注释
-//            valueOutput!!, 2, addPipe(
-//                TextureShaderPipe(SimpleTextures().apply {
-//                    addTexture(ReferenceTexture(minecraft.mainRenderTarget.depthTextureId))
-//                })
-//            ), 0
-//        )
+        linker.from(valueInputPipe!!, 0).to(valueOutput!!, 0)
+        linker.from(blur, 0).to(valueOutput!!, 1)
         return this
     }
 }
