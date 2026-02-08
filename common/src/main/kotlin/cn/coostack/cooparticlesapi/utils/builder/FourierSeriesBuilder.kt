@@ -12,6 +12,11 @@ import kotlin.math.sin
  * 快捷构建傅里叶级数
  */
 class FourierSeriesBuilder {
+    /**
+     * @property w
+     * @property r
+     * @property startAngle 角度制
+     */
     data class Fourier(
         var w: Double, var r: Double, var startAngle: Double,
     )

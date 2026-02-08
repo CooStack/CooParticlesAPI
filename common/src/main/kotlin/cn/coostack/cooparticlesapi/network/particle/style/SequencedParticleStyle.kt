@@ -25,6 +25,7 @@ import kotlin.math.PI
  *
  * 在这里不建议使用 autoToggle方法 会导致一些奇奇怪怪的问题 (原因未知) 可能是 部分index同步错误导致
  */
+@Deprecated("使用ParticleComposition")
 abstract class SequencedParticleStyle(visibleRange: Double = 32.0, uuid: UUID = UUID.randomUUID()) :
     ParticleGroupStyle(visibleRange, uuid) {
     companion object {

@@ -3,6 +3,7 @@ package cn.coostack.cooparticlesapi.network.particle.style
 import cn.coostack.cooparticlesapi.network.buffer.ParticleControlerDataBuffer
 import java.util.UUID
 
+@Deprecated("使用ParticleComposition")
 interface ParticleStyleProvider {
     /**
      * 创建style

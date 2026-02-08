@@ -135,6 +135,7 @@ object CooParticlesAPIClient {
         ParticleStyleManager.clearAllVisible()
         ClientRenderEntityManager.clear()
         ClientParticleGroupManager.clearAllVisible()
+        ParticleCompositionManager.clearClient()
     }
 
 
@@ -143,6 +144,7 @@ object CooParticlesAPIClient {
         ParticleStyleManager.clearAllVisible()
         ClientParticleGroupManager.clearAllVisible()
         ClientRenderEntityManager.clear()
+        ParticleCompositionManager.clearClient()
 
         DisplayEntityManager.clearClient()
 

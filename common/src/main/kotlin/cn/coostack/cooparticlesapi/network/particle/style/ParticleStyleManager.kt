@@ -19,6 +19,7 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * @constructor Create empty Particle style manager
  */
+@Deprecated("使用ParticleComposition")
 object ParticleStyleManager {
 
     /**

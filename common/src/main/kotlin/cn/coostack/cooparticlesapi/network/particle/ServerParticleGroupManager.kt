@@ -16,7 +16,8 @@ import java.util.concurrent.ConcurrentHashMap
 /**
  * 控制所有的ServerParticleGroup
  */
-@Deprecated("使用ParticleGroupStyle！")
+@Deprecated("使用ParticleComposition")
+
 object ServerParticleGroupManager {
     private val serverGroups = ConcurrentHashMap<UUID, ServerParticleGroup>()
 

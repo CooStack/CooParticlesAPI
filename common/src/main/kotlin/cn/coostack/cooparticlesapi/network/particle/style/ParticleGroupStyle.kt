@@ -30,6 +30,7 @@ import kotlin.collections.set
 import kotlin.math.PI
 
 /** 客户端渲染和服务端处理都用这个类 */
+@Deprecated("使用ParticleComposition")
 abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUID = UUID.randomUUID()) :
     Controlable<ParticleGroupStyle>, ServerControler<ParticleGroupStyle> {
     var world: Level? = null
