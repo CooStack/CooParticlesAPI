@@ -85,14 +85,14 @@ class TextureShaderPipe(private val textures: GlTextures) : ShaderPipe {
 
         // 获取纹理ID并添加到通道
         // 注意：这里假设纹理只有一个，实际情况可能需要支持多个
-        channels.addChannel(Supplier {
+        channels.addChannel {
             // 从textures中获取第一个纹理的ID
             // 你需要根据你的GlTextures实现来获取纹理ID
             textures.use()
             val textureID = glGetInteger(GL_TEXTURE_BINDING_2D)
             textures.reset()
             textureID
-        })
+        }
 
         return channels
     }

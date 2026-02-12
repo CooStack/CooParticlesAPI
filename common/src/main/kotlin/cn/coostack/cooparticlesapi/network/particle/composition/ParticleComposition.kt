@@ -133,7 +133,7 @@ abstract class ParticleComposition(var position: Vec3, var world: Level? = null)
         if (client) {
             Minecraft.getInstance().player?.let {
                 if (it.position().distanceTo(position) > visibleRange) {
-                    canceled = true
+                    remove()
                     return
                 }
             }
