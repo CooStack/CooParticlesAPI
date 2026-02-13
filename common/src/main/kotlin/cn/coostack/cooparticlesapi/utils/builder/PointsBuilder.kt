@@ -231,6 +231,31 @@ class PointsBuilder {
         addPoints(handler(MathPresets))
 
     /**
+     * 填充三角形
+     *
+     * 三点不能共线， 否则计算直线
+     * @param p1 点1
+     * @param p2 点2
+     * @param p3 点3
+     * @param sampler 采样精度 越大越密集
+     * @return
+     */
+    fun addFillTriangle(p1: Vec3, p2: Vec3, p3: Vec3, sampler: Number) = addWith { fillTriangle(p1, p2, p3, sampler) }
+
+    /**
+     * 填充三角形
+     *
+     * 三点不能共线， 否则计算直线
+     * @param p1 点1
+     * @param p2 点2
+     * @param p3 点3
+     * @param sampler 采样精度 越大越密集
+     * @return
+     */
+    fun addFillTriangle(p1: RelativeLocation, p2: RelativeLocation, p3: RelativeLocation, sampler: Number) =
+        addWith { fillTriangle(p1, p2, p3, sampler) }
+
+    /**
      * 添加一批点到 builder。
      *
      * @param enter 要加入的点集合（会原样加入，后续可被 rotate/pointsOnEach 修改）

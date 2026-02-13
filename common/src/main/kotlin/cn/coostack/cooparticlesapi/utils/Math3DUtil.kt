@@ -1,6 +1,7 @@
 package cn.coostack.cooparticlesapi.utils
 
 import cn.coostack.cooparticlesapi.extend.asRelative
+import cn.coostack.cooparticlesapi.extend.minus
 import cn.coostack.cooparticlesapi.extend.randomVec3
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import kotlinx.coroutines.CoroutineScope
@@ -35,22 +36,95 @@ object Math3DUtil {
     /**
      * 填充2点之间的点
      *
-     * @param refiner 精细度，精细度越大两点之间越密集
+     * @param sampler 精细度，精细度越大两点之间越密集
      */
-    fun fillLine(p1: RelativeLocation, p2: RelativeLocation, refiner: Double): List<RelativeLocation> {
+    fun fillLine(p1: RelativeLocation, p2: RelativeLocation, sampler: Double): List<RelativeLocation> {
         // 计算出对应的点的个数
-        val actualCount = (p1.distance(p2) * refiner).roundToInt()
+        val actualCount = (p1.distance(p2) * sampler).roundToInt()
         return getLineLocations(p1, p2, actualCount)
     }
 
     /**
      * 填充2点之间的点
      *
-     * @param refiner 精细度，精细度越大两点之间越密集
+     * @param sampler 精细度，精细度越大两点之间越密集
      */
-    fun fillLine(p1: Vec3, p2: Vec3, refiner: Double): List<RelativeLocation> {
+    fun fillLine(p1: Vec3, p2: Vec3, sampler: Double): List<RelativeLocation> {
         // 计算出对应的点的个数
-        return fillLine(RelativeLocation.of(p1), RelativeLocation.of(p2), refiner)
+        return fillLine(RelativeLocation.of(p1), RelativeLocation.of(p2), sampler)
+    }
+
+    /**
+     * 填充三角形
+     *
+     * 三点不能共线， 否则计算直线
+     * @param p1 点1
+     * @param p2 点2
+     * @param p3 点3
+     * @param sampler 采样精度 越大越密集
+     * @return
+     */
+    fun fillTriangle(
+        p1: RelativeLocation,
+        p2: RelativeLocation,
+        p3: RelativeLocation,
+        sampler: Number
+    ): List<RelativeLocation> {
+        return fillTriangle(p1.toVector(), p2.toVector(), p3.toVector(), sampler)
+    }
+
+    /**
+     * 填充三角形
+     *
+     * 三点不能共线， 否则计算直线
+     * @param p1 点1
+     * @param p2 点2
+     * @param p3 点3
+     * @param sampler 采样精度 越大越密集
+     * @return
+     */
+    fun fillTriangle(p1: Vec3, p2: Vec3, p3: Vec3, sampler: Number): List<RelativeLocation> {
+        val res = arrayListOf<RelativeLocation>()
+        val smp = sampler.toDouble()
+        if (!smp.isFinite() || smp <= 0.0) return res
+        if (p1.distanceTo(p2) <= 1e-6 || p1.distanceTo(p3) <= 1e-6 || p2.distanceTo(p3) <= 1e-6) return res
+        // 判断三角形共面且不共线
+        val r1 = p2 - p1
+        val r2 = p3 - p2
+        // 判断这两条直线是否为同一条
+        val sameLine = r1.cross(r2).lengthSqr() < 1e-6
+        if (sameLine) {
+            // 退化为同一条线时，取最远的两点
+            val maxPair = listOf(p1 to p2, p1 to p3, p2 to p3).maxByOrNull { (a, b) -> a.distanceTo(b) } ?: return res
+            val start = maxPair.first
+            val end = maxPair.second
+            return fillLine(start, end, smp)
+        }
+
+        // 用重心坐标构建等间隔网格，充满三角面
+        val maxEdge = maxOf(
+            p1.distanceTo(p2),
+            p2.distanceTo(p3),
+            p3.distanceTo(p1)
+        )
+        val edgeSamples = (maxEdge * smp).roundToInt().coerceAtLeast(1)
+
+        for (i in 0..edgeSamples) {
+            val u = i.toDouble() / edgeSamples
+            for (j in 0..(edgeSamples - i)) {
+                val v = j.toDouble() / edgeSamples
+                val w = 1.0 - u - v
+                res.add(
+                    RelativeLocation(
+                        p1.x * w + p2.x * u + p3.x * v,
+                        p1.y * w + p2.y * u + p3.y * v,
+                        p1.z * w + p2.z * u + p3.z * v
+                    )
+                )
+            }
+        }
+
+        return res
     }
 
     /** 将RGB值转换为Minecraft粒子使用的 rgb值(/255) */
