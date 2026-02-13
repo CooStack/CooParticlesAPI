@@ -12,8 +12,8 @@ import cn.coostack.cooparticlesapi.network.particle.emitters.event.*
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.PhysicsParticleEmitters.Companion.CROSS_SECTIONAL_AREA
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.PhysicsParticleEmitters.Companion.DRAG_COEFFICIENT
 import cn.coostack.cooparticlesapi.particles.ControlableParticle
-import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
 import cn.coostack.cooparticlesapi.particles.control.ParticleControler
+import cn.coostack.cooparticlesapi.particles.control.RemoveReason
 import cn.coostack.cooparticlesapi.utils.PhysicsUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import cn.coostack.cooparticlesapi.utils.interpolator.Interpolator
@@ -293,6 +293,24 @@ abstract class ClassParticleEmitters(
         posLerpProgress: Float,
     )
 
+    /**
+     * 当粒子死亡（age >= maxAge然后remove）时 会执行这个方法
+     *
+     * @param oldControler
+     * @param oldData
+     * @param respawnCount 重新生成的次数 （0代表第一次从emitter生成）
+     * @param reason 粒子移除原因
+     * @return 会根据data生成新粒子 第二个pair是和粒子死亡位置的相对位置(不是发射器相对位置)
+     */
+    open fun singleParticleDeathAction(
+        oldControler: ParticleControler,
+        oldData: ControlableParticleData,
+        respawnCount: Int,
+        reason: RemoveReason
+    ): List<Pair<ControlableParticleData, RelativeLocation>> {
+        return listOf()
+    }
+
     private fun spawnParticle(
         world: ClientLevel,
         pos: Vec3,
@@ -307,25 +325,8 @@ abstract class ClassParticleEmitters(
         }
         val effect = data.effect
         effect.controlUUID = data.uuid
-        val displayer = data.createDisplayer()
-        val control = ControlParticleManager.createControl(effect.controlUUID)
-        control.initInvoker = {
-            this.size = data.size
-            this.color = data.color
-            this.currentAge = data.age
-            this.lifetime = data.maxAge
-            this.light = data.light
-            this.textureSheet = data.getTextureSheet()
-            this.particleAlpha = data.alpha
-            this.faceToCamera = data.faceToCamera
-            this.currentPitch = data.pitch
-            this.currentYaw = data.yaw
-            this.currentRoll = data.roll
-            this.previewPitch = data.pitch
-            this.previewYaw = data.yaw
-            this.previewRoll = data.roll
-        }
-
+        val displayer = data.getDisplayer()
+        val control = data.createControler(world, pos, particleLerpProgress, posLerpProgress) as ParticleControler
         // 事件层
         control.addPreTickAction {
             // 针对 ParticleHitEntityEvent
@@ -380,6 +381,16 @@ abstract class ClassParticleEmitters(
         }
         val p = RelativeLocation.of(pos)
         singleParticleAction(control, data, p, world, particleLerpProgress, posLerpProgress)
+        control.applyDestroyAction {
+            // 要有粒子死因
+            // 生成新粒子
+            val newParticles =
+                singleParticleDeathAction(control, data, data.respawnCount + 1, it)
+            newParticles.forEach { (newData, rel) ->
+                newData.respawnCount = data.respawnCount + 1
+                spawnParticle(world, this.loc.add(rel.toVector()), newData, particleLerpProgress, posLerpProgress)
+            }
+        }
         control.addPreTickAction {
             if (currentAge++ >= lifetime) {
                 remove()
@@ -510,9 +521,7 @@ abstract class ClassParticleEmitters(
         this.playing = emitters.playing
         this.handlerList.putAll(emitters.handlerList)
         this.emittersInterpolator.setRefiner(emitters.emittersInterpolator.refinerCount)
-
         ParticleEmittersHelper.updateEmitter(this, emitters)
-
     }
 
 }

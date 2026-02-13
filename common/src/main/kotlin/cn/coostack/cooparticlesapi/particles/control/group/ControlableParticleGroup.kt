@@ -3,11 +3,12 @@ package cn.coostack.cooparticlesapi.particles.control.group
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleGroupStyle
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleGroupStyle.StyleData
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleShapeStyle
-import cn.coostack.cooparticlesapi.particles.Controlable
+import cn.coostack.cooparticlesapi.api.controler.Controlable
 import cn.coostack.cooparticlesapi.particles.ControlableParticle
 import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
 import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
 import cn.coostack.cooparticlesapi.particles.control.ParticleControler
+import cn.coostack.cooparticlesapi.particles.control.RemoveReason
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import net.minecraft.client.multiplayer.ClientLevel
@@ -227,6 +228,10 @@ abstract class ControlableParticleGroup(val uuid: UUID) : Controlable<Controlabl
         teleportGroupTo(Vec3(x, y, z))
     }
 
+    override fun remove(reason: RemoveReason) {
+        remove()
+    }
+
     override fun remove() {
         clearParticles()
     }
@@ -289,7 +294,7 @@ abstract class ControlableParticleGroup(val uuid: UUID) : Controlable<Controlabl
             val particleDisplayer = v.effect(uuid)
             if (particleDisplayer is ParticleDisplayer.SingleParticleDisplayer) {
                 val controler = ControlParticleManager.createControl(uuid)
-                controler.initInvoker = v.invoker
+                controler.applyInitializedAction(v.invoker)
             }
             val toPos = Vec3(pos.x + rl.x, pos.y + rl.y, pos.z + rl.z)
             val controler = particleDisplayer.display(toPos, world) ?: continue

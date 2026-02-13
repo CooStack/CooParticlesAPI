@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi.particles
 
+import cn.coostack.cooparticlesapi.api.controler.Controlable
 import cn.coostack.cooparticlesapi.display.DisplayEntity
 import cn.coostack.cooparticlesapi.display.DisplayEntityManager
 import cn.coostack.cooparticlesapi.network.particle.composition.ParticleComposition

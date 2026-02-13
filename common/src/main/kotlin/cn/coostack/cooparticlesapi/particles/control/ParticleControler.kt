@@ -1,7 +1,9 @@
 package cn.coostack.cooparticlesapi.particles.control
 
-import cn.coostack.cooparticlesapi.particles.Controlable
+import cn.coostack.cooparticlesapi.api.controler.Controlable
+import cn.coostack.cooparticlesapi.api.controler.Tickable
 import cn.coostack.cooparticlesapi.particles.ControlableParticle
+import cn.coostack.cooparticlesapi.particles.control.RemoveReason
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
@@ -12,7 +14,7 @@ import java.util.concurrent.ConcurrentHashMap
  * 代理粒子
  * 此Controler 由 ControlerGroup代理创建 (Builder) 并使用
  */
-class ParticleControler(private val uuid: UUID) : Controlable<ControlableParticle> {
+class ParticleControler(private val uuid: UUID) : Controlable<ControlableParticle>, Tickable<ControlableParticle> {
     lateinit var particle: ControlableParticle
         private set
 
@@ -23,15 +25,35 @@ class ParticleControler(private val uuid: UUID) : Controlable<ControlableParticl
      * 参数缓存 (tick等)
      */
     val bufferedData = ConcurrentHashMap<String, Any>()
-    lateinit var initInvoker: ControlableParticle.() -> Unit
+    private var initInvoker: ControlableParticle.() -> Unit = {}
+    private var destroyInvoker: ControlableParticle.(RemoveReason) -> Unit = {}
 
-    fun addPreTickAction(action: ControlableParticle.() -> Unit): ParticleControler {
+    override fun addPreTickAction(action: ControlableParticle.() -> Unit): ParticleControler {
         invokeQueue.add(action)
         return this
     }
 
     fun controlAction(action: (ControlableParticle.() -> Unit)): ParticleControler {
         action(particle)
+        return this
+    }
+
+    /**
+     * ### 粒子的死亡原因有3个
+     * 1. 生命周期到头而死
+     * 2. 驱逐队列满了被清理
+     * 3. 模组手动清理
+     *
+     * @param action
+     * @return
+     */
+    fun applyDestroyAction(action: (ControlableParticle.(RemoveReason) -> Unit)): ParticleControler {
+        destroyInvoker = action
+        return this
+    }
+
+    fun applyInitializedAction(action: (ControlableParticle.() -> Unit)): ParticleControler {
+        initInvoker = action
         return this
     }
 
@@ -49,9 +71,6 @@ class ParticleControler(private val uuid: UUID) : Controlable<ControlableParticl
         if (init) {
             return
         }
-        if (!::initInvoker.isInitialized) {
-            initInvoker = {}
-        }
         initInvoker(particle)
         init = true
     }
@@ -65,6 +84,9 @@ class ParticleControler(private val uuid: UUID) : Controlable<ControlableParticl
         }
         // 防呆用的
         if (particle.death) {
+            if (particle.currentAge >= particle.lifetime) {
+                remove(RemoveReason.LIFECYCLE)
+            }
             ControlParticleManager.removeControl(uuid)
         }
     }
@@ -106,7 +128,14 @@ class ParticleControler(private val uuid: UUID) : Controlable<ControlableParticl
      * @see ControlableParticle.markDead()
      */
     override fun remove() {
-        particle.remove()
+        remove(RemoveReason.QUEUE)
+    }
+
+    override fun remove(reason: RemoveReason) {
+        destroyInvoker(particle, reason)
+        if (particle.isAlive) {
+            particle.remove()
+        }
     }
 
     override fun getControlObject(): ControlableParticle {

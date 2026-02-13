@@ -258,14 +258,13 @@ class SimpleParticleEmitters(
         effect.controlUUID = data.uuid
         val displayer = ParticleDisplayer.withSingle(effect)
         val control = ControlParticleManager.createControl(effect.controlUUID)
-        control.initInvoker = {
+        control.applyInitializedAction {
             this.size = data.size
             this.color = data.color
             this.currentAge = data.age
             this.lifetime = data.maxAge
             this.textureSheet = data.getTextureSheet()
             this.particleAlpha = data.alpha
-
         }
         control.addPreTickAction {
             if (minecraftTick) return@addPreTickAction

@@ -1,7 +1,7 @@
 package cn.coostack.cooparticlesapi.utils.helper
 
 import cn.coostack.cooparticlesapi.network.particle.style.SequencedParticleStyle
-import cn.coostack.cooparticlesapi.particles.Controlable
+import cn.coostack.cooparticlesapi.api.controler.Controlable
 import kotlin.math.*
 
 abstract class ProgressSequencedHelper(var maxCount: Int, var progressMaxTick: Int) : ParticleHelper {

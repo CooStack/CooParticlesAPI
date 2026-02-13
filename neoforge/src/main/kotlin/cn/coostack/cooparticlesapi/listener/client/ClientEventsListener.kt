@@ -6,6 +6,7 @@ import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldRenderEv
 import net.minecraft.client.Minecraft
 import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.fml.common.EventBusSubscriber
+import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent
 
 @EventBusSubscriber
@@ -30,4 +31,5 @@ object ClientEventsListener {
             }
         }
     }
+
 }

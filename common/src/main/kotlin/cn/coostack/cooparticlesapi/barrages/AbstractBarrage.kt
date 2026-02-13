@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi.barrages
 
-import cn.coostack.cooparticlesapi.network.particle.ServerControler
+import cn.coostack.cooparticlesapi.api.controler.server.ServerControler
 import cn.coostack.cooparticlesapi.network.particle.ServerParticleGroup
 import com.google.common.base.Predicate
 import net.minecraft.core.BlockPos

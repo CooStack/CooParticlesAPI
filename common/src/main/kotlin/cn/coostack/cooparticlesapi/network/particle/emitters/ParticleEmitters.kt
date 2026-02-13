@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi.network.particle.emitters
 
-import cn.coostack.cooparticlesapi.network.particle.ServerControler
+import cn.coostack.cooparticlesapi.api.controler.server.ServerControler
 import cn.coostack.cooparticlesapi.network.particle.emitters.event.ParticleEventHandler
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import net.minecraft.network.FriendlyByteBuf

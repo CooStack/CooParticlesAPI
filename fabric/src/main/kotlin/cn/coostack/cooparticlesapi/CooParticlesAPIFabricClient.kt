@@ -6,6 +6,7 @@ import cn.coostack.cooparticlesapi.entities.renderer.TestRenderEntityRenderer
 import cn.coostack.cooparticlesapi.event.CooEventBus
 import cn.coostack.cooparticlesapi.event.events.client.ClientPostTickEvent
 import cn.coostack.cooparticlesapi.event.events.client.ClientPreTickEvent
+import cn.coostack.cooparticlesapi.event.events.client.ClientStartEvent
 import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldChangeEvent
 import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldPostTickEvent
 import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldPreTickEvent
@@ -62,6 +63,10 @@ object CooParticlesAPIFabricClient : ClientModInitializer {
             KeyBindingManager.tick()
             val event = ClientPreTickEvent(it)
             CooEventBus.call(event)
+        }
+
+        ClientLifecycleEvents.CLIENT_STARTED.register {
+            CooEventBus.call(ClientStartEvent())
         }
 
         /**

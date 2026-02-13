@@ -7,6 +7,7 @@ import cn.coostack.cooparticlesapi.display.DisplayEntity
 import cn.coostack.cooparticlesapi.extend.PIF
 import cn.coostack.cooparticlesapi.extend.asRelative
 import cn.coostack.cooparticlesapi.extend.minus
+import cn.coostack.cooparticlesapi.particles.control.RemoveReason
 import cn.coostack.cooparticlesapi.utils.GraphMathHelper
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.MinecraftRendererUtil
@@ -169,5 +170,9 @@ class BarrageItemDisplayEntity(pos: Vec3, world: Level?) : DisplayEntity(pos, wo
         rotation.mul(dq)
 
         rotation.normalize()
+    }
+
+    override fun remove(reason: RemoveReason) {
+        remove()
     }
 }

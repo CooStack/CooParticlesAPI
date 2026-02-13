@@ -1,4 +1,4 @@
-package cn.coostack.cooparticlesapi.network.particle
+package cn.coostack.cooparticlesapi.api.controler.server
 
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import net.minecraft.world.level.Level

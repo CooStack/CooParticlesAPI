@@ -1,7 +1,7 @@
 package cn.coostack.cooparticlesapi.utils.helper.impl
 
 import cn.coostack.cooparticlesapi.network.particle.style.SequencedParticleStyle
-import cn.coostack.cooparticlesapi.particles.Controlable
+import cn.coostack.cooparticlesapi.api.controler.Controlable
 import cn.coostack.cooparticlesapi.utils.helper.ProgressSequencedHelper
 import kotlin.math.*
 

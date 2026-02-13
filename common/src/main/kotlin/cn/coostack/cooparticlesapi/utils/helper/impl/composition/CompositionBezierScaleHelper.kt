@@ -1,7 +1,7 @@
 package cn.coostack.cooparticlesapi.utils.helper.impl.composition
 
 import cn.coostack.cooparticlesapi.network.particle.composition.ParticleComposition
-import cn.coostack.cooparticlesapi.particles.Controlable
+import cn.coostack.cooparticlesapi.api.controler.Controlable
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import cn.coostack.cooparticlesapi.utils.helper.BezierValueScaleHelper
 

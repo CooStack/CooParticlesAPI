@@ -1,13 +1,16 @@
 package cn.coostack.cooparticlesapi.network.particle.emitters
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
-import cn.coostack.cooparticlesapi.network.particle.data.SerializableData
+import cn.coostack.cooparticlesapi.api.controler.SerializableData
+import cn.coostack.cooparticlesapi.api.controler.Controlable
 import cn.coostack.cooparticlesapi.particles.ControlableParticleEffect
 import cn.coostack.cooparticlesapi.particles.ControlableParticleEffectManager
 import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
+import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
 import cn.coostack.cooparticlesapi.particles.impl.ControlableEndRodEffect
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
+import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.client.particle.ParticleRenderType
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
@@ -181,7 +184,7 @@ open class ControlableParticleData : SerializableData {
     /**
      * 粒子可见范围
      */
-    var visibleRange = 128f
+    var visibleRange = 256f
 
     /**
      * 粒子样式 （必须是可控制的粒子）
@@ -208,6 +211,13 @@ open class ControlableParticleData : SerializableData {
      * 此选项只应用一次
      */
     var color = Vector3f(1f, 1f, 1f)
+
+    /**
+     * 粒子重生次数
+     * 他会在不断的粒子重生中递增
+     */
+    var respawnCount = 0
+        internal set
 
     // 脑瘫东西设置了客户端专属
     // 粒子渲染方式 只生效一次
@@ -270,7 +280,34 @@ open class ControlableParticleData : SerializableData {
         return PACKET_CODEC
     }
 
-    override fun createDisplayer(): ParticleDisplayer {
+    override fun createControler(
+        world: ClientLevel,
+        pos: Vec3,
+        particleLerpProcess: Float,
+        posLerpProcess: Float
+    ): Controlable<*> {
+        val control = ControlParticleManager.createControl(effect.controlUUID)
+        val data = this
+        control.applyInitializedAction {
+            this.size = data.size
+            this.color = data.color
+            this.currentAge = data.age
+            this.lifetime = data.maxAge
+            this.light = data.light
+            this.textureSheet = data.getTextureSheet()
+            this.particleAlpha = data.alpha
+            this.faceToCamera = data.faceToCamera
+            this.currentPitch = data.pitch
+            this.currentYaw = data.yaw
+            this.currentRoll = data.roll
+            this.previewPitch = data.pitch
+            this.previewYaw = data.yaw
+            this.previewRoll = data.roll
+        }
+        return control
+    }
+
+    override fun getDisplayer(): ParticleDisplayer {
         return ParticleDisplayer.withSingle(effect)
     }
 

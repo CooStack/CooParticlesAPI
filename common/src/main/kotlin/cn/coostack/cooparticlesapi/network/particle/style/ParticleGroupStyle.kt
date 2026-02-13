@@ -5,15 +5,17 @@ import cn.coostack.cooparticlesapi.display.DisplayEntity
 import cn.coostack.cooparticlesapi.network.buffer.ParticleControlerDataBuffer
 import cn.coostack.cooparticlesapi.network.buffer.ParticleControlerDataBuffers
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleStyleS2C
-import cn.coostack.cooparticlesapi.network.particle.ServerControler
+import cn.coostack.cooparticlesapi.api.controler.server.ServerControler
 import cn.coostack.cooparticlesapi.network.particle.composition.ParticleComposition
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersManager
-import cn.coostack.cooparticlesapi.particles.Controlable
+import cn.coostack.cooparticlesapi.api.controler.Controlable
+import cn.coostack.cooparticlesapi.api.controler.Tickable
 import cn.coostack.cooparticlesapi.particles.ControlableParticle
 import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
 import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
 import cn.coostack.cooparticlesapi.particles.control.ControlType
 import cn.coostack.cooparticlesapi.particles.control.ParticleControler
+import cn.coostack.cooparticlesapi.particles.control.RemoveReason
 import cn.coostack.cooparticlesapi.particles.control.group.ControlableParticleGroup
 import cn.coostack.cooparticlesapi.particles.impl.ControlableEndRodEffect
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
@@ -32,7 +34,7 @@ import kotlin.math.PI
 /** 客户端渲染和服务端处理都用这个类 */
 @Deprecated("使用ParticleComposition")
 abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUID = UUID.randomUUID()) :
-    Controlable<ParticleGroupStyle>, ServerControler<ParticleGroupStyle> {
+    Controlable<ParticleGroupStyle>, ServerControler<ParticleGroupStyle>, Tickable<ParticleGroupStyle> {
     var world: Level? = null
     var pos: Vec3 = Vec3.ZERO
     var client = false
@@ -97,8 +99,9 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
     open fun beforeDisplay(styles: Map<StyleData, RelativeLocation>) {
     }
 
-    fun addPreTickAction(action: ParticleGroupStyle.() -> Unit) {
+    override fun addPreTickAction(action: ParticleGroupStyle.() -> Unit): ParticleGroupStyle {
         invokeQueue.add(action)
+        return this
     }
 
     override fun controlUUID(): UUID {
@@ -278,7 +281,7 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
         val displayer = data.displayerBuilder(data.uuid)
         if (displayer !is ParticleDisplayer.SingleParticleDisplayer) return
         val controler = ControlParticleManager.createControl(data.uuid)
-        controler.initInvoker = data.particleHandler
+        controler.applyInitializedAction(data.particleHandler)
         val toPos = Vec3(pos.x + rel.x, pos.y + rel.y, pos.z + rel.z)
         displayer.display(toPos, world as ClientLevel) ?: return
         data.particleControlerHandler(controler)
@@ -416,7 +419,7 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
             val displayer = it.key.displayerBuilder(uuid)
             if (displayer is ParticleDisplayer.SingleParticleDisplayer) {
                 val controler = ControlParticleManager.createControl(uuid)
-                controler.initInvoker = data.particleHandler
+                controler.applyInitializedAction(data.particleHandler)
             }
             val toPos = Vec3(pos.x + rl.x, pos.y + rl.y, pos.z + rl.z)
             val controler = displayer.display(toPos, world as ClientLevel) ?: return@forEach
@@ -427,6 +430,10 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
             particles[uuid] = controler
             particleLocations[controler] = rl
         }
+    }
+
+    override fun remove(reason: RemoveReason) {
+        remove()
     }
 
     open internal fun clear(valid: Boolean) {

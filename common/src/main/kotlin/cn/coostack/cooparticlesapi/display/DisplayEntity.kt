@@ -2,8 +2,9 @@ package cn.coostack.cooparticlesapi.display
 
 import cn.coostack.cooparticlesapi.annotations.codec.CodecHelper
 import cn.coostack.cooparticlesapi.extend.unaryMinus
-import cn.coostack.cooparticlesapi.network.particle.ServerControler
-import cn.coostack.cooparticlesapi.particles.Controlable
+import cn.coostack.cooparticlesapi.api.controler.server.ServerControler
+import cn.coostack.cooparticlesapi.api.controler.Controlable
+import cn.coostack.cooparticlesapi.particles.control.RemoveReason
 import cn.coostack.cooparticlesapi.utils.GraphMathHelper
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.MinecraftRendererUtil
@@ -259,6 +260,10 @@ abstract class DisplayEntity(
 
     override fun remove() {
         valid = false
+    }
+
+    override fun remove(reason: RemoveReason) {
+        remove()
     }
 
     override fun getControlObject(): DisplayEntity {

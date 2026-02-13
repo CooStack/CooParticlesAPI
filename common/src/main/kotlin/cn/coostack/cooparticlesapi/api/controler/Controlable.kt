@@ -1,5 +1,6 @@
-package cn.coostack.cooparticlesapi.particles
+package cn.coostack.cooparticlesapi.api.controler
 
+import cn.coostack.cooparticlesapi.particles.control.RemoveReason
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import net.minecraft.world.phys.Vec3
 import java.util.UUID
@@ -22,6 +23,7 @@ interface Controlable<T> {
     fun rotateAsAxis(radian: Double)
     fun teleportTo(to: Vec3)
     fun teleportTo(x: Double, y: Double, z: Double)
+    fun remove(reason: RemoveReason)
     fun remove()
     fun getControlObject(): T
     fun <S> getControlCasted(): S {

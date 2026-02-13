@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi.barrages
 
-import cn.coostack.cooparticlesapi.network.particle.ServerControler
+import cn.coostack.cooparticlesapi.api.controler.server.ServerControler
 import cn.coostack.cooparticlesapi.network.particle.ServerParticleGroup
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.LivingEntity

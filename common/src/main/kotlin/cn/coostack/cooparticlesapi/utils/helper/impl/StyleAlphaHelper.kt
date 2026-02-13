@@ -1,7 +1,7 @@
 package cn.coostack.cooparticlesapi.utils.helper.impl
 
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleGroupStyle
-import cn.coostack.cooparticlesapi.particles.Controlable
+import cn.coostack.cooparticlesapi.api.controler.Controlable
 import cn.coostack.cooparticlesapi.particles.control.ParticleControler
 import cn.coostack.cooparticlesapi.particles.control.group.ControlableParticleGroup
 import cn.coostack.cooparticlesapi.utils.helper.AlphaHelper

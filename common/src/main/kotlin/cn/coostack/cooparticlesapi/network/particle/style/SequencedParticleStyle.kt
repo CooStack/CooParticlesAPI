@@ -471,7 +471,7 @@ abstract class SequencedParticleStyle(visibleRange: Double = 32.0, uuid: UUID = 
         val displayer = data.displayerBuilder(uuid)
         if (displayer is ParticleDisplayer.SingleParticleDisplayer) {
             val controler = ControlParticleManager.createControl(uuid)
-            controler.initInvoker = data.particleHandler
+            controler.applyInitializedAction(data.particleHandler)
         }
         val toPos = Vec3(pos.x + rl.x, pos.y + rl.y, pos.z + rl.z)
         val controler = displayer.display(toPos, world as ClientLevel) ?: return

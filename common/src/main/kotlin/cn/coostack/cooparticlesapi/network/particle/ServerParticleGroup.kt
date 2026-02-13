@@ -1,6 +1,7 @@
 package cn.coostack.cooparticlesapi.network.particle
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
+import cn.coostack.cooparticlesapi.api.controler.server.ServerControler
 import cn.coostack.cooparticlesapi.network.buffer.ParticleControlerDataBuffer
 import cn.coostack.cooparticlesapi.network.buffer.ParticleControlerDataBuffers
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleGroupS2C
@@ -226,6 +227,7 @@ abstract class ServerParticleGroup(
     override fun remove() {
         kill()
     }
+
 
     override fun teleportTo(to: Vec3) {
         teleportGroupTo(to)

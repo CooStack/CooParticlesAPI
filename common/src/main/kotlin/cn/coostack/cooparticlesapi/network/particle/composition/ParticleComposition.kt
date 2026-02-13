@@ -5,13 +5,15 @@ import cn.coostack.cooparticlesapi.annotations.codec.CodecHelper
 import cn.coostack.cooparticlesapi.display.DisplayEntity
 import cn.coostack.cooparticlesapi.extend.asRelative
 import cn.coostack.cooparticlesapi.extend.plus
-import cn.coostack.cooparticlesapi.network.particle.ServerControler
+import cn.coostack.cooparticlesapi.api.controler.server.ServerControler
 import cn.coostack.cooparticlesapi.network.particle.composition.manager.ParticleCompositionManager
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleGroupStyle
-import cn.coostack.cooparticlesapi.particles.Controlable
+import cn.coostack.cooparticlesapi.api.controler.Controlable
+import cn.coostack.cooparticlesapi.api.controler.Tickable
 import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
 import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
 import cn.coostack.cooparticlesapi.particles.control.ParticleControler
+import cn.coostack.cooparticlesapi.particles.control.RemoveReason
 import cn.coostack.cooparticlesapi.particles.control.group.ControlableParticleGroup
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
@@ -37,7 +39,7 @@ import kotlin.math.PI
  * @see cn.coostack.cooparticlesapi.annotations.composition.ParticleCompositionRegister
  */
 abstract class ParticleComposition(var position: Vec3, var world: Level? = null) : ServerControler<ParticleComposition>,
-    Controlable<ParticleComposition> {
+    Controlable<ParticleComposition>, Tickable<ParticleComposition> {
     companion object {
         @JvmStatic
         fun encodeBase(data: ParticleComposition, buf: FriendlyByteBuf) {
@@ -228,7 +230,7 @@ abstract class ParticleComposition(var position: Vec3, var world: Level? = null)
         CodecHelper.updateFields(this, other)
     }
 
-    fun addPreTickAction(action: ParticleComposition.() -> Unit): ParticleComposition {
+    override fun addPreTickAction(action: ParticleComposition.() -> Unit): ParticleComposition {
         invokeQueue.add(action)
         return this
     }
@@ -305,6 +307,7 @@ abstract class ParticleComposition(var position: Vec3, var world: Level? = null)
         }
     }
 
+
     override fun teleportTo(to: Vec3) {
         position = to
         toggleRelative()
@@ -367,6 +370,10 @@ abstract class ParticleComposition(var position: Vec3, var world: Level? = null)
         clear(true)
     }
 
+    override fun remove(reason: RemoveReason) {
+        remove()
+    }
+
     override fun spawn(world: Level, pos: Vec3) {
         this.world = world
         this.position = pos
@@ -391,7 +398,7 @@ abstract class ParticleComposition(var position: Vec3, var world: Level? = null)
         val displayer = data.displayerBuilder(uuid)
         if (displayer is ParticleDisplayer.SingleParticleDisplayer) {
             val controler = ControlParticleManager.createControl(uuid)
-            controler.initInvoker = {
+            controler.applyInitializedAction {
                 for (function in data.singleParticleHandlers) {
                     function(this)
                 }
@@ -421,5 +428,18 @@ abstract class ParticleComposition(var position: Vec3, var world: Level? = null)
         locations.forEach {
             displayEntry(it.key, it.value)
         }
+    }
+
+    open fun clone(): ParticleComposition {
+        val new = runCatching {
+            this::class.java.getDeclaredConstructor(Vec3::class.java, Level::class.java)
+                .apply { isAccessible = true }
+                .newInstance(Vec3.ZERO, null)
+        }.getOrNull() ?: this::class.java.getDeclaredConstructor()
+            .apply { isAccessible = true }
+            .newInstance()
+        new.world = world
+        new.update(this)
+        return new
     }
 }

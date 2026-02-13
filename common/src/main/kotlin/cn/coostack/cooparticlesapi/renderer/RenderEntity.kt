@@ -1,7 +1,7 @@
 package cn.coostack.cooparticlesapi.renderer
 
 import cn.coostack.cooparticlesapi.network.packet.PacketRenderEntityS2C
-import cn.coostack.cooparticlesapi.network.particle.ServerControler
+import cn.coostack.cooparticlesapi.api.controler.server.ServerControler
 import cn.coostack.cooparticlesapi.renderer.server.ServerRenderEntityManager
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import com.mojang.blaze3d.systems.RenderSystem

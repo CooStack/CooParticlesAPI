@@ -25,6 +25,7 @@ import cn.coostack.cooparticlesapi.test.options.particle.composition.TestShapedC
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.InterpolatorTestEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestCommandEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestEventEmitter
+import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestRespawnEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestWaveEmitters
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.event.TestCollideEventHandler
 import cn.coostack.cooparticlesapi.test.options.particle.style.RomaMagicTestStyle
@@ -195,6 +196,10 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
                 SimpleRendererEntityOption(TestTexturedBeamEntity(player.level()).apply {
                     this.setPosition(player.position())
                 }, 100)
+            }.appendOption {
+                SimpleEmitterOption(TestRespawnEmitter(player.eyePosition, player.level()).apply {
+                    maxTick = 200
+                }, -1)
             }
     }
 }

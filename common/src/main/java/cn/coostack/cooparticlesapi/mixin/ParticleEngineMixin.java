@@ -2,7 +2,9 @@ package cn.coostack.cooparticlesapi.mixin;
 
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants;
+import cn.coostack.cooparticlesapi.particles.ControlableParticle;
 import cn.coostack.cooparticlesapi.particles.CooParticleTextureSheet;
+import cn.coostack.cooparticlesapi.particles.control.RemoveReason;
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices;
 import com.google.common.collect.EvictingQueue;
 import net.minecraft.client.particle.Particle;
@@ -82,10 +84,15 @@ public abstract class ParticleEngineMixin {
 
     @Unique
     private void cooParticlesAPI$onEvict(Particle p) {
+
         // 这是原版 bug，但本模组会放大这个问题所以有必要修复一下
         // 判断 isAlive 以保证幂等性（其他模组可能注入类似方法）
         if (p.isAlive()) {
-            p.remove();
+            if (p instanceof ControlableParticle) {
+                ((ControlableParticle) p).getControler().remove(RemoveReason.QUEUE);
+            } else {
+                p.remove();
+            }
             p.getParticleGroup().ifPresent(group -> updateCount(group, -1));
         }
     }

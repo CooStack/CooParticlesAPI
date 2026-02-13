@@ -3,7 +3,7 @@ package cn.coostack.cooparticlesapi.utils.helper.buffer
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.network.buffer.ParticleControlerDataBuffer
 import cn.coostack.cooparticlesapi.network.buffer.ParticleControlerDataBuffers
-import cn.coostack.cooparticlesapi.particles.Controlable
+import cn.coostack.cooparticlesapi.api.controler.Controlable
 import java.lang.reflect.Modifier
 
 object ControlableBufferHelper {

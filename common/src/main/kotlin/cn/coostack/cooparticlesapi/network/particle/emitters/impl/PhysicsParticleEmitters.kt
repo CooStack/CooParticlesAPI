@@ -310,7 +310,7 @@ class PhysicsParticleEmitters(
         effect.controlUUID = data.uuid
         val displayer = ParticleDisplayer.withSingle(effect)
         val control = ControlParticleManager.createControl(effect.controlUUID)
-        control.initInvoker = {
+        control.applyInitializedAction {
             this.size = data.size
             this.color = data.color
             this.currentAge = data.age

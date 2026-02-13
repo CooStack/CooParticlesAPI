@@ -45,6 +45,19 @@ tasks.register("sourceWithCommon", Jar) {
     destinationDirectory.set(file("../builds/sources"))
     archiveFileName = "${rootProject.mod_name}-Fabric-Source-${rootProject.version}.jar"
 }
+afterEvaluate {
+    configurations.runtimeClasspath.forEach { file ->
+        if (file.name.startsWith("sponge-mixin")) {
+            tasks.named("runClient", JavaExec) {
+                jvmArgs("-javaagent:${file.absolutePath}")
+                jvmArgs("-XX:+AllowEnhancedClassRedefinition") // 如果你没有用jbr那么就删掉这行
+            }
+        }
+    }
+    tasks.named("runDatagen", JavaExec) {
+        jvmArgs("-Dfabric-api.datagen.modid=${project.property("mod_id") as String}")
+    }
+}
 tasks.named("jar", Jar) {
     from(configurations.embed.collect {
         it.isDirectory() ? it : zipTree(it)

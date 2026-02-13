@@ -294,7 +294,7 @@ abstract class SequencedParticleGroup(uuid: UUID) : ControlableParticleGroup(uui
         val particleDisplayer = data.effect(uuid)
         if (particleDisplayer is ParticleDisplayer.SingleParticleDisplayer) {
             val controler = ControlParticleManager.createControl(uuid)
-            controler.initInvoker = data.invoker
+            controler.applyInitializedAction(data.invoker)
         }
         val pos = origin
         val toPos = Vec3(pos.x + rl.x, pos.y + rl.y, pos.z + rl.z)

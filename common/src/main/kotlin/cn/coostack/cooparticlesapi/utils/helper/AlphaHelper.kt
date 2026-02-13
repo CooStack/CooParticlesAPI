@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi.utils.helper
 
-import cn.coostack.cooparticlesapi.particles.Controlable
+import cn.coostack.cooparticlesapi.api.controler.Controlable
 import cn.coostack.cooparticlesapi.utils.GraphMathHelper
 import kotlin.math.*
 
