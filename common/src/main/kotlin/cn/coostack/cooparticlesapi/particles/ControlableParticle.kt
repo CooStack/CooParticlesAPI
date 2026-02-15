@@ -339,7 +339,7 @@ abstract class ControlableParticle(
         if (minecraftTick) {
             super.tick()
         }
-        controler.doTick()
+        controler.tick()
         xo = x
         yo = y
         zo = z

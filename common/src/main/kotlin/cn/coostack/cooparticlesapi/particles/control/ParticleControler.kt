@@ -3,16 +3,15 @@ package cn.coostack.cooparticlesapi.particles.control
 import cn.coostack.cooparticlesapi.api.controler.Controlable
 import cn.coostack.cooparticlesapi.api.controler.Tickable
 import cn.coostack.cooparticlesapi.particles.ControlableParticle
-import cn.coostack.cooparticlesapi.particles.control.RemoveReason
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
+
 /**
  * 代理粒子
- * 此Controler 由 ControlerGroup代理创建 (Builder) 并使用
  */
 class ParticleControler(private val uuid: UUID) : Controlable<ControlableParticle>, Tickable<ControlableParticle> {
     lateinit var particle: ControlableParticle
@@ -21,32 +20,42 @@ class ParticleControler(private val uuid: UUID) : Controlable<ControlableParticl
     private var init = false
     private val invokeQueue = mutableListOf<ControlableParticle.() -> Unit>()
 
+    @Volatile
+    private var state: ParticleControlerState = ParticleControlerState.UNBOUND
+
     /**
-     * 参数缓存 (tick等)
+     * 参数缓存 (tick 级)
      */
     val bufferedData = ConcurrentHashMap<String, Any>()
     private var initInvoker: ControlableParticle.() -> Unit = {}
     private var destroyInvoker: ControlableParticle.(RemoveReason) -> Unit = {}
 
+    val currentState: ParticleControlerState
+        get() = state
+
+    val isBound: Boolean
+        get() = state == ParticleControlerState.BOUND || state == ParticleControlerState.ACTIVE
+
+    val isInitialized: Boolean
+        get() = state == ParticleControlerState.ACTIVE
+
+    val isRemoved: Boolean
+        get() = state == ParticleControlerState.REMOVED
+
     override fun addPreTickAction(action: ControlableParticle.() -> Unit): ParticleControler {
+        if (isRemoved) {
+            return this
+        }
         invokeQueue.add(action)
         return this
     }
 
+
     fun controlAction(action: (ControlableParticle.() -> Unit)): ParticleControler {
-        action(particle)
+        action(requireParticleBound())
         return this
     }
 
-    /**
-     * ### 粒子的死亡原因有3个
-     * 1. 生命周期到头而死
-     * 2. 驱逐队列满了被清理
-     * 3. 模组手动清理
-     *
-     * @param action
-     * @return
-     */
     fun applyDestroyAction(action: (ControlableParticle.(RemoveReason) -> Unit)): ParticleControler {
         destroyInvoker = action
         return this
@@ -58,6 +67,9 @@ class ParticleControler(private val uuid: UUID) : Controlable<ControlableParticl
     }
 
     internal fun loadParticle(particle: ControlableParticle) {
+        if (isRemoved) {
+            return
+        }
         if (::particle.isInitialized) {
             return
         }
@@ -65,29 +77,51 @@ class ParticleControler(private val uuid: UUID) : Controlable<ControlableParticl
             throw IllegalArgumentException("Particle uuid invalid")
         }
         this.particle = particle
+        state = ParticleControlerState.BOUND
     }
 
     internal fun particleInit() {
-        if (init) {
+        if (init || state == ParticleControlerState.ACTIVE || isRemoved) {
             return
+        }
+        if (!::particle.isInitialized) {
+            throw IllegalStateException("ParticleControler[$uuid] is not bound to particle yet")
         }
         initInvoker(particle)
         init = true
+        state = ParticleControlerState.ACTIVE
     }
 
     /**
-     * @see ControlableParticle.tick 执行该函数
+     * @see ControlableParticle.tick
      */
-    internal fun doTick() {
-        invokeQueue.forEach {
-            it(particle)
+    override fun tick() {
+        if (state != ParticleControlerState.ACTIVE || !::particle.isInitialized) {
+            return
         }
-        // 防呆用的
+        val stableSize = invokeQueue.size
+        var index = 0
+        while (index < stableSize) {
+            if (state != ParticleControlerState.ACTIVE) {
+                return
+            }
+            if (index >= invokeQueue.size) {
+                break
+            }
+            val action = invokeQueue[index]
+            action(particle)
+            index++
+        }
+        if (state != ParticleControlerState.ACTIVE) {
+            return
+        }
+        // 防呆: 粒子外部死亡后确保 controller 资源释放
         if (particle.death) {
             if (particle.currentAge >= particle.lifetime) {
                 remove(RemoveReason.LIFECYCLE)
+                return
             }
-            ControlParticleManager.removeControl(uuid)
+            cleanupAfterRemoved()
         }
     }
 
@@ -100,7 +134,7 @@ class ParticleControler(private val uuid: UUID) : Controlable<ControlableParticl
     }
 
     fun rotateParticleTo(target: Vector3f) {
-        particle.rotateParticleTo(target)
+        requireParticleBound().rotateParticleTo(target)
     }
 
     override fun controlUUID(): UUID {
@@ -117,30 +151,53 @@ class ParticleControler(private val uuid: UUID) : Controlable<ControlableParticl
     }
 
     override fun teleportTo(pos: Vec3) {
-        particle.teleportTo(pos)
+        requireParticleBound().teleportTo(pos)
     }
 
     override fun teleportTo(x: Double, y: Double, z: Double) {
-        particle.teleportTo(x, y, z)
+        requireParticleBound().teleportTo(x, y, z)
     }
 
     /**
-     * @see ControlableParticle.markDead()
+     * @see ControlableParticle.markDead
      */
     override fun remove() {
         remove(RemoveReason.QUEUE)
     }
 
     override fun remove(reason: RemoveReason) {
-        destroyInvoker(particle, reason)
-        if (particle.isAlive) {
-            particle.remove()
+        if (isRemoved) {
+            return
+        }
+        try {
+            if (::particle.isInitialized) {
+                destroyInvoker(particle, reason)
+                if (particle.isAlive) {
+                    particle.remove()
+                }
+            }
+        } finally {
+            cleanupAfterRemoved()
         }
     }
 
     override fun getControlObject(): ControlableParticle {
-        return particle
+        return requireParticleBound()
     }
 
+    private fun cleanupAfterRemoved() {
+        state = ParticleControlerState.REMOVED
+        invokeQueue.clear()
+        bufferedData.clear()
+        initInvoker = {}
+        destroyInvoker = {}
+        ControlParticleManager.removeControl(uuid)
+    }
 
+    private fun requireParticleBound(): ControlableParticle {
+        if (!::particle.isInitialized) {
+            throw IllegalStateException("ParticleControler[$uuid] has no bound particle, state=$state")
+        }
+        return particle
+    }
 }

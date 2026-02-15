@@ -97,6 +97,11 @@ abstract class ParticleComposition(var position: Vec3, var world: Level? = null)
 
     val particles = ConcurrentHashMap<UUID, Controlable<*>>()
 
+    /**
+     * 排除掉 SingleParticleDisplayer 从而减少遍历次数
+     */
+    val controlerTicks = HashSet<Tickable<*>>()
+
     val particleLocations = ConcurrentHashMap<Controlable<*>, RelativeLocation>()
 
     val status = CompositionStatusHelper()
@@ -128,7 +133,7 @@ abstract class ParticleComposition(var position: Vec3, var world: Level? = null)
 
     open fun beforeDisplay(map: Map<CompositionData, RelativeLocation>) {}
 
-    open fun tick() {
+    override fun tick() {
         if (canceled || !displayed) {
             return
         }
@@ -142,26 +147,8 @@ abstract class ParticleComposition(var position: Vec3, var world: Level? = null)
         }
 
         invokeQueue.forEach { it() }
-        val iterator = particles.iterator()
-        while (iterator.hasNext()) {
-            val style = iterator.next()
-            when (val value = style.value) {
-                is ControlableParticleGroup -> {
-                    value.tick()
-                }
-
-                is ParticleGroupStyle -> {
-                    value.tick()
-                }
-
-                is ParticleComposition -> {
-                    value.tick()
-                }
-
-                is DisplayEntity -> {
-                    value.tick()
-                }
-            }
+        controlerTicks.forEach {
+            it.tick()
         }
     }
 
@@ -207,11 +194,11 @@ abstract class ParticleComposition(var position: Vec3, var world: Level? = null)
         if (!displayed) {
             return
         }
-        particleLocations.forEach {
+        for (it in particleLocations) {
             val uuid = it.key.controlUUID()
             val len = particleDefaultLength[uuid]!!
             val value = it.value
-            if (len in -1e-3..1e-3) return@forEach
+            if (len in -1e-3..1e-3) continue
             value.multiply(len * scale / value.length())
         }
         toggleRelative()
@@ -239,6 +226,7 @@ abstract class ParticleComposition(var position: Vec3, var world: Level? = null)
         particles.forEach {
             it.value.remove()
         }
+        controlerTicks.clear()
         particles.clear()
         particleLocations.clear()
         particleRotatedLocations.clear()
@@ -300,9 +288,10 @@ abstract class ParticleComposition(var position: Vec3, var world: Level? = null)
         while (iterator.hasNext()) {
             val entry = iterator.next()
             val particle = entry.key
-            val rl = entry.value
+            val rel = entry.value
+            // 减少一倍的new Vec3
             particle.teleportTo(
-                position + rl.toVector()
+                position.add(rel.x, rel.y, rel.z)
             )
         }
     }
@@ -333,18 +322,15 @@ abstract class ParticleComposition(var position: Vec3, var world: Level? = null)
         this.roll += radian
         if (this.roll >= 2 * PI) {
             this.roll -= 2 * PI
-        } else if (this.roll <= 2 * PI) {
+        } else if (this.roll <= -2 * PI) {
             this.roll += 2 * PI
         }
         if (!client) {
             axis = to
             return
         }
-        Math3DUtil.rotateAsAxis(
-            particleRotatedLocations, axis, radian
-        )
-        Math3DUtil.rotatePointsToPoint(
-            particleRotatedLocations, to, axis
+        Math3DUtil.rotateToWithRoll(
+            particleRotatedLocations, axis, to, radian
         )
         axis = to
         toggleRelative()
@@ -393,7 +379,7 @@ abstract class ParticleComposition(var position: Vec3, var world: Level? = null)
         return this
     }
 
-    protected fun displayEntry(data: CompositionData, pos: RelativeLocation) {
+    protected open fun displayEntry(data: CompositionData, pos: RelativeLocation) {
         val uuid = data.uuid
         val displayer = data.displayerBuilder(uuid)
         if (displayer is ParticleDisplayer.SingleParticleDisplayer) {
@@ -404,12 +390,15 @@ abstract class ParticleComposition(var position: Vec3, var world: Level? = null)
                 }
             }
         }
-        val toPos = position + pos.toVector()
+        val toPos = position.add(pos.x, pos.y, pos.z)
         val controler = displayer.display(toPos, world as ClientLevel) ?: return
         if (controler is ParticleControler) {
             data.particleControlerHandlers.forEach { handler ->
                 handler(controler)
             }
+        }
+        if (controler is Tickable<*>) {
+            controlerTicks.add(controler)
         }
         particleRotatedLocations.add(pos)
         particles[uuid] = controler

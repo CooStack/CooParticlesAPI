@@ -1,9 +1,14 @@
 package cn.coostack.cooparticlesapi.network.particle.composition
 
+import cn.coostack.cooparticlesapi.api.controler.Tickable
+import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
+import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
+import cn.coostack.cooparticlesapi.particles.control.ParticleControler
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import cn.coostack.cooparticlesapi.utils.helper.SequencedCompositionAnimationHelper
 import cn.coostack.cooparticlesapi.utils.storage.Memo
+import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
@@ -367,18 +372,15 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
         this.roll += radian
         if (this.roll >= 2 * PI) {
             this.roll -= 2 * PI
-        } else if (this.roll <= 2 * PI) {
+        } else if (this.roll <= -2 * PI) {
             this.roll += 2 * PI
         }
         if (!client) {
             axis = to
             return
         }
-        Math3DUtil.rotateAsAxis(
-            particleRotatedLocations, axis, radian
-        )
-        Math3DUtil.rotatePointsToPoint(
-            particleRotatedLocations, to, axis
+        Math3DUtil.rotateToWithRoll(
+            particleRotatedLocations, axis, to, radian
         )
         axis = to
         toggleRelative()
@@ -424,10 +426,35 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
         if (indexToUuid[i] != null) return
 
         val (data, rl) = sequencedParticlesData[i]
-        // ParticleComposition 的 displayEntry 会把粒子塞进 particles/particleLocations
         displayEntry(data, rl)
         indexToUuid[i] = data.uuid
     }
+
+    override fun displayEntry(data: CompositionData, pos: RelativeLocation) {
+        val uuid = data.uuid
+        val displayer = data.displayerBuilder(uuid)
+        if (displayer is ParticleDisplayer.SingleParticleDisplayer) {
+            val controler = ControlParticleManager.createControl(uuid)
+            controler.applyInitializedAction {
+                for (function in data.singleParticleHandlers) {
+                    function(this)
+                }
+            }
+        }
+        val toPos = position.add(pos.x, pos.y, pos.z)
+        val controler = displayer.display(toPos, world as ClientLevel) ?: return
+        if (controler is ParticleControler) {
+            data.particleControlerHandlers.forEach { handler ->
+                handler(controler)
+            }
+        }
+        if (controler is Tickable<*>) {
+            controlerTicks.add(controler)
+        }
+        particles[uuid] = controler
+        particleLocations[controler] = pos
+    }
+
 
     private fun removeWithIndex(i: Int) {
         if (!client) return

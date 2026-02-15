@@ -4,6 +4,8 @@ import cn.coostack.cooparticlesapi.display.DisplayEntity
 import cn.coostack.cooparticlesapi.display.DisplayEntityManager
 import cn.coostack.cooparticlesapi.network.particle.ServerParticleGroup
 import cn.coostack.cooparticlesapi.network.particle.ServerParticleGroupManager
+import cn.coostack.cooparticlesapi.network.particle.composition.ParticleComposition
+import cn.coostack.cooparticlesapi.network.particle.composition.manager.ParticleCompositionManager
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersManager
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleGroupStyle
@@ -41,40 +43,7 @@ object BarrageManager {
     }
 
     private fun spawnOnWorld(barrage: Barrage) {
-        when (val control = barrage.bindControl) {
-            is ServerParticleGroup -> {
-                ServerParticleGroupManager.addParticleGroup(
-                    control,
-                    barrage.loc,
-                    barrage.world
-                )
-            }
-
-            is ParticleGroupStyle -> {
-                ParticleStyleManager.spawnStyle(
-                    barrage.world,
-                    barrage.loc,
-                    control
-                )
-            }
-
-            is RenderEntity -> {
-                ServerRenderEntityManager.spawn(
-                    control
-                )
-            }
-
-            is ParticleEmitters -> {
-                ParticleEmittersManager.spawnEmitters(
-                    control
-                )
-            }
-
-            is DisplayEntity -> {
-                DisplayEntityManager.spawn(control)
-            }
-
-        }
+        barrage.bindControl.spawn(barrage.world, barrage.loc)
         barrage.lunch = true
     }
 }

@@ -34,7 +34,7 @@ object DisplayEntityManager {
         entity.prevYaw = entity.yaw
         entity.prevPitch = entity.pitch
         entity.prevRoll = entity.roll
-        entity.preScale = entity.scale
+        entity.prevScale = entity.scale
         clientView[entity.controlUUID] = entity
     }
 

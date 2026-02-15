@@ -3,6 +3,8 @@ package cn.coostack.cooparticlesapi.annotations.codec
 import cn.coostack.cooparticlesapi.annotations.CodecField
 import cn.coostack.cooparticlesapi.barrages.HitBox
 import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableParticleData
+import cn.coostack.cooparticlesapi.network.particle.emitters.CompositionEmittersData
+import cn.coostack.cooparticlesapi.network.particle.emitters.DisplayEntityEmittersData
 import cn.coostack.cooparticlesapi.network.particle.emitters.SimpleRandomParticleData
 import cn.coostack.cooparticlesapi.network.particle.data.DoubleRangeData
 import cn.coostack.cooparticlesapi.network.particle.data.FloatRangeData
@@ -13,9 +15,14 @@ import cn.coostack.cooparticlesapi.utils.interpolator.data.InterpolatorVec3d
 import cn.coostack.cooparticlesapi.utils.interpolator.data.InterpolatorVector3f
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import cn.coostack.cooparticlesapi.utils.interpolator.data.InterpolatorRelativeLocation
+import com.mojang.serialization.Codec
+import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.network.FriendlyByteBuf
+import net.minecraft.network.codec.ByteBufCodecs
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.item.ItemStack
+import net.minecraft.world.level.block.Block
+import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import org.joml.Quaternionf
@@ -41,6 +48,8 @@ object CodecHelper {
         register(Char::class.java, StreamCodec.of({ buf, i -> buf.writeChar(i.toInt()) }, { it.readChar() }))
         register(UUID::class.java, StreamCodec.of({ buf, i -> buf.writeUUID(i) }, { it.readUUID() }))
         register(ControlableParticleData::class.java, ControlableParticleData.PACKET_CODEC)
+        register(CompositionEmittersData::class.java, CompositionEmittersData.PACKET_CODEC)
+        register(DisplayEntityEmittersData::class.java, DisplayEntityEmittersData.PACKET_CODEC)
         register(Vector3f::class.java, StreamCodec.of({ buf, i -> buf.writeVector3f(i) }, { it.readVector3f() }))
         register(Vec3::class.java, StreamCodec.of({ buf, i -> buf.writeVec3(i) }, { it.readVec3() }))
         register(Quaternionf::class.java, StreamCodec.of({ buf, q -> buf.writeQuaternion(q) }, { it.readQuaternion() }))
@@ -96,6 +105,16 @@ object CodecHelper {
             FloatRangeData::class.java,
             StreamCodec.of({ buf, i -> buf.writeFloat(i.min); buf.writeFloat(i.max) }, {
                 FloatRangeData(it.readFloat(), it.readFloat())
+            })
+        )
+        register(
+            BlockState::class.java,
+            StreamCodec.of({ buf, s ->
+                ByteBufCodecs.idMapper(Block.BLOCK_STATE_REGISTRY)
+                    .encode(buf, s)
+            }, { buf ->
+                ByteBufCodecs.idMapper(Block.BLOCK_STATE_REGISTRY)
+                    .decode(buf)
             })
         )
     }

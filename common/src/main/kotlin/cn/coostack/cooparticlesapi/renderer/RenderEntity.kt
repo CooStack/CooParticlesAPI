@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi.renderer
 
+import cn.coostack.cooparticlesapi.api.controler.Tickable
 import cn.coostack.cooparticlesapi.network.packet.PacketRenderEntityS2C
 import cn.coostack.cooparticlesapi.api.controler.server.ServerControler
 import cn.coostack.cooparticlesapi.renderer.server.ServerRenderEntityManager
@@ -21,7 +22,8 @@ import kotlin.reflect.KProperty
 /**
  * 为了方便设置
  */
-abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) : ServerControler<RenderEntity> {
+abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) : ServerControler<RenderEntity>,
+    Tickable<RenderEntity> {
     /**
      * 渲染可视距离
      * 给服务器设置则是设置进行传输生成的最小范围
@@ -82,7 +84,7 @@ abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) : Serv
     var uuid: UUID = UUID.randomUUID()
     var dirty = false
     var canceled = false
-    open fun tick() {
+    override fun tick() {
         if (canceled) return
         age++
         if (client) {
@@ -90,6 +92,11 @@ abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) : Serv
         } else {
             serverTick()
         }
+    }
+
+
+    final override fun addPreTickAction(action: RenderEntity.() -> Unit): Tickable<RenderEntity> {
+        return this
     }
 
     /**

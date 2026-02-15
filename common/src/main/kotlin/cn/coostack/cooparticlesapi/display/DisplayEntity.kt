@@ -1,9 +1,9 @@
 package cn.coostack.cooparticlesapi.display
 
 import cn.coostack.cooparticlesapi.annotations.codec.CodecHelper
-import cn.coostack.cooparticlesapi.extend.unaryMinus
 import cn.coostack.cooparticlesapi.api.controler.server.ServerControler
 import cn.coostack.cooparticlesapi.api.controler.Controlable
+import cn.coostack.cooparticlesapi.api.controler.Tickable
 import cn.coostack.cooparticlesapi.particles.control.RemoveReason
 import cn.coostack.cooparticlesapi.utils.GraphMathHelper
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
@@ -17,8 +17,6 @@ import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
 import org.joml.Matrix4f
-import org.joml.Quaternionf
-import org.joml.Vector3f
 import java.util.UUID
 import kotlin.math.PI
 
@@ -39,7 +37,7 @@ import kotlin.math.PI
 abstract class DisplayEntity(
     var pos: Vec3,
     var world: Level?
-) : Controlable<DisplayEntity>, ServerControler<DisplayEntity> {
+) : Controlable<DisplayEntity>, ServerControler<DisplayEntity>, Tickable<DisplayEntity> {
     companion object {
         fun encodeBase(data: DisplayEntity, buf: FriendlyByteBuf) {
             buf.writeVec3(data.pos)
@@ -82,7 +80,7 @@ abstract class DisplayEntity(
 
     var roll = 0f
 
-    var preScale = 1f
+    var prevScale = 1f
     var scale = 1f
 
     var valid = true
@@ -174,6 +172,10 @@ abstract class DisplayEntity(
         return prevYaw + lerp * delta
     }
 
+    fun scale(lerp: Float): Float {
+        return GraphMathHelper.lerp(lerp, prevScale, scale)
+    }
+
     /**
      * 自助插值
      *
@@ -191,7 +193,7 @@ abstract class DisplayEntity(
     }
 
 
-    open fun tick() {
+    override fun tick() {
         yaw %= 360
         pitch %= 360
         roll %= 360
@@ -199,7 +201,14 @@ abstract class DisplayEntity(
         this.prevYaw = yaw
         this.prevPitch = pitch
         this.prevRoll = roll
-        this.preScale = scale
+        this.prevScale = scale
+    }
+
+    /**
+     * 不做处理
+     */
+    final override fun addPreTickAction(action: DisplayEntity.() -> Unit): Tickable<DisplayEntity> {
+        return this
     }
 
     /**

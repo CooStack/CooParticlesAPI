@@ -1,13 +1,10 @@
 package cn.coostack.cooparticlesapi.network.particle.style
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
-import cn.coostack.cooparticlesapi.display.DisplayEntity
 import cn.coostack.cooparticlesapi.network.buffer.ParticleControlerDataBuffer
 import cn.coostack.cooparticlesapi.network.buffer.ParticleControlerDataBuffers
 import cn.coostack.cooparticlesapi.network.packet.PacketParticleStyleS2C
 import cn.coostack.cooparticlesapi.api.controler.server.ServerControler
-import cn.coostack.cooparticlesapi.network.particle.composition.ParticleComposition
-import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersManager
 import cn.coostack.cooparticlesapi.api.controler.Controlable
 import cn.coostack.cooparticlesapi.api.controler.Tickable
 import cn.coostack.cooparticlesapi.particles.ControlableParticle
@@ -16,7 +13,6 @@ import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
 import cn.coostack.cooparticlesapi.particles.control.ControlType
 import cn.coostack.cooparticlesapi.particles.control.ParticleControler
 import cn.coostack.cooparticlesapi.particles.control.RemoveReason
-import cn.coostack.cooparticlesapi.particles.control.group.ControlableParticleGroup
 import cn.coostack.cooparticlesapi.particles.impl.ControlableEndRodEffect
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
@@ -124,15 +120,18 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
         }
     }
 
-    override fun rotateToWithAngle(to: RelativeLocation, angle: Double) {
-        Math3DUtil.rotateAsAxis(
-            particleLocations.values.toList(), axis, angle
-        )
-        Math3DUtil.rotatePointsToPoint(
-            particleLocations.values.toList(), to, axis
+    override fun rotateToWithAngle(to: RelativeLocation, radian: Double) {
+//        Math3DUtil.rotateAsAxis(
+//            particleLocations.values.toList(), axis, angle
+//        )
+//        Math3DUtil.rotatePointsToPoint(
+//            particleLocations.values.toList(), to, axis
+//        )
+        Math3DUtil.rotateToWithRoll(
+            particleLocations.values.toList(), axis, to, radian
         )
         axis = to
-        this.rotate += angle
+        this.rotate += radian
         if (this.rotate >= 2 * PI) {
             this.rotate -= 2 * PI
         }
@@ -142,7 +141,7 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
             change(
                 mapOf(
                     "rotate_to" to ParticleControlerDataBuffers.relative(to),
-                    "rotate_angle" to ParticleControlerDataBuffers.double(angle)
+                    "rotate_angle" to ParticleControlerDataBuffers.double(radian)
                 )
             )
         }
@@ -290,7 +289,7 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
         particleLocations[controler] = rel
     }
 
-    open fun tick() {
+    override fun tick() {
         if (!displayed || !valid) {
             clear(false)
             return
@@ -308,19 +307,7 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
         while (iterator.hasNext()) {
             val style = iterator.next()
             when (val value = style.value) {
-                is ControlableParticleGroup -> {
-                    value.tick()
-                }
-
-                is ParticleGroupStyle -> {
-                    value.tick()
-                }
-
-                is ParticleComposition -> {
-                    value.tick()
-                }
-
-                is DisplayEntity -> {
+                is Tickable<*> -> {
                     value.tick()
                 }
             }

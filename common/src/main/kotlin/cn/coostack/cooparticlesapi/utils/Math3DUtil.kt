@@ -748,6 +748,111 @@ object Math3DUtil {
         return shape
     }
 
+    /**
+     * # 绕轴旋转的同时带有roll角度 减少重复遍历
+     * - 向量图形绕轴旋转N度
+     * - 向量旋转到目标轴
+     *
+     * - [rotatePointsToPoint]
+     * - [rotateAsAxis]
+     * @param angle 角度 输入一个弧度制角度
+     * @param to 旋转到目标轴
+     */
+    fun rotateToWithRoll(
+        shape: List<RelativeLocation>,
+        axis: RelativeLocation,
+        to: RelativeLocation,
+        angle: Double
+    ) = rotateToWithRollAsync(
+        shape,
+        axis,
+        to,
+        angle,
+        CooParticlesServices.API_CONFIG_MANAGER.getConfig().calculateThreadCount
+    )
+
+    /**
+     * - 向量图形绕轴旋转N度
+     * - 向量旋转到目标轴
+     *
+     * - [rotatePointsToPoint]
+     * - [rotateAsAxis]
+     * @param angle 角度 输入一个弧度制角度
+     * @param to 旋转到目标轴
+     */
+    fun rotateToWithRollAsync(
+        shape: List<RelativeLocation>,
+        axis: RelativeLocation,
+        to: RelativeLocation,
+        angle: Double,
+        threads: Int
+    ): List<RelativeLocation> {
+        // Keep behavior consistent with rotateAsAxis + rotatePointsToPoint.
+        // If axis and target are collinear in the same direction, the second step is a no-op.
+        if (axis.cross(to).length() in -1e-5..1e-5 && axis.dot(to) > 0) {
+            return rotateAsAxisAsync(shape, axis, angle, threads)
+        }
+        val copy = CopyOnWriteArrayList(shape)
+        if (copy.isEmpty()) return shape
+        var actualThreads = threads
+        if (threads >= copy.size) {
+            actualThreads = copy.size
+        }
+        // 计算每一个线程处理的点的平均个数
+        val taskPreThreadCount = copy.size / actualThreads
+        var notHandledTaskCount = copy.size % actualThreads
+        // 划分索引范围 从0开始
+        // 索引计算规则如下 从0开始 到 taskPreThreadCount + n 结束 左闭右开
+        // 下一个thread就是 taskPreThreadCount + n 开始 n一般为1或者0
+        var currentIndex = 0
+        val rollAxis = Quaterniond()
+        rollAxis.rotateAxis(angle, axis.toVector3d())
+        // 计算旋转四元数
+        val rotateQ = Quaterniond()
+        // 差值
+        val na = axis.normalize()
+        val axisYaw = getYawFromLocation(na)
+        val axisPitch = getPitchFromLocation(na)
+
+        val toa = to.normalize()
+        val toYaw = getYawFromLocation(toa)
+        val toPitch = getPitchFromLocation(toa)
+        // 先让图形面向Z轴
+        rotateQ.rotateY(axisYaw).rotateLocalX(axisPitch)
+        // 后再转回目标点
+        val rotateTargetQ = Quaterniond()
+            .rotateY(-toYaw)
+            .rotateX(-toPitch)
+        val tasks = ArrayList<Deferred<Unit>>()
+        repeat(actualThreads) {
+            var next = currentIndex + taskPreThreadCount // 取到  taskHandledIndexStart ..< next
+            if (notHandledTaskCount > 0) {
+                next++
+                notHandledTaskCount--
+            }
+            val taskHandledIndexStart = currentIndex
+            currentIndex = next
+            // 创建任务
+            val vector = Vector3d(0.0, 0.0, 0.0)
+            val job = scope.async {
+                for (i in taskHandledIndexStart..<next) {
+                    val it = copy[i]
+                    // 复用节约内存
+                    vector.set(it.x, it.y, it.z)
+                    vector.rotate(rollAxis)
+                        .rotate(rotateQ)
+                        .rotate(rotateTargetQ)
+                    it.x = vector.x
+                    it.y = vector.y
+                    it.z = vector.z
+                }
+            }
+            tasks.add(job)
+        }
+        runBlocking { tasks.awaitAll() }
+        return shape
+    }
+
     /** 让图形的对称轴指向某个点(图形跟着转变) */
     fun rotatePointsToPoint(
         shape: List<RelativeLocation>,

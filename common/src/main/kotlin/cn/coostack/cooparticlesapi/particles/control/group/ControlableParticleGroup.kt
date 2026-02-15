@@ -4,6 +4,7 @@ import cn.coostack.cooparticlesapi.network.particle.style.ParticleGroupStyle
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleGroupStyle.StyleData
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleShapeStyle
 import cn.coostack.cooparticlesapi.api.controler.Controlable
+import cn.coostack.cooparticlesapi.api.controler.Tickable
 import cn.coostack.cooparticlesapi.particles.ControlableParticle
 import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
 import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
@@ -34,7 +35,7 @@ import kotlin.collections.iterator
  * 所以删除粒子只能在服务器上
  */
 @Deprecated("使用ParticleGroupStyle！")
-abstract class ControlableParticleGroup(val uuid: UUID) : Controlable<ControlableParticleGroup> {
+abstract class ControlableParticleGroup(val uuid: UUID) : Controlable<ControlableParticleGroup>, Tickable<ControlableParticleGroup> {
     // 实际存在于客户端的粒子
     val particles = ConcurrentHashMap<UUID, Controlable<*>>()
 
@@ -124,7 +125,7 @@ abstract class ControlableParticleGroup(val uuid: UUID) : Controlable<Controlabl
         }
     }
 
-    internal open fun tick() {
+    override fun tick() {
         if (!valid || canceled) {
             clearParticles()
             return
@@ -244,7 +245,7 @@ abstract class ControlableParticleGroup(val uuid: UUID) : Controlable<Controlabl
      * 设置为protected的原因是不允许外界添加新的action以保持在其他玩家的视角里粒子运动方式是一致的
      * 因此只能在init里对其进行添加
      */
-    protected fun addPreTickAction(action: (ControlableParticleGroup) -> Unit): ControlableParticleGroup {
+    override fun addPreTickAction(action: (ControlableParticleGroup) -> Unit): ControlableParticleGroup {
         invokeQueue.add(action)
         return this
     }

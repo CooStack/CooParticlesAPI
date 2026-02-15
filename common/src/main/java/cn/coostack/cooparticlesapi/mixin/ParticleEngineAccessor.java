@@ -5,9 +5,11 @@ import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleEngine;
 import net.minecraft.client.particle.ParticleRenderType;
 import net.minecraft.client.particle.TrackingEmitter;
+import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.core.particles.ParticleGroup;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
+import org.spongepowered.asm.mixin.gen.Invoker;
 
 import java.util.Map;
 import java.util.Queue;
@@ -29,5 +31,4 @@ public interface ParticleEngineAccessor {
 
     @Accessor
     Object2IntOpenHashMap<ParticleGroup> getTrackedParticleCounts();
-
 }

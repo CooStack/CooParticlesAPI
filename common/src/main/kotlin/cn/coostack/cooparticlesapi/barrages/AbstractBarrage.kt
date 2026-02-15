@@ -20,6 +20,10 @@ abstract class AbstractBarrage(
     override var shooter: LivingEntity? = null
     override var direction: Vec3 = Vec3.ZERO
     override var lunch: Boolean = false
+
+    /**
+     * 不公开的原因是他有上限
+     */
     private var currentTick = 0
     private var spawnTick = 0
     internal var isValid = true

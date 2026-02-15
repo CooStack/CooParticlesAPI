@@ -15,12 +15,16 @@ import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.state.BlockState
 import java.util.*
 
-class ControlableFallingDustEffect(controlUUID: UUID,val state: BlockState, faceToPlayer: Boolean = true) :
+class ControlableFallingDustEffect(controlUUID: UUID, val state: BlockState, faceToPlayer: Boolean = true) :
     ControlableParticleEffect(controlUUID, faceToPlayer) {
     companion object {
         @JvmStatic
         val BLOCK_STATE_CODEC = Codec
-            .withAlternative<BlockState, Block>(BlockState.CODEC, BuiltInRegistries.BLOCK.byNameCodec(),Block::defaultBlockState)
+            .withAlternative(
+                BlockState.CODEC,
+                BuiltInRegistries.BLOCK.byNameCodec(),
+                Block::defaultBlockState
+            )
 
         @JvmStatic
         val codec: MapCodec<ControlableFallingDustEffect> = RecordCodecBuilder.mapCodec {
@@ -35,11 +39,11 @@ class ControlableFallingDustEffect(controlUUID: UUID,val state: BlockState, face
                     effect.faceToPlayer
                 },
                 BLOCK_STATE_CODEC.fieldOf("state").forGetter { effect -> effect.state }
-            ).apply(it) { buf, faceToPlayer,state ->
+            ).apply(it) { buf, faceToPlayer, state ->
                 ControlableFallingDustEffect(
                     UUID.fromString(
                         String(buf.array())
-                    ), state,faceToPlayer
+                    ), state, faceToPlayer
                 )
             }
         }
@@ -50,14 +54,14 @@ class ControlableFallingDustEffect(controlUUID: UUID,val state: BlockState, face
                 buf.writeUUID(effect.controlUUID)
                 buf.writeBoolean(effect.faceToPlayer)
                 ByteBufCodecs.idMapper<BlockState>(Block.BLOCK_STATE_REGISTRY)
-                    .encode(buf,effect.state)
+                    .encode(buf, effect.state)
             }, {
                 val uuid = it.readUUID()
                 val faceTo = it.readBoolean()
                 val state = ByteBufCodecs.idMapper<BlockState>(Block.BLOCK_STATE_REGISTRY).decode(
                     it
                 )
-                ControlableFallingDustEffect(uuid,state,faceTo)
+                ControlableFallingDustEffect(uuid, state, faceTo)
             }
         )
     }
@@ -72,7 +76,7 @@ class ControlableFallingDustEffect(controlUUID: UUID,val state: BlockState, face
 
     override fun clone(): ControlableFallingDustEffect {
         return ControlableFallingDustEffect(
-            controlUUID,state, faceToPlayer
+            controlUUID, state, faceToPlayer
         )
     }
 }
