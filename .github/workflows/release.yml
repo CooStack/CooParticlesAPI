@@ -1,15 +1,9 @@
-name: Build And Release
+name: Release
 
 on:
   push:
     tags:
-      - "*"
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: "Release tag (for manual run, e.g. 2.3.2.1)"
-        required: true
-        type: string
+      - "v*"
 
 permissions:
   contents: write
@@ -22,32 +16,35 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup JDK 21
+      # 关键：修复 Permission denied（并顺带修复可能的 CRLF 问题）
+      - name: Prepare Gradle Wrapper
+        shell: bash
+        run: |
+          chmod +x ./gradlew
+          sed -i 's/\r$//' ./gradlew
+
+      - name: Setup JDK
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "21"
           cache: gradle
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - name: Validate Gradle Wrapper
+        uses: gradle/wrapper-validation-action@v2
 
-      - name: Build release artifacts
-        run: |
-          ./gradlew --no-daemon clean build
+      - name: Build
+        run: ./gradlew --no-daemon clean build
 
-      - name: Show artifacts
-        run: |
-          ls -lah builds/jar || true
-          ls -lah builds/sources || true
-
-      - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+      # 这一步会自动创建 GitHub Release，并把你选的文件上传为附件
+      - name: Create GitHub Release + Upload Assets
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
-          target_commitish: ${{ github.sha }}
           generate_release_notes: true
           files: |
-            builds/jar/*.jar
-            builds/sources/*.jar
+            **/build/libs/*.jar
+            **/build/libs/*.jar.asc
+            **/build/libs/*.pom
+            **/build/libs/*.module
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
