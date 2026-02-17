@@ -21,7 +21,8 @@ class ParticleShapeComposition(uuid: UUID) : ParticleComposition(Vec3.ZERO, null
     private val beforeInvokes =
         ArrayList<ParticleShapeComposition.(map: Map<CompositionData, RelativeLocation>) -> Unit>()
 
-    private var scaleHelper: ScaleHelper? = null
+    var scaleHelper: ScaleHelper? = null
+        private set
     var spawnAge = 0
 
     /**
@@ -34,7 +35,6 @@ class ParticleShapeComposition(uuid: UUID) : ParticleComposition(Vec3.ZERO, null
      * 设置为true时 利用scaleHelper 每tick减弱一点
      */
     var scaleReversed = false
-        private set
 
     fun loadScaleHelper(min: Double, max: Double, scalingTick: Int): ParticleShapeComposition {
         scaleHelper = CompositionScaleHelper(min, max, scalingTick)

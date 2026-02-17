@@ -34,7 +34,7 @@ jobs:
 
       - name: Build release artifacts
         run: |
-          ./gradlew --no-daemon clean :common:jar :fabric:remapJar :fabric:sourceWithCommon :neoforge:jar :neoforge:sourceWithCommon
+          ./gradlew --no-daemon clean build
 
       - name: Show artifacts
         run: |

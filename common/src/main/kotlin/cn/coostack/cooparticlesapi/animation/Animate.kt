@@ -1,9 +1,10 @@
 package cn.coostack.cooparticlesapi.animation
 
+import cn.coostack.cooparticlesapi.api.controler.Tickable
 import java.util.function.Predicate
 
 
-class Animate {
+class Animate : Tickable<Animate> {
     var timestarp = 0
     val nodes = ArrayList<Pair<AnimateNode, Int>>()
     var currentNode: AnimateNode? = null
@@ -54,7 +55,11 @@ class Animate {
         timestarp = 0
     }
 
-    fun tick() {
+    override fun addPreTickAction(action: Animate.() -> Unit): Tickable<Animate> {
+        return this
+    }
+
+    override fun tick() {
         if (!display || done) return
         if (currentNode?.checkDone() ?: true) {
             if (currentInterval < timestarp) {

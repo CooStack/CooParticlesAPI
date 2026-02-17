@@ -28,7 +28,7 @@ class SequencedParticleShapeComposition(uuid: UUID) : SequencedParticleCompositi
     private val beforeInvokes =
         ArrayList<SequencedParticleShapeComposition.(map: SortedMap<CompositionData, RelativeLocation>) -> Unit>()
 
-    private var scaleHelper: ScaleHelper? = null
+    var scaleHelper: ScaleHelper? = null
 
     var spawnAge = 0
 
