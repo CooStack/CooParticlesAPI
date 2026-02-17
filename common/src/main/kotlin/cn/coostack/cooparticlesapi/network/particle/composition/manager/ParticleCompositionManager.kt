@@ -3,7 +3,7 @@ package cn.coostack.cooparticlesapi.network.particle.composition.manager
 import cn.coostack.cooparticlesapi.CooParticlesAPI
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
-import cn.coostack.cooparticlesapi.network.packet.PacketParticleCompositionS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleCompositionS2C
 import cn.coostack.cooparticlesapi.network.particle.composition.ParticleComposition
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import cn.coostack.cooparticlesapi.reflect.CooAPIScanner

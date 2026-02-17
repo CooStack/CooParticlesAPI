@@ -1,7 +1,7 @@
 package cn.coostack.cooparticlesapi.listener.client
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
-import cn.coostack.cooparticlesapi.client.KeyBindingManager
+import cn.coostack.cooparticlesapi.key.CooKeyBindingManager
 import net.neoforged.api.distmarker.Dist
 import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.fml.common.EventBusSubscriber
@@ -14,7 +14,7 @@ import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent
 object CooParticlesAPINeoClientModListener {
     @SubscribeEvent
     fun onRegisterKeyMappings(event: RegisterKeyMappingsEvent) {
-        KeyBindingManager.setRegistrar { mapping ->
+        CooKeyBindingManager.setRegistrar { mapping ->
             event.register(mapping)
         }
     }

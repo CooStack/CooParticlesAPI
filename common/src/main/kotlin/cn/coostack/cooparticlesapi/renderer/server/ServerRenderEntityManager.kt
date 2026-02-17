@@ -1,7 +1,7 @@
 package cn.coostack.cooparticlesapi.renderer.server
 
 import cn.coostack.cooparticlesapi.CooParticlesAPI
-import cn.coostack.cooparticlesapi.network.packet.PacketRenderEntityS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketRenderEntityS2C
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import cn.coostack.cooparticlesapi.renderer.RenderEntity
 import net.minecraft.server.level.ServerPlayer

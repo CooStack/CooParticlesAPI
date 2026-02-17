@@ -1,7 +1,7 @@
 package cn.coostack.cooparticlesapi.network.packet.client.listener
 
 import cn.coostack.cooparticlesapi.network.buffer.ParticleControlerDataBuffer
-import cn.coostack.cooparticlesapi.network.packet.PacketParticleStyleS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleStyleS2C
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleGroupStyle
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleStyleManager
 import cn.coostack.cooparticlesapi.particles.control.ControlType

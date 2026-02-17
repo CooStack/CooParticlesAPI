@@ -2,7 +2,7 @@ package cn.coostack.cooparticlesapi.network.particle.style
 
 import cn.coostack.cooparticlesapi.CooParticlesAPI
 import cn.coostack.cooparticlesapi.network.buffer.ParticleControlerDataBuffers
-import cn.coostack.cooparticlesapi.network.packet.PacketParticleStyleS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleStyleS2C
 import cn.coostack.cooparticlesapi.particles.control.ControlType
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import net.minecraft.client.Minecraft

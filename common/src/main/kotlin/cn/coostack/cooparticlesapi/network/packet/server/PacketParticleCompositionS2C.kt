@@ -1,4 +1,4 @@
-package cn.coostack.cooparticlesapi.network.packet
+package cn.coostack.cooparticlesapi.network.packet.server
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import net.minecraft.network.FriendlyByteBuf

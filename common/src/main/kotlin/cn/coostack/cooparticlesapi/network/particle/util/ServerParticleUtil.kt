@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi.network.particle.util
 
-import cn.coostack.cooparticlesapi.network.packet.PacketParticleS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleS2C
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import net.minecraft.core.particles.ParticleOptions

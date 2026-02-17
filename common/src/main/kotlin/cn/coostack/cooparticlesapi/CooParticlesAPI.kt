@@ -2,7 +2,6 @@ package cn.coostack.cooparticlesapi
 
 import cn.coostack.cooparticlesapi.animation.AnimateManager
 import cn.coostack.cooparticlesapi.barrages.BarrageManager
-import cn.coostack.cooparticlesapi.client.KeyBindingManager
 import cn.coostack.cooparticlesapi.display.DisplayEntityManager
 import cn.coostack.cooparticlesapi.event.CooEventBus
 import cn.coostack.cooparticlesapi.reflect.CooAPIScanner

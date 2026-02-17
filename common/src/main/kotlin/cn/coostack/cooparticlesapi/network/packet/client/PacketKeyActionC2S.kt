@@ -1,4 +1,4 @@
-package cn.coostack.cooparticlesapi.network.packet
+package cn.coostack.cooparticlesapi.network.packet.client
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.event.events.key.KeyActionType
@@ -31,7 +31,7 @@ class PacketKeyActionC2S(
                 buf.writeBoolean(packet.isRelease)
             }, { buf ->
                 val keyId = buf.readResourceLocation()
-                val action = KeyActionType.fromId(buf.readInt())
+                val action = KeyActionType.Companion.fromId(buf.readInt())
                 val pressTick = buf.readInt()
                 val isRelease = buf.readBoolean()
                 PacketKeyActionC2S(keyId, action, pressTick, isRelease)

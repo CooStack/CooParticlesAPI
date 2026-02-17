@@ -4,7 +4,7 @@ import cn.coostack.cooparticlesapi.CooParticlesAPI
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
 import cn.coostack.cooparticlesapi.extend.plus
-import cn.coostack.cooparticlesapi.network.packet.PacketDisplayEntityS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketDisplayEntityS2C
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
 import cn.coostack.cooparticlesapi.utils.MinecraftRendererUtil

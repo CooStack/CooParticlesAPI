@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi
 
-import cn.coostack.cooparticlesapi.client.KeyBindingManager
+import cn.coostack.cooparticlesapi.key.CooKeyBindingManager
 import cn.coostack.cooparticlesapi.entities.CooModEntityTypes
 import cn.coostack.cooparticlesapi.entities.renderer.TestRenderEntityRenderer
 import cn.coostack.cooparticlesapi.event.CooEventBus
@@ -11,8 +11,16 @@ import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldChangeEv
 import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldPostTickEvent
 import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldPreTickEvent
 import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldRenderEvent
-import cn.coostack.cooparticlesapi.network.packet.*
 import cn.coostack.cooparticlesapi.network.packet.client.listener.*
+import cn.coostack.cooparticlesapi.network.packet.server.PacketCameraShakeS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketDisplayEntityS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketKeyBindingCountdownS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleCompositionS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleEmittersS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleGroupS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleStyleS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketRenderEntityS2C
 import cn.coostack.cooparticlesapi.particles.CooModParticles
 import cn.coostack.cooparticlesapi.particles.impl.particles.ControlableCloudParticle
 import cn.coostack.cooparticlesapi.particles.impl.particles.ControlableEnchantmentParticle
@@ -37,7 +45,7 @@ import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents
 
 object CooParticlesAPIFabricClient : ClientModInitializer {
     override fun onInitializeClient() {
-        KeyBindingManager.setRegistrar { KeyBindingHelper.registerKeyBinding(it) }
+        CooKeyBindingManager.setRegistrar { KeyBindingHelper.registerKeyBinding(it) }
         registerParticleFabric()
         registerNetworkFabric()
         CooParticlesAPIClient.init()
@@ -60,7 +68,7 @@ object CooParticlesAPIFabricClient : ClientModInitializer {
         }
 
         ClientTickEvents.START_CLIENT_TICK.register {
-            KeyBindingManager.tick()
+            CooKeyBindingManager.tick()
             val event = ClientPreTickEvent(it)
             CooEventBus.call(event)
         }
@@ -165,6 +173,9 @@ object CooParticlesAPIFabricClient : ClientModInitializer {
         }
         ClientPlayNetworking.registerGlobalReceiver(PacketDisplayEntityS2C.payloadID) { payload, context ->
             ClientDisplayEntityPacketHandler.receive(payload, FabricClientContext(context))
+        }
+        ClientPlayNetworking.registerGlobalReceiver(PacketKeyBindingCountdownS2C.payloadID) { payload, context ->
+            ClientKeyBindingCountdownHandler.receive(payload, FabricClientContext(context))
         }
     }
 }

@@ -2,12 +2,10 @@ package cn.coostack.cooparticlesapi.network.packet.client.listener
 
 import cn.coostack.cooparticlesapi.display.DisplayEntity
 import cn.coostack.cooparticlesapi.display.DisplayEntityManager
-import cn.coostack.cooparticlesapi.network.packet.PacketDisplayEntityS2C
-import cn.coostack.cooparticlesapi.network.packet.PacketParticleEmittersS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketDisplayEntityS2C
 import cn.coostack.cooparticlesapi.platform.network.ClientContext
 import io.netty.buffer.Unpooled
 import net.minecraft.client.Minecraft
-import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.RegistryFriendlyByteBuf
 
 object ClientDisplayEntityPacketHandler {

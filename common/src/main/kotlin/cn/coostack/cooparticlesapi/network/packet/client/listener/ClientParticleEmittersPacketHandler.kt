@@ -1,7 +1,6 @@
 package cn.coostack.cooparticlesapi.network.packet.client.listener
 
-import cn.coostack.cooparticlesapi.network.packet.PacketParticleEmittersS2C
-import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmitters
+import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleEmittersS2C
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersManager
 import cn.coostack.cooparticlesapi.platform.network.ClientContext
 import io.netty.buffer.Unpooled

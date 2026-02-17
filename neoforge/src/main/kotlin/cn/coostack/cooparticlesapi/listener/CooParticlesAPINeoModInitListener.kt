@@ -3,23 +3,25 @@ package cn.coostack.cooparticlesapi.listener
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.datagen.CooItemModelProvider
 import cn.coostack.cooparticlesapi.datagen.LangProvider
-import cn.coostack.cooparticlesapi.network.packet.PacketCameraShakeS2C
-import cn.coostack.cooparticlesapi.network.packet.PacketDisplayEntityS2C
-import cn.coostack.cooparticlesapi.network.packet.PacketKeyActionC2S
-import cn.coostack.cooparticlesapi.network.packet.PacketParticleCompositionS2C
-import cn.coostack.cooparticlesapi.network.packet.PacketParticleEmittersS2C
-import cn.coostack.cooparticlesapi.network.packet.PacketParticleGroupS2C
-import cn.coostack.cooparticlesapi.network.packet.PacketParticleS2C
-import cn.coostack.cooparticlesapi.network.packet.PacketParticleStyleS2C
-import cn.coostack.cooparticlesapi.network.packet.PacketRenderEntityS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketCameraShakeS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketDisplayEntityS2C
+import cn.coostack.cooparticlesapi.network.packet.client.PacketKeyActionC2S
+import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleCompositionS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleEmittersS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleGroupS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleStyleS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketRenderEntityS2C
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientCameraShakeHandler
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientDisplayEntityPacketHandler
+import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientKeyBindingCountdownHandler
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientParticleCompositionHandler
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientParticleEmittersPacketHandler
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientParticleGroupPacketHandler
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientParticlePacketHandler
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientParticleStylePacketHandler
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientRenderEntityPacketHandler
+import cn.coostack.cooparticlesapi.network.packet.server.PacketKeyBindingCountdownS2C
 import cn.coostack.cooparticlesapi.network.packet.server.listener.ServerKeyActionHandler
 import cn.coostack.cooparticlesapi.platform.network.NeoForgeClientContext
 import cn.coostack.cooparticlesapi.platform.network.NeoForgeServerContext
@@ -96,11 +98,20 @@ object CooParticlesAPINeoModInitListener {
         ) { payload, context ->
             ClientDisplayEntityPacketHandler.receive(payload, NeoForgeClientContext(context))
         }
+
+        registrar.playToClient(
+            PacketKeyBindingCountdownS2C.payloadID,
+            PacketKeyBindingCountdownS2C.CODEC
+        ) { payload, context ->
+            ClientKeyBindingCountdownHandler.receive(payload, NeoForgeClientContext(context))
+        }
+
         registrar.playToServer(
             PacketKeyActionC2S.payloadID,
             PacketKeyActionC2S.CODEC
         ) { payload, context ->
             ServerKeyActionHandler.receive(payload, NeoForgeServerContext(context))
         }
+
     }
 }

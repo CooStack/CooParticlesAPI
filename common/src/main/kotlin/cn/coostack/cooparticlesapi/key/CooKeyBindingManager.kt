@@ -1,14 +1,16 @@
-package cn.coostack.cooparticlesapi.client
+package cn.coostack.cooparticlesapi.key
 
 import cn.coostack.cooparticlesapi.event.CooEventBus
 import cn.coostack.cooparticlesapi.event.events.key.KeyActionEvent
 import cn.coostack.cooparticlesapi.event.events.key.KeyActionType
-import cn.coostack.cooparticlesapi.network.packet.PacketKeyActionC2S
+import cn.coostack.cooparticlesapi.network.packet.client.PacketKeyActionC2S
+import cn.coostack.cooparticlesapi.network.packet.server.PacketKeyBindingCountdownS2C
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import com.mojang.blaze3d.platform.InputConstants
 import net.minecraft.client.KeyMapping
 import net.minecraft.client.Minecraft
 import net.minecraft.resources.ResourceLocation
+import net.minecraft.server.level.ServerPlayer
 
 /**
  * keyName 默认使用 keyId
@@ -24,7 +26,7 @@ import net.minecraft.resources.ResourceLocation
  * )
  * ```
  */
-object KeyBindingManager {
+object CooKeyBindingManager {
     private data class KeyState(
         val id: ResourceLocation,
         val mapping: KeyMapping,
@@ -38,6 +40,8 @@ object KeyBindingManager {
     private var registrar: ((KeyMapping) -> Unit)? = null
     private var tickCounter = 0L
 
+    // 服务器调用或者客户端调用， 设置countdown (在这期间不处理这个按键功能）
+    private val keyCountDowns = mutableMapOf<ResourceLocation, Int>()
     var doubleClickWindowTicks = 6
 
     fun setRegistrar(registerer: (KeyMapping) -> Unit) {
@@ -52,7 +56,7 @@ object KeyBindingManager {
         category: String
     ): KeyMapping {
         require(keyId !in keyStates) { "key id already registered: $keyId" }
-        val mapping = KeyMapping(keyId.toString(), keyType, defaultKey, category)
+        val mapping = KeyMapping("key.${keyId.namespace}.${keyId.path}", keyType, defaultKey, category)
         val state = KeyState(keyId, mapping)
         keyStates[keyId] = state
         registerIfPossible(state)
@@ -63,12 +67,34 @@ object KeyBindingManager {
         return keyStates[keyId]?.mapping
     }
 
+    fun setCountdown(key: ResourceLocation, cd: Int) {
+        keyCountDowns[key] = cd
+    }
+
+
+    fun sendCountdown(to: ServerPlayer, key: ResourceLocation, cd: Int) {
+        val packet = PacketKeyBindingCountdownS2C(key, cd)
+        CooParticlesServices.SERVER_NETWORK.send(packet, to)
+    }
+
     fun tick() {
         if (keyStates.isEmpty()) return
         tickCounter++
         val doubleInterval = doubleClickWindowTicks.coerceAtLeast(0).toLong()
         val states = keyStates.values.toList()
         states.forEach { state ->
+            if (keyCountDowns.containsKey(state.id)) {
+                val current = keyCountDowns[state.id]!!
+                if (current > 0) {
+                    keyCountDowns[state.id] = current - 1
+                    state.wasDown = false
+                    state.pressTick = 0
+                    state.lastClickTick = tickCounter
+                    return@forEach
+                } else {
+                    keyCountDowns.remove(state.id)
+                }
+            }
             val down = state.mapping.isDown
             if (down) {
                 if (!state.wasDown) {

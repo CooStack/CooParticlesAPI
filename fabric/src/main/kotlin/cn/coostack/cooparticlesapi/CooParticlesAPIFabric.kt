@@ -3,32 +3,30 @@ package cn.coostack.cooparticlesapi
 import cn.coostack.cooparticlesapi.entities.CooModEntityTypes
 import cn.coostack.cooparticlesapi.event.CooEventBus
 import cn.coostack.cooparticlesapi.event.events.entity.EntityPrePlaceBlockEvent
-import cn.coostack.cooparticlesapi.event.events.entity.player.PlayerEvent
 import cn.coostack.cooparticlesapi.event.events.entity.player.ServerPlayerDeathEvent
 import cn.coostack.cooparticlesapi.event.events.entity.player.ServerPlayerRespawnEvent
 import cn.coostack.cooparticlesapi.event.events.server.ServerPostTickEvent
 import cn.coostack.cooparticlesapi.event.events.server.ServerPreTickEvent
 import cn.coostack.cooparticlesapi.items.CooItemFabric
 import cn.coostack.cooparticlesapi.items.group.CooItemGroup
-import cn.coostack.cooparticlesapi.network.packet.PacketCameraShakeS2C
-import cn.coostack.cooparticlesapi.network.packet.PacketDisplayEntityS2C
-import cn.coostack.cooparticlesapi.network.packet.PacketKeyActionC2S
-import cn.coostack.cooparticlesapi.network.packet.PacketParticleCompositionS2C
-import cn.coostack.cooparticlesapi.network.packet.PacketParticleEmittersS2C
-import cn.coostack.cooparticlesapi.network.packet.PacketParticleGroupS2C
-import cn.coostack.cooparticlesapi.network.packet.PacketParticleS2C
-import cn.coostack.cooparticlesapi.network.packet.PacketParticleStyleS2C
-import cn.coostack.cooparticlesapi.network.packet.PacketRenderEntityS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketCameraShakeS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketDisplayEntityS2C
+import cn.coostack.cooparticlesapi.network.packet.client.PacketKeyActionC2S
+import cn.coostack.cooparticlesapi.network.packet.server.PacketKeyBindingCountdownS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleCompositionS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleEmittersS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleGroupS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleStyleS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketRenderEntityS2C
 import cn.coostack.cooparticlesapi.network.packet.server.listener.ServerKeyActionHandler
 import cn.coostack.cooparticlesapi.platform.network.FabricServerContext
 import cn.coostack.cooparticlesapi.particles.CooModParticles
 import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
-import cn.coostack.cooparticlesapi.test.options.display.MCShaders
 import net.fabricmc.api.ModInitializer
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents
-import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents
 import net.fabricmc.fabric.api.event.player.UseBlockCallback
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry
@@ -37,9 +35,6 @@ import net.minecraft.core.Registry
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.server.MinecraftServer
 import net.minecraft.server.packs.PackType
-import net.minecraft.server.packs.resources.ResourceManager
-import net.minecraft.server.packs.resources.SimplePreparableReloadListener
-import net.minecraft.util.profiling.ProfilerFiller
 import net.minecraft.world.InteractionResult
 
 object CooParticlesAPIFabric : ModInitializer {
@@ -61,6 +56,8 @@ object CooParticlesAPIFabric : ModInitializer {
         PayloadTypeRegistry.playS2C().register(PacketDisplayEntityS2C.payloadID, PacketDisplayEntityS2C.CODEC)
         PayloadTypeRegistry.playS2C()
             .register(PacketParticleCompositionS2C.payloadID, PacketParticleCompositionS2C.CODEC)
+        PayloadTypeRegistry.playS2C()
+            .register(PacketKeyBindingCountdownS2C.payloadID, PacketKeyBindingCountdownS2C.CODEC)
         PayloadTypeRegistry.playC2S().register(PacketKeyActionC2S.payloadID, PacketKeyActionC2S.CODEC)
 
         ServerPlayNetworking.registerGlobalReceiver(PacketKeyActionC2S.payloadID) { payload, context ->

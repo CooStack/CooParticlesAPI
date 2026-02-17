@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi.utils
 
-import cn.coostack.cooparticlesapi.network.packet.PacketCameraShakeS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketCameraShakeS2C
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.phys.Vec3

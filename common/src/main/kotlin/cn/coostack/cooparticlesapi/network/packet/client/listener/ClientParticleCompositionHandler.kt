@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi.network.packet.client.listener
 
-import cn.coostack.cooparticlesapi.network.packet.PacketParticleCompositionS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleCompositionS2C
 import cn.coostack.cooparticlesapi.network.particle.composition.ParticleComposition
 import cn.coostack.cooparticlesapi.network.particle.composition.manager.ParticleCompositionManager
 import cn.coostack.cooparticlesapi.platform.network.ClientContext

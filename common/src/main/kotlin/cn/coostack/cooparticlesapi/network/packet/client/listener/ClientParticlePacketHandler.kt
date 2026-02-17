@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi.network.packet.client.listener
 
-import cn.coostack.cooparticlesapi.network.packet.PacketParticleS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleS2C
 import cn.coostack.cooparticlesapi.platform.network.ClientContext
 
 object ClientParticlePacketHandler {

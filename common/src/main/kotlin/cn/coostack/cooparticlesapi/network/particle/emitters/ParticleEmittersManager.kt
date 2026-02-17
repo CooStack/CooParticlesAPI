@@ -7,7 +7,7 @@ import cn.coostack.cooparticlesapi.event.CooEventBus
 import cn.coostack.cooparticlesapi.event.events.particle.emitter.EmitterRemoveEvent
 import cn.coostack.cooparticlesapi.event.events.particle.emitter.EmitterSpawnEvent
 import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
-import cn.coostack.cooparticlesapi.network.packet.PacketParticleEmittersS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleEmittersS2C
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.DefendClassParticleEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.ExampleClassParticleEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.impl.ExplodeClassParticleEmitters

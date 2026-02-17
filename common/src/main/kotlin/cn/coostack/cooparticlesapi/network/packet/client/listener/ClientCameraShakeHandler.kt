@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi.network.packet.client.listener
 
-import cn.coostack.cooparticlesapi.network.packet.PacketCameraShakeS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketCameraShakeS2C
 import cn.coostack.cooparticlesapi.platform.network.ClientContext
 import cn.coostack.cooparticlesapi.utils.ClientCameraUtil
 object ClientCameraShakeHandler  {
