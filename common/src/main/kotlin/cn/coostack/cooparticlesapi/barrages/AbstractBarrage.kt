@@ -6,9 +6,11 @@ import com.google.common.base.Predicate
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.LivingEntity
+import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import java.util.UUID
 import kotlin.math.max
+import kotlin.math.min
 
 abstract class AbstractBarrage(
     override var loc: Vec3,
@@ -61,6 +63,7 @@ abstract class AbstractBarrage(
         }
 
         // 判定速度
+        val previousLoc = loc
         if (options.enableSpeed) {
             loc = loc.add(direction.normalize().scale(options.speed))
             options.speed += options.acceleration
@@ -109,7 +112,7 @@ abstract class AbstractBarrage(
             spawnTick++
             return
         }
-        val collection = hitBoxEntities().filter {
+        val collection = hitBoxEntities(previousLoc, loc).filter {
             return@filter filterHitEntity(it)
         }
         if (collection.isNotEmpty()) {
@@ -160,14 +163,42 @@ abstract class AbstractBarrage(
     override fun noclip(): Boolean = spawnTick < options.noneHitBoxTick
 
     fun hitBoxEntities(): Set<LivingEntity> {
-        val res = HashSet<LivingEntity>()
-        res.addAll(world.getEntitiesOfClass(LivingEntity::class.java, hitBox.ofBox(loc), { true }))
-        return res
+        return hitBoxEntities(loc, loc)
     }
 
     fun hitBoxEntities(filter: Predicate<LivingEntity>): Set<LivingEntity> {
+        return hitBoxEntities(loc, loc, filter)
+    }
+
+    fun hitBoxEntities(from: Vec3, to: Vec3): Set<LivingEntity> {
+        return hitBoxEntities(from, to, Predicate { true })
+    }
+
+    fun hitBoxEntities(from: Vec3, to: Vec3, filter: Predicate<LivingEntity>): Set<LivingEntity> {
         val res = HashSet<LivingEntity>()
-        res.addAll(world.getEntitiesOfClass(LivingEntity::class.java, hitBox.ofBox(loc), filter))
+        val fromBox = hitBox.ofBox(from)
+        val toBox = hitBox.ofBox(to)
+        val sweepBox = AABB(
+            min(fromBox.minX, toBox.minX),
+            min(fromBox.minY, toBox.minY),
+            min(fromBox.minZ, toBox.minZ),
+            max(fromBox.maxX, toBox.maxX),
+            max(fromBox.maxY, toBox.maxY),
+            max(fromBox.maxZ, toBox.maxZ),
+        )
+        world.getEntitiesOfClass(LivingEntity::class.java, sweepBox, filter).forEach { entity ->
+            val expandedEntityBox = AABB(
+                entity.boundingBox.minX - hitBox.x2,
+                entity.boundingBox.minY - hitBox.y2,
+                entity.boundingBox.minZ - hitBox.z2,
+                entity.boundingBox.maxX - hitBox.x1,
+                entity.boundingBox.maxY - hitBox.y1,
+                entity.boundingBox.maxZ - hitBox.z1,
+            )
+            if (expandedEntityBox.contains(from) || expandedEntityBox.clip(from, to).isPresent) {
+                res.add(entity)
+            }
+        }
         return res
     }
 

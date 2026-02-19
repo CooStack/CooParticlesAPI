@@ -47,6 +47,17 @@ abstract class StatusHelper : ParticleHelper {
         changeStatus(status)
     }
 
+    fun isDisable(): Boolean = displayStatus == 2
+    fun disable() {
+        displayStatus = 2
+    }
+
+    fun isEnable(): Boolean = displayStatus == 1
+
+    fun enable() {
+        displayStatus = 1
+    }
+
     fun setStatus(status: Status) {
         this.displayStatus = status.id
         changeStatus(status.id)

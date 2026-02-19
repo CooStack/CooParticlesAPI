@@ -59,7 +59,6 @@ class TestRespawnEmitter(pos: Vec3, world: Level?) : AutoParticleEmitters(pos, w
         if (respawnCount > 2) {
             return listOf()
         }
-        println("粒子移除 原因: $reason")
         return PointsBuilder()
             .addBall(0.5, 4)
             .createWithoutClone()

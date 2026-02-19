@@ -358,13 +358,21 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
 
     override fun rotateToPoint(to: RelativeLocation) {
         if (!client) {
-            axis = to
+            axis.apply {
+                this.x = to.x
+                this.y = to.y
+                this.z = to.z
+            }
             return
         }
         Math3DUtil.rotatePointsToPoint(
             particleRotatedLocations, to, axis
         )
-        axis = to
+        axis.apply {
+            this.x = to.x
+            this.y = to.y
+            this.z = to.z
+        }
         toggleRelative()
     }
 
@@ -376,13 +384,21 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
             this.roll += 2 * PI
         }
         if (!client) {
-            axis = to
+            axis.apply {
+                this.x = to.x
+                this.y = to.y
+                this.z = to.z
+            }
             return
         }
         Math3DUtil.rotateToWithRoll(
             particleRotatedLocations, axis, to, radian
         )
-        axis = to
+        axis.apply {
+            this.x = to.x
+            this.y = to.y
+            this.z = to.z
+        }
         toggleRelative()
     }
 

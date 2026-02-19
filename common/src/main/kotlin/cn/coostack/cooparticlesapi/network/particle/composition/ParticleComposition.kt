@@ -174,14 +174,14 @@ abstract class ParticleComposition(var position: Vec3, var world: Level? = null)
         Math3DUtil.rotatePointsToPoint(
             map.values.toList(), to, axis
         )
-        this.axis = to
+        this.axis = to.clone()
     }
 
     open fun preRotateAsAxis(map: Map<CompositionData, RelativeLocation>, axis: RelativeLocation, angle: Double) {
         Math3DUtil.rotateAsAxis(
             map.values.toList(), axis, angle
         )
-        this.axis = axis
+        this.axis = axis.clone()
     }
 
     open fun preRotateAsAxis(map: Map<CompositionData, RelativeLocation>, angle: Double) {
@@ -325,14 +325,23 @@ abstract class ParticleComposition(var position: Vec3, var world: Level? = null)
         } else if (this.roll <= -2 * PI) {
             this.roll += 2 * PI
         }
+
         if (!client) {
-            axis = to
+            axis.apply {
+                this.x = to.x
+                this.y = to.y
+                this.z = to.z
+            }
             return
         }
         Math3DUtil.rotateToWithRoll(
             particleRotatedLocations, axis, to, radian
         )
-        axis = to
+        axis.apply {
+            this.x = to.x
+            this.y = to.y
+            this.z = to.z
+        }
         toggleRelative()
     }
 

@@ -16,6 +16,7 @@ import cn.coostack.cooparticlesapi.test.options.animate.TestStyleAction
 import cn.coostack.cooparticlesapi.test.options.display.BarrageItemDisplayEntity
 import cn.coostack.cooparticlesapi.test.options.particle.composition.TestComposition
 import cn.coostack.cooparticlesapi.test.options.display.TestBlockDisplayEntity
+import cn.coostack.cooparticlesapi.test.options.particle.composition.GenNewComposition
 import cn.coostack.cooparticlesapi.test.options.particle.composition.TestFourierPhotoComposition
 import cn.coostack.cooparticlesapi.test.options.particle.composition.TestGlowingAnimationComposition
 import cn.coostack.cooparticlesapi.test.options.particle.composition.TestModelComposition
@@ -200,6 +201,8 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
                 SimpleEmitterOption(TestRespawnEmitter(player.eyePosition, player.level()).apply {
                     maxTick = 200
                 }, -1)
+            }.appendOption {
+                SimpleCompositionOption(GenNewComposition(player.eyePosition, player.level()), -1)
             }
     }
 }
