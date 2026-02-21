@@ -144,13 +144,16 @@ abstract class AbstractBarrage(
             val otherBarrages = BarrageManager.collectClipBarrages(world, hitBox.get().ofBox(loc))
                 .filter(::filterHitBarrage)
             result.barrages.addAll(otherBarrages)
-            hit = true
+            if (otherBarrages.isNotEmpty()) {
+                hit = true
+            }
         }
 
         if (hit) {
             hit(result)
         }
     }
+
 
     /**
      * 判定barrage已经攻击到实体或者触发方块/液体时执行
