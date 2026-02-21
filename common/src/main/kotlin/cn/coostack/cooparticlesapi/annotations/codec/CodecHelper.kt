@@ -1,5 +1,7 @@
 package cn.coostack.cooparticlesapi.annotations.codec
 
+import cn.coostack.cooparticlesapi.animation.timeline.ValueConstSpeedAnimator
+import cn.coostack.cooparticlesapi.animation.timeline.ValueConstTimeAnimator
 import cn.coostack.cooparticlesapi.annotations.CodecField
 import cn.coostack.cooparticlesapi.barrages.HitBox
 import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableParticleData
@@ -115,6 +117,28 @@ object CodecHelper {
             }, { buf ->
                 ByteBufCodecs.idMapper(Block.BLOCK_STATE_REGISTRY)
                     .decode(buf)
+            })
+        )
+        register(
+            ValueConstTimeAnimator::class.java,
+            StreamCodec.of({ buf, i ->
+                buf.writeInt(i.durationTick)
+                buf.writeDouble(i.targetNum.toDouble())
+                buf.writeDouble(i.current.toDouble())
+            }, {
+                ValueConstTimeAnimator(it.readInt(), it.readDouble())
+                    .resetCurrentTo(it.readDouble())
+            })
+        )
+        register(
+            ValueConstSpeedAnimator::class.java,
+            StreamCodec.of({ buf, i ->
+                buf.writeDouble(i.speed.toDouble())
+                buf.writeDouble(i.targetNum.toDouble())
+                buf.writeDouble(i.current.toDouble())
+            }, {
+                ValueConstSpeedAnimator(it.readDouble(), it.readDouble())
+                    .resetCurrentTo(it.readDouble())
             })
         )
     }
