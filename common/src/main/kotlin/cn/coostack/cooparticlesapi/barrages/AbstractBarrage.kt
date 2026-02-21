@@ -1,7 +1,9 @@
 package cn.coostack.cooparticlesapi.barrages
 
 import cn.coostack.cooparticlesapi.api.controler.server.ServerControler
+import cn.coostack.cooparticlesapi.extend.times
 import cn.coostack.cooparticlesapi.network.particle.ServerParticleGroup
+import cn.coostack.cooparticlesapi.utils.storage.Memo
 import com.google.common.base.Predicate
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
@@ -15,8 +17,6 @@ import kotlin.math.min
 abstract class AbstractBarrage(
     override var loc: Vec3,
     override val world: ServerLevel,
-    override var hitBox: HitBox,
-    override val bindControl: ServerControler<*>,
     override val options: BarrageOption,
 ) : Barrage {
     override var shooter: LivingEntity? = null
@@ -33,11 +33,32 @@ abstract class AbstractBarrage(
         get() = isValid
     private var currentAcrossCount = 0
     override val uuid: UUID = UUID.randomUUID()
+    override var hitBox = Memo {
+        createHitBox()
+    }
+    override val bindControl: Memo<ServerControler<*>> = Memo {
+        createControler()
+    }
 
     /**
      * 当获取到hitBox有实体时，可以对实体进行过滤
+     * @return true 保留实体
      */
     abstract fun filterHitEntity(livingEntity: LivingEntity): Boolean
+
+    /**
+     * 弹幕的碰撞体积
+     *
+     * @return
+     */
+    abstract fun createHitBox(): HitBox
+
+    /**
+     * 弹幕的渲染器
+     *
+     * @return
+     */
+    abstract fun createControler(): ServerControler<*>
 
     /**
      * 重写此方法用于自定义弹幕击中判定
@@ -65,7 +86,7 @@ abstract class AbstractBarrage(
         // 判定速度
         val previousLoc = loc
         if (options.enableSpeed) {
-            loc = loc.add(direction.normalize().scale(options.speed))
+            loc = loc.add(direction.normalize() * options.speed)
             options.speed += options.acceleration
             // 判定加速度最大值设定
             if (options.accelerationMaxSpeedEnabled) {
@@ -75,7 +96,7 @@ abstract class AbstractBarrage(
             loc = loc.add(direction)
         }
 
-        bindControl.teleportTo(getControlerLocation())
+        bindControl.get().teleportTo(getControlerLocation())
         // 判断击中
         if (options.maxLivingTick != -1) {
             if (currentTick++ > options.maxLivingTick) {
@@ -87,7 +108,7 @@ abstract class AbstractBarrage(
 
         val result = BarrageHitResult()
         BlockPos.betweenClosedStream(
-            hitBox.ofBox(loc)
+            hitBox.get().ofBox(loc)
         ).forEach {
             if (world.shouldTickBlocksAt(it) && world.isPositionEntityTicking(it)) {
                 val block = world.getBlockState(it)
@@ -120,7 +141,7 @@ abstract class AbstractBarrage(
             hit = true
         }
         if (!options.barrageIgnored) {
-            val otherBarrages = BarrageManager.collectClipBarrages(world, hitBox.ofBox(loc))
+            val otherBarrages = BarrageManager.collectClipBarrages(world, hitBox.get().ofBox(loc))
                 .filter(::filterHitBarrage)
             result.barrages.addAll(otherBarrages)
             hit = true
@@ -153,7 +174,7 @@ abstract class AbstractBarrage(
     }
 
     fun remove() {
-        bindControl.remove()
+        bindControl.get().remove()
         isValid = false
     }
 
@@ -176,6 +197,7 @@ abstract class AbstractBarrage(
 
     fun hitBoxEntities(from: Vec3, to: Vec3, filter: Predicate<LivingEntity>): Set<LivingEntity> {
         val res = HashSet<LivingEntity>()
+        val hitBox = hitBox.get()
         val fromBox = hitBox.ofBox(from)
         val toBox = hitBox.ofBox(to)
         val sweepBox = AABB(

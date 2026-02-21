@@ -21,7 +21,7 @@ object BarrageManager {
 
     fun collectClipBarrages(world: ServerLevel, box: AABB): List<Barrage> {
         return barrages.filter {
-            it.valid && world == it.world && !it.noclip() && (box.contains(it.loc) || box.intersects(it.hitBox.ofBox(it.loc)))
+            it.valid && world == it.world && !it.noclip() && (box.contains(it.loc) || box.intersects(it.hitBox.get().ofBox(it.loc)))
         }.toList()
     }
 
@@ -43,7 +43,7 @@ object BarrageManager {
     }
 
     private fun spawnOnWorld(barrage: Barrage) {
-        barrage.bindControl.spawn(barrage.world, barrage.loc)
+        barrage.bindControl.get().spawn(barrage.world, barrage.loc)
         barrage.lunch = true
     }
 }

@@ -8,9 +8,6 @@ import cn.coostack.cooparticlesapi.extend.times
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersManager
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleStyleManager
 import cn.coostack.cooparticlesapi.particles.CooParticleTextureSheet
-import cn.coostack.cooparticlesapi.particles.impl.ControlableFlashEffect
-import cn.coostack.cooparticlesapi.test.options.barrier.SwordBarrage
-import cn.coostack.cooparticlesapi.test.options.display.TestBlockDisplayEntity
 import cn.coostack.cooparticlesapi.test.options.display.TestDisplayerStyle
 import cn.coostack.cooparticlesapi.test.options.display.TestShapeDisplayEntity
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestPlusBlendEmitter
@@ -64,25 +61,5 @@ class SingleTesting : Item(Properties().stacksTo(1)) {
         )
     }
 
-    fun testBarrage(user: Player, world: Level) {
-        val box = HitBox.of(2.0, 2.0, 2.0)
-        val search = HitBox.of(50.0, 50.0, 50.0)
-        val filter = Predicate<LivingEntity> {
-            return@Predicate it.uuid != user.uuid
-        }
-        val barrier = SwordBarrage(
-            user.eyePosition, world as ServerLevel,
-            box, BarrierSwordGroupServer(search, filter, user.forward),
-            BarrageOption().apply {
-                maxLivingTick = 150
-                enableSpeed = true
-                speed = 1.5
-            }, filter, search
-        ).apply {
-            shooter = user
-        }
-        barrier.direction = user.forward
-        BarrageManager.spawn(barrier)
-    }
 
 }

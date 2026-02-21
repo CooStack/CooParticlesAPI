@@ -2,15 +2,21 @@ package cn.coostack.cooparticlesapi.barrages
 
 import cn.coostack.cooparticlesapi.api.controler.server.ServerControler
 import cn.coostack.cooparticlesapi.network.particle.ServerParticleGroup
+import cn.coostack.cooparticlesapi.utils.storage.Memo
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.phys.Vec3
 import java.util.UUID
 
+/**
+ * 使用 [AbstractBarrage]
+ *
+ * @constructor Create empty Barrage
+ */
 interface Barrage {
     var loc: Vec3
     val world: ServerLevel
-    var hitBox: HitBox
+    var hitBox: Memo<HitBox>
     var shooter: LivingEntity?
     var direction: Vec3
     var lunch: Boolean
@@ -23,7 +29,7 @@ interface Barrage {
      * 如果输入的参数是一个Style
      * 那么这个Style必须拥有Provider
      */
-    val bindControl: ServerControler<*>
+    val bindControl: Memo<ServerControler<*>>
 
     fun hit(result: BarrageHitResult)
 

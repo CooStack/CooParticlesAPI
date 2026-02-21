@@ -89,4 +89,133 @@ class BarrageOption {
      * @see accelerationMaxSpeedEnabled
      */
     var accelerationMaxSpeed = 1.0
+
+
+    /**
+     * 是否可以穿过方块
+     * 如果为true则 在result的block一定为null
+     */
+    fun acrossBlock(value: Boolean = true) = apply {
+        this.acrossBlock = value
+    }
+
+    /**
+     * 是否可以穿过类似 草 这种没有方块碰撞箱的方块
+     */
+    fun acrossEmptyCollectionShape(value: Boolean = true) = apply {
+        this.acrossEmptyCollectionShape = value
+    }
+
+    /**
+     * 是否忽略其他的弹幕 (shooter不相同的弹幕)
+     */
+    fun barrageIgnored(value: Boolean = true) = apply {
+        this.barrageIgnored = value
+    }
+
+    /**
+     * 是否可以穿过液体
+     * 如果为false则遇到液体会触发onHit方法
+     */
+    fun acrossLiquid(value: Boolean = true) = apply {
+        this.acrossLiquid = value
+    }
+
+    /**
+     * 设置为true时,即使击中了(触发了onHit方法)
+     * 也不会销毁弹幕
+     */
+    fun acrossable(value: Boolean = true) = apply {
+        this.acrossable = value
+    }
+
+    /**
+     * 如果 acrossable为true 则此值代表onHit方法被触发的次数
+     * -1 代表不做限制
+     */
+    fun maxAcrossCount(value: Int) = apply {
+        this.maxAcrossCount = value
+    }
+
+    /**
+     * 一个弹幕能存在的最大时间 单位 tick
+     * 达到最大时间时会触发onHit方法
+     * 当设置成-1时 不启用
+     */
+    fun maxLivingTick(value: Int) = apply {
+        this.maxLivingTick = value
+    }
+
+    /**
+     * 在此设定值内的时间不会因为击中实体而触发onHit方法
+     * 防止一放出就触发
+     * 设置<=0 取消此功能
+     */
+    fun noneHitBoxTick(value: Int) = apply {
+        this.noneHitBoxTick = value
+    }
+
+    /**
+     * 如果设置为false则取消速度设置 (则速度取决于设置的direction的长度)
+     * @see speed
+     */
+    fun enableSpeed(value: Boolean = true) = apply {
+        this.enableSpeed = value
+    }
+
+    /**
+     * 弹幕的速度
+     * @see enableSpeed 为true时生效
+     */
+    fun speed(value: Double) = apply {
+        this.speed = value
+    }
+
+    /**
+     * 加速度
+     * 计算方法为 speed += acceleration / 每tick执行一次
+     */
+    fun acceleration(value: Double) = apply {
+        this.acceleration = value
+    }
+
+    /**
+     * 在加速度不为0的情况下 是否启用加速度速度上限
+     * 判定方法 max(accelerationMaxSpeed, abs(speed))
+     * @see accelerationMaxSpeed
+     */
+    fun accelerationMaxSpeedEnabled(value: Boolean = true) = apply {
+        this.accelerationMaxSpeedEnabled = value
+    }
+
+    /**
+     * 在加速度不为0的情况下，自然添加速度的上限
+     * 如果你设定的速度大于这个值 则也会受到这个值的影响
+     * @see accelerationMaxSpeedEnabled
+     */
+    fun accelerationMaxSpeed(value: Double) = apply {
+        this.accelerationMaxSpeed = value
+    }
+
+    /**
+     * 启用并设置加速度大小
+     *
+     * @param acceleration
+     */
+    fun enableAccelerationWithOptions(acceleration: Double) = apply {
+        accelerationMaxSpeedEnabled()
+        this.acceleration = acceleration
+    }
+
+    /**
+     * 启用并设置速度大小
+     *
+     * @param speed
+     */
+    fun enableSpeedWithOptions(speed: Double) = apply {
+        this.speed = speed
+        enableSpeed()
+    }
+
+
 }
