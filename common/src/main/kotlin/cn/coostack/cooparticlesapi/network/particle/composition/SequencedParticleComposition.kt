@@ -103,7 +103,8 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
             return
         }
         displayed = true
-
+        // 修复disable后不自动remove的问题
+        status.loadControler(this)
         this.client = world!!.isClientSide
         // 在服务器需要用来更新粒子个数 所以需要参与一次计算
         flush()
