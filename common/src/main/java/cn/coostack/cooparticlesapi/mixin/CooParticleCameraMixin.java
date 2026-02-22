@@ -13,11 +13,11 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/**
- * @author CooStack
- */
 @Mixin(Camera.class)
 public abstract class CooParticleCameraMixin {
+    @Unique
+    private static final float FORCE_BLEND_EPSILON = 1.0E-4f;
+
     @Shadow
     private float yRot;
     @Shadow
@@ -49,28 +49,47 @@ public abstract class CooParticleCameraMixin {
     @Unique
     private Vec3 lastPosOffset = Vec3.ZERO;
 
+    @Unique
+    private Vec3 targetForcedPos = Vec3.ZERO;
+    @Unique
+    private Vec3 lastForcedPos = Vec3.ZERO;
+    @Unique
+    private float targetForcedBlend = 0f;
+    @Unique
+    private float lastForcedBlend = 0f;
+
     @Inject(method = "setup", at = @At("TAIL"))
     private void onUpdate(BlockGetter level, Entity entity, boolean detached, boolean thirdPersonReverse, float partialTick, CallbackInfo ci) {
-        // 插值
-        var lerpYawOffset = GraphMathHelper.lerp(partialTick, lastYawOffset, targetYawOffset);
-        var lerpPitchOffset = GraphMathHelper.lerp(partialTick, lastPitchOffset, targetPitchOffset);
-        var lerpPosOffset = GraphMathHelper.lerp(partialTick, lastPosOffset, targetPosOffset);
+        float lerpYawOffset = GraphMathHelper.lerp(partialTick, lastYawOffset, targetYawOffset);
+        float lerpPitchOffset = GraphMathHelper.lerp(partialTick, lastPitchOffset, targetPitchOffset);
+        Vec3 lerpPosOffset = GraphMathHelper.lerp(partialTick, lastPosOffset, targetPosOffset);
+        float forceBlend = GraphMathHelper.lerp(partialTick, lastForcedBlend, targetForcedBlend);
+        Vec3 forcedPos = GraphMathHelper.lerp(partialTick, lastForcedPos, targetForcedPos);
+
         setRotation(lerpYawOffset + yRot, lerpPitchOffset + xRot);
-        setPosition(lerpPosOffset.add(position));
+
+        Vec3 freePos = position.add(lerpPosOffset);
+        if (forceBlend > FORCE_BLEND_EPSILON) {
+            Vec3 forcedPosWithOffset = forcedPos.add(lerpPosOffset);
+            setPosition(GraphMathHelper.lerp(forceBlend, freePos, forcedPosWithOffset));
+            return;
+        }
+        setPosition(freePos);
     }
 
     @Inject(method = "tick", at = @At("TAIL"))
     public void tick(CallbackInfo ci) {
-        float newYaw = ClientCameraUtil.INSTANCE.getShakeYawOffset() + ClientCameraUtil.INSTANCE.getCurrentYawOffset();
-        float newPitch = ClientCameraUtil.INSTANCE.getShakePitchOffset() + ClientCameraUtil.INSTANCE.getCurrentPitchOffset();
-        double x = ClientCameraUtil.INSTANCE.getShakeXOffset() + ClientCameraUtil.INSTANCE.getCurrentXOffset();
-        double y = ClientCameraUtil.INSTANCE.getShakeYOffset() + ClientCameraUtil.INSTANCE.getCurrentYOffset();
-        double z = ClientCameraUtil.INSTANCE.getShakeZOffset() + ClientCameraUtil.INSTANCE.getCurrentZOffset();
-        targetYawOffset = newYaw;
-        targetPitchOffset = newPitch;
-        targetPosOffset = new Vec3(x, y, z);
-        lastPosOffset = targetPosOffset;
         lastYawOffset = targetYawOffset;
         lastPitchOffset = targetPitchOffset;
+        lastPosOffset = targetPosOffset;
+        lastForcedPos = targetForcedPos;
+        lastForcedBlend = targetForcedBlend;
+
+        targetYawOffset = ClientCameraUtil.INSTANCE.getTotalYawOffset();
+        targetPitchOffset = ClientCameraUtil.INSTANCE.getTotalPitchOffset();
+        targetPosOffset = ClientCameraUtil.INSTANCE.getTotalPositionOffset();
+        targetForcedPos = ClientCameraUtil.INSTANCE.getForcedCameraPosition();
+        targetForcedBlend = ClientCameraUtil.INSTANCE.getForcedCameraBlend();
     }
 }
+

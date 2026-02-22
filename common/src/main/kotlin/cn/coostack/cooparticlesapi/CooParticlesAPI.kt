@@ -12,7 +12,6 @@ import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersMan
 import cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind.WindDirections
 import cn.coostack.cooparticlesapi.network.particle.emitters.event.ParticleEventHandlerManager
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleStyleManager
-import cn.coostack.cooparticlesapi.particles.ControlableParticleEffectManager
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import cn.coostack.cooparticlesapi.renderer.server.ServerRenderEntityManager
 import cn.coostack.cooparticlesapi.scheduler.CooScheduler
@@ -46,7 +45,6 @@ object CooParticlesAPI {
             .evaluate()
         CooParticlesConstants.logger.info("eval api {}", builder.value)
         CooParticlesServices.API_CONFIG_MANAGER.loadConfig()
-        ControlableParticleEffectManager.init()
         WindDirections.init()
         ParticleEventHandlerManager.register(TestCollideEventHandler)
         registerTest()

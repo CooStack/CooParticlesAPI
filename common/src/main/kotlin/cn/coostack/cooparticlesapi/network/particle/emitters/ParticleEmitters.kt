@@ -4,6 +4,7 @@ import cn.coostack.cooparticlesapi.api.controler.server.ServerControler
 import cn.coostack.cooparticlesapi.network.particle.emitters.event.ParticleEventHandler
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import net.minecraft.network.FriendlyByteBuf
+import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.Level
@@ -68,7 +69,7 @@ interface ParticleEmitters : ServerControler<ParticleEmitters> {
      *
      * 编码粒子信息, 当前位置
      */
-    fun getCodec(): StreamCodec<FriendlyByteBuf, ParticleEmitters>
+    fun getCodec(): StreamCodec<RegistryFriendlyByteBuf, ParticleEmitters>
 
     override fun getValue(): ParticleEmitters {
         return this

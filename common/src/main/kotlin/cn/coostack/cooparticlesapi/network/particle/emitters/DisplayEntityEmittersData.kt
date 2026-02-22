@@ -8,6 +8,7 @@ import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
 import io.netty.buffer.Unpooled
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.network.FriendlyByteBuf
+import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
@@ -25,7 +26,7 @@ class DisplayEntityEmittersData(
 
     companion object {
         @JvmStatic
-        val PACKET_CODEC: StreamCodec<FriendlyByteBuf, DisplayEntityEmittersData> =
+        val PACKET_CODEC: StreamCodec<RegistryFriendlyByteBuf, DisplayEntityEmittersData> =
             StreamCodec.of(
                 { buf, data ->
                     buf.writeUtf(data.entityType)
@@ -74,7 +75,7 @@ class DisplayEntityEmittersData(
         return prepared ?: decodeEntity().also { prepared = it }
     }
 
-    override fun getCodec(): StreamCodec<FriendlyByteBuf, out SerializableData> {
+    override fun getCodec(): StreamCodec<RegistryFriendlyByteBuf, out SerializableData> {
         return PACKET_CODEC
     }
 

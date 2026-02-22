@@ -8,18 +8,8 @@ import cn.coostack.cooparticlesapi.event.events.particle.emitter.EmitterRemoveEv
 import cn.coostack.cooparticlesapi.event.events.particle.emitter.EmitterSpawnEvent
 import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
 import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleEmittersS2C
-import cn.coostack.cooparticlesapi.network.particle.emitters.impl.DefendClassParticleEmitters
-import cn.coostack.cooparticlesapi.network.particle.emitters.impl.ExampleClassParticleEmitters
-import cn.coostack.cooparticlesapi.network.particle.emitters.impl.ExplodeClassParticleEmitters
-import cn.coostack.cooparticlesapi.network.particle.emitters.impl.FireClassParticleEmitters
-import cn.coostack.cooparticlesapi.network.particle.emitters.impl.LightningClassParticleEmitters
-import cn.coostack.cooparticlesapi.network.particle.emitters.impl.PhysicsParticleEmitters
-import cn.coostack.cooparticlesapi.network.particle.emitters.impl.PresetLaserEmitters
-import cn.coostack.cooparticlesapi.network.particle.emitters.impl.PresetTestEmitters
-import cn.coostack.cooparticlesapi.network.particle.emitters.impl.SimpleParticleEmitters
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import cn.coostack.cooparticlesapi.reflect.SimpleClassInfo
-import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestEmitter
 import io.netty.buffer.Unpooled
 import net.minecraft.client.Minecraft
 import net.minecraft.network.FriendlyByteBuf
@@ -34,7 +24,7 @@ import java.util.concurrent.ConcurrentHashMap
 
 object ParticleEmittersManager {
     // 已经start的 emitters
-    val emittersCodec = HashMap<String, StreamCodec<FriendlyByteBuf, ParticleEmitters>>()
+    val emittersCodec = HashMap<String, StreamCodec<RegistryFriendlyByteBuf, ParticleEmitters>>()
 
     /**
      * 服务器拥有
@@ -47,7 +37,7 @@ object ParticleEmittersManager {
      */
     val clientEmitters = ConcurrentHashMap<UUID, ParticleEmitters>()
 
-    fun getCodecFromID(id: String): StreamCodec<FriendlyByteBuf, ParticleEmitters>? {
+    fun getCodecFromID(id: String): StreamCodec<RegistryFriendlyByteBuf, ParticleEmitters>? {
         return emittersCodec[id]
     }
 
@@ -58,8 +48,8 @@ object ParticleEmittersManager {
     @JvmStatic
     fun register(
         id: String,
-        codec: StreamCodec<FriendlyByteBuf, ParticleEmitters>
-    ): StreamCodec<FriendlyByteBuf, ParticleEmitters> {
+        codec: StreamCodec<RegistryFriendlyByteBuf, ParticleEmitters>
+    ): StreamCodec<RegistryFriendlyByteBuf, ParticleEmitters> {
         emittersCodec[id] = codec
         return codec
     }
@@ -244,16 +234,6 @@ object ParticleEmittersManager {
     }
 
     internal fun init() {
-        register(PhysicsParticleEmitters.ID, PhysicsParticleEmitters.CODEC)
-        register(SimpleParticleEmitters.ID, SimpleParticleEmitters.CODEC)
-        register(ExampleClassParticleEmitters.ID, ExampleClassParticleEmitters.CODEC)
-        register(ExplodeClassParticleEmitters.ID, ExplodeClassParticleEmitters.CODEC)
-        register(LightningClassParticleEmitters.ID, LightningClassParticleEmitters.CODEC)
-        register(DefendClassParticleEmitters.ID, DefendClassParticleEmitters.CODEC)
-        register(PresetTestEmitters.ID, PresetTestEmitters.CODEC)
-        register(FireClassParticleEmitters.ID, FireClassParticleEmitters.CODEC)
-        register(PresetLaserEmitters.ID, PresetLaserEmitters.CODEC)
-        register(TestEmitter(Vec3.ZERO, null))
     }
 
     private var handled = false

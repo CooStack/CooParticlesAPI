@@ -1,10 +1,22 @@
 package cn.coostack.cooparticlesapi.utils
 
-import cn.coostack.cooparticlesapi.CooParticlesAPIClient
 import net.minecraft.world.phys.Vec3
+import kotlin.math.abs
 import kotlin.random.Random
 
 object ClientCameraUtil {
+    private const val MANUAL_FOLLOW = 0.35
+    private const val SHAKE_FOLLOW = 0.45
+    private const val FORCE_POSITION_FOLLOW = 0.45
+    private const val FORCE_BLEND_FOLLOW = 0.4
+
+    private const val SHAKE_TARGET_HOLD_TICKS = 2
+    private const val SHAKE_POS_SCALE = 0.45
+    private const val SHAKE_ROT_SCALE = 2.0
+
+    private const val POS_EPSILON = 1.0E-4
+    private const val ROT_EPSILON = 1.0E-3f
+
     var shakeYawOffset = 0f
     var shakePitchOffset = 0f
     var shakeXOffset = 0.0
@@ -22,21 +34,89 @@ object ClientCameraUtil {
     var ampStep = 0.0
     var amp = 0.0
 
+    private var manualTargetPosOffset = Vec3.ZERO
+    private var manualTargetYawOffset = 0f
+    private var manualTargetPitchOffset = 0f
+
+    private var manualPosOffset = Vec3.ZERO
+    private var manualYawOffset = 0f
+    private var manualPitchOffset = 0f
+
+    private var shakeTargetPosOffset = Vec3.ZERO
+    private var shakeTargetYaw = 0f
+    private var shakeTargetPitch = 0f
+
+    private var shakePosOffset = Vec3.ZERO
+    private var shakeYaw = 0f
+    private var shakePitch = 0f
+
+    private var shakeDuration = 0
+    private var shakeTargetHoldTicks = 0
+
+    private var forcedCameraPositionTarget = Vec3.ZERO
+    private var forcedCameraPositionCurrent = Vec3.ZERO
+    private var forcedPositionBlendTarget = 0f
+    private var forcedPositionBlendCurrent = 0f
+
+    fun setOffset(position: Vec3, yawOffset: Float = 0f, pitchOffset: Float = 0f) {
+        manualTargetPosOffset = position
+        manualTargetYawOffset = yawOffset
+        manualTargetPitchOffset = pitchOffset
+    }
+
+    fun setOffsetNow(position: Vec3, yawOffset: Float = 0f, pitchOffset: Float = 0f) {
+        setOffset(position, yawOffset, pitchOffset)
+        manualPosOffset = position
+        manualYawOffset = yawOffset
+        manualPitchOffset = pitchOffset
+        syncLegacyState()
+    }
+
     fun setOffsetPosition(offset: Vec3) {
-        currentXOffset = offset.x
-        currentYOffset = offset.y
-        currentZOffset = offset.z
+        manualTargetPosOffset = offset
+        manualPosOffset = offset
+        syncLegacyState()
+    }
+
+    fun addOffsetPosition(delta: Vec3) {
+        manualTargetPosOffset = manualTargetPosOffset.add(delta)
+    }
+
+    fun setOffsetAngle(yawOffset: Float, pitchOffset: Float) {
+        manualTargetYawOffset = yawOffset
+        manualTargetPitchOffset = pitchOffset
+    }
+
+    fun addOffsetAngle(yawOffset: Float, pitchOffset: Float) {
+        manualTargetYawOffset += yawOffset
+        manualTargetPitchOffset += pitchOffset
     }
 
     fun resetPosOffset() {
-        currentXOffset = 0.0
-        currentYOffset = 0.0
-        currentZOffset = 0.0
+        manualTargetPosOffset = Vec3.ZERO
+        manualPosOffset = Vec3.ZERO
+        syncLegacyState()
+    }
+
+    fun resetPosOffsetNow() {
+        resetPosOffset()
+        manualPosOffset = Vec3.ZERO
+        syncLegacyState()
     }
 
     fun resetAngleOffset() {
-        currentYawOffset = 0f
-        currentPitchOffset = 0f
+        manualTargetYawOffset = 0f
+        manualTargetPitchOffset = 0f
+        manualYawOffset = 0f
+        manualPitchOffset = 0f
+        syncLegacyState()
+    }
+
+    fun resetAngleOffsetNow() {
+        resetAngleOffset()
+        manualYawOffset = 0f
+        manualPitchOffset = 0f
+        syncLegacyState()
     }
 
     fun resetOffset() {
@@ -44,27 +124,219 @@ object ClientCameraUtil {
         resetPosOffset()
     }
 
-    /**
-     * @param tick 修改相机的位置
-     */
-    fun startShakeCamera(
-        tick: Int, amplitude: Double
-    ) {
-        amp = amplitude
-        ampStep = amp / tick
-        this.tick = tick
+    fun resetOffsetNow() {
+        resetAngleOffsetNow()
+        resetPosOffsetNow()
+    }
+
+    fun setForcedCameraPosition(position: Vec3) {
+        forcedCameraPositionTarget = position
+        if (forcedPositionBlendTarget <= 0f && forcedPositionBlendCurrent <= 0f) {
+            forcedCameraPositionCurrent = position
+        }
+        forcedPositionBlendTarget = 1f
+    }
+
+    fun setForcedCameraPositionNow(position: Vec3) {
+        forcedCameraPositionTarget = position
+        forcedCameraPositionCurrent = position
+        forcedPositionBlendTarget = 1f
+        forcedPositionBlendCurrent = 1f
+    }
+
+    fun resetForcedCameraPosition() {
+        forcedPositionBlendTarget = 0f
+    }
+
+    fun resetForcedCameraPositionNow() {
+        forcedPositionBlendTarget = 0f
+        forcedPositionBlendCurrent = 0f
+    }
+
+    fun stopShakeCamera() {
+        tick = 0
+    }
+
+    fun stopShakeCameraNow() {
+        tick = 0
+        shakeDuration = 0
+        amp = 0.0
+        ampStep = 0.0
+        shakeTargetHoldTicks = 0
+        shakeTargetPosOffset = Vec3.ZERO
+        shakeTargetYaw = 0f
+        shakeTargetPitch = 0f
+        shakePosOffset = Vec3.ZERO
+        shakeYaw = 0f
+        shakePitch = 0f
+        syncLegacyState()
+    }
+
+    fun resetAll() {
+        stopShakeCamera()
+        resetOffset()
+        resetForcedCameraPosition()
+    }
+
+    fun resetAllNow() {
+        stopShakeCameraNow()
+        resetOffsetNow()
+        resetForcedCameraPositionNow()
+    }
+
+    fun getTotalYawOffset(): Float {
+        return shakeYawOffset + currentYawOffset
+    }
+
+    fun getTotalPitchOffset(): Float {
+        return shakePitchOffset + currentPitchOffset
+    }
+
+    fun getTotalPositionOffset(): Vec3 {
+        return Vec3(
+            shakeXOffset + currentXOffset,
+            shakeYOffset + currentYOffset,
+            shakeZOffset + currentZOffset
+        )
+    }
+
+    fun getForcedCameraPosition(): Vec3 {
+        return forcedCameraPositionCurrent
+    }
+
+    fun getForcedCameraBlend(): Float {
+        return forcedPositionBlendCurrent
+    }
+
+    fun startShakeCamera(tick: Int, amplitude: Double) {
+        if (tick <= 0 || amplitude <= 0.0) {
+            return
+        }
+        this.tick = maxOf(this.tick, tick)
+        shakeDuration = maxOf(shakeDuration, tick)
+        amp = maxOf(amp, amplitude)
+        ampStep = amp / shakeDuration.toDouble()
+        shakeTargetHoldTicks = 0
     }
 
     fun tick() {
+        tickManualOffset()
+        tickShake()
+        tickForcedPosition()
+        syncLegacyState()
+    }
+
+    private fun tickManualOffset() {
+        manualPosOffset = GraphMathHelper.lerp(MANUAL_FOLLOW, manualPosOffset, manualTargetPosOffset)
+        manualYawOffset = GraphMathHelper.lerp(MANUAL_FOLLOW, manualYawOffset, manualTargetYawOffset)
+        manualPitchOffset = GraphMathHelper.lerp(MANUAL_FOLLOW, manualPitchOffset, manualTargetPitchOffset)
+
+        manualPosOffset = snapVec(manualPosOffset, manualTargetPosOffset)
+        manualYawOffset = snapFloat(manualYawOffset, manualTargetYawOffset)
+        manualPitchOffset = snapFloat(manualPitchOffset, manualTargetPitchOffset)
+    }
+
+    private fun tickShake() {
         if (tick > 0) {
-            shakeXOffset = amp * Random.nextDouble(-0.5, 0.5)
-            shakeYOffset = amp * Random.nextDouble(-0.5, 0.5)
-            shakeZOffset = amp * Random.nextDouble(-0.5, 0.5)
-            shakeYawOffset = (amp * Random.nextDouble(-2.0, 2.0)).toFloat()
-            shakePitchOffset = (amp * Random.nextDouble(-2.0, 2.0)).toFloat()
-            amp -= ampStep
+            val envelope = shakeEnvelope()
+            if (shakeTargetHoldTicks <= 0) {
+                shakeTargetPosOffset = randomShakePos(envelope)
+                shakeTargetYaw = randomShakeAngle(envelope)
+                shakeTargetPitch = randomShakeAngle(envelope)
+                shakeTargetHoldTicks = SHAKE_TARGET_HOLD_TICKS
+            } else {
+                shakeTargetHoldTicks--
+            }
             tick--
+        } else {
+            shakeTargetPosOffset = Vec3.ZERO
+            shakeTargetYaw = 0f
+            shakeTargetPitch = 0f
+            if (isZeroShake()) {
+                shakeDuration = 0
+                amp = 0.0
+                ampStep = 0.0
+            }
+        }
+
+        shakePosOffset = GraphMathHelper.lerp(SHAKE_FOLLOW, shakePosOffset, shakeTargetPosOffset)
+        shakeYaw = GraphMathHelper.lerp(SHAKE_FOLLOW, shakeYaw, shakeTargetYaw)
+        shakePitch = GraphMathHelper.lerp(SHAKE_FOLLOW, shakePitch, shakeTargetPitch)
+
+        if (tick <= 0) {
+            shakePosOffset = snapVec(shakePosOffset, Vec3.ZERO)
+            shakeYaw = snapFloat(shakeYaw, 0f)
+            shakePitch = snapFloat(shakePitch, 0f)
         }
     }
 
+    private fun tickForcedPosition() {
+        forcedCameraPositionCurrent =
+            GraphMathHelper.lerp(FORCE_POSITION_FOLLOW, forcedCameraPositionCurrent, forcedCameraPositionTarget)
+        forcedPositionBlendCurrent =
+            GraphMathHelper.lerp(FORCE_BLEND_FOLLOW, forcedPositionBlendCurrent, forcedPositionBlendTarget)
+
+        forcedCameraPositionCurrent = snapVec(forcedCameraPositionCurrent, forcedCameraPositionTarget)
+        forcedPositionBlendCurrent = snapFloat(forcedPositionBlendCurrent, forcedPositionBlendTarget)
+    }
+
+    private fun shakeEnvelope(): Double {
+        if (shakeDuration <= 0) {
+            return 0.0
+        }
+        val progress = 1.0 - tick.toDouble() / shakeDuration.toDouble()
+        val decay = (1.0 - progress).coerceIn(0.0, 1.0)
+        return amp * decay * decay
+    }
+
+    private fun randomShakePos(envelope: Double): Vec3 {
+        val range = envelope * SHAKE_POS_SCALE
+        return Vec3(
+            Random.nextDouble(-range, range),
+            Random.nextDouble(-range, range),
+            Random.nextDouble(-range, range)
+        )
+    }
+
+    private fun randomShakeAngle(envelope: Double): Float {
+        val range = envelope * SHAKE_ROT_SCALE
+        return Random.nextDouble(-range, range).toFloat()
+    }
+
+    private fun isZeroShake(): Boolean {
+        if (abs(shakeYaw) > ROT_EPSILON || abs(shakePitch) > ROT_EPSILON) {
+            return false
+        }
+        return shakePosOffset.distanceTo(Vec3.ZERO) <= POS_EPSILON
+    }
+
+    private fun snapVec(value: Vec3, target: Vec3): Vec3 {
+        return if (value.distanceTo(target) <= POS_EPSILON) {
+            target
+        } else {
+            value
+        }
+    }
+
+    private fun snapFloat(value: Float, target: Float): Float {
+        return if (abs(value - target) <= ROT_EPSILON) {
+            target
+        } else {
+            value
+        }
+    }
+
+    private fun syncLegacyState() {
+        shakeYawOffset = shakeYaw
+        shakePitchOffset = shakePitch
+        shakeXOffset = shakePosOffset.x
+        shakeYOffset = shakePosOffset.y
+        shakeZOffset = shakePosOffset.z
+
+        currentYawOffset = manualYawOffset
+        currentPitchOffset = manualPitchOffset
+        currentXOffset = manualPosOffset.x
+        currentYOffset = manualPosOffset.y
+        currentZOffset = manualPosOffset.z
+    }
 }

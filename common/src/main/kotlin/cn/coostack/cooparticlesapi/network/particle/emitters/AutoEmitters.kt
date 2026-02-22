@@ -2,6 +2,7 @@ package cn.coostack.cooparticlesapi.network.particle.emitters
 
 import cn.coostack.cooparticlesapi.annotations.emitter.handle.ParticleEmittersHelper
 import net.minecraft.network.FriendlyByteBuf
+import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
@@ -14,7 +15,7 @@ abstract class AutoEmitters(pos: Vec3, world: Level?) : ClassEmitters(pos, world
         return this::class.java.name
     }
 
-    override fun getCodec(): StreamCodec<FriendlyByteBuf, ParticleEmitters> {
+    override fun getCodec(): StreamCodec<RegistryFriendlyByteBuf, ParticleEmitters> {
         return ParticleEmittersHelper.generateCodec(this)
     }
 }

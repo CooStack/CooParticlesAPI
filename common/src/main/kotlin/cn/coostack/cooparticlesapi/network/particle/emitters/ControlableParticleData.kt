@@ -4,7 +4,6 @@ import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.api.controler.SerializableData
 import cn.coostack.cooparticlesapi.api.controler.Controlable
 import cn.coostack.cooparticlesapi.particles.ControlableParticleEffect
-import cn.coostack.cooparticlesapi.particles.ControlableParticleEffectManager
 import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
 import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
 import cn.coostack.cooparticlesapi.particles.impl.ControlableEndRodEffect
@@ -12,7 +11,9 @@ import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.client.particle.ParticleRenderType
+import net.minecraft.core.particles.ParticleTypes
 import net.minecraft.network.FriendlyByteBuf
+import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
@@ -24,12 +25,12 @@ open class ControlableParticleData : SerializableData {
         val particleTexturesMapper: MutableMap<String, ParticleRenderType> = mutableMapOf()
 
         @JvmStatic
-        val PACKET_CODEC: StreamCodec<FriendlyByteBuf, ControlableParticleData> =
+        val PACKET_CODEC: StreamCodec<RegistryFriendlyByteBuf, ControlableParticleData> =
             StreamCodec.of(
                 ::encode, ::decode
             )
 
-        private fun encode(buf: FriendlyByteBuf, data: ControlableParticleData) {
+        private fun encode(buf: RegistryFriendlyByteBuf, data: ControlableParticleData) {
             buf.writeUUID(data.uuid)
             buf.writeVec3(data.velocity)
             buf.writeFloat(data.size)
@@ -39,8 +40,9 @@ open class ControlableParticleData : SerializableData {
             buf.writeInt(data.age)
             buf.writeInt(data.maxAge)
             buf.writeUtf(data.textureSheet)
-            buf.writeUtf(data.effect::class.java.name)
-            buf.writeUUID(data.uuid)
+
+            ParticleTypes.STREAM_CODEC.encode(buf, data.effect)
+
             buf.writeDouble(data.speed)
             buf.writeDouble(data.speedLimit)
             buf.writeInt(data.sign)
@@ -52,7 +54,7 @@ open class ControlableParticleData : SerializableData {
         }
 
         private fun decode(
-            buf: FriendlyByteBuf,
+            buf: RegistryFriendlyByteBuf,
         ): ControlableParticleData {
             val uuid = buf.readUUID()
             val velocity = buf.readVec3()
@@ -63,12 +65,8 @@ open class ControlableParticleData : SerializableData {
             val age = buf.readInt()
             val maxAge = buf.readInt()
             val textureSheet = buf.readUtf()
-            val effectType = buf.readUtf()
-            val effectUUID = buf.readUUID()
-            val effect = ControlableParticleEffectManager.createWithUUID(
-                effectUUID,
-                Class.forName(effectType) as Class<ControlableParticleEffect>
-            )
+            val effect = ParticleTypes.STREAM_CODEC.decode(buf) as ControlableParticleEffect
+            effect.controlUUID = uuid
             val speed = buf.readDouble()
             val speedLimit = buf.readDouble()
             val sign = buf.readInt()
@@ -276,7 +274,7 @@ open class ControlableParticleData : SerializableData {
         this.textureSheet = value.toString()
     }
 
-    override fun getCodec(): StreamCodec<FriendlyByteBuf, out ControlableParticleData> {
+    override fun getCodec(): StreamCodec<RegistryFriendlyByteBuf, out ControlableParticleData> {
         return PACKET_CODEC
     }
 

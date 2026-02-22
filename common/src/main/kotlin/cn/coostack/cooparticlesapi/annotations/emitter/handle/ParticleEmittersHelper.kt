@@ -6,6 +6,7 @@ import cn.coostack.cooparticlesapi.network.particle.emitters.ClassEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.ClassParticleEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmitters
 import net.minecraft.network.FriendlyByteBuf
+import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
@@ -35,7 +36,7 @@ object ParticleEmittersHelper {
         CodecHelper.updateFields(current, other)
     }
 
-    fun generateCodec(randomInstance: ClassParticleEmitters): StreamCodec<FriendlyByteBuf, ParticleEmitters> {
+    fun generateCodec(randomInstance: ClassParticleEmitters): StreamCodec<RegistryFriendlyByteBuf, ParticleEmitters> {
         val type = randomInstance::class.java
         val constructor = type.getConstructor(Vec3::class.java, Level::class.java)
         return StreamCodec.of(
@@ -64,7 +65,7 @@ object ParticleEmittersHelper {
         )
     }
 
-    fun generateCodec(randomInstance: ClassEmitters): StreamCodec<FriendlyByteBuf, ParticleEmitters> {
+    fun generateCodec(randomInstance: ClassEmitters): StreamCodec<RegistryFriendlyByteBuf, ParticleEmitters> {
         val type = randomInstance::class.java
         val constructor = type.getConstructor(Vec3::class.java, Level::class.java)
         return StreamCodec.of(

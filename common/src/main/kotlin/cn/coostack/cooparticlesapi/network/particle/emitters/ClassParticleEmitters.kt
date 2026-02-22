@@ -9,8 +9,6 @@ import cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind.Gl
 import cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind.WindDirection
 import cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind.WindDirections
 import cn.coostack.cooparticlesapi.network.particle.emitters.event.*
-import cn.coostack.cooparticlesapi.network.particle.emitters.impl.PhysicsParticleEmitters.Companion.CROSS_SECTIONAL_AREA
-import cn.coostack.cooparticlesapi.network.particle.emitters.impl.PhysicsParticleEmitters.Companion.DRAG_COEFFICIENT
 import cn.coostack.cooparticlesapi.particles.ControlableParticle
 import cn.coostack.cooparticlesapi.particles.control.ParticleControler
 import cn.coostack.cooparticlesapi.particles.control.RemoveReason
@@ -461,8 +459,8 @@ abstract class ClassParticleEmitters(
         val gravity = if (particle.onTheGround) 0.0 else gravity
         val gravityForce = Vec3(0.0, -gravity, 0.0) // 下面质量会被消除掉
         val airResistanceForce = if (speed > 0.01) {
-            val dragMagnitude = 0.5 * airDensity * DRAG_COEFFICIENT *
-                    CROSS_SECTIONAL_AREA * speed.pow(2) * 0.05
+            val dragMagnitude = 0.5 * airDensity * PhysicConstant.DRAG_COEFFICIENT *
+                    PhysicConstant.CROSS_SECTIONAL_AREA * speed.pow(2) * 0.05
             v.normalize().scale(-dragMagnitude)
         } else {
             Vec3.ZERO
@@ -475,7 +473,7 @@ abstract class ClassParticleEmitters(
 
         val windForce = WindDirections.handleWindForce(
             wind, pos,
-            airDensity, DRAG_COEFFICIENT, CROSS_SECTIONAL_AREA, v
+            airDensity, PhysicConstant.DRAG_COEFFICIENT, PhysicConstant.CROSS_SECTIONAL_AREA, v
         )
 
         val a = gravityForce

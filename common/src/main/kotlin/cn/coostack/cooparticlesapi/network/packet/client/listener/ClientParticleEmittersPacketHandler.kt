@@ -23,7 +23,12 @@ object ClientParticleEmittersPacketHandler {
         val emitterID = payload.emitterID
         val codec = ParticleEmittersManager.getCodecFromID(emitterID) ?: return
         val data = payload.emitterData
-        val emitter = codec.decode(FriendlyByteBuf(Unpooled.wrappedBuffer(data)))
+        val emitter = codec.decode(
+            RegistryFriendlyByteBuf(
+                Unpooled.wrappedBuffer(data),
+                Minecraft.getInstance().level!!.registryAccess()
+            )
+        )
         ParticleEmittersManager.createOrChangeClient(emitter, context.player().level())
     }
 
