@@ -83,8 +83,7 @@ abstract class DisplayEntity(
     var prevScale = 1f
     var scale = 1f
 
-    var valid = true
-        private set
+    private var valid = true
 
     /**
      * 由 DisplayEntityManager计算模型旋转
@@ -296,6 +295,10 @@ abstract class DisplayEntity(
                 this.pos = pos
             }
         )
+    }
+
+    override fun isValid(): Boolean {
+        return valid
     }
 
     override fun getValue(): DisplayEntity {

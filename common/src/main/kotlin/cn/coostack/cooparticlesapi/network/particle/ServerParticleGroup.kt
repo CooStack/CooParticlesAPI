@@ -31,8 +31,7 @@ abstract class ServerParticleGroup(
         internal set
     var world: Level? = null
         internal set
-    var valid = true
-        internal set
+    internal var valid = true
     var canceled = false
         internal set
 
@@ -322,5 +321,8 @@ abstract class ServerParticleGroup(
         this.clientMaxTick = maxTick
     }
 
+    override fun isValid(): Boolean {
+        return valid
+    }
 
 }

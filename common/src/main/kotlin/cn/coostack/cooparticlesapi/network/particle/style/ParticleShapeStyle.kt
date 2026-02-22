@@ -140,6 +140,10 @@ open class ParticleShapeStyle(uuid: UUID) :
         return res
     }
 
+    override fun isValid(): Boolean {
+        return valid
+    }
+
     override fun onDisplay() {
         displayInvokes.forEach {
             it()

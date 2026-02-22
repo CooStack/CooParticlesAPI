@@ -388,6 +388,10 @@ abstract class ParticleComposition(var position: Vec3, var world: Level? = null)
         return this
     }
 
+    override fun isValid(): Boolean {
+        return !canceled
+    }
+
     protected open fun displayEntry(data: CompositionData, pos: RelativeLocation) {
         val uuid = data.uuid
         val displayer = data.displayerBuilder(uuid)

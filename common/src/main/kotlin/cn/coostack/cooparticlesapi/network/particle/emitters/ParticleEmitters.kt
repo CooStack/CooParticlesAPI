@@ -85,6 +85,10 @@ interface ParticleEmitters : ServerControler<ParticleEmitters> {
         ParticleEmittersManager.spawnEmitters(this)
     }
 
+    override fun isValid(): Boolean {
+        return !cancelled
+    }
+
     override fun rotateAsAxis(radian: Double) {
     }
 

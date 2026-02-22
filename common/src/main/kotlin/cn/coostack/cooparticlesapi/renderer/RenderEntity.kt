@@ -262,6 +262,9 @@ abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) : Serv
 
     }
 
+    override fun isValid(): Boolean {
+        return !canceled
+    }
 
     override fun rotateToWithAngle(to: RelativeLocation, radian: Double) {
 

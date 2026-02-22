@@ -130,7 +130,7 @@ object DisplayEntityManager {
         while (iterator.hasNext()) {
             val entry = iterator.next()
             entry.value.tick()
-            if (!entry.value.valid) {
+            if (!entry.value.isValid()) {
                 iterator.remove()
             }
         }
@@ -141,7 +141,7 @@ object DisplayEntityManager {
         while (iterator.hasNext()) {
             val entry = iterator.next()
             entry.value.tick()
-            if (!entry.value.valid) {
+            if (!entry.value.isValid()) {
                 iterator.remove()
             }
             sendCreateOrUpdate(entry.value)

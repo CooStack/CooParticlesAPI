@@ -59,12 +59,14 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
 
     var displayed = false
         internal set
-    var valid = true
-        internal set
+    internal var valid = true
     internal val invokeQueue = ArrayList<ParticleGroupStyle.() -> Unit>()
     val particles = ConcurrentHashMap<UUID, Controlable<*>>()
     val particleLocations = ConcurrentHashMap<Controlable<*>, RelativeLocation>()
 
+    override fun isValid(): Boolean {
+        return valid
+    }
 
     /** 当粒子组合初始化时, 存储1倍缩放粒子组与原点的距离 */
     val particleDefaultLength = ConcurrentHashMap<UUID, Double>()

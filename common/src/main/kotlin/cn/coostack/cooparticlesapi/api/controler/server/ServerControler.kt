@@ -23,4 +23,7 @@ interface ServerControler<T> {
     fun spawn(world: Level, pos: Vec3)
 
     fun getValue(): T
+
+    fun isValid(): Boolean
+
 }

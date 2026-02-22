@@ -75,7 +75,7 @@ object CodecHelper {
         }, {
             HitBox(it.readDouble(), it.readDouble(), it.readDouble(), it.readDouble(), it.readDouble(), it.readDouble())
         }))
-        register(ItemStack::class.java, ItemStack.STREAM_CODEC)
+        register(ItemStack::class.java, ItemStack.OPTIONAL_STREAM_CODEC)
         register(SimpleRandomParticleData::class.java, SimpleRandomParticleData.PACKET_CODEC)
         register(RelativeLocation::class.java, StreamCodec.of({ buf, r ->
             buf.apply {

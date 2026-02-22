@@ -14,7 +14,7 @@ class SimpleDisplayEntityOption(val testDisplayEntity: DisplayEntity, var testin
     }
 
     override fun isValid(): Boolean {
-        return testDisplayEntity.valid && (testingTick > 0 || testingTick == -1)
+        return testDisplayEntity.isValid() && (testingTick > 0 || testingTick == -1)
     }
 
     override fun onFailed() {

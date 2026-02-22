@@ -372,6 +372,7 @@ abstract class ClassEmitters(
         }
     }
 
+
     /**
      * 数据同步需要实现此方法。
      *

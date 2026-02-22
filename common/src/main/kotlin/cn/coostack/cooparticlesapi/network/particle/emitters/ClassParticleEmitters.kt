@@ -485,6 +485,8 @@ abstract class ClassParticleEmitters(
         data.velocity = v.add(a)
     }
 
+
+
     /**
      * # 处理单个粒子的位移位置
      * - 方便更真实的物理模拟
