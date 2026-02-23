@@ -36,6 +36,11 @@ class ParticleShapeComposition(uuid: UUID) : ParticleComposition(Vec3.ZERO, null
      */
     var scaleReversed = false
 
+    /**
+     * 当反转到0时会自动清理粒子
+     */
+    var reversedClean = true
+
     fun loadScaleHelper(min: Double, max: Double, scalingTick: Int): ParticleShapeComposition {
         scaleHelper = CompositionScaleHelper(min, max, scalingTick)
             .apply {
@@ -141,6 +146,9 @@ class ParticleShapeComposition(uuid: UUID) : ParticleComposition(Vec3.ZERO, null
                 scaleHelper!!.doScale()
             } else {
                 scaleHelper!!.doScaleReversed()
+                if (reversedClean && scaleHelper!!.current <= 0) {
+                    clear(false)
+                }
             }
         }
     }

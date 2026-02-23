@@ -33,6 +33,11 @@ class SequencedParticleShapeComposition(uuid: UUID) : SequencedParticleCompositi
     var spawnAge = 0
 
     /**
+     * 是否在reversed 到0的时候清理粒子 （防止残留影响观感）
+     */
+    var reversedClean = true
+
+    /**
      * 设置为true时 会利用scaleHelper 每tick增长一点
      */
     var scalePreTick = false
@@ -188,6 +193,9 @@ class SequencedParticleShapeComposition(uuid: UUID) : SequencedParticleCompositi
                 scaleHelper!!.doScale()
             } else {
                 scaleHelper!!.doScaleReversed()
+                if (reversedClean && scaleHelper!!.current <= 0) {
+                    clear(false)
+                }
             }
         }
     }
