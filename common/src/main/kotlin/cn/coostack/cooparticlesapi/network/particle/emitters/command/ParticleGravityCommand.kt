@@ -15,6 +15,6 @@ class ParticleGravityCommand(val emitter: ClassParticleEmitters) : ParticleComma
         data: ControlableParticleData,
         particle: ControlableParticle
     ) {
-        data.velocity.add(0.0, -emitter.gravity, 0.0)
+        data.velocity = data.velocity.add(0.0, -emitter.gravity, 0.0)
     }
 }

@@ -44,6 +44,9 @@ abstract class ClassParticleEmitters(
     override var playing: Boolean = false
     var airDensity = 0.0
     var gravity: Double = 0.0
+    private var lastTickPos: Vec3 = pos
+    var emitterVelocity: Vec3 = Vec3.ZERO
+        private set
     val handlerList = ConcurrentHashMap<String, SortedMap<ParticleEventHandler, Boolean>>()
 
     /**
@@ -179,6 +182,8 @@ abstract class ClassParticleEmitters(
     override fun start() {
         if (playing) return
         playing = true
+        lastTickPos = pos
+        emitterVelocity = Vec3.ZERO
         if (world?.isClientSide == false) {
             ParticleEmittersManager.updateEmitters(this)
         }
@@ -200,7 +205,10 @@ abstract class ClassParticleEmitters(
         }
 
         world ?: return
+        val previousPos = lastTickPos
         doTick()
+        emitterVelocity = pos.subtract(previousPos)
+        lastTickPos = pos
         if (!world!!.isClientSide) {
             increaseTick()
             return
