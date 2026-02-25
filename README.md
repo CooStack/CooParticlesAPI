@@ -56,7 +56,7 @@ CooAPIScanner.registerPacket("your.mod.package")
 
 ---
 
-## 仓库/依赖设置（保留原 README 的“仓库设置”信息）
+## 仓库/依赖设置
 
 ### 仓库（Gradle）
 ```gradle
