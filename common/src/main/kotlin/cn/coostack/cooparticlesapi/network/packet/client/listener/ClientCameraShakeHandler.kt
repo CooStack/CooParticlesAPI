@@ -59,12 +59,22 @@ object ClientCameraShakeHandler {
     private fun handleShake(payload: PacketCameraShakeS2C, context: ClientContext) {
         val range = payload.range
         val player = context.player()
+        var amplitude = payload.amplitude
+        var frequency = payload.frequency
         if (range > 0) {
             val distance = player.position().distanceTo(payload.origin)
             if (distance > range) {
                 return
             }
+            if (payload.attenuateByDistance) {
+                val attenuation = (1.0 - distance / range).coerceIn(0.0, 1.0)
+                amplitude *= attenuation
+                frequency *= attenuation
+            }
         }
-        ClientCameraUtil.startShakeCamera(payload.tick, payload.amplitude)
+        if (amplitude <= 0.0 || frequency <= 0.0) {
+            return
+        }
+        ClientCameraUtil.startShakeCamera(payload.tick, amplitude, frequency)
     }
 }

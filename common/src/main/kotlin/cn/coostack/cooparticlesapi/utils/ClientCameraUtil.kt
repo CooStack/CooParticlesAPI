@@ -2,6 +2,7 @@ package cn.coostack.cooparticlesapi.utils
 
 import net.minecraft.world.phys.Vec3
 import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlin.random.Random
 
 object ClientCameraUtil {
@@ -11,6 +12,7 @@ object ClientCameraUtil {
     private const val FORCE_BLEND_FOLLOW = 0.4
 
     private const val SHAKE_TARGET_HOLD_TICKS = 2
+    private const val DEFAULT_SHAKE_FREQUENCY = 1.0
     private const val SHAKE_POS_SCALE = 0.45
     private const val SHAKE_ROT_SCALE = 2.0
 
@@ -52,6 +54,7 @@ object ClientCameraUtil {
 
     private var shakeDuration = 0
     private var shakeTargetHoldTicks = 0
+    private var shakeFrequency = DEFAULT_SHAKE_FREQUENCY
 
     private var forcedCameraPositionTarget = Vec3.ZERO
     private var forcedCameraPositionCurrent = Vec3.ZERO
@@ -162,6 +165,7 @@ object ClientCameraUtil {
         shakeDuration = 0
         amp = 0.0
         ampStep = 0.0
+        shakeFrequency = DEFAULT_SHAKE_FREQUENCY
         shakeTargetHoldTicks = 0
         shakeTargetPosOffset = Vec3.ZERO
         shakeTargetYaw = 0f
@@ -209,12 +213,17 @@ object ClientCameraUtil {
     }
 
     fun startShakeCamera(tick: Int, amplitude: Double) {
-        if (tick <= 0 || amplitude <= 0.0) {
+        startShakeCamera(tick, amplitude, DEFAULT_SHAKE_FREQUENCY)
+    }
+
+    fun startShakeCamera(tick: Int, amplitude: Double, frequency: Double) {
+        if (tick <= 0 || amplitude <= 0.0 || frequency <= 0.0) {
             return
         }
         this.tick = maxOf(this.tick, tick)
         shakeDuration = maxOf(shakeDuration, tick)
         amp = maxOf(amp, amplitude)
+        shakeFrequency = maxOf(shakeFrequency, frequency)
         ampStep = amp / shakeDuration.toDouble()
         shakeTargetHoldTicks = 0
     }
@@ -243,7 +252,7 @@ object ClientCameraUtil {
                 shakeTargetPosOffset = randomShakePos(envelope)
                 shakeTargetYaw = randomShakeAngle(envelope)
                 shakeTargetPitch = randomShakeAngle(envelope)
-                shakeTargetHoldTicks = SHAKE_TARGET_HOLD_TICKS
+                shakeTargetHoldTicks = shakeHoldTicks()
             } else {
                 shakeTargetHoldTicks--
             }
@@ -256,6 +265,7 @@ object ClientCameraUtil {
                 shakeDuration = 0
                 amp = 0.0
                 ampStep = 0.0
+                shakeFrequency = DEFAULT_SHAKE_FREQUENCY
             }
         }
 
@@ -287,6 +297,11 @@ object ClientCameraUtil {
         val progress = 1.0 - tick.toDouble() / shakeDuration.toDouble()
         val decay = (1.0 - progress).coerceIn(0.0, 1.0)
         return amp * decay * decay
+    }
+
+    private fun shakeHoldTicks(): Int {
+        val holdTicks = (SHAKE_TARGET_HOLD_TICKS / shakeFrequency.coerceAtLeast(1.0E-3)).roundToInt()
+        return maxOf(1, holdTicks)
     }
 
     private fun randomShakePos(envelope: Double): Vec3 {

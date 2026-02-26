@@ -13,6 +13,8 @@ class PacketCameraShakeS2C(
     val origin: Vec3,
     val amplitude: Double,
     val tick: Int,
+    val frequency: Double,
+    val attenuateByDistance: Boolean,
     val position: Vec3,
     val yawOffset: Float,
     val pitchOffset: Float,
@@ -24,6 +26,8 @@ class PacketCameraShakeS2C(
         origin,
         amplitude,
         tick,
+        1.0,
+        false,
         Vec3.ZERO,
         0f,
         0f,
@@ -50,6 +54,8 @@ class PacketCameraShakeS2C(
                 buf.writeVec3(packet.origin)
                 buf.writeDouble(packet.amplitude)
                 buf.writeInt(packet.tick)
+                buf.writeDouble(packet.frequency)
+                buf.writeBoolean(packet.attenuateByDistance)
                 buf.writeVec3(packet.position)
                 buf.writeFloat(packet.yawOffset)
                 buf.writeFloat(packet.pitchOffset)
@@ -60,6 +66,8 @@ class PacketCameraShakeS2C(
                 val origin = buf.readVec3()
                 val amplitude = buf.readDouble()
                 val tick = buf.readInt()
+                val frequency = buf.readDouble()
+                val attenuateByDistance = buf.readBoolean()
                 val position = buf.readVec3()
                 val yawOffset = buf.readFloat()
                 val pitchOffset = buf.readFloat()
@@ -70,6 +78,8 @@ class PacketCameraShakeS2C(
                     origin,
                     amplitude,
                     tick,
+                    frequency,
+                    attenuateByDistance,
                     position,
                     yawOffset,
                     pitchOffset,
@@ -78,7 +88,30 @@ class PacketCameraShakeS2C(
             })
 
         fun shake(range: Double, origin: Vec3, amplitude: Double, tick: Int): PacketCameraShakeS2C {
-            return PacketCameraShakeS2C(CameraOperation.SHAKE, range, origin, amplitude, tick, Vec3.ZERO, 0f, 0f, false)
+            return shake(range, origin, amplitude, tick, 1.0, false)
+        }
+
+        fun shake(
+            range: Double,
+            origin: Vec3,
+            amplitude: Double,
+            tick: Int,
+            frequency: Double,
+            attenuateByDistance: Boolean
+        ): PacketCameraShakeS2C {
+            return PacketCameraShakeS2C(
+                CameraOperation.SHAKE,
+                range,
+                origin,
+                amplitude,
+                tick,
+                frequency,
+                attenuateByDistance,
+                Vec3.ZERO,
+                0f,
+                0f,
+                false
+            )
         }
 
         fun setOffset(
@@ -93,6 +126,8 @@ class PacketCameraShakeS2C(
                 Vec3.ZERO,
                 0.0,
                 0,
+                1.0,
+                false,
                 positionOffset,
                 yawOffset,
                 pitchOffset,
@@ -107,6 +142,8 @@ class PacketCameraShakeS2C(
                 Vec3.ZERO,
                 0.0,
                 0,
+                1.0,
+                false,
                 Vec3.ZERO,
                 0f,
                 0f,
@@ -121,6 +158,8 @@ class PacketCameraShakeS2C(
                 Vec3.ZERO,
                 0.0,
                 0,
+                1.0,
+                false,
                 position,
                 0f,
                 0f,
@@ -135,6 +174,8 @@ class PacketCameraShakeS2C(
                 Vec3.ZERO,
                 0.0,
                 0,
+                1.0,
+                false,
                 Vec3.ZERO,
                 0f,
                 0f,
@@ -149,6 +190,8 @@ class PacketCameraShakeS2C(
                 Vec3.ZERO,
                 0.0,
                 0,
+                1.0,
+                false,
                 Vec3.ZERO,
                 0f,
                 0f,
@@ -165,4 +208,3 @@ class PacketCameraShakeS2C(
         return payloadID
     }
 }
-
