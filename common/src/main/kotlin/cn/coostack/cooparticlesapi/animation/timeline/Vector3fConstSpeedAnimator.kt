@@ -1,0 +1,53 @@
+package cn.coostack.cooparticlesapi.animation.timeline
+
+import org.joml.Vector3f
+import kotlin.math.abs
+
+class Vector3fConstSpeedAnimator(
+    var speed: Double,
+    var targetNum: Vector3f,
+) {
+    companion object {
+        private const val EPSILON = 1e-6
+    }
+
+    var current: Vector3f = Vector3f()
+
+    init {
+        require(speed > 0.0)
+    }
+
+    private fun stepSize(): Double = abs(speed)
+
+    private fun moveVector3fToward(now: Vector3f, target: Vector3f, step: Double): Vector3f {
+        val delta = Vector3f(target).sub(now)
+        val distance = delta.length().toDouble()
+        if (distance <= EPSILON || step <= EPSILON || step >= distance - EPSILON) {
+            return Vector3f(target)
+        }
+
+        delta.mul((step / distance).toFloat())
+        return Vector3f(now).add(delta)
+    }
+
+    fun next(): Vector3f {
+        current = moveVector3fToward(current, targetNum, stepSize())
+        return current
+    }
+
+    fun prev(): Vector3f {
+        current = moveVector3fToward(current, Vector3f(), stepSize())
+        return current
+    }
+
+    fun isFinished() = Vector3f(targetNum).sub(current).length().toDouble() < EPSILON
+
+    fun reset() {
+        current = Vector3f()
+    }
+
+    fun resetCurrentTo(current: Vector3f): Vector3fConstSpeedAnimator {
+        this.current = Vector3f(current)
+        return this
+    }
+}

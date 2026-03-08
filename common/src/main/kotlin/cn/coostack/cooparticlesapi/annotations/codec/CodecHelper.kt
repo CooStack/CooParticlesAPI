@@ -2,6 +2,18 @@ package cn.coostack.cooparticlesapi.annotations.codec
 
 import cn.coostack.cooparticlesapi.animation.timeline.ValueConstSpeedAnimator
 import cn.coostack.cooparticlesapi.animation.timeline.ValueConstTimeAnimator
+import cn.coostack.cooparticlesapi.animation.timeline.DoubleConstSpeedAnimator
+import cn.coostack.cooparticlesapi.animation.timeline.DoubleConstTimeAnimator
+import cn.coostack.cooparticlesapi.animation.timeline.FloatConstSpeedAnimator
+import cn.coostack.cooparticlesapi.animation.timeline.FloatConstTimeAnimator
+import cn.coostack.cooparticlesapi.animation.timeline.IntConstSpeedAnimator
+import cn.coostack.cooparticlesapi.animation.timeline.IntConstTimeAnimator
+import cn.coostack.cooparticlesapi.animation.timeline.RelativeLocationConstSpeedAnimator
+import cn.coostack.cooparticlesapi.animation.timeline.RelativeLocationConstTimeAnimator
+import cn.coostack.cooparticlesapi.animation.timeline.Vec3ConstSpeedAnimator
+import cn.coostack.cooparticlesapi.animation.timeline.Vec3ConstTimeAnimator
+import cn.coostack.cooparticlesapi.animation.timeline.Vector3fConstSpeedAnimator
+import cn.coostack.cooparticlesapi.animation.timeline.Vector3fConstTimeAnimator
 import cn.coostack.cooparticlesapi.annotations.CodecField
 import cn.coostack.cooparticlesapi.barrages.HitBox
 import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableParticleData
@@ -139,6 +151,150 @@ object CodecHelper {
             }, {
                 ValueConstSpeedAnimator(it.readDouble(), it.readDouble())
                     .resetCurrentTo(it.readDouble())
+            })
+        )
+        register(
+            DoubleConstTimeAnimator::class.java,
+            StreamCodec.of({ buf, i ->
+                buf.writeInt(i.durationTick)
+                buf.writeDouble(i.targetNum)
+                buf.writeDouble(i.current)
+            }, {
+                DoubleConstTimeAnimator(it.readInt(), it.readDouble())
+                    .resetCurrentTo(it.readDouble())
+            })
+        )
+        register(
+            FloatConstTimeAnimator::class.java,
+            StreamCodec.of({ buf, i ->
+                buf.writeInt(i.durationTick)
+                buf.writeFloat(i.targetNum)
+                buf.writeFloat(i.current)
+            }, {
+                FloatConstTimeAnimator(it.readInt(), it.readFloat())
+                    .resetCurrentTo(it.readFloat())
+            })
+        )
+        register(
+            IntConstTimeAnimator::class.java,
+            StreamCodec.of({ buf, i ->
+                buf.writeInt(i.durationTick)
+                buf.writeInt(i.targetNum)
+                buf.writeDouble(i.currentRaw)
+            }, {
+                IntConstTimeAnimator(it.readInt(), it.readInt())
+                    .resetCurrentRawTo(it.readDouble())
+            })
+        )
+        register(
+            Vec3ConstTimeAnimator::class.java,
+            StreamCodec.of({ buf, i ->
+                buf.writeInt(i.durationTick)
+                buf.writeVec3(i.targetNum)
+                buf.writeVec3(i.current)
+            }, {
+                Vec3ConstTimeAnimator(it.readInt(), it.readVec3())
+                    .resetCurrentTo(it.readVec3())
+            })
+        )
+        register(
+            RelativeLocationConstTimeAnimator::class.java,
+            StreamCodec.of({ buf, i ->
+                buf.writeInt(i.durationTick)
+                buf.writeDouble(i.targetNum.x)
+                buf.writeDouble(i.targetNum.y)
+                buf.writeDouble(i.targetNum.z)
+                buf.writeDouble(i.current.x)
+                buf.writeDouble(i.current.y)
+                buf.writeDouble(i.current.z)
+            }, {
+                RelativeLocationConstTimeAnimator(
+                    it.readInt(),
+                    RelativeLocation(it.readDouble(), it.readDouble(), it.readDouble())
+                ).resetCurrentTo(RelativeLocation(it.readDouble(), it.readDouble(), it.readDouble()))
+            })
+        )
+        register(
+            Vector3fConstTimeAnimator::class.java,
+            StreamCodec.of({ buf, i ->
+                buf.writeInt(i.durationTick)
+                buf.writeVector3f(i.targetNum)
+                buf.writeVector3f(i.current)
+            }, {
+                Vector3fConstTimeAnimator(it.readInt(), it.readVector3f())
+                    .resetCurrentTo(it.readVector3f())
+            })
+        )
+        register(
+            DoubleConstSpeedAnimator::class.java,
+            StreamCodec.of({ buf, i ->
+                buf.writeDouble(i.speed)
+                buf.writeDouble(i.targetNum)
+                buf.writeDouble(i.current)
+            }, {
+                DoubleConstSpeedAnimator(it.readDouble(), it.readDouble())
+                    .resetCurrentTo(it.readDouble())
+            })
+        )
+        register(
+            FloatConstSpeedAnimator::class.java,
+            StreamCodec.of({ buf, i ->
+                buf.writeFloat(i.speed)
+                buf.writeFloat(i.targetNum)
+                buf.writeFloat(i.current)
+            }, {
+                FloatConstSpeedAnimator(it.readFloat(), it.readFloat())
+                    .resetCurrentTo(it.readFloat())
+            })
+        )
+        register(
+            IntConstSpeedAnimator::class.java,
+            StreamCodec.of({ buf, i ->
+                buf.writeInt(i.speed)
+                buf.writeInt(i.targetNum)
+                buf.writeDouble(i.currentRaw)
+            }, {
+                IntConstSpeedAnimator(it.readInt(), it.readInt())
+                    .resetCurrentRawTo(it.readDouble())
+            })
+        )
+        register(
+            Vec3ConstSpeedAnimator::class.java,
+            StreamCodec.of({ buf, i ->
+                buf.writeDouble(i.speed)
+                buf.writeVec3(i.targetNum)
+                buf.writeVec3(i.current)
+            }, {
+                Vec3ConstSpeedAnimator(it.readDouble(), it.readVec3())
+                    .resetCurrentTo(it.readVec3())
+            })
+        )
+        register(
+            RelativeLocationConstSpeedAnimator::class.java,
+            StreamCodec.of({ buf, i ->
+                buf.writeDouble(i.speed)
+                buf.writeDouble(i.targetNum.x)
+                buf.writeDouble(i.targetNum.y)
+                buf.writeDouble(i.targetNum.z)
+                buf.writeDouble(i.current.x)
+                buf.writeDouble(i.current.y)
+                buf.writeDouble(i.current.z)
+            }, {
+                RelativeLocationConstSpeedAnimator(
+                    it.readDouble(),
+                    RelativeLocation(it.readDouble(), it.readDouble(), it.readDouble())
+                ).resetCurrentTo(RelativeLocation(it.readDouble(), it.readDouble(), it.readDouble()))
+            })
+        )
+        register(
+            Vector3fConstSpeedAnimator::class.java,
+            StreamCodec.of({ buf, i ->
+                buf.writeDouble(i.speed)
+                buf.writeVector3f(i.targetNum)
+                buf.writeVector3f(i.current)
+            }, {
+                Vector3fConstSpeedAnimator(it.readDouble(), it.readVector3f())
+                    .resetCurrentTo(it.readVector3f())
             })
         )
     }

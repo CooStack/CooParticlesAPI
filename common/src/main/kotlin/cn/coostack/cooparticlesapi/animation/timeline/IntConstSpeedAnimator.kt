@@ -1,0 +1,64 @@
+package cn.coostack.cooparticlesapi.animation.timeline
+
+import kotlin.math.abs
+import kotlin.math.roundToInt
+
+class IntConstSpeedAnimator(
+    var speed: Int,
+    var targetNum: Int,
+) {
+    companion object {
+        private const val EPSILON = 1e-6
+    }
+
+    var currentRaw: Double = 0.0
+        private set
+
+    var current: Int
+        get() = currentRaw.roundToInt()
+        set(value) {
+            currentRaw = value.toDouble()
+        }
+
+    init {
+        require(speed > 0)
+    }
+
+    private fun stepSize(): Double = abs(speed.toDouble())
+
+    private fun moveScalarToward(now: Double, target: Double, step: Double): Double {
+        val delta = target - now
+        if (abs(delta) <= EPSILON || step <= EPSILON) {
+            return target
+        }
+
+        val moved = if (delta > 0.0) now + step else now - step
+        return if (delta > 0.0) minOf(moved, target) else maxOf(moved, target)
+    }
+
+    fun next(): Int {
+        currentRaw = moveScalarToward(currentRaw, targetNum.toDouble(), stepSize())
+        return current
+    }
+
+    fun prev(): Int {
+        currentRaw = moveScalarToward(currentRaw, 0.0, stepSize())
+        return current
+    }
+
+    fun isFinished() = abs(targetNum.toDouble() - currentRaw) < EPSILON
+
+    fun reset() {
+        currentRaw = 0.0
+    }
+
+    fun resetCurrentTo(current: Int): IntConstSpeedAnimator {
+        this.current = current
+        return this
+    }
+
+    fun resetCurrentRawTo(currentRaw: Double): IntConstSpeedAnimator {
+        this.currentRaw = currentRaw
+        return this
+    }
+}
