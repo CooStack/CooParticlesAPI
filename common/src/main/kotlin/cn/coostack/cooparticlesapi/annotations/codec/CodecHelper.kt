@@ -30,6 +30,7 @@ import cn.coostack.cooparticlesapi.utils.interpolator.data.InterpolatorVector3f
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import cn.coostack.cooparticlesapi.utils.interpolator.data.InterpolatorRelativeLocation
 import com.mojang.serialization.Codec
+import net.minecraft.core.BlockPos
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.ByteBufCodecs
@@ -120,6 +121,10 @@ object CodecHelper {
             StreamCodec.of({ buf, i -> buf.writeFloat(i.min); buf.writeFloat(i.max) }, {
                 FloatRangeData(it.readFloat(), it.readFloat())
             })
+        )
+        register(
+            BlockPos::class.java,
+            StreamCodec.of({ a, b -> BlockPos.STREAM_CODEC.encode(a, b) }, { BlockPos.STREAM_CODEC.decode(it) })
         )
         register(
             BlockState::class.java,
