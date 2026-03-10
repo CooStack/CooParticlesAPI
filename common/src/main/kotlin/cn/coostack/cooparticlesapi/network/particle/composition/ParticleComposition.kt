@@ -75,7 +75,7 @@ abstract class ParticleComposition(var position: Vec3, var world: Level? = null)
     /**
      * 粒子可视范围
      */
-    var visibleRange = 128.0
+    var visibleRange = 512.0
 
     var scale = 1.0
 

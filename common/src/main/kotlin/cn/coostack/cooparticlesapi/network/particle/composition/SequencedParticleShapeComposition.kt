@@ -20,6 +20,7 @@ import java.util.UUID
 class SequencedParticleShapeComposition(uuid: UUID) : SequencedParticleComposition(Vec3.ZERO, null) {
     init {
         this.controlUUID = uuid
+        visibleRange = Double.MAX_VALUE
     }
 
     private val points = ArrayList<Pair<PointsBuilder, (RelativeLocation, Int) -> CompositionData>>()
