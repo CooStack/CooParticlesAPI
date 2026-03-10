@@ -14,28 +14,47 @@ abstract class BezierValueScaleHelper(
     var controlPoint2: RelativeLocation
 ) :
     ScaleHelper(minScale, maxScale, scaleTick) {
-    private val deltaScale = maxScale - minScale
+    private val deltaScale: Double
+        get() = maxScale - minScale
 
-    var bezierPoints = Math3DUtil.generateBezierCurve(
-        RelativeLocation(scaleTick.toDouble(), deltaScale, 0.0),
-        controlPoint1, controlPoint2, scaleTick
-    )
+    var bezierPoints = createBezierPoints()
+
+    private fun createBezierPoints(): List<RelativeLocation> {
+        val target = RelativeLocation(scaleTick.toDouble(), deltaScale, 0.0)
+        val (startHandle, endHandle) = resolveControlPoints()
+        return List(scaleTick + 1) { tick ->
+            RelativeLocation(
+                tick.toDouble(),
+                Math3DUtil.evaluateBezierCurveYAtX(
+                    target,
+                    startHandle,
+                    endHandle,
+                    tick.toDouble()
+                ),
+                0.0
+            )
+        }
+    }
+
+    private fun resolveControlPoints(): Pair<RelativeLocation, RelativeLocation> {
+        if (controlPoint2.x > 0.0 && controlPoint2.x <= scaleTick.toDouble()) {
+            return RelativeLocation(controlPoint1.x, controlPoint1.y - minScale, controlPoint1.z) to
+                RelativeLocation(controlPoint2.x - scaleTick, controlPoint2.y - maxScale, controlPoint2.z)
+        }
+        return controlPoint1.clone() to controlPoint2.clone()
+    }
 
     override fun recalculateStep(): BezierValueScaleHelper {
         val temp = min(minScale, maxScale)
         maxScale = max(minScale, maxScale)
         minScale = temp
-        bezierPoints = Math3DUtil.generateBezierCurve(
-            RelativeLocation(scaleTick.toDouble(), deltaScale, 0.0),
-            controlPoint1, controlPoint2, scaleTick
-        )
+        bezierPoints = createBezierPoints()
         return this
     }
 
     override fun toggleScale(scale: Double) {
-        // 遍历scale?
         val currentPoint = bezierPoints.withIndex().minBy {
-            abs(it.value.y - scale)
+            abs(minScale + it.value.y - scale)
         }
         current = currentPoint.index
         scale(minScale + currentPoint.value.y)
@@ -44,23 +63,18 @@ abstract class BezierValueScaleHelper(
     override fun doScale() {
         if (getLoadedGroup() == null) return
         if (over()) return
-        val value = bezierPoints[current++].y
-        scale(minScale + value)
+        current = (current + 1).coerceAtMost(scaleTick)
+        scale(minScale + bezierPoints[current].y)
     }
 
     override fun doScaleTo(current: Int) {
-        val enter = current.coerceAtLeast(0)
+        val enter = current.coerceIn(0, scaleTick)
         this.current = enter
-        if (current >= scaleTick) {
-            resetScaleMax()
-            return
+        when {
+            enter <= 0 -> scale(minScale)
+            enter >= scaleTick -> scale(maxScale)
+            else -> scale(minScale + bezierPoints[enter].y)
         }
-        if (current <= 0) {
-            resetScaleMin()
-            return
-        }
-        val value = bezierPoints[current].y
-        scale(minScale + value)
     }
 
     override fun doScaleReversed() {
@@ -70,7 +84,7 @@ abstract class BezierValueScaleHelper(
         if (isZero()) {
             return
         }
-        val value = bezierPoints[max(0, --current)].y
-        scale(minScale + value)
+        current = max(0, current - 1)
+        scale(minScale + bezierPoints[current].y)
     }
 }

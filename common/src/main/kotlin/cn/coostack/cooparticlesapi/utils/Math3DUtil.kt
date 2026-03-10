@@ -1217,6 +1217,33 @@ object Math3DUtil {
         }
     }
 
+    fun evaluateBezierCurveYAtX(
+        target: RelativeLocation,
+        startHandle: RelativeLocation,
+        endHandle: RelativeLocation,
+        x: Double,
+        iterations: Int = 26
+    ): Double {
+        if (target.x <= 0.0) return target.y
+        val actualX = x.coerceIn(0.0, target.x)
+        if (actualX <= 0.0) return 0.0
+        if (actualX >= target.x) return target.y
+        val end = target + endHandle
+        var lo = 0.0
+        var hi = 1.0
+        var mid = 0.5
+        repeat(iterations.coerceAtLeast(1)) {
+            mid = (lo + hi) * 0.5
+            val bx = cubicBezier(mid, 0.0, startHandle.x, end.x, target.x)
+            if (bx < actualX) {
+                lo = mid
+            } else {
+                hi = mid
+            }
+        }
+        return cubicBezier(mid, 0.0, startHandle.y, end.y, target.y)
+    }
+
     fun cubicBezier(t: Double, p0: Double, p1: Double, p2: Double, p3: Double): Double {
         val u = 1 - t
         val u2 = u * u

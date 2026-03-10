@@ -124,7 +124,7 @@ object CodecHelper {
         )
         register(
             BlockPos::class.java,
-            StreamCodec.of({ a, b -> BlockPos.STREAM_CODEC.encode(a, b) }, { BlockPos.STREAM_CODEC.decode(it) })
+            StreamCodec.of(BlockPos.STREAM_CODEC::encode, BlockPos.STREAM_CODEC::decode)
         )
         register(
             BlockState::class.java,
