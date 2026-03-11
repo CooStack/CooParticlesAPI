@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi.network.particle.emitters.command
 
+import cn.coostack.cooparticlesapi.extend.plus
 import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableParticleData
 import cn.coostack.cooparticlesapi.particles.ControlableParticle
 import net.minecraft.world.phys.Vec3
@@ -11,9 +12,11 @@ import kotlin.math.sqrt
  * 环面回流场。
  *
  * 在一圈局部区域里制造“翻卷”轨迹，适合蘑菇云帽檐、烟团边缘这类效果。
+ * 它会优先“扭转当前速度方向”，而不是把粒子硬拽成一个环，
+ * 所以在有阻尼/减速时，卷动也会跟着自然变慢。
  * 它改的是粒子速度，不是 billboard 朝向。
  */
-class ParticleToroidalCirculationCommand() : ParticleCommand {
+class ParticleToroidalCirculationCommand : ParticleCommand {
     /** 环流中心。做蘑菇云时一般填帽子中心。 */
     var center: Supplier<Vec3> = Supplier { Vec3.ZERO }
 
@@ -38,7 +41,7 @@ class ParticleToroidalCirculationCommand() : ParticleCommand {
     /** 向上抬的附加力度。 */
     var upwardStrength: Double = 0.0
 
-    /** 往翻卷带中心回拉的力度。太小容易散。 */
+    /** 往翻卷带回带/导向的力度。主要用于带外把速度重新导回卷动区。 */
     var followStrength: Double = 0.12
 
     /** 单 tick 最大修正量。<=0 不限制。 */
@@ -59,7 +62,7 @@ class ParticleToroidalCirculationCommand() : ParticleCommand {
         followStrength: Double = 0.12,
         maxStep: Double = 0.6,
         useLifeCurve: Boolean = false,
-    ) : this() {
+    ) {
         this.center = center
         this.axis = axis
         this.ringRadius = ringRadius
@@ -125,58 +128,78 @@ class ParticleToroidalCirculationCommand() : ParticleCommand {
         }
 
         val qr = planarLen - ringRadius
-        val qh = axialDistance
 
         val radialSize = radialThickness.coerceAtLeast(1e-6)
         val axialSize = axialThickness.coerceAtLeast(1e-6)
 
-        val normalizedDistance = sqrt(
-            (qr * qr) / (radialSize * radialSize) +
-                (qh * qh) / (axialSize * axialSize)
-        )
-        if (normalizedDistance >= 1.0) {
-            return
-        }
+        val localRadial = qr / radialSize
+        val localAxial = axialDistance / axialSize
+        val normalizedDistance = sqrt(localRadial * localRadial + localAxial * localAxial)
 
-        val bandWeight = smooth01(1.0 - normalizedDistance)
+        val insideBand = normalizedDistance < 1.0
+        val bandWeight = if (insideBand) smooth01(1.0 - normalizedDistance) else 0.0
+        val outerDistance = (normalizedDistance - 1.0).coerceAtLeast(0.0)
+        val captureWeight = if (outerDistance > 0.0) {
+            1.0 / (1.0 + outerDistance * outerDistance * 4.0)
+        } else {
+            0.0
+        }
         val lifeMul = if (useLifeCurve && particle.lifetime > 0) {
             (1.0 - particle.currentAge.toDouble() / particle.lifetime.toDouble()).coerceIn(0.0, 1.0)
         } else {
             1.0
         }
-        val weight = bandWeight * lifeMul
-        if (weight <= 1e-9) {
+        if (lifeMul <= 1e-9) {
             return
         }
 
-        val circulationVector = radialDir.scale(-qh / axialSize)
-            .add(ax.scale(qr / radialSize))
-        val circulationDir = normalizeOrZero(circulationVector)
+        val currentVelocity = if (data.velocity.lengthSqr() > 1e-12) data.velocity else particle.velocity
+        val currentSpeed = currentVelocity.length()
+        if (currentSpeed <= 1e-9) {
+            return
+        }
+        val currentDir = currentVelocity.scale(1.0 / currentSpeed)
 
-        val toBandCenter = radialDir.scale(-qr).add(ax.scale(-qh))
-        val followDir = normalizeOrZero(toBandCenter)
+        val circulationVector = radialDir.scale(-localAxial)
+            .add(ax.scale(localRadial))
+        val toBandCenter = radialDir.scale(-localRadial).add(ax.scale(-localAxial))
 
-        var dv = Vec3.ZERO
+        var desiredFlow = Vec3.ZERO
 
-        if (circulationDir.lengthSqr() > 1e-12) {
-            dv = dv.add(circulationDir.scale(circulationStrength * weight))
+        val circulationWeight = bandWeight * lifeMul
+        if (circulationStrength != 0.0 && circulationWeight > 1e-9 && circulationVector.lengthSqr() > 1e-12) {
+            desiredFlow = desiredFlow.add(circulationVector.scale(circulationStrength * circulationWeight))
         }
-        if (outwardStrength != 0.0) {
-            dv = dv.add(radialDir.scale(outwardStrength * weight))
+        if (insideBand && outwardStrength != 0.0 && circulationWeight > 1e-9) {
+            desiredFlow = desiredFlow.add(radialDir.scale(outwardStrength * circulationWeight))
         }
-        if (upwardStrength != 0.0) {
-            dv = dv.add(ax.scale(upwardStrength * weight))
+        if (insideBand && upwardStrength != 0.0 && circulationWeight > 1e-9) {
+            desiredFlow = desiredFlow.add(ax.scale(upwardStrength * circulationWeight))
         }
-        if (followDir.lengthSqr() > 1e-12 && followStrength != 0.0) {
-            dv = dv.add(followDir.scale(followStrength * weight))
+
+        val captureMul = captureWeight * lifeMul
+        if (followStrength != 0.0 && captureMul > 1e-9 && toBandCenter.lengthSqr() > 1e-12) {
+            desiredFlow = desiredFlow.add(normalizeOrZero(toBandCenter).scale(followStrength * captureMul))
         }
+
+        val desiredFlowLen = desiredFlow.length()
+        if (desiredFlowLen <= 1e-9) {
+            return
+        }
+        val desiredDir = desiredFlow.scale(1.0 / desiredFlowLen)
+        val turnedDir = normalizeOrZero(currentDir.add(desiredDir.scale(desiredFlowLen)))
+        if (turnedDir.lengthSqr() <= 1e-12) {
+            return
+        }
+
+        var dv = turnedDir.scale(currentSpeed).subtract(currentVelocity)
 
         val dvLen = dv.length()
         if (maxStep > 0.0 && dvLen > maxStep) {
             dv = dv.scale(maxStep / dvLen)
         }
 
-        data.velocity = data.velocity.add(dv)
+        data.velocity += dv
     }
 
     private fun safeNormalize(v: Vec3): Vec3 {
