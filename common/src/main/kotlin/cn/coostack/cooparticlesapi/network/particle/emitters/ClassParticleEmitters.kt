@@ -492,7 +492,6 @@ abstract class ClassParticleEmitters(
     }
 
 
-
     /**
      * # 处理单个粒子的位移位置
      * - 方便更真实的物理模拟

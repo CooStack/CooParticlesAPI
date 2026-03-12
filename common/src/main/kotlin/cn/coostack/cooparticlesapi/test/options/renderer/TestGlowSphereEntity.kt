@@ -2,6 +2,7 @@ package cn.coostack.cooparticlesapi.test.options.renderer
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.renderer.RenderEntity
+import cn.coostack.cooparticlesapi.renderer.RenderEntityRenderPass
 import cn.coostack.cooparticlesapi.renderer.shader.ShaderProgramBuilder
 import cn.coostack.cooparticlesapi.renderer.shader.data.CooVertexFormat
 import cn.coostack.cooparticlesapi.renderer.shader.utils.ShaderUtil
@@ -14,7 +15,6 @@ import net.minecraft.world.level.Level
 import org.joml.Matrix4f
 import org.joml.Matrix4fStack
 import org.joml.Vector3f
-import org.lwjgl.opengl.GL33.*
 
 class TestGlowSphereEntity(world: Level?) : RenderEntity(world) {
     companion object {
@@ -45,7 +45,7 @@ class TestGlowSphereEntity(world: Level?) : RenderEntity(world) {
 
         private val sphereBuffer = SimpleVertexBuffer().apply {
             setVertexes(
-                ShaderUtil.genBall(1.0f, 32, 32),
+                ShaderUtil.genBall(1f, 32, 48),
                 CooVertexFormat.POINT_FORMAT
             )
         }
@@ -65,9 +65,9 @@ class TestGlowSphereEntity(world: Level?) : RenderEntity(world) {
         }
     }
 
-    var radius by tracked(0.8f)
-    var intensity by tracked(1.6f)
-    var glowColor by tracked(Vector3f(0.7f, 0.9f, 1.0f))
+    var radius by tracked(2.4f)
+    var intensity by tracked(8.5f)
+    var glowColor by tracked(Vector3f(1.0f, 0.84f, 0.46f))
 
     override fun initialize() {
         initStatic()
@@ -76,6 +76,10 @@ class TestGlowSphereEntity(world: Level?) : RenderEntity(world) {
     override fun getCodec(): StreamCodec<FriendlyByteBuf, RenderEntity> = codec
 
     override fun getRenderID(): ResourceLocation = id
+
+    override fun getRenderPass(): RenderEntityRenderPass {
+        return RenderEntityRenderPass.POST_PROCESS
+    }
 
     override fun release() {
     }
@@ -86,8 +90,8 @@ class TestGlowSphereEntity(world: Level?) : RenderEntity(world) {
         projMatrix: Matrix4f,
         tickDelta: Float
     ) {
-        RenderSystem.enableBlend()
-        RenderSystem.blendFunc(GL_ONE, GL_ONE)
+        RenderSystem.disableBlend()
+        RenderSystem.enableCull()
         RenderSystem.depthMask(false)
         glowShader.useOnContext {
             matrices.pushMatrix()
@@ -97,11 +101,11 @@ class TestGlowSphereEntity(world: Level?) : RenderEntity(world) {
             setMatrix4("transMat", matrices)
             setFloat3("color", glowColor)
             setFloat("intensity", intensity)
+            setFloat("time", getTime(tickDelta))
             sphereBuffer.draw()
             matrices.popMatrix()
         }
+        RenderSystem.disableCull()
         RenderSystem.depthMask(true)
-        RenderSystem.defaultBlendFunc()
-        RenderSystem.disableBlend()
     }
 }

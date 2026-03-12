@@ -8,6 +8,7 @@ object TestShaderInit {
     @JvmStatic
     fun initOnClient() {
         ClientRenderPipelineManager.register(TestShaderPipelines.blackHoleDistortion)
+        ClientRenderPipelineManager.register(TestShaderPipelines.glowSphereDistortion)
         ClientRenderEntityManager.register(
             TestRendererEntity.id,
             TestRendererEntity.codec,
@@ -26,7 +27,7 @@ object TestShaderInit {
         ClientRenderEntityManager.register(
             TestGlowSphereEntity.id,
             TestGlowSphereEntity.codec,
-            ShaderPipeManagers.simpleBloom.pipeID
+            TestShaderPipelines.glowSphereDistortion.pipeID
         )
         ClientRenderEntityManager.register(
             TestBlackHoleEntity.id,

@@ -19,7 +19,7 @@ object ClientRenderEntityManager {
     val minecraft: Minecraft = getInstance()
     private val entities = HashMap<UUID, RenderEntity>()
     private val entitiesPipeClassifier =
-        HashMap<RenderEntityRenderPass, HashMap<ResourceLocation, HashSet<RenderEntity>>>()
+        LinkedHashMap<RenderEntityRenderPass, LinkedHashMap<ResourceLocation, LinkedHashSet<RenderEntity>>>()
 
     /**
      * key 是对应 RenderEntity的id
@@ -29,8 +29,8 @@ object ClientRenderEntityManager {
     private val entityCodecs = HashMap<ResourceLocation, StreamCodec<FriendlyByteBuf, RenderEntity>>()
     private var postProcessPrepared = false
 
-    private fun getClassifier(pass: RenderEntityRenderPass): HashMap<ResourceLocation, HashSet<RenderEntity>> {
-        return entitiesPipeClassifier.getOrPut(pass) { HashMap() }
+    private fun getClassifier(pass: RenderEntityRenderPass): LinkedHashMap<ResourceLocation, LinkedHashSet<RenderEntity>> {
+        return entitiesPipeClassifier.getOrPut(pass) { LinkedHashMap() }
     }
 
     fun init() {
@@ -86,7 +86,7 @@ object ClientRenderEntityManager {
         entity.init()
         entities[entity.uuid] = entity
         val pipe = getPipeIDFromType(entity.getRenderID())
-        getClassifier(entity.getRenderPass()).getOrPut(pipe) { HashSet() }.add(entity)
+        getClassifier(entity.getRenderPass()).getOrPut(pipe) { LinkedHashSet() }.add(entity)
     }
 
     fun getPipeIDFromType(type: ResourceLocation): ResourceLocation {
@@ -110,6 +110,7 @@ object ClientRenderEntityManager {
         if (!postProcessPrepared) {
             return
         }
+        minecraft.mainRenderTarget.bindWrite(false)
         for ((pipeID, bucket) in getClassifier(RenderEntityRenderPass.POST_PROCESS)) {
             if (bucket.isEmpty()) {
                 continue

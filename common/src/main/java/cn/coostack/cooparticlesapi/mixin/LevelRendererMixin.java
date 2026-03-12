@@ -67,5 +67,6 @@ public class LevelRendererMixin {
             ClientRenderEntityManager.INSTANCE.renderWorldPass(tickDelta, frustumMatrix, projectionMatrix);
         }
         ClientRenderEntityManager.INSTANCE.preparePostProcess(tickDelta, frustumMatrix, projectionMatrix);
+        ClientRenderEntityManager.INSTANCE.flushPostProcess();
     }
 }

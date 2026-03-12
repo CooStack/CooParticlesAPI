@@ -14,7 +14,6 @@ import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.level.Level
 import org.joml.Matrix4f
 import org.joml.Matrix4fStack
-import org.joml.Vector2f
 import org.joml.Vector3f
 
 class TestBlackHoleEntity(world: Level?) : RenderEntity(world) {
@@ -46,20 +45,15 @@ class TestBlackHoleEntity(world: Level?) : RenderEntity(world) {
             }
         )
 
-        private val quadBuffer = SimpleVertexBuffer().apply {
+        private val sphereBuffer = SimpleVertexBuffer().apply {
             setVertexes(
-                ShaderUtil.genSquareUV(
-                    Vector3f(-0.5f, -0.5f, 0f),
-                    Vector3f(0.5f, -0.5f, 0f),
-                    Vector3f(0.5f, 0.5f, 0f),
-                    Vector3f(-0.5f, 0.5f, 0f)
-                ),
-                CooVertexFormat.POINT_TEXTURE_UV_FORMAT
+                ShaderUtil.genBall(1f, 32, 48),
+                CooVertexFormat.POINT_FORMAT
             )
         }
 
         private val blackHoleShader = ShaderProgramBuilder()
-            .vertex("test/vtx/billboard.vsh")
+            .vertex("test/vtx/glow_sphere.vsh")
             .fragment("test/frag/black_hole_mask.fsh")
             .build()
 
@@ -68,16 +62,15 @@ class TestBlackHoleEntity(world: Level?) : RenderEntity(world) {
         private fun initStatic() {
             if (initialized) return
             initialized = true
-            quadBuffer.init()
+            sphereBuffer.init()
             blackHoleShader.init()
         }
     }
 
-    var radius by tracked(2.4f)
+    var radius by tracked(2.8f)
     var coreRadius by tracked(0.32f)
-    var distortionStrength by tracked(0.06f)
+    var distortionStrength by tracked(0.28f)
     var ringColor by tracked(Vector3f(1.0f, 0.58f, 0.18f))
-    private val size = Vector2f()
 
     override fun initialize() {
         initStatic()
@@ -101,18 +94,20 @@ class TestBlackHoleEntity(world: Level?) : RenderEntity(world) {
         tickDelta: Float
     ) {
         RenderSystem.disableBlend()
+        RenderSystem.disableCull()
         RenderSystem.depthMask(false)
         blackHoleShader.useOnContext {
+            matrices.pushMatrix()
+            matrices.scale(radius, radius, radius)
             setMatrix4("projMat", projMatrix)
             setMatrix4("viewMat", viewMatrix)
             setMatrix4("transMat", matrices)
-            size.set(radius, radius)
-            setFloat2("size", size)
             setFloat("time", getTime(tickDelta))
             setFloat("coreRadius", coreRadius)
             setFloat("distortionStrength", distortionStrength)
             setFloat3("ringColor", ringColor)
-            quadBuffer.draw()
+            sphereBuffer.draw()
+            matrices.popMatrix()
         }
         RenderSystem.depthMask(true)
     }

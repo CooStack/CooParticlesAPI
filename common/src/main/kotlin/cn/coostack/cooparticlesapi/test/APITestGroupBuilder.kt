@@ -192,7 +192,10 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
                 }, 100)
             }.appendOption {
                 SimpleRendererEntityOption(TestGlowSphereEntity(player.level()).apply {
-                    this.setPosition(player.position())
+                    this.setPosition(player.eyePosition + player.forward * 6.0)
+                    radius = 3.1f
+                    intensity = 11.5f
+                    glowColor = org.joml.Vector3f(1.0f, 0.86f, 0.50f)
                 }, 100)
             }.appendOption {
                 SimpleRendererEntityOption(TestTexturedBeamEntity(player.level()).apply {
@@ -200,10 +203,10 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
                 }, 100)
             }.appendOption {
                 SimpleRendererEntityOption(TestBlackHoleEntity(player.level()).apply {
-                    this.setPosition(player.eyePosition + player.forward * 6.0)
-                    radius = 2.6f
-                    distortionStrength = 0.08f
-                }, 200)
+                    this.setPosition(player.eyePosition + player.forward * 8.0)
+                    radius = 3f
+                    distortionStrength =0.8f
+                }, -1)
             }.appendOption {
                 SimpleEmitterOption(TestRespawnEmitter(player.eyePosition, player.level()).apply {
                     maxTick = 200

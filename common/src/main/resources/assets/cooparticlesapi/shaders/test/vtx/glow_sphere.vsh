@@ -7,9 +7,15 @@ uniform mat4 viewMat;
 uniform mat4 transMat;
 
 out vec3 viewNormal;
+out vec3 viewPos;
+out vec3 localPos;
 
 void main() {
+    vec4 worldPos = transMat * vec4(pos, 1.0);
+    vec4 localViewPos = viewMat * worldPos;
     vec3 normal = normalize(pos);
     viewNormal = normalize(mat3(viewMat * transMat) * normal);
-    gl_Position = projMat * viewMat * transMat * vec4(pos, 1.0);
+    viewPos = localViewPos.xyz;
+    localPos = pos;
+    gl_Position = projMat * localViewPos;
 }
