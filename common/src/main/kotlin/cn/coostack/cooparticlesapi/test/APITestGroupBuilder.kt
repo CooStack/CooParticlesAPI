@@ -31,6 +31,7 @@ import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestWaveEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.event.TestCollideEventHandler
 import cn.coostack.cooparticlesapi.test.options.particle.style.RomaMagicTestStyle
 import cn.coostack.cooparticlesapi.test.options.renderer.TestBillboardSmokeEntity
+import cn.coostack.cooparticlesapi.test.options.renderer.TestBlackHoleEntity
 import cn.coostack.cooparticlesapi.test.options.renderer.TestGlowSphereEntity
 import cn.coostack.cooparticlesapi.test.options.renderer.TestRendererEntity
 import cn.coostack.cooparticlesapi.test.options.renderer.TestTexturedBeamEntity
@@ -197,6 +198,12 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
                 SimpleRendererEntityOption(TestTexturedBeamEntity(player.level()).apply {
                     this.setPosition(player.position())
                 }, 100)
+            }.appendOption {
+                SimpleRendererEntityOption(TestBlackHoleEntity(player.level()).apply {
+                    this.setPosition(player.eyePosition + player.forward * 6.0)
+                    radius = 2.6f
+                    distortionStrength = 0.08f
+                }, 200)
             }.appendOption {
                 SimpleEmitterOption(TestRespawnEmitter(player.eyePosition, player.level()).apply {
                     maxTick = 200

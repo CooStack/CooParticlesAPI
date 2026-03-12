@@ -60,6 +60,7 @@ class ShaderPipeManager(
 
     private var linkerSet = false
     private var linkerFunc: ShaderPipeManager.(PipeLinker) -> Unit = {}
+    private val beforeRenderPipe = mutableListOf<ShaderPipeManager.() -> Unit>()
 
     /**
      * 每经过一层渲染时，就会执行这个
@@ -152,6 +153,11 @@ class ShaderPipeManager(
         return this
     }
 
+    fun beforeRender(invoke: ShaderPipeManager.() -> Unit): ShaderPipeManager {
+        beforeRenderPipe.add(invoke)
+        return this
+    }
+
     /**
      * 如果没有初始化 则直接加入
      * 如果已经初始化了 则加入前先初始化
@@ -222,11 +228,16 @@ class ShaderPipeManager(
         if (valueOutput == null) {
             throw RenderPipeOutputNotSetException(pipeID)
         }
+        beforeRenderPipe.forEach {
+            it()
+        }
         inputPipe(HashSet(), valueOutput!!)
         // 绘制到当前 (公共 frame)
         if (enableBlend) {
             RenderSystem.enableBlend()
             RenderSystem.blendFunc(blendFuncSrc, blendFuncDst)
+        } else {
+            RenderSystem.disableBlend()
         }
         RenderSystem.depthMask(false)
         screenProgram.useOnContext {

@@ -5,6 +5,7 @@ import cn.coostack.cooparticlesapi.renderer.RenderEntity
 import cn.coostack.cooparticlesapi.renderer.shader.ShaderProgramBuilder
 import cn.coostack.cooparticlesapi.renderer.shader.data.CooVertexFormat
 import cn.coostack.cooparticlesapi.renderer.shader.texture.IdentifierTexture
+import cn.coostack.cooparticlesapi.renderer.shader.texture.SimpleTextures
 import cn.coostack.cooparticlesapi.renderer.shader.utils.ShaderUtil
 import cn.coostack.cooparticlesapi.renderer.shader.vertex.SimpleVertexBuffer
 import com.mojang.blaze3d.systems.RenderSystem
@@ -65,12 +66,16 @@ class TestTexturedBeamEntity(world: Level?) : RenderEntity(world) {
             .fragment("test/frag/beam.fsh")
             .build()
 
-        private val beamTexture = IdentifierTexture(
-            ResourceLocation.fromNamespaceAndPath(
-                CooParticlesConstants.MOD_ID,
-                "item/test_style.png"
+        private val beamTextures = SimpleTextures().apply {
+            addTexture(
+                IdentifierTexture(
+                    ResourceLocation.fromNamespaceAndPath(
+                        CooParticlesConstants.MOD_ID,
+                        "item/test_style.png"
+                    )
+                )
             )
-        )
+        }
 
         private var initialized = false
 
@@ -79,7 +84,7 @@ class TestTexturedBeamEntity(world: Level?) : RenderEntity(world) {
             initialized = true
             quadBuffer.init()
             beamShader.init()
-            beamTexture.init()
+            beamTextures.init()
         }
     }
 
@@ -117,10 +122,9 @@ class TestTexturedBeamEntity(world: Level?) : RenderEntity(world) {
             setFloat4("color", beamColor)
             setFloat("time", getTime(tickDelta))
             setInt("beamTex", 0)
-            glActiveTexture(GL_TEXTURE0)
-            beamTexture.useOnCurrent()
-            quadBuffer.draw()
-            beamTexture.reset()
+            beamTextures.drawWith {
+                quadBuffer.draw()
+            }
         }
         RenderSystem.depthMask(true)
         RenderSystem.defaultBlendFunc()

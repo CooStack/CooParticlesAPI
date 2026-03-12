@@ -1,8 +1,8 @@
 package cn.coostack.cooparticlesapi.renderer.client
 
-import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.exceptions.RenderPipeNotFoundException
 import cn.coostack.cooparticlesapi.renderer.RenderEntity
+import cn.coostack.cooparticlesapi.renderer.RenderEntityRenderPass
 import cn.coostack.cooparticlesapi.renderer.shader.pipe.manager.ShaderPipeManager
 import com.mojang.blaze3d.systems.RenderSystem
 import net.minecraft.client.Minecraft
@@ -18,7 +18,8 @@ import kotlin.collections.iterator
 object ClientRenderEntityManager {
     val minecraft: Minecraft = getInstance()
     private val entities = HashMap<UUID, RenderEntity>()
-    private val entitiesPipeClassifier = HashMap<ResourceLocation, HashSet<RenderEntity>>()
+    private val entitiesPipeClassifier =
+        HashMap<RenderEntityRenderPass, HashMap<ResourceLocation, HashSet<RenderEntity>>>()
 
     /**
      * key 是对应 RenderEntity的id
@@ -26,6 +27,11 @@ object ClientRenderEntityManager {
      */
     private val entityPipeType = HashMap<ResourceLocation, ResourceLocation>()
     private val entityCodecs = HashMap<ResourceLocation, StreamCodec<FriendlyByteBuf, RenderEntity>>()
+    private var postProcessPrepared = false
+
+    private fun getClassifier(pass: RenderEntityRenderPass): HashMap<ResourceLocation, HashSet<RenderEntity>> {
+        return entitiesPipeClassifier.getOrPut(pass) { HashMap() }
+    }
 
     fun init() {
     }
@@ -65,14 +71,14 @@ object ClientRenderEntityManager {
     }
 
     fun clear() {
-        entities.onEach {
-            it.value.release()
-        }.clear()
-        entitiesPipeClassifier.onEach {
-            for (entity in it.value) {
-                entity.release()
-            }
-        }.clear()
+        entities.values.forEach {
+            it.release()
+        }
+        entities.clear()
+        entitiesPipeClassifier.values.forEach {
+            it.clear()
+        }
+        postProcessPrepared = false
     }
 
     fun add(entity: RenderEntity) {
@@ -80,7 +86,7 @@ object ClientRenderEntityManager {
         entity.init()
         entities[entity.uuid] = entity
         val pipe = getPipeIDFromType(entity.getRenderID())
-        entitiesPipeClassifier.getOrPut(pipe) { HashSet() }.add(entity)
+        getClassifier(entity.getRenderPass()).getOrPut(pipe) { HashSet() }.add(entity)
     }
 
     fun getPipeIDFromType(type: ResourceLocation): ResourceLocation {
@@ -88,13 +94,55 @@ object ClientRenderEntityManager {
     }
 
     fun renderTick(tickDelta: Float, viewMatrix: Matrix4f, projMatrix: Matrix4f) {
-        val stack = Matrix4fStack(16)
-        entitiesPipeClassifier.forEach {
-            val pipeID = it.key
-            val entities = it.value
+        renderWorldPass(tickDelta, viewMatrix, projMatrix)
+    }
+
+    fun renderWorldPass(tickDelta: Float, viewMatrix: Matrix4f, projMatrix: Matrix4f) {
+        renderPass(RenderEntityRenderPass.WORLD, tickDelta, viewMatrix, projMatrix, true)
+    }
+
+    fun preparePostProcess(tickDelta: Float, viewMatrix: Matrix4f, projMatrix: Matrix4f) {
+        postProcessPrepared =
+            renderPass(RenderEntityRenderPass.POST_PROCESS, tickDelta, viewMatrix, projMatrix, false)
+    }
+
+    fun flushPostProcess() {
+        if (!postProcessPrepared) {
+            return
+        }
+        for ((pipeID, bucket) in getClassifier(RenderEntityRenderPass.POST_PROCESS)) {
+            if (bucket.isEmpty()) {
+                continue
+            }
             val pipe = ClientRenderPipelineManager.getPipeManager(pipeID) ?: let {
                 throw RenderPipeNotFoundException(pipeID)
             }
+            RenderSystem.disableDepthTest()
+            RenderSystem.depthMask(false)
+            pipe.render()
+            RenderSystem.depthMask(true)
+            RenderSystem.enableDepthTest()
+        }
+        postProcessPrepared = false
+    }
+
+    private fun renderPass(
+        pass: RenderEntityRenderPass,
+        tickDelta: Float,
+        viewMatrix: Matrix4f,
+        projMatrix: Matrix4f,
+        compositeNow: Boolean
+    ): Boolean {
+        val stack = Matrix4fStack(16)
+        var rendered = false
+        for ((pipeID, entities) in getClassifier(pass)) {
+            if (entities.isEmpty()) {
+                continue
+            }
+            val pipe = ClientRenderPipelineManager.getPipeManager(pipeID) ?: let {
+                throw RenderPipeNotFoundException(pipeID)
+            }
+            rendered = true
             pipe.updateGlobalUniform("viewMat", viewMatrix)
             pipe.updateGlobalUniform("projMat", projMatrix)
             pipe.writeFrame {
@@ -106,10 +154,13 @@ object ClientRenderEntityManager {
                     stack.popMatrix()
                 }
             }
-            RenderSystem.depthMask(false)
-            pipe.render()
-            RenderSystem.depthMask(true)
+            if (compositeNow) {
+                RenderSystem.depthMask(false)
+                pipe.render()
+                RenderSystem.depthMask(true)
+            }
         }
+        return rendered
     }
 
     fun tick() {
@@ -123,7 +174,7 @@ object ClientRenderEntityManager {
                 val targetPipe = entityPipeType[entity.getRenderID()] ?: let {
                     throw RenderPipeNotFoundException(entity.getRenderID())
                 }
-                entitiesPipeClassifier[targetPipe]?.remove(entity)
+                getClassifier(entity.getRenderPass())[targetPipe]?.remove(entity)
                 entity.release()
                 iterator.remove()
             }

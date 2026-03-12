@@ -247,6 +247,10 @@ abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) : Serv
      */
     abstract fun getRenderID(): ResourceLocation
 
+    open fun getRenderPass(): RenderEntityRenderPass {
+        return RenderEntityRenderPass.WORLD
+    }
+
     abstract fun release()
 
     override fun teleportTo(to: Vec3) {

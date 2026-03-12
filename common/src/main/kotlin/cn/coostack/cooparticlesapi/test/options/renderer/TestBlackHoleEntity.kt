@@ -2,10 +2,9 @@ package cn.coostack.cooparticlesapi.test.options.renderer
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.renderer.RenderEntity
+import cn.coostack.cooparticlesapi.renderer.RenderEntityRenderPass
 import cn.coostack.cooparticlesapi.renderer.shader.ShaderProgramBuilder
 import cn.coostack.cooparticlesapi.renderer.shader.data.CooVertexFormat
-import cn.coostack.cooparticlesapi.renderer.shader.texture.IdentifierTexture
-import cn.coostack.cooparticlesapi.renderer.shader.texture.SimpleTextures
 import cn.coostack.cooparticlesapi.renderer.shader.utils.ShaderUtil
 import cn.coostack.cooparticlesapi.renderer.shader.vertex.SimpleVertexBuffer
 import com.mojang.blaze3d.systems.RenderSystem
@@ -17,31 +16,29 @@ import org.joml.Matrix4f
 import org.joml.Matrix4fStack
 import org.joml.Vector2f
 import org.joml.Vector3f
-import org.joml.Vector4f
-import org.lwjgl.opengl.GL33.*
 
-class TestBillboardSmokeEntity(world: Level?) : RenderEntity(world) {
+class TestBlackHoleEntity(world: Level?) : RenderEntity(world) {
     companion object {
         val id: ResourceLocation = ResourceLocation.fromNamespaceAndPath(
             CooParticlesConstants.MOD_ID,
-            "test_billboard_smoke"
+            "test_black_hole"
         )
 
         val codec: StreamCodec<FriendlyByteBuf, RenderEntity> = RenderEntity.createCodec(
-            { TestBillboardSmokeEntity(null) },
+            { TestBlackHoleEntity(null) },
             { buf, entity ->
-                buf.writeFloat(entity.width)
-                buf.writeFloat(entity.height)
-                buf.writeFloat(entity.alpha)
-                buf.writeFloat(entity.smokeColor.x)
-                buf.writeFloat(entity.smokeColor.y)
-                buf.writeFloat(entity.smokeColor.z)
+                buf.writeFloat(entity.radius)
+                buf.writeFloat(entity.coreRadius)
+                buf.writeFloat(entity.distortionStrength)
+                buf.writeFloat(entity.ringColor.x)
+                buf.writeFloat(entity.ringColor.y)
+                buf.writeFloat(entity.ringColor.z)
             },
             { buf, entity ->
-                entity.width = buf.readFloat()
-                entity.height = buf.readFloat()
-                entity.alpha = buf.readFloat()
-                entity.smokeColor = Vector3f(
+                entity.radius = buf.readFloat()
+                entity.coreRadius = buf.readFloat()
+                entity.distortionStrength = buf.readFloat()
+                entity.ringColor = Vector3f(
                     buf.readFloat(),
                     buf.readFloat(),
                     buf.readFloat()
@@ -61,21 +58,10 @@ class TestBillboardSmokeEntity(world: Level?) : RenderEntity(world) {
             )
         }
 
-        private val smokeShader = ShaderProgramBuilder()
+        private val blackHoleShader = ShaderProgramBuilder()
             .vertex("test/vtx/billboard.vsh")
-            .fragment("test/frag/smoke.fsh")
+            .fragment("test/frag/black_hole_mask.fsh")
             .build()
-
-        private val smokeTextures = SimpleTextures().apply {
-            addTexture(
-                IdentifierTexture(
-                    ResourceLocation.fromNamespaceAndPath(
-                        CooParticlesConstants.MOD_ID,
-                        "test/dirt.png"
-                    )
-                )
-            )
-        }
 
         private var initialized = false
 
@@ -83,17 +69,15 @@ class TestBillboardSmokeEntity(world: Level?) : RenderEntity(world) {
             if (initialized) return
             initialized = true
             quadBuffer.init()
-            smokeShader.init()
-            smokeTextures.init()
+            blackHoleShader.init()
         }
     }
 
-    var width by tracked(1.6f)
-    var height by tracked(1.2f)
-    var alpha by tracked(0.85f)
-    var smokeColor by tracked(Vector3f(0.85f, 0.85f, 0.85f))
+    var radius by tracked(2.4f)
+    var coreRadius by tracked(0.32f)
+    var distortionStrength by tracked(0.06f)
+    var ringColor by tracked(Vector3f(1.0f, 0.58f, 0.18f))
     private val size = Vector2f()
-    private val color = Vector4f()
 
     override fun initialize() {
         initStatic()
@@ -102,6 +86,10 @@ class TestBillboardSmokeEntity(world: Level?) : RenderEntity(world) {
     override fun getCodec(): StreamCodec<FriendlyByteBuf, RenderEntity> = codec
 
     override fun getRenderID(): ResourceLocation = id
+
+    override fun getRenderPass(): RenderEntityRenderPass {
+        return RenderEntityRenderPass.POST_PROCESS
+    }
 
     override fun release() {
     }
@@ -112,25 +100,20 @@ class TestBillboardSmokeEntity(world: Level?) : RenderEntity(world) {
         projMatrix: Matrix4f,
         tickDelta: Float
     ) {
-        RenderSystem.enableBlend()
-        RenderSystem.blendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+        RenderSystem.disableBlend()
         RenderSystem.depthMask(false)
-        smokeShader.useOnContext {
+        blackHoleShader.useOnContext {
             setMatrix4("projMat", projMatrix)
             setMatrix4("viewMat", viewMatrix)
             setMatrix4("transMat", matrices)
-            size.set(width, height)
+            size.set(radius, radius)
             setFloat2("size", size)
-            color.set(smokeColor, alpha)
-            setFloat4("color", color)
             setFloat("time", getTime(tickDelta))
-            setInt("smokeTex", 0)
-            smokeTextures.drawWith {
-                quadBuffer.draw()
-            }
+            setFloat("coreRadius", coreRadius)
+            setFloat("distortionStrength", distortionStrength)
+            setFloat3("ringColor", ringColor)
+            quadBuffer.draw()
         }
         RenderSystem.depthMask(true)
-        RenderSystem.defaultBlendFunc()
-        RenderSystem.disableBlend()
     }
 }

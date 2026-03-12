@@ -1,11 +1,7 @@
 package cn.coostack.cooparticlesapi.mixin;
 
-import cn.coostack.cooparticlesapi.CooParticlesAPI;
 import cn.coostack.cooparticlesapi.CooParticlesAPIClient;
-import cn.coostack.cooparticlesapi.platform.CooParticlesServices;
 import cn.coostack.cooparticlesapi.renderer.client.ClientRenderEntityManager;
-import com.mojang.blaze3d.systems.RenderSystem;
-import net.irisshaders.iris.api.v0.IrisApi;
 import net.minecraft.client.Camera;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -14,10 +10,8 @@ import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.LightTexture;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix4f;
-import org.joml.Matrix4fStack;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
-import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -50,7 +44,7 @@ public class LevelRendererMixin {
         CooParticlesAPIClient.initShaderPrograms();
         boolean shouldTick = level.tickRateManager().runsNormally();
         float tickDelta = deltaTracker.getGameTimeDeltaPartialTick(!shouldTick);
-        ClientRenderEntityManager.INSTANCE.renderTick(tickDelta, frustumMatrix, projectionMatrix);
+        ClientRenderEntityManager.INSTANCE.renderWorldPass(tickDelta, frustumMatrix, projectionMatrix);
     }
 
     @Inject(method = "renderLevel", at = @At("RETURN"))
@@ -63,21 +57,15 @@ public class LevelRendererMixin {
                              Matrix4f projectionMatrix,
                              CallbackInfo info) {
 
-        boolean irisLoaded = CooParticlesAPIClient.irisLoaded;
-        if (!CooParticlesAPIClient.checkIrisShaderPackUsed()) {
-            return;
-        }
-        if (!irisLoaded) {
-            return;
-        }
         if (level == null) {
             return;
         }
         CooParticlesAPIClient.initShaderPrograms();
         boolean shouldTick = level.tickRateManager().runsNormally();
         float tickDelta = deltaTracker.getGameTimeDeltaPartialTick(!shouldTick);
-        ClientRenderEntityManager.INSTANCE.renderTick(tickDelta, frustumMatrix, projectionMatrix);
+        if (CooParticlesAPIClient.checkIrisShaderPackUsed()) {
+            ClientRenderEntityManager.INSTANCE.renderWorldPass(tickDelta, frustumMatrix, projectionMatrix);
+        }
+        ClientRenderEntityManager.INSTANCE.preparePostProcess(tickDelta, frustumMatrix, projectionMatrix);
     }
-
-
 }
