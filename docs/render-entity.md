@@ -218,6 +218,30 @@ override fun shouldSync(): Boolean {
 - `release()`：客户端镜像被移除时执行
 - `renderOnWorld(...)`：管理器调用的统一入口，会更新 `lastRenderPos`、设置基础渲染状态，再转入子类 `render(...)`
 
+### 6.1 共享 pipe 输入混合模式
+
+从现在开始，`RenderEntity` 额外暴露了 `getInputBlendMode()`：
+
+- 默认是 `RenderEntityInputBlendMode.REPLACE`
+- 如果多个实体共享同一个 glow / bloom / emissive mask pipe，并且希望输入能叠加，应覆盖成 `RenderEntityInputBlendMode.ADDITIVE`
+
+典型写法：
+
+```kotlin
+override fun getInputBlendMode(): RenderEntityInputBlendMode {
+    return RenderEntityInputBlendMode.ADDITIVE
+}
+```
+
+这解决的是“多个 RenderEntity 共用同一个 pipe 输入 FBO 时，后绘制实体把前一个实体覆盖掉”的 API 空洞。
+
+注意两点：
+
+- `getInputBlendMode()` 只负责给 `render(...)` 设置进入时的默认 blend 状态
+- 如果你在 `render(...)` 里再次手动 `disableBlend()` 或改别的 blendFunc，那么以你手动设置为准
+
+因此，对 glow sphere 这一类需要多实例共同写入共享 mask 的实体，不应在 `render(...)` 开头再次强制关闭 blend。
+
 所以子类通常不应该自己调用 `renderOnWorld(...)`。
 你真正需要实现的是 `render(...)`，而 `renderOnWorld(...)` 属于 manager 和框架内部的调度层。
 

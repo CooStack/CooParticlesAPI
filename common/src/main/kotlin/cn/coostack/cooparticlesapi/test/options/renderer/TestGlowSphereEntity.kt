@@ -2,6 +2,7 @@ package cn.coostack.cooparticlesapi.test.options.renderer
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.renderer.RenderEntity
+import cn.coostack.cooparticlesapi.renderer.RenderEntityInputBlendMode
 import cn.coostack.cooparticlesapi.renderer.RenderEntityRenderPass
 import cn.coostack.cooparticlesapi.renderer.glow.BrightSourceOrbProfile
 import cn.coostack.cooparticlesapi.renderer.glow.DistanceAdaptiveGlow
@@ -125,6 +126,10 @@ class TestGlowSphereEntity(world: Level?) : RenderEntity(world), WorldLightProvi
         return RenderEntityRenderPass.POST_PROCESS
     }
 
+    override fun getInputBlendMode(): RenderEntityInputBlendMode {
+        return RenderEntityInputBlendMode.ADDITIVE
+    }
+
     override fun release() {
     }
 
@@ -199,7 +204,6 @@ class TestGlowSphereEntity(world: Level?) : RenderEntity(world), WorldLightProvi
         val compensation = computeOrbCompensation(blend.projectedRadiusPx)
         val sourceProfile = createSourceProfile(blend.projectedRadiusPx)
 
-        RenderSystem.disableBlend()
         RenderSystem.enableCull()
         RenderSystem.depthMask(false)
         glowShader.useOnContext {

@@ -15,6 +15,7 @@ import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
 import org.joml.Matrix4f
 import org.joml.Matrix4fStack
+import org.lwjgl.opengl.GL33.GL_ONE
 import java.util.UUID
 import kotlin.properties.ReadWriteProperty
 import kotlin.reflect.KProperty
@@ -399,6 +400,17 @@ abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) : Serv
     }
 
     /**
+     * 控制当前实体写入共享 pipe 输入目标时的混合模式。
+     *
+     * 默认使用 `REPLACE`，保持旧行为。
+     * 如果多个实体共享同一个 glow / bloom pipe，并且希望输入 mask 可以叠加，
+     * 则应覆盖为 `ADDITIVE`，同时避免在 `render(...)` 内再次强制关闭 blend。
+     */
+    open fun getInputBlendMode(): RenderEntityInputBlendMode {
+        return RenderEntityInputBlendMode.REPLACE
+    }
+
+    /**
      * 客户端镜像被移除时的资源释放钩子。
      */
     abstract fun release()
@@ -462,7 +474,30 @@ abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) : Serv
         lastRenderPos = pos
         RenderSystem.disableCull()
         RenderSystem.enableDepthTest()
-        render(matrices, viewMatrix, projMatrix, tickDelta)
+        RenderSystem.depthMask(true)
+        applyInputBlendMode()
+        runCatching {
+            render(matrices, viewMatrix, projMatrix, tickDelta)
+        }
+        RenderSystem.defaultBlendFunc()
+        RenderSystem.disableBlend()
+        RenderSystem.depthMask(true)
+        RenderSystem.enableDepthTest()
+        RenderSystem.disableCull()
+    }
+
+    private fun applyInputBlendMode() {
+        when (getInputBlendMode()) {
+            RenderEntityInputBlendMode.REPLACE -> {
+                RenderSystem.defaultBlendFunc()
+                RenderSystem.disableBlend()
+            }
+
+            RenderEntityInputBlendMode.ADDITIVE -> {
+                RenderSystem.enableBlend()
+                RenderSystem.blendFunc(GL_ONE, GL_ONE)
+            }
+        }
     }
 
     /**

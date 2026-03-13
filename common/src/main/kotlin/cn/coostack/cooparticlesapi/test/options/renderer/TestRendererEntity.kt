@@ -2,6 +2,7 @@ package cn.coostack.cooparticlesapi.test.options.renderer
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.renderer.RenderEntity
+import cn.coostack.cooparticlesapi.renderer.RenderEntityInputBlendMode
 import cn.coostack.cooparticlesapi.renderer.glow.DistanceAdaptiveGlow
 import cn.coostack.cooparticlesapi.renderer.glow.ScreenGlow
 import cn.coostack.cooparticlesapi.renderer.glow.ScreenGlowContextProvider
@@ -82,6 +83,10 @@ class TestRendererEntity(world: Level?) : RenderEntity(world), ScreenGlowContext
 
     override fun getRenderID(): ResourceLocation {
         return id
+    }
+
+    override fun getInputBlendMode(): RenderEntityInputBlendMode {
+        return RenderEntityInputBlendMode.ADDITIVE
     }
 
     override fun release() {
