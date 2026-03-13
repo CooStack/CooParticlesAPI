@@ -22,21 +22,38 @@ class SimpleShaderProgram(override var vertexShader: GlShader, override var frag
     }
 
     override fun use() {
+        if (program <= 0 || !glIsProgram(program)) {
+            prevProgram = 0
+            glUseProgram(0)
+            return
+        }
         prevProgram = glGetInteger(GL_CURRENT_PROGRAM)
         glUseProgram(program)
     }
 
     override fun reset() {
-        glUseProgram(prevProgram)
+        if (prevProgram > 0 && glIsProgram(prevProgram)) {
+            glUseProgram(prevProgram)
+        } else {
+            glUseProgram(0)
+        }
     }
 
     override fun release() {
         if (program > 0) {
+            if (glGetInteger(GL_CURRENT_PROGRAM) == program) {
+                glUseProgram(0)
+            }
             glDeleteProgram(program)
+            program = 0
+            prevProgram = 0
         }
     }
 
     override fun useOnContext(drawMethod: CooShaderProgram.() -> Unit) {
+        if (program <= 0 || !glIsProgram(program)) {
+            return
+        }
         use()
         drawMethod()
         reset()

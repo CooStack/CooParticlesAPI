@@ -37,6 +37,20 @@ object TestShaderPipelines {
         )
     }
 
+    private fun createAccretionInputPipe(): SimpleShaderPipe {
+        return SimpleShaderPipe(
+            IdentifierShader(
+                ResourceLocation.fromNamespaceAndPath(
+                    CooParticlesConstants.MOD_ID,
+                    "pipe/frags/screen.fsh"
+                ),
+                GlShaderType.FRAGMENT
+            ),
+            Supplier { minecraft.mainRenderTarget.depthTextureId },
+            3
+        )
+    }
+
     val blackHoleDistortion = ShaderPipeManager(
         ResourceLocation.fromNamespaceAndPath(
             CooParticlesConstants.MOD_ID,
@@ -76,6 +90,76 @@ object TestShaderPipelines {
         }
     }
 
+    val accretionDiskDistortion = ShaderPipeManager(
+        ResourceLocation.fromNamespaceAndPath(
+            CooParticlesConstants.MOD_ID,
+            "test_accretion_disk_distortion"
+        )
+    ).apply {
+        enableBlend = false
+
+        val input = createAccretionInputPipe()
+        val sceneCopyPipe = createSceneCopyPipe()
+        val glowBlur = addPipe(
+            PingPongShaderPipe(
+                IdentifierShader(
+                    ResourceLocation.fromNamespaceAndPath(
+                        CooParticlesConstants.MOD_ID,
+                        "core/bloom/blur.fsh"
+                    ),
+                    GlShaderType.FRAGMENT
+                ),
+                Supplier { -1 },
+                1,
+                8,
+                GL33.GL_LINEAR
+            ).addRenderHandlerPong { program ->
+                program.setInt("bright", 0)
+                program.setFloat("sigma", 20.0f)
+                program.setFloat("range", 14.0f)
+                program.setBoolean("horizontal", true)
+            }.addRenderHandler { program ->
+                program.setInt("bright", 0)
+                program.setFloat("sigma", 20.0f)
+                program.setFloat("range", 14.0f)
+                program.setBoolean("horizontal", false)
+            }
+        )
+        valueInput(input)
+        val sceneCopy = addPipe(sceneCopyPipe)
+        valueOutput(
+            SimpleShaderPipe(
+                IdentifierShader(
+                    ResourceLocation.fromNamespaceAndPath(
+                        CooParticlesConstants.MOD_ID,
+                        "test/frag/accretion_disk_composite.fsh"
+                    ),
+                    GlShaderType.FRAGMENT
+                ),
+                Supplier { minecraft.mainRenderTarget.depthTextureId }
+            ).addRenderHandler { program ->
+                program.setInt("glowMask", 0)
+                program.setInt("distortionMask", 1)
+                program.setInt("sceneLightMask", 2)
+                program.setInt("sceneTex", 3)
+                program.setInt("blurredGlow", 4)
+                program.setInt("sceneDepth", 5)
+            }
+        )
+
+        beforeRender {
+            sceneCopyPipe.capture()
+        }
+        setLinkerFunc { linker ->
+            linker.from(input, 0).to(valueOutput!!, 0)
+            linker.from(input, 1).to(valueOutput!!, 1)
+            linker.from(input, 2).to(valueOutput!!, 2)
+            linker.from(sceneCopy, 0).to(valueOutput!!, 3)
+            linker.from(input, 0).to(glowBlur, 0)
+            linker.from(glowBlur, 0).to(valueOutput!!, 4)
+        }
+    }
+
     val glowSphereDistortion = ShaderPipeManager(
         ResourceLocation.fromNamespaceAndPath(
             CooParticlesConstants.MOD_ID,
@@ -99,17 +183,17 @@ object TestShaderPipelines {
                 ),
                 Supplier { -1 },
                 1,
-                4,
+                8,
                 GL33.GL_LINEAR
             ).addRenderHandlerPong { program ->
                 program.setInt("bright", 0)
-                program.setFloat("sigma", 7.5f)
-                program.setFloat("range", 4.2f)
+                program.setFloat("sigma", 22.0f)
+                program.setFloat("range", 16.0f)
                 program.setBoolean("horizontal", true)
             }.addRenderHandler { program ->
                 program.setInt("bright", 0)
-                program.setFloat("sigma", 7.5f)
-                program.setFloat("range", 4.2f)
+                program.setFloat("sigma", 22.0f)
+                program.setFloat("range", 16.0f)
                 program.setBoolean("horizontal", false)
             }
         )
@@ -122,12 +206,13 @@ object TestShaderPipelines {
                     ),
                     GlShaderType.FRAGMENT
                 ),
-                Supplier { -1 }
+                Supplier { minecraft.mainRenderTarget.depthTextureId }
             ).addRenderHandler { program ->
                 program.setInt("glowMask", 0)
                 program.setInt("distortionMask", 1)
                 program.setInt("sceneTex", 2)
                 program.setInt("blurredGlow", 3)
+                program.setInt("sceneDepth", 4)
             }
         )
 

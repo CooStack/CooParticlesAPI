@@ -75,4 +75,8 @@ class GraphPipeLinker : PipeLinker {
             it.value.contains(target) // target 已经被某人链接了
         }
     }
+
+    fun clear() {
+        pipeQueue.clear()
+    }
 }

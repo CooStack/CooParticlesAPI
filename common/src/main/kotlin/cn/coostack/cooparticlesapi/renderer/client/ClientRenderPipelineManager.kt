@@ -23,6 +23,7 @@ object ClientRenderPipelineManager {
     }
 
     fun init() {
+        initialized = true
         for (manager in registerPipeLines.values) {
             manager.depthSupplier = Supplier {
                 minecraft.mainRenderTarget.depthTextureId
@@ -33,9 +34,10 @@ object ClientRenderPipelineManager {
     }
 
     fun release() {
-        registerPipeLines.onEach {
+        initialized = false
+        registerPipeLines.forEach {
             it.value.release()
-        }.clear()
+        }
     }
 
 

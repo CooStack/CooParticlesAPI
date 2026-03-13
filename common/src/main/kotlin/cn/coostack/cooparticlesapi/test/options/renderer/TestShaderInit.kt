@@ -8,6 +8,7 @@ object TestShaderInit {
     @JvmStatic
     fun initOnClient() {
         ClientRenderPipelineManager.register(TestShaderPipelines.blackHoleDistortion)
+        ClientRenderPipelineManager.register(TestShaderPipelines.accretionDiskDistortion)
         ClientRenderPipelineManager.register(TestShaderPipelines.glowSphereDistortion)
         ClientRenderEntityManager.register(
             TestRendererEntity.id,
@@ -17,6 +18,11 @@ object TestShaderInit {
         ClientRenderEntityManager.register(
             TestTexturedBeamEntity.id,
             TestTexturedBeamEntity.codec,
+            ShaderPipeManagers.simpleBloom.pipeID
+        )
+        ClientRenderEntityManager.register(
+            TestHybridGlowPipeEntity.id,
+            TestHybridGlowPipeEntity.codec,
             ShaderPipeManagers.simpleBloom.pipeID
         )
         ClientRenderEntityManager.register(
@@ -30,9 +36,19 @@ object TestShaderInit {
             TestShaderPipelines.glowSphereDistortion.pipeID
         )
         ClientRenderEntityManager.register(
+            TestPersistentGlowSphereEntity.id,
+            TestPersistentGlowSphereEntity.codec,
+            TestShaderPipelines.glowSphereDistortion.pipeID
+        )
+        ClientRenderEntityManager.register(
             TestBlackHoleEntity.id,
             TestBlackHoleEntity.codec,
             TestShaderPipelines.blackHoleDistortion.pipeID
+        )
+        ClientRenderEntityManager.register(
+            TestAccretionDiskEntity.id,
+            TestAccretionDiskEntity.codec,
+            TestShaderPipelines.accretionDiskDistortion.pipeID
         )
     }
 

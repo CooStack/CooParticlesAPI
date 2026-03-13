@@ -29,6 +29,12 @@ class TestBlackHoleEntity(world: Level?) : RenderEntity(world) {
                 buf.writeFloat(entity.radius)
                 buf.writeFloat(entity.coreRadius)
                 buf.writeFloat(entity.distortionStrength)
+                buf.writeFloat(entity.diskNormal.x)
+                buf.writeFloat(entity.diskNormal.y)
+                buf.writeFloat(entity.diskNormal.z)
+                buf.writeFloat(entity.diskThickness)
+                buf.writeFloat(entity.diskWidth)
+                buf.writeFloat(entity.spinSpeed)
                 buf.writeFloat(entity.ringColor.x)
                 buf.writeFloat(entity.ringColor.y)
                 buf.writeFloat(entity.ringColor.z)
@@ -37,6 +43,14 @@ class TestBlackHoleEntity(world: Level?) : RenderEntity(world) {
                 entity.radius = buf.readFloat()
                 entity.coreRadius = buf.readFloat()
                 entity.distortionStrength = buf.readFloat()
+                entity.diskNormal = Vector3f(
+                    buf.readFloat(),
+                    buf.readFloat(),
+                    buf.readFloat()
+                )
+                entity.diskThickness = buf.readFloat()
+                entity.diskWidth = buf.readFloat()
+                entity.spinSpeed = buf.readFloat()
                 entity.ringColor = Vector3f(
                     buf.readFloat(),
                     buf.readFloat(),
@@ -47,13 +61,13 @@ class TestBlackHoleEntity(world: Level?) : RenderEntity(world) {
 
         private val sphereBuffer = SimpleVertexBuffer().apply {
             setVertexes(
-                ShaderUtil.genBall(1f, 32, 48),
+                ShaderUtil.genBall(1f, 96, 144),
                 CooVertexFormat.POINT_FORMAT
             )
         }
 
         private val blackHoleShader = ShaderProgramBuilder()
-            .vertex("test/vtx/glow_sphere.vsh")
+            .vertex("test/vtx/world_sphere.vsh")
             .fragment("test/frag/black_hole_mask.fsh")
             .build()
 
@@ -65,11 +79,21 @@ class TestBlackHoleEntity(world: Level?) : RenderEntity(world) {
             sphereBuffer.init()
             blackHoleShader.init()
         }
+
+        fun reloadStaticResources() {
+            sphereBuffer.release()
+            blackHoleShader.release()
+            initialized = false
+        }
     }
 
     var radius by tracked(2.8f)
     var coreRadius by tracked(0.32f)
     var distortionStrength by tracked(0.28f)
+    var diskNormal by tracked(Vector3f(0f, 1f, 0f))
+    var diskThickness by tracked(0.12f)
+    var diskWidth by tracked(0.42f)
+    var spinSpeed by tracked(1.2f)
     var ringColor by tracked(Vector3f(1.0f, 0.58f, 0.18f))
 
     override fun initialize() {
@@ -105,6 +129,10 @@ class TestBlackHoleEntity(world: Level?) : RenderEntity(world) {
             setFloat("time", getTime(tickDelta))
             setFloat("coreRadius", coreRadius)
             setFloat("distortionStrength", distortionStrength)
+            setFloat3("diskNormal", diskNormal)
+            setFloat("diskThickness", diskThickness)
+            setFloat("diskWidth", diskWidth)
+            setFloat("spinSpeed", spinSpeed)
             setFloat3("ringColor", ringColor)
             sphereBuffer.draw()
             matrices.popMatrix()

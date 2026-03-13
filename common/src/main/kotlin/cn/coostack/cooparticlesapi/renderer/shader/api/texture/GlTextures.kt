@@ -11,6 +11,9 @@ interface GlTextures {
 
     fun init()
 
+    fun release() {
+    }
+
     fun use()
 
     fun reset()

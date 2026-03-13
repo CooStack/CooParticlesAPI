@@ -41,6 +41,10 @@ void main() {
         sceneTex,
         clamp(screen_uv + bend * (1.40 + edge * 0.90) - tangent * (0.032 + coverage * 0.016), vec2(0.001), vec2(0.999))
     ).rgb;
+    vec3 stretched = texture(
+        sceneTex,
+        clamp(screen_uv + bend * (2.05 + edge * 1.05), vec2(0.001), vec2(0.999))
+    ).rgb;
     vec3 farField = texture(
         sceneTex,
         clamp(screen_uv + bend * (1.95 + edge * 1.10), vec2(0.001), vec2(0.999))
@@ -53,16 +57,19 @@ void main() {
         + inward * 0.08
         + orbitA * 0.16
         + orbitB * 0.16
-        + farField * 0.06;
-    float lensMix = clamp(coverage * (0.66 + edge * 0.72) + bendAmount * 4.2, 0.0, 1.0);
+        + stretched * 0.08
+        + farField * 0.08;
+    float lensMix = clamp(coverage * (0.60 + edge * 0.62) + bendAmount * 3.8, 0.0, 1.0);
+    float caustic = clamp(coverage * (0.16 + edge * 0.14) + bendAmount * 1.15, 0.0, 1.0);
     vec3 color = mix(scene, bentLight, lensMix);
-    color += (bentLight - scene) * coverage * (0.08 + edge * 0.12);
-    color = mix(color, color * 0.002, clamp(hole.a, 0.0, 1.0));
+    color += (bentLight - scene) * caustic * 0.10;
+    color = mix(color, color * 0.0005, clamp(hole.a + darkness * 0.64, 0.0, 1.0));
 
     float ring = max(max(hole.r, hole.g), hole.b);
-    color += hole.rgb * (1.55 + edge * 2.60);
-    color += bentLight * ring * (0.10 + edge * 0.22);
-    color -= vec3(0.02, 0.015, 0.01) * clamp(hole.a * coverage * 0.8, 0.0, 1.0);
+    color += hole.rgb * (1.42 + edge * 2.20);
+    color += bentLight * ring * (0.10 + edge * 0.18);
+    color += vec3(1.0, 0.98, 0.96) * ring * coverage * 0.08;
+    color -= vec3(0.012, 0.01, 0.008) * clamp(hole.a * coverage * 0.6, 0.0, 1.0);
 
     FragColor = vec4(color, 1.0);
 }

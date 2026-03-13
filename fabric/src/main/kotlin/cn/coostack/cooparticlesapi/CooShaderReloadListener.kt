@@ -24,7 +24,7 @@ object CooShaderReloadListener : SimpleResourceReloadListener<Unit> {
         executor: Executor
     ): CompletableFuture<Void?> {
         return CompletableFuture.runAsync({
-            MCShaders.init(p1)
+            CooShaderReloadSupport.reload(p1)
         }, executor)
     }
 

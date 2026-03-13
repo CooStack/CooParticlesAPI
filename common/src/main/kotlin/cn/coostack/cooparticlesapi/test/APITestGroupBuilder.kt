@@ -31,8 +31,9 @@ import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestWaveEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.event.TestCollideEventHandler
 import cn.coostack.cooparticlesapi.test.options.particle.style.RomaMagicTestStyle
 import cn.coostack.cooparticlesapi.test.options.renderer.TestBillboardSmokeEntity
+import cn.coostack.cooparticlesapi.test.options.renderer.TestAccretionDiskEntity
 import cn.coostack.cooparticlesapi.test.options.renderer.TestBlackHoleEntity
-import cn.coostack.cooparticlesapi.test.options.renderer.TestGlowSphereEntity
+import cn.coostack.cooparticlesapi.test.options.renderer.TestPersistentGlowSphereEntity
 import cn.coostack.cooparticlesapi.test.options.renderer.TestRendererEntity
 import cn.coostack.cooparticlesapi.test.options.renderer.TestTexturedBeamEntity
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
@@ -77,7 +78,7 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
             }.appendOption {
                 SimpleRendererEntityOption(TestRendererEntity(player.level()).apply {
                     this.setPosition(player.position())
-                }, 100)
+                }, -1)
             }.appendOption {
                 SimpleDisplayEntityOption(
                     TestBlockDisplayEntity(player.eyePosition, player.level()), 200
@@ -189,23 +190,53 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
             }.appendOption {
                 SimpleRendererEntityOption(TestBillboardSmokeEntity(player.level()).apply {
                     this.setPosition(player.position())
-                }, 100)
+                }, -1)
             }.appendOption {
-                SimpleRendererEntityOption(TestGlowSphereEntity(player.level()).apply {
+                SimpleRendererEntityOption(TestPersistentGlowSphereEntity(player.level()).apply {
                     this.setPosition(player.eyePosition + player.forward * 6.0)
-                    radius = 3.1f
-                    intensity = 11.5f
-                    glowColor = org.joml.Vector3f(1.0f, 0.86f, 0.50f)
-                }, 100)
+                    radius = 3.8f
+                    intensity = 8.2f
+                    haloIntensity = 4.1f
+                    haloRadiusScale = 1.46f
+                    fresnelStrength = 0.82f
+                    distanceCompensation = 1.0f
+                    animationSpeed = 0.92f
+                    overbrightClamp = 8.4f
+                    glowColor = org.joml.Vector3f(0.82f, 0.94f, 1.08f)
+                }, -1)
             }.appendOption {
                 SimpleRendererEntityOption(TestTexturedBeamEntity(player.level()).apply {
                     this.setPosition(player.position())
-                }, 100)
+                }, -1)
+            }.appendOption {
+                SimpleRendererEntityOption(TestAccretionDiskEntity(player.level()).apply {
+                    this.setPosition(player.eyePosition + player.forward * 8.0)
+                    radius = 12.8f
+                    schwarzschildRadius = 0.92f
+                    diskInnerRadius = 2.9f
+                    diskOuterRadius = 7.8f
+                    diskHalfThickness = 0.30f
+                    diskTemperatureScale = 9600.0f
+                    lensingStrength = 1.08f
+                    spinSpeed = 0.92f
+                    stepCount = 168
+                    maxDistance = 34.0f
+                    diskDensity = 4.6f
+                    diskEmissionStrength = 2.35f
+                    diskNormal = org.joml.Vector3f(0.0f, 0.42f, 0.91f)
+                    diskColor = org.joml.Vector3f(1.18f, 1.06f, 0.78f)
+                }, -1)
             }.appendOption {
                 SimpleRendererEntityOption(TestBlackHoleEntity(player.level()).apply {
                     this.setPosition(player.eyePosition + player.forward * 8.0)
-                    radius = 3f
-                    distortionStrength =0.8f
+                    radius = 3.6f
+                    distortionStrength = 1.34f
+                    diskNormal = org.joml.Vector3f(0.0f, 0.42f, 0.91f)
+                    diskThickness = 0.05f
+                    diskWidth = 0.82f
+                    spinSpeed = 0.76f
+                    coreRadius = 0.22f
+                    ringColor = org.joml.Vector3f(0.92f, 0.66f, 0.28f)
                 }, -1)
             }.appendOption {
                 SimpleEmitterOption(TestRespawnEmitter(player.eyePosition, player.level()).apply {

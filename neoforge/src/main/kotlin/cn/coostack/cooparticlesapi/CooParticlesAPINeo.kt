@@ -11,6 +11,7 @@ import net.minecraft.core.registries.BuiltInRegistries
 import net.neoforged.fml.ModList
 import net.neoforged.fml.common.Mod
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent
+import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent
 import net.neoforged.neoforge.registries.RegisterEvent
 import thedarkcolour.kotlinforforge.neoforge.forge.MOD_BUS
 
@@ -19,6 +20,7 @@ object CooParticlesAPINeo {
     init {
         MOD_BUS.addListener(::onCommon)
         MOD_BUS.addListener(::onRegistryRegister)
+        MOD_BUS.addListener(::onRegisterClientReloadListeners)
         CooParticlesConstants.logger.info("Listener registered on CooParticlesNeo Initialize")
         CooParticlesAPI.init()
         CooItemNeoForge.reg(MOD_BUS)
@@ -60,6 +62,10 @@ object CooParticlesAPINeo {
                 it.register(type.id, type.get())
             }
         }
+    }
+
+    fun onRegisterClientReloadListeners(event: RegisterClientReloadListenersEvent) {
+        event.registerReloadListener(CooShaderReloadListenerNeo)
     }
 
 

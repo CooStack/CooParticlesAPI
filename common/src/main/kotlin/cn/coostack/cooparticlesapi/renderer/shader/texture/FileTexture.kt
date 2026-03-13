@@ -30,6 +30,13 @@ class FileTexture(val path: String) : GlTexture {
         reset()
     }
 
+    override fun release() {
+        if (textureID > 0) {
+            glDeleteTextures(textureID)
+            textureID = 0
+        }
+    }
+
     override fun useOnCurrent() {
         lastTextureID = glGetInteger(GL_TEXTURE_BINDING_2D)
         glBindTexture(GL_TEXTURE_2D, textureID)

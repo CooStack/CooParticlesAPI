@@ -35,15 +35,16 @@ public class LevelRendererMixin {
                                    Matrix4f projectionMatrix,
                                    CallbackInfo info) {
 
-        if (CooParticlesAPIClient.checkIrisShaderPackUsed()) {
-            return;
-        }
         if (level == null) {
             return;
         }
         CooParticlesAPIClient.initShaderPrograms();
         boolean shouldTick = level.tickRateManager().runsNormally();
         float tickDelta = deltaTracker.getGameTimeDeltaPartialTick(!shouldTick);
+        ClientRenderEntityManager.INSTANCE.cacheFrameState(tickDelta, frustumMatrix, projectionMatrix);
+        if (CooParticlesAPIClient.checkIrisShaderPackUsed()) {
+            return;
+        }
         ClientRenderEntityManager.INSTANCE.renderWorldPass(tickDelta, frustumMatrix, projectionMatrix);
     }
 
@@ -63,10 +64,10 @@ public class LevelRendererMixin {
         CooParticlesAPIClient.initShaderPrograms();
         boolean shouldTick = level.tickRateManager().runsNormally();
         float tickDelta = deltaTracker.getGameTimeDeltaPartialTick(!shouldTick);
+        ClientRenderEntityManager.INSTANCE.cacheFrameState(tickDelta, frustumMatrix, projectionMatrix);
         if (CooParticlesAPIClient.checkIrisShaderPackUsed()) {
             ClientRenderEntityManager.INSTANCE.renderWorldPass(tickDelta, frustumMatrix, projectionMatrix);
         }
         ClientRenderEntityManager.INSTANCE.preparePostProcess(tickDelta, frustumMatrix, projectionMatrix);
-        ClientRenderEntityManager.INSTANCE.flushPostProcess();
     }
 }

@@ -28,6 +28,10 @@ object ClientRenderEntityManager {
     private val entityPipeType = HashMap<ResourceLocation, ResourceLocation>()
     private val entityCodecs = HashMap<ResourceLocation, StreamCodec<FriendlyByteBuf, RenderEntity>>()
     private var postProcessPrepared = false
+    private var frameStatePrepared = false
+    private var cachedTickDelta = 0f
+    private val cachedViewMatrix = Matrix4f()
+    private val cachedProjMatrix = Matrix4f()
 
     private fun getClassifier(pass: RenderEntityRenderPass): LinkedHashMap<ResourceLocation, LinkedHashSet<RenderEntity>> {
         return entitiesPipeClassifier.getOrPut(pass) { LinkedHashMap() }
@@ -79,6 +83,27 @@ object ClientRenderEntityManager {
             it.clear()
         }
         postProcessPrepared = false
+        frameStatePrepared = false
+        cachedTickDelta = 0f
+        cachedViewMatrix.identity()
+        cachedProjMatrix.identity()
+        ClientPersistentBloomManager.clear()
+        ClientScreenGlowManager.clear()
+        ClientWorldLightManager.clear()
+    }
+
+    fun onShaderReload() {
+        postProcessPrepared = false
+        frameStatePrepared = false
+        cachedTickDelta = 0f
+        cachedViewMatrix.identity()
+        cachedProjMatrix.identity()
+        ClientPersistentBloomManager.clear()
+        ClientScreenGlowManager.clear()
+        entities.values.forEach { entity ->
+            entity.init = false
+            entity.init()
+        }
     }
 
     fun add(entity: RenderEntity) {
@@ -101,9 +126,43 @@ object ClientRenderEntityManager {
         renderPass(RenderEntityRenderPass.WORLD, tickDelta, viewMatrix, projMatrix, true)
     }
 
+    fun renderWorldLighting(tickDelta: Float, viewMatrix: Matrix4f, projMatrix: Matrix4f) {
+        ClientWorldLightManager.render(entities.values, tickDelta, viewMatrix, projMatrix)
+    }
+
+    fun renderScreenGlows(tickDelta: Float, viewMatrix: Matrix4f, projMatrix: Matrix4f) {
+        ClientScreenGlowManager.render(entities.values, tickDelta, viewMatrix, projMatrix)
+    }
+
+    fun renderPersistentBlooms(tickDelta: Float, viewMatrix: Matrix4f, projMatrix: Matrix4f) {
+        ClientPersistentBloomManager.render(entities.values, tickDelta, viewMatrix, projMatrix)
+    }
+
+    fun cacheFrameState(tickDelta: Float, viewMatrix: Matrix4f, projMatrix: Matrix4f) {
+        cachedTickDelta = tickDelta
+        cachedViewMatrix.set(viewMatrix)
+        cachedProjMatrix.set(projMatrix)
+        frameStatePrepared = true
+    }
+
     fun preparePostProcess(tickDelta: Float, viewMatrix: Matrix4f, projMatrix: Matrix4f) {
         postProcessPrepared =
             renderPass(RenderEntityRenderPass.POST_PROCESS, tickDelta, viewMatrix, projMatrix, false)
+    }
+
+    fun flushFrameComposites() {
+        if (frameStatePrepared) {
+            renderWorldLighting(cachedTickDelta, cachedViewMatrix, cachedProjMatrix)
+        }
+        flushPostProcess()
+        if (frameStatePrepared) {
+            renderPersistentBlooms(cachedTickDelta, cachedViewMatrix, cachedProjMatrix)
+        }
+        if (frameStatePrepared) {
+            renderScreenGlows(cachedTickDelta, cachedViewMatrix, cachedProjMatrix)
+        }
+        frameStatePrepared = false
+        cachedTickDelta = 0f
     }
 
     fun flushPostProcess() {

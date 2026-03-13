@@ -253,6 +253,10 @@ class ShaderPipeManager(
         pipes.forEach {
             it.release()
         }
+        screenProgram.release()
+        screenBuffer.release()
+        linker.clear()
+        initialized = false
     }
 
     fun resize(width: Int, height: Int) {

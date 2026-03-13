@@ -64,6 +64,21 @@ interface CooShaderProgram {
         glUniform4f(glLocation, value.x, value.y, value.z, value.w)
     }
 
+    fun setFloatArray(key: String, value: FloatArray) {
+        val glLocation = getArrayLocation(key) ?: return
+        glUniform1fv(glLocation, value)
+    }
+
+    fun setFloat3Array(key: String, value: FloatArray) {
+        val glLocation = getArrayLocation(key) ?: return
+        glUniform3fv(glLocation, value)
+    }
+
+    fun setFloat4Array(key: String, value: FloatArray) {
+        val glLocation = getArrayLocation(key) ?: return
+        glUniform4fv(glLocation, value)
+    }
+
     fun setMatrix4(key: String, value: Matrix4f) {
         val glLocation = getGlLocation(key) ?: return
         glUniformMatrix4fv(glLocation, false, value.get(BufferUtils.createFloatBuffer(16)))
@@ -93,5 +108,9 @@ interface CooShaderProgram {
         val location = glGetUniformLocation(program, key)
         if (location == -1) return null
         return location
+    }
+
+    private fun getArrayLocation(key: String): Int? {
+        return getGlLocation("$key[0]") ?: getGlLocation(key)
     }
 }

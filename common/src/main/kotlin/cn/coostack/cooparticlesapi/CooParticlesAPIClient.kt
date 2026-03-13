@@ -10,7 +10,10 @@ import cn.coostack.cooparticlesapi.particles.CooParticleTextureSheet
 import cn.coostack.cooparticlesapi.particles.control.group.ClientParticleGroupManager
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import cn.coostack.cooparticlesapi.renderer.client.ClientRenderEntityManager
+import cn.coostack.cooparticlesapi.renderer.client.ClientPersistentBloomManager
 import cn.coostack.cooparticlesapi.renderer.client.ClientRenderPipelineManager
+import cn.coostack.cooparticlesapi.renderer.client.ClientScreenGlowManager
+import cn.coostack.cooparticlesapi.renderer.client.ClientWorldLightManager
 import cn.coostack.cooparticlesapi.renderer.client.ShaderPipeManagers
 import cn.coostack.cooparticlesapi.scheduler.CooScheduler
 import cn.coostack.cooparticlesapi.test.TestManager
@@ -123,7 +126,18 @@ object CooParticlesAPIClient {
         CooParticlesConstants.logger.info("初始化渲染管线")
     }
 
+    @JvmStatic
+    fun reloadShaderPrograms() {
+        renderInit = false
+        ClientRenderPipelineManager.release()
+        ClientRenderEntityManager.onShaderReload()
+        initShaderPrograms()
+    }
+
     private fun initRender() {
+        ClientWorldLightManager.initOnClient()
+        ClientPersistentBloomManager.initOnClient()
+        ClientScreenGlowManager.initOnClient()
         ClientRenderEntityManager.register(TestRendererEntity.id, TestRendererEntity.codec)
         ClientRenderEntityManager.bindEntityRenderPipe(TestRendererEntity.id, ShaderPipeManagers.simpleBloom.pipeID)
         TestShaderInit.initOnClient()
@@ -134,6 +148,7 @@ object CooParticlesAPIClient {
         ParticleEmittersManager.clientEmitters.clear()
         ParticleStyleManager.clearAllVisible()
         ClientRenderEntityManager.clear()
+        ClientWorldLightManager.clear()
         ClientParticleGroupManager.clearAllVisible()
         ParticleCompositionManager.clearClient()
     }
@@ -144,6 +159,7 @@ object CooParticlesAPIClient {
         ParticleStyleManager.clearAllVisible()
         ClientParticleGroupManager.clearAllVisible()
         ClientRenderEntityManager.clear()
+        ClientWorldLightManager.clear()
         ParticleCompositionManager.clearClient()
 
         DisplayEntityManager.clearClient()

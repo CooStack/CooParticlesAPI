@@ -30,6 +30,12 @@ class SimpleTextures : GlTextures {
         }
     }
 
+    override fun release() {
+        textureWithChannel.forEach {
+            it.release()
+        }
+    }
+
     override fun use() {
         lastActiveChannel = glGetInteger(GL_ACTIVE_TEXTURE)
         lastTextureID = glGetInteger(GL_TEXTURE_BINDING_2D)

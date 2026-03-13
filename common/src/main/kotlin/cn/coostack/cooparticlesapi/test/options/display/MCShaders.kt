@@ -15,10 +15,17 @@ object MCShaders {
         private set
 
     fun init(resourceManager: ResourceManager) {
+        release()
         GLOW = ShaderInstance(
             resourceManager,
             "coo_glow",
             DefaultVertexFormat.POSITION_COLOR
         )
+    }
+
+    fun release() {
+        if (::GLOW.isInitialized) {
+            GLOW.close()
+        }
     }
 }

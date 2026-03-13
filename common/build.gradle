@@ -36,6 +36,8 @@ dependencies {
     implementation fileTree(dir: "../depend", includes: ["*.jar"])
 
     implementation 'io.github.classgraph:classgraph:4.8.184'
+    testImplementation 'org.jetbrains.kotlin:kotlin-test'
+    testImplementation 'org.joml:joml:1.10.8'
 }
 tasks.named('jar', Jar) {
     destinationDirectory.set(file("../builds/jar"))
@@ -61,5 +63,9 @@ configurations {
         canBeResolved = false
         canBeConsumed = true
     }
+}
+
+tasks.withType(Test).configureEach {
+    useJUnitPlatform()
 }
 

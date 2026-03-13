@@ -9,6 +9,9 @@ interface GlTexture {
 
     fun init()
 
+    fun release() {
+    }
+
     /**
      * 在当前已经激活的 texture通道中绑定 texture
      */

@@ -6,11 +6,9 @@ import cn.coostack.cooparticlesapi.renderer.RenderEntityRenderPass
 import cn.coostack.cooparticlesapi.renderer.glow.BrightSourceOrbProfile
 import cn.coostack.cooparticlesapi.renderer.glow.DistanceAdaptiveGlow
 import cn.coostack.cooparticlesapi.renderer.glow.DistanceAdaptiveOrbGlowCompensation
-import cn.coostack.cooparticlesapi.renderer.glow.ScreenGlow
-import cn.coostack.cooparticlesapi.renderer.glow.ScreenGlowContextProvider
+import cn.coostack.cooparticlesapi.renderer.glow.PersistentBloom
+import cn.coostack.cooparticlesapi.renderer.glow.PersistentBloomContextProvider
 import cn.coostack.cooparticlesapi.renderer.glow.ScreenGlowRenderContext
-import cn.coostack.cooparticlesapi.renderer.light.WorldLight
-import cn.coostack.cooparticlesapi.renderer.light.WorldLightProvider
 import cn.coostack.cooparticlesapi.renderer.shader.ShaderProgramBuilder
 import cn.coostack.cooparticlesapi.renderer.shader.data.CooVertexFormat
 import cn.coostack.cooparticlesapi.renderer.shader.utils.ShaderUtil
@@ -27,20 +25,36 @@ import org.joml.Matrix4fStack
 import org.joml.Vector2f
 import org.joml.Vector3f
 import kotlin.math.max
-import kotlin.math.sin
 
-class TestGlowSphereEntity(world: Level?) : RenderEntity(world), WorldLightProvider, ScreenGlowContextProvider {
+/**
+ * 演示“POST_PROCESS 球体本体 + PersistentBloom 帧尾外辉光”的 RenderEntity 样板。
+ *
+ * 这类实体的链路和 `TestGlowSphereEntity` 不同：
+ * 1. 本体不在 `WORLD` pass 直接合成，而是进入 `POST_PROCESS` pipe。
+ * 2. `render(...)` 只负责把可见球体和失真/遮罩写入当前 post-process 目标。
+ * 3. 额外的远距外发光不靠 `ScreenGlow`，而是通过 `PersistentBloomContextProvider`
+ *    在帧尾交给 `ClientPersistentBloomManager` 统一做 blur + composite。
+ *
+ * 这个类更适合当“稳定辉光球”模板，而不是“运行时高频调参同步”模板：
+ * 当前没有覆盖 `loadProfileFromEntity(...)`，因此 `TOGGLE` 只会稳定同步基类字段，
+ * 如果需要把 radius/intensity/color 等动态回写到客户端镜像，需要额外补这个钩子。
+ */
+class TestPersistentGlowSphereEntity(world: Level?) : RenderEntity(world), PersistentBloomContextProvider {
     companion object {
         private const val DIRECT_FADE_START_PX = 24.0f
         private const val DIRECT_FADE_END_PX = 7.0f
 
         val id: ResourceLocation = ResourceLocation.fromNamespaceAndPath(
             CooParticlesConstants.MOD_ID,
-            "test_glow_sphere"
+            "test_persistent_glow_sphere"
         )
 
+        /**
+         * `RenderEntity.createCodec(...)` 会自动处理 `uuid/pos/canceled/age`，
+         * 这里仅同步球体外观相关的额外字段。
+         */
         val codec: StreamCodec<FriendlyByteBuf, RenderEntity> = RenderEntity.createCodec(
-            { TestGlowSphereEntity(null) },
+            { TestPersistentGlowSphereEntity(null) },
             { buf, entity ->
                 buf.writeFloat(entity.radius)
                 buf.writeFloat(entity.intensity)
@@ -85,6 +99,9 @@ class TestGlowSphereEntity(world: Level?) : RenderEntity(world), WorldLightProvi
 
         private var initialized = false
 
+        /**
+         * 静态 GL 资源只初始化一次，避免每个客户端镜像都重复创建 VBO / shader。
+         */
         private fun initStatic() {
             if (initialized) return
             initialized = true
@@ -99,15 +116,19 @@ class TestGlowSphereEntity(world: Level?) : RenderEntity(world), WorldLightProvi
         }
     }
 
-    var radius by tracked(4.2f)
-    var intensity by tracked(6.4f)
-    var haloIntensity by tracked(3.2f)
-    var haloRadiusScale by tracked(1.65f)
-    var fresnelStrength by tracked(1.35f)
+    /**
+     * 这些参数全部用 `tracked(...)` 包装，服务端变更后会触发 dirty/requestSync 流程。
+     * 但要让 `TOGGLE` 真正回写这些字段，仍然需要子类覆盖 `loadProfileFromEntity(...)`。
+     */
+    var radius by tracked(4.1f)
+    var intensity by tracked(6.8f)
+    var haloIntensity by tracked(3.4f)
+    var haloRadiusScale by tracked(1.72f)
+    var fresnelStrength by tracked(1.38f)
     var distanceCompensation by tracked(1.0f)
-    var animationSpeed by tracked(1.0f)
-    var overbrightClamp by tracked(6.4f)
-    var glowColor by tracked(Vector3f(0.56f, 0.86f, 1.28f))
+    var animationSpeed by tracked(1.08f)
+    var overbrightClamp by tracked(6.6f)
+    var glowColor by tracked(Vector3f(0.58f, 0.88f, 1.30f))
 
     private val worldPosition = Vector3f()
     private val coreGlowColor = Vector3f()
@@ -121,70 +142,22 @@ class TestGlowSphereEntity(world: Level?) : RenderEntity(world), WorldLightProvi
 
     override fun getRenderID(): ResourceLocation = id
 
-    override fun getRenderPass(): RenderEntityRenderPass {
-        return RenderEntityRenderPass.POST_PROCESS
-    }
+    /**
+     * 该效果必须走帧尾 pipe：
+     * 本体先写入 `glowSphereDistortion`，后续再由 post-process 和 persistent bloom 统一合成。
+     */
+    override fun getRenderPass(): RenderEntityRenderPass = RenderEntityRenderPass.POST_PROCESS
 
     override fun release() {
     }
 
-    override fun collectWorldLights(tickDelta: Float, output: MutableList<WorldLight>) {
-        val pulse = 0.92f + 0.08f * sin(getTime(tickDelta) * animationSpeed * 2.05f)
-        output.add(
-            WorldLight(
-                position = Vector3f(currentWorldPosition()),
-                color = Vector3f(glowColor),
-                radius = radius * (5.2f + haloRadiusScale * 2.1f),
-                intensity = (intensity * 0.34f + haloIntensity * 0.18f) * pulse,
-                softness = 0.50f
-            )
-        )
-    }
-
-    override fun collectScreenGlows(context: ScreenGlowRenderContext, output: MutableList<ScreenGlow>) {
-        val blend = computeBlend(context)
-        if (blend.screenGlowWeight <= 1.0e-3f) {
-            return
-        }
-
-        val compensation = computeOrbCompensation(blend.projectedRadiusPx)
-        val sourceProfile = createSourceProfile(blend.projectedRadiusPx)
-        val haloProfile = max(
-            1.0e-3f,
-            DistanceAdaptiveGlow.orbScreenHaloProfileFromProjectedRadiusPx(blend.projectedRadiusPx)
-        )
-        val baseIntensity = ((intensity * 0.42f) + (haloIntensity * 0.46f)) * blend.screenGlowWeight
-        val outerRadius = radius * haloRadiusScale * compensation.radiusScale * sourceProfile.haloSpread
-        val outerIntensity =
-            (baseIntensity * (0.46f + compensation.persistence * 0.16f) * compensation.intensityScale)
-                .coerceAtMost(9.4f)
-        val coreRadius = max(radius * (0.42f + sourceProfile.shellVisibility * 0.18f), outerRadius * 0.18f)
-
-        coreGlowColor.set(glowColor).lerp(Vector3f(1.0f, 1.0f, 1.0f), sourceProfile.coreWhiteness)
-        haloGlowColor.set(glowColor).lerp(Vector3f(1.0f, 1.0f, 1.0f), sourceProfile.coreWhiteness * 0.14f)
-
-        output.add(
-            ScreenGlow(
-                position = Vector3f(currentWorldPosition()),
-                color = Vector3f(coreGlowColor),
-                radius = coreRadius,
-                intensity = (baseIntensity * (0.92f + compensation.persistence * 0.14f)).coerceAtMost(6.2f),
-                softness = (0.78f - sourceProfile.shellVisibility * 0.16f).coerceIn(0.56f, 0.82f),
-                haloProfile = haloProfile
-            )
-        )
-        output.add(
-            ScreenGlow(
-                position = Vector3f(currentWorldPosition()),
-                color = Vector3f(haloGlowColor),
-                radius = outerRadius,
-                intensity = outerIntensity,
-                softness = (compensation.softness + 0.12f).coerceAtMost(0.92f),
-                haloProfile = haloProfile
-            )
-        )
-    }
-
+    /**
+     * 直接绘制层。
+     *
+     * 这里不会生成最终的外辉光，只负责：
+     * - 依据 `DistanceAdaptiveGlow.computeOrbBlend(...)` 决定近景是否还需要绘制球体本体
+     * - 把球体本体和相关 mask/失真参数写进当前 post-process pipe
+     */
     override fun render(
         matrices: Matrix4fStack,
         viewMatrix: Matrix4f,
@@ -198,6 +171,8 @@ class TestGlowSphereEntity(world: Level?) : RenderEntity(world), WorldLightProvi
         }
         val compensation = computeOrbCompensation(blend.projectedRadiusPx)
         val sourceProfile = createSourceProfile(blend.projectedRadiusPx)
+        val directProfile =
+            DistanceAdaptiveGlow.persistentDirectSphereProfileFromProjectedRadiusPx(blend.projectedRadiusPx)
 
         RenderSystem.disableBlend()
         RenderSystem.enableCull()
@@ -221,15 +196,59 @@ class TestGlowSphereEntity(world: Level?) : RenderEntity(world), WorldLightProvi
             setFloat("coreWhiteness", sourceProfile.coreWhiteness)
             setFloat("shellVisibility", sourceProfile.shellVisibility)
             setFloat("sourceHaloSpread", sourceProfile.haloSpread)
-            setFloat("solidCoreFill", 0.0f)
-            setFloat("outerShellOpacity", 1.0f)
-            setFloat("distortionOpacity", 1.0f)
+            setFloat("solidCoreFill", directProfile.solidCoreFill)
+            setFloat("outerShellOpacity", directProfile.outerShellOpacity)
+            setFloat("distortionOpacity", directProfile.distortionOpacity)
             setFloat("time", getTime(tickDelta))
             sphereBuffer.draw()
             matrices.popMatrix()
         }
         RenderSystem.disableCull()
         RenderSystem.depthMask(true)
+    }
+
+    /**
+     * `PersistentBloomContextProvider` 的核心回调。
+     *
+     * `render(...)` 负责近景本体；
+     * 这个方法负责把“需要在帧尾额外扩散的辉光层”描述为 `PersistentBloom`，
+     * 交给 `ClientPersistentBloomManager` 统一排序、裁剪、blur 和 composite。
+     */
+    override fun collectPersistentBlooms(
+        context: ScreenGlowRenderContext,
+        output: MutableList<PersistentBloom>
+    ) {
+        val blend = computeBlend(context)
+        val haloWeight = mix(0.68f, 1.0f, 1.0f - blend.directWeight)
+        if (haloWeight <= 1.0e-3f) {
+            return
+        }
+
+        val compensation = computeOrbCompensation(blend.projectedRadiusPx)
+        val sourceProfile = createSourceProfile(blend.projectedRadiusPx)
+        val haloProfile = DistanceAdaptiveGlow.persistentHaloProfileFromProjectedRadiusPx(blend.projectedRadiusPx)
+        val baseIntensity = ((intensity * 0.10f) + (haloIntensity * 0.38f)) * haloWeight
+        val bloomRadius = radius * compensation.radiusScale
+        coreGlowColor.set(glowColor).lerp(Vector3f(1.0f, 1.0f, 1.0f), sourceProfile.coreWhiteness)
+        haloGlowColor.set(glowColor).lerp(Vector3f(1.0f, 1.0f, 1.0f), sourceProfile.coreWhiteness * 0.10f)
+        coreGlowColor.lerp(haloGlowColor, 0.22f + sourceProfile.shellVisibility * 0.08f)
+
+        output.add(
+            PersistentBloom(
+                position = Vector3f(currentWorldPosition()),
+                color = Vector3f(haloGlowColor),
+                radius = bloomRadius.coerceAtLeast(radius * 0.92f),
+                intensity = (baseIntensity * compensation.intensityScale).coerceAtMost(9.2f),
+                softness = (compensation.softness + 0.06f - sourceProfile.shellVisibility * 0.04f)
+                    .coerceIn(0.56f, 0.84f),
+                softOcclusionFloor = haloProfile.softOcclusionFloor,
+                haloRadiusScale = haloRadiusScale * haloProfile.haloRadiusScale * 0.86f,
+                brightnessNormalization = haloProfile.brightnessNormalization,
+                haloOpacity = haloProfile.haloOpacity,
+                blurSigma = haloProfile.blurSigma,
+                blurRange = haloProfile.blurRange
+            )
+        )
     }
 
     private fun currentWorldPosition(): Vector3f {
@@ -240,6 +259,11 @@ class TestGlowSphereEntity(world: Level?) : RenderEntity(world), WorldLightProvi
         return max(radius * 0.92f, 0.12f)
     }
 
+    /**
+     * `ScreenGlowRenderContext` 是屏幕投影分析的统一输入。
+     * `computeOrbBlend(...)` 会根据世界半径投影到屏幕后的像素尺寸，
+     * 给出“近景直接绘制权重”和“远景辉光权重”。
+     */
     private fun computeBlend(context: ScreenGlowRenderContext) = DistanceAdaptiveGlow.computeOrbBlend(
         worldPosition = currentWorldPosition(),
         worldRadius = transitionRadius(),
@@ -250,6 +274,10 @@ class TestGlowSphereEntity(world: Level?) : RenderEntity(world), WorldLightProvi
         screenGlowFadeEndPx = 18.0f
     )
 
+    /**
+     * 当球体投影尺寸变得很小时，`DistanceAdaptiveGlow` 会返回一组远距补偿参数，
+     * 用来维持可读性，避免球体远处完全缩成一点。
+     */
     private fun computeOrbCompensation(projectedRadiusPx: Float): DistanceAdaptiveOrbGlowCompensation {
         val base = DistanceAdaptiveGlow.farOrbCompensationFromProjectedRadiusPx(projectedRadiusPx)
         val strength = distanceCompensation.coerceIn(0.0f, 1.0f)
@@ -261,10 +289,17 @@ class TestGlowSphereEntity(world: Level?) : RenderEntity(world), WorldLightProvi
         )
     }
 
+    /**
+     * 亮源 profile 用来区分近景和远景时的核心白化、壳层可见度、halo 扩散范围。
+     */
     private fun createSourceProfile(projectedRadiusPx: Float): BrightSourceOrbProfile {
         return DistanceAdaptiveGlow.brightSourceOrbProfileFromProjectedRadiusPx(projectedRadiusPx)
     }
 
+    /**
+     * 把当前帧的相机位置、矩阵和屏幕尺寸组装成 glow 分析上下文。
+     * 这一套上下文会同时被直接绘制层和 persistent bloom 采样层复用。
+     */
     private fun createGlowContext(
         tickDelta: Float,
         viewMatrix: Matrix4f,

@@ -86,6 +86,13 @@ class TestBillboardSmokeEntity(world: Level?) : RenderEntity(world) {
             smokeShader.init()
             smokeTextures.init()
         }
+
+        fun reloadStaticResources() {
+            quadBuffer.release()
+            smokeShader.release()
+            smokeTextures.release()
+            initialized = false
+        }
     }
 
     var width by tracked(1.6f)
