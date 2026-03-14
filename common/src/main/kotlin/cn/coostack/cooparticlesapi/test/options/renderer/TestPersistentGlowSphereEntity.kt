@@ -26,20 +26,25 @@ import org.joml.Vector2f
 import org.joml.Vector3f
 import kotlin.math.max
 
+internal fun persistentGlowSphereDirectOnlyBlend(baseBlend: DistanceAdaptiveGlowBlend): DistanceAdaptiveGlowBlend {
+    val hasProjection = baseBlend.projectedRadiusPx > 1.0e-3f
+    return DistanceAdaptiveGlowBlend(
+        directWeight = if (hasProjection) 1.0f else 0.0f,
+        screenGlowWeight = 0.0f,
+        projectedRadiusPx = baseBlend.projectedRadiusPx
+    )
+}
+
 /**
- * 演示“球体本体 emissive + 同一条 post-process pipe 的远距 billboard fallback”。
+ * 演示“球体本体 emissive 持续写入同一条 post-process pipe”。
  *
  * 链路：
- * 1. 近景继续使用真实球体 mesh 写入 glow / distortion 输入。
- * 2. 远景不再交给 `PersistentBloom`，改为在同一条 pipe 内写入一个常像素尺寸 billboard。
- * 3. composite 仍然走 `persistentGlowSphereDistortion`，但远景 fallback 不再写 distortion，
- *    从而避免远处把整屏背景洗灰。
+ * 1. 所有距离都继续使用真实球体 mesh 写入 glow / distortion 输入。
+ * 2. 远景不再切换 billboard fallback，而是沿用球体本体 shader，并继续使用远距补偿参数。
+ * 3. composite 仍然走 `persistentGlowSphereDistortion`，避免额外分支带来的观感跳变。
  */
 class TestPersistentGlowSphereEntity(world: Level?) : RenderEntity(world) {
     companion object {
-        private const val DIRECT_FADE_START_PX = 24.0f
-        private const val DIRECT_FADE_END_PX = 7.0f
-
         val id: ResourceLocation = ResourceLocation.fromNamespaceAndPath(
             CooParticlesConstants.MOD_ID,
             "test_persistent_glow_sphere"
@@ -88,26 +93,9 @@ class TestPersistentGlowSphereEntity(world: Level?) : RenderEntity(world) {
             )
         }
 
-        private val quadBuffer = SimpleVertexBuffer().apply {
-            setVertexes(
-                ShaderUtil.genSquareUV(
-                    Vector3f(-0.5f, -0.5f, 0f),
-                    Vector3f(0.5f, -0.5f, 0f),
-                    Vector3f(0.5f, 0.5f, 0f),
-                    Vector3f(-0.5f, 0.5f, 0f)
-                ),
-                CooVertexFormat.POINT_TEXTURE_UV_FORMAT
-            )
-        }
-
         private val glowShader = ShaderProgramBuilder()
             .vertex("test/vtx/glow_sphere.vsh")
             .fragment("test/frag/glow_sphere.fsh")
-            .build()
-
-        private val billboardShader = ShaderProgramBuilder()
-            .vertex("test/vtx/glow_sphere_screen_billboard.vsh")
-            .fragment("test/frag/glow_sphere_screen_billboard.fsh")
             .build()
 
         private var initialized = false
@@ -116,16 +104,12 @@ class TestPersistentGlowSphereEntity(world: Level?) : RenderEntity(world) {
             if (initialized) return
             initialized = true
             sphereBuffer.init()
-            quadBuffer.init()
             glowShader.init()
-            billboardShader.init()
         }
 
         fun reloadStaticResources() {
             sphereBuffer.release()
-            quadBuffer.release()
             glowShader.release()
-            billboardShader.release()
             initialized = false
         }
     }
@@ -141,7 +125,6 @@ class TestPersistentGlowSphereEntity(world: Level?) : RenderEntity(world) {
     var glowColor by tracked(Vector3f(0.58f, 0.88f, 1.30f))
 
     private val worldPosition = Vector3f()
-    private val billboardSizePx = Vector2f()
 
     override fun initialize() {
         initStatic()
@@ -179,16 +162,6 @@ class TestPersistentGlowSphereEntity(world: Level?) : RenderEntity(world) {
             compensation = compensation,
             sourceProfile = sourceProfile
         )
-//        drawFarBillboard(
-//            matrices = matrices,
-//            viewMatrix = viewMatrix,
-//            projMatrix = projMatrix,
-//            tickDelta = tickDelta,
-//            context = context,
-//            blend = blend,
-//            compensation = compensation,
-//            sourceProfile = sourceProfile
-//        )
     }
 
     private fun drawDirectSphere(
@@ -238,51 +211,6 @@ class TestPersistentGlowSphereEntity(world: Level?) : RenderEntity(world) {
         RenderSystem.depthMask(true)
     }
 
-    private fun drawFarBillboard(
-        matrices: Matrix4fStack,
-        viewMatrix: Matrix4f,
-        projMatrix: Matrix4f,
-        tickDelta: Float,
-        context: ScreenGlowRenderContext,
-        blend: DistanceAdaptiveGlowBlend,
-        compensation: DistanceAdaptiveOrbGlowCompensation,
-        sourceProfile: BrightSourceOrbProfile
-    ) {
-        val billboardWeight = computeBillboardWeight(blend)
-        if (billboardWeight <= 1.0e-3f) {
-            return
-        }
-
-        val billboardDiameterPx = computeBillboardSizePx(blend, compensation, sourceProfile)
-        val billboardCoreIntensity = computeBillboardCoreIntensity(compensation)
-        val billboardHaloIntensity = computeBillboardHaloIntensity(compensation)
-        if (billboardDiameterPx <= 1.0e-3f || billboardHaloIntensity <= 1.0e-3f) {
-            return
-        }
-
-        RenderSystem.disableCull()
-        RenderSystem.depthMask(false)
-        billboardShader.useOnContext {
-            setMatrix4("projMat", projMatrix)
-            setMatrix4("viewMat", viewMatrix)
-            setMatrix4("transMat", matrices)
-            setFloat2("screenSize", context.screenSize)
-            billboardSizePx.set(billboardDiameterPx, billboardDiameterPx)
-            setFloat2("sizePx", billboardSizePx)
-            setFloat3("color", glowColor)
-            setFloat("intensity", billboardCoreIntensity)
-            setFloat("haloIntensity", billboardHaloIntensity)
-            setFloat("opacity", billboardWeight)
-            setFloat("softness", compensation.softness)
-            setFloat("coreWhiteness", sourceProfile.coreWhiteness)
-            setFloat("haloSpread", sourceProfile.haloSpread)
-            setFloat("overbrightClamp", overbrightClamp)
-            setFloat("time", getTime(tickDelta))
-            quadBuffer.draw()
-        }
-        RenderSystem.depthMask(true)
-    }
-
     private fun currentWorldPosition(): Vector3f {
         return worldPosition.set(pos.x.toFloat(), pos.y.toFloat(), pos.z.toFloat())
     }
@@ -291,14 +219,12 @@ class TestPersistentGlowSphereEntity(world: Level?) : RenderEntity(world) {
         return max(radius * 0.92f, 0.12f)
     }
 
-    private fun computeBlend(context: ScreenGlowRenderContext) = DistanceAdaptiveGlow.computeOrbBlend(
-        worldPosition = currentWorldPosition(),
-        worldRadius = transitionRadius(),
-        context = context,
-        directFadeStartPx = DIRECT_FADE_START_PX,
-        directFadeEndPx = DIRECT_FADE_END_PX,
-        screenGlowFadeStartPx = 72.0f,
-        screenGlowFadeEndPx = 18.0f
+    private fun computeBlend(context: ScreenGlowRenderContext) = persistentGlowSphereDirectOnlyBlend(
+        DistanceAdaptiveGlow.computeOrbBlend(
+            worldPosition = currentWorldPosition(),
+            worldRadius = transitionRadius(),
+            context = context
+        )
     )
 
     private fun computeOrbCompensation(projectedRadiusPx: Float): DistanceAdaptiveOrbGlowCompensation {
@@ -314,39 +240,6 @@ class TestPersistentGlowSphereEntity(world: Level?) : RenderEntity(world) {
 
     private fun createSourceProfile(projectedRadiusPx: Float): BrightSourceOrbProfile {
         return DistanceAdaptiveGlow.brightSourceOrbProfileFromProjectedRadiusPx(projectedRadiusPx)
-    }
-
-    private fun computeBillboardWeight(blend: DistanceAdaptiveGlowBlend): Float {
-        val farWeight = blend.screenGlowWeight.coerceIn(0.0f, 1.0f)
-        val directSuppression = (1.0f - blend.directWeight).coerceIn(0.0f, 1.0f)
-        return (farWeight * (0.32f + directSuppression * 0.68f)).coerceIn(0.0f, 1.0f)
-    }
-
-    private fun computeBillboardSizePx(
-        blend: DistanceAdaptiveGlowBlend,
-        compensation: DistanceAdaptiveOrbGlowCompensation,
-        sourceProfile: BrightSourceOrbProfile
-    ): Float {
-        val projectedDiameter = blend.projectedRadiusPx * 2.0f
-        val amplifiedDiameter = projectedDiameter *
-            mix(1.20f, 2.10f + haloRadiusScale * 0.16f, compensation.persistence) *
-            (0.84f + sourceProfile.haloSpread * 0.18f)
-        val minimumDiameter = mix(12.0f, 18.0f + haloRadiusScale * 1.6f, compensation.persistence)
-        return max(amplifiedDiameter, minimumDiameter).coerceIn(10.0f, 40.0f)
-    }
-
-    private fun computeBillboardCoreIntensity(compensation: DistanceAdaptiveOrbGlowCompensation): Float {
-        val baseIntensity = intensity * 0.34f + haloIntensity * 0.18f
-        return (baseIntensity * compensation.intensityScale).coerceAtMost(6.4f)
-    }
-
-    private fun computeBillboardHaloIntensity(compensation: DistanceAdaptiveOrbGlowCompensation): Float {
-        val baseIntensity = haloIntensity * 0.42f + intensity * 0.12f
-        return (
-            baseIntensity *
-                (0.92f + compensation.persistence * 0.36f) *
-                compensation.intensityScale
-            ).coerceAtMost(8.2f)
     }
 
     private fun createGlowContext(
