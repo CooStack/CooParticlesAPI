@@ -2,6 +2,10 @@ package cn.coostack.cooparticlesapi.renderer.client
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.renderer.RenderEntity
+import cn.coostack.cooparticlesapi.renderer.backend.RenderBackendCapability
+import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameContext
+import cn.coostack.cooparticlesapi.renderer.effects.FrameEffectCollector
+import cn.coostack.cooparticlesapi.renderer.effects.FrameEffectSubmission
 import cn.coostack.cooparticlesapi.renderer.glow.ScreenGlow
 import cn.coostack.cooparticlesapi.renderer.glow.ScreenGlowContextProvider
 import cn.coostack.cooparticlesapi.renderer.glow.ScreenGlowProvider
@@ -27,9 +31,16 @@ import kotlin.math.max
 
 object ClientScreenGlowManager {
     private const val MAX_SCREEN_GLOWS = 8
+    private const val EFFECT_ID = "builtin:screen_glow"
+    private const val EFFECT_PRIORITY = 300
 
     private val minecraft: Minecraft
         get() = Minecraft.getInstance()
+    private val requiredCapabilities = setOf(
+        RenderBackendCapability.FINAL_FRAME_POST,
+        RenderBackendCapability.SCENE_COLOR_COPY,
+        RenderBackendCapability.SCENE_DEPTH_READ
+    )
 
     private val collectedGlows = ArrayList<ScreenGlow>(MAX_SCREEN_GLOWS * 2)
     private val sortedGlows = ArrayList<ScreenGlow>(MAX_SCREEN_GLOWS)
@@ -117,7 +128,63 @@ object ClientScreenGlowManager {
 
     @JvmStatic
     fun render(entities: Collection<RenderEntity>, tickDelta: Float, viewMatrix: Matrix4f, projMatrix: Matrix4f) {
-        collectGlows(entities, tickDelta, viewMatrix, projMatrix)
+        renderPrepared(tickDelta, viewMatrix, projMatrix) { context, output ->
+            entities.forEach { entity ->
+                when (entity) {
+                    is ScreenGlowContextProvider -> entity.collectScreenGlows(context, output)
+                    is ScreenGlowProvider -> entity.collectScreenGlows(tickDelta, output)
+                }
+            }
+        }
+    }
+
+    fun submitFrameEffects(
+        sourceInstanceId: String,
+        provider: ScreenGlowProvider,
+        context: RenderFrameContext,
+        collector: FrameEffectCollector
+    ) {
+        collector.submit(
+            FrameEffectSubmission(
+                effectId = EFFECT_ID,
+                priority = EFFECT_PRIORITY,
+                sourceInstanceId = sourceInstanceId,
+                requiredCapabilities = requiredCapabilities
+            ) {
+                renderPrepared(context.tickDelta, context.viewMatrix, context.projMatrix) { _, output ->
+                    provider.collectScreenGlows(context.tickDelta, output)
+                }
+            }
+        )
+    }
+
+    fun submitFrameEffects(
+        sourceInstanceId: String,
+        provider: ScreenGlowContextProvider,
+        context: RenderFrameContext,
+        collector: FrameEffectCollector
+    ) {
+        collector.submit(
+            FrameEffectSubmission(
+                effectId = EFFECT_ID,
+                priority = EFFECT_PRIORITY,
+                sourceInstanceId = sourceInstanceId,
+                requiredCapabilities = requiredCapabilities
+            ) {
+                renderPrepared(context.tickDelta, context.viewMatrix, context.projMatrix) { glowContext, output ->
+                    provider.collectScreenGlows(glowContext, output)
+                }
+            }
+        )
+    }
+
+    private fun renderPrepared(
+        tickDelta: Float,
+        viewMatrix: Matrix4f,
+        projMatrix: Matrix4f,
+        collect: (ScreenGlowRenderContext, MutableList<ScreenGlow>) -> Unit
+    ) {
+        collectGlows(tickDelta, viewMatrix, projMatrix, collect)
         if (!prepared || screenGlowCount <= 0) {
             return
         }
@@ -130,42 +197,15 @@ object ClientScreenGlowManager {
     }
 
     private fun collectGlows(
-        entities: Collection<RenderEntity>,
         tickDelta: Float,
         viewMatrix: Matrix4f,
-        projMatrix: Matrix4f
+        projMatrix: Matrix4f,
+        collect: (ScreenGlowRenderContext, MutableList<ScreenGlow>) -> Unit
     ) {
         clear()
 
-        val cameraPosition = minecraft.gameRenderer.mainCamera.position
-        cameraWorldPos = Vector3f(
-            cameraPosition.x.toFloat(),
-            cameraPosition.y.toFloat(),
-            cameraPosition.z.toFloat()
-        )
-        this.projMatrix = Matrix4f(projMatrix)
-        this.viewRotationMatrix = Matrix3f(viewMatrix)
-        inverseViewRotationMatrix = Matrix3f(viewMatrix).invert()
-        screenSize = Vector2f(
-            minecraft.mainRenderTarget.width.toFloat(),
-            minecraft.mainRenderTarget.height.toFloat()
-        )
-        val context = ScreenGlowRenderContext(
-            tickDelta = tickDelta,
-            cameraWorldPos = Vector3f(cameraWorldPos),
-            viewMatrix = Matrix4f(viewMatrix),
-            viewRotationMatrix = Matrix3f(this.viewRotationMatrix),
-            inverseViewRotationMatrix = Matrix3f(inverseViewRotationMatrix),
-            projMatrix = Matrix4f(this.projMatrix),
-            screenSize = Vector2f(screenSize)
-        )
-
-        entities.forEach { entity ->
-            when (entity) {
-                is ScreenGlowContextProvider -> entity.collectScreenGlows(context, collectedGlows)
-                is ScreenGlowProvider -> entity.collectScreenGlows(tickDelta, collectedGlows)
-            }
-        }
+        val context = updateFrameState(tickDelta, viewMatrix, projMatrix)
+        collect(context, collectedGlows)
 
         if (collectedGlows.isEmpty()) {
             prepared = false
@@ -203,5 +243,34 @@ object ClientScreenGlowManager {
         }
 
         prepared = true
+    }
+
+    private fun updateFrameState(
+        tickDelta: Float,
+        viewMatrix: Matrix4f,
+        projMatrix: Matrix4f
+    ): ScreenGlowRenderContext {
+        val cameraPosition = minecraft.gameRenderer.mainCamera.position
+        cameraWorldPos = Vector3f(
+            cameraPosition.x.toFloat(),
+            cameraPosition.y.toFloat(),
+            cameraPosition.z.toFloat()
+        )
+        this.projMatrix = Matrix4f(projMatrix)
+        this.viewRotationMatrix = Matrix3f(viewMatrix)
+        inverseViewRotationMatrix = Matrix3f(viewMatrix).invert()
+        screenSize = Vector2f(
+            minecraft.mainRenderTarget.width.toFloat(),
+            minecraft.mainRenderTarget.height.toFloat()
+        )
+        return ScreenGlowRenderContext(
+            tickDelta = tickDelta,
+            cameraWorldPos = Vector3f(cameraWorldPos),
+            viewMatrix = Matrix4f(viewMatrix),
+            viewRotationMatrix = Matrix3f(this.viewRotationMatrix),
+            inverseViewRotationMatrix = Matrix3f(inverseViewRotationMatrix),
+            projMatrix = Matrix4f(this.projMatrix),
+            screenSize = Vector2f(screenSize)
+        )
     }
 }

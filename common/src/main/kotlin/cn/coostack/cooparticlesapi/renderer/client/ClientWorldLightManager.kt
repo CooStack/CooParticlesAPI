@@ -2,6 +2,10 @@ package cn.coostack.cooparticlesapi.renderer.client
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.renderer.RenderEntity
+import cn.coostack.cooparticlesapi.renderer.backend.RenderBackendCapability
+import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameContext
+import cn.coostack.cooparticlesapi.renderer.effects.FrameEffectCollector
+import cn.coostack.cooparticlesapi.renderer.effects.FrameEffectSubmission
 import cn.coostack.cooparticlesapi.renderer.light.WorldLight
 import cn.coostack.cooparticlesapi.renderer.light.WorldLightProvider
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlShaderType
@@ -25,9 +29,16 @@ import kotlin.math.max
 
 object ClientWorldLightManager {
     private const val MAX_WORLD_LIGHTS = 8
+    private const val EFFECT_ID = "builtin:world_light"
+    private const val EFFECT_PRIORITY = 100
 
     private val minecraft: Minecraft
         get() = Minecraft.getInstance()
+    private val requiredCapabilities = setOf(
+        RenderBackendCapability.FINAL_FRAME_POST,
+        RenderBackendCapability.SCENE_COLOR_COPY,
+        RenderBackendCapability.SCENE_DEPTH_READ
+    )
 
     private val collectedLights = ArrayList<WorldLight>(MAX_WORLD_LIGHTS * 2)
     private val sortedLights = ArrayList<WorldLight>(MAX_WORLD_LIGHTS)
@@ -120,7 +131,42 @@ object ClientWorldLightManager {
 
     @JvmStatic
     fun render(entities: Collection<RenderEntity>, tickDelta: Float, viewMatrix: Matrix4f, projMatrix: Matrix4f) {
-        collectLights(entities, tickDelta, viewMatrix, projMatrix)
+        renderPrepared(tickDelta, viewMatrix, projMatrix) { output ->
+            entities.forEach { entity ->
+                if (entity is WorldLightProvider) {
+                    entity.collectWorldLights(tickDelta, output)
+                }
+            }
+        }
+    }
+
+    fun submitFrameEffects(
+        sourceInstanceId: String,
+        provider: WorldLightProvider,
+        context: RenderFrameContext,
+        collector: FrameEffectCollector
+    ) {
+        collector.submit(
+            FrameEffectSubmission(
+                effectId = EFFECT_ID,
+                priority = EFFECT_PRIORITY,
+                sourceInstanceId = sourceInstanceId,
+                requiredCapabilities = requiredCapabilities
+            ) {
+                renderPrepared(context.tickDelta, context.viewMatrix, context.projMatrix) { output ->
+                    provider.collectWorldLights(context.tickDelta, output)
+                }
+            }
+        )
+    }
+
+    private fun renderPrepared(
+        tickDelta: Float,
+        viewMatrix: Matrix4f,
+        projMatrix: Matrix4f,
+        collect: (MutableList<WorldLight>) -> Unit
+    ) {
+        collectLights(tickDelta, viewMatrix, projMatrix, collect)
         if (!prepared || worldLightCount <= 0) {
             return
         }
@@ -133,34 +179,15 @@ object ClientWorldLightManager {
     }
 
     private fun collectLights(
-        entities: Collection<RenderEntity>,
         tickDelta: Float,
         viewMatrix: Matrix4f,
-        projMatrix: Matrix4f
+        projMatrix: Matrix4f,
+        collect: (MutableList<WorldLight>) -> Unit
     ) {
         clear()
 
-        val cameraPosition = minecraft.gameRenderer.mainCamera.position
-        cameraWorldPos = Vector3f(
-            cameraPosition.x.toFloat(),
-            cameraPosition.y.toFloat(),
-            cameraPosition.z.toFloat()
-        )
-        this.projMatrix = Matrix4f(projMatrix)
-        this.viewRotationMatrix = Matrix3f(viewMatrix)
-        inverseProjMatrix = Matrix4f(projMatrix).invert()
-        inverseViewRotationMatrix = Matrix3f(viewMatrix).invert()
-        screenSize = Vector2f(
-            minecraft.mainRenderTarget.width.toFloat(),
-            minecraft.mainRenderTarget.height.toFloat()
-        )
-
-        entities.forEach { entity ->
-            if (entity !is WorldLightProvider) {
-                return@forEach
-            }
-            entity.collectWorldLights(tickDelta, collectedLights)
-        }
+        updateFrameState(viewMatrix, projMatrix)
+        collect(collectedLights)
 
         if (collectedLights.isEmpty()) {
             prepared = false
@@ -208,5 +235,22 @@ object ClientWorldLightManager {
         }
 
         prepared = true
+    }
+
+    private fun updateFrameState(viewMatrix: Matrix4f, projMatrix: Matrix4f) {
+        val cameraPosition = minecraft.gameRenderer.mainCamera.position
+        cameraWorldPos = Vector3f(
+            cameraPosition.x.toFloat(),
+            cameraPosition.y.toFloat(),
+            cameraPosition.z.toFloat()
+        )
+        this.projMatrix = Matrix4f(projMatrix)
+        this.viewRotationMatrix = Matrix3f(viewMatrix)
+        inverseProjMatrix = Matrix4f(projMatrix).invert()
+        inverseViewRotationMatrix = Matrix3f(viewMatrix).invert()
+        screenSize = Vector2f(
+            minecraft.mainRenderTarget.width.toFloat(),
+            minecraft.mainRenderTarget.height.toFloat()
+        )
     }
 }

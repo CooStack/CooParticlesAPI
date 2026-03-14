@@ -1,7 +1,12 @@
 package cn.coostack.cooparticlesapi.test.options.renderer
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
-import cn.coostack.cooparticlesapi.renderer.RenderEntity
+import cn.coostack.cooparticlesapi.annotations.CodecField
+import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
+import cn.coostack.cooparticlesapi.renderer.AutoRenderEntity
+import cn.coostack.cooparticlesapi.renderer.runtime.LocalRenderInput
+import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityInstance
+import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityRenderer
 import cn.coostack.cooparticlesapi.renderer.shader.ShaderProgramBuilder
 import cn.coostack.cooparticlesapi.renderer.shader.data.CooVertexFormat
 import cn.coostack.cooparticlesapi.renderer.shader.texture.IdentifierTexture
@@ -9,46 +14,43 @@ import cn.coostack.cooparticlesapi.renderer.shader.texture.SimpleTextures
 import cn.coostack.cooparticlesapi.renderer.shader.utils.ShaderUtil
 import cn.coostack.cooparticlesapi.renderer.shader.vertex.SimpleVertexBuffer
 import com.mojang.blaze3d.systems.RenderSystem
-import net.minecraft.network.FriendlyByteBuf
-import net.minecraft.network.codec.StreamCodec
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.level.Level
-import org.joml.Matrix4f
-import org.joml.Matrix4fStack
+import net.minecraft.world.phys.Vec3
 import org.joml.Vector2f
 import org.joml.Vector3f
 import org.joml.Vector4f
-import org.lwjgl.opengl.GL33.*
+import org.lwjgl.opengl.GL33.GL_ONE_MINUS_SRC_ALPHA
+import org.lwjgl.opengl.GL33.GL_SRC_ALPHA
 
-class TestBillboardSmokeEntity(world: Level?) : RenderEntity(world) {
+@CooAutoRegister
+class TestBillboardSmokeEntity(world: Level? = null, pos: Vec3 = Vec3.ZERO) : AutoRenderEntity(world, pos) {
+    constructor() : this(null, Vec3.ZERO)
+
     companion object {
-        val id: ResourceLocation = ResourceLocation.fromNamespaceAndPath(
+        val ID: ResourceLocation = ResourceLocation.fromNamespaceAndPath(
             CooParticlesConstants.MOD_ID,
             "test_billboard_smoke"
         )
+    }
 
-        val codec: StreamCodec<FriendlyByteBuf, RenderEntity> = RenderEntity.createCodec(
-            { TestBillboardSmokeEntity(null) },
-            { buf, entity ->
-                buf.writeFloat(entity.width)
-                buf.writeFloat(entity.height)
-                buf.writeFloat(entity.alpha)
-                buf.writeFloat(entity.smokeColor.x)
-                buf.writeFloat(entity.smokeColor.y)
-                buf.writeFloat(entity.smokeColor.z)
-            },
-            { buf, entity ->
-                entity.width = buf.readFloat()
-                entity.height = buf.readFloat()
-                entity.alpha = buf.readFloat()
-                entity.smokeColor = Vector3f(
-                    buf.readFloat(),
-                    buf.readFloat(),
-                    buf.readFloat()
-                )
-            }
-        )
+    @field:CodecField
+    var width: Float = 1.6f
 
+    @field:CodecField
+    var height: Float = 1.2f
+
+    @field:CodecField
+    var alpha: Float = 0.85f
+
+    @field:CodecField
+    var smokeColor: Vector3f = Vector3f(0.85f, 0.85f, 0.85f)
+
+    override fun getRenderID(): ResourceLocation = ID
+}
+
+class TestBillboardSmokeEntityRenderer : RenderEntityRenderer<TestBillboardSmokeEntity> {
+    companion object {
         private val quadBuffer = SimpleVertexBuffer().apply {
             setVertexes(
                 ShaderUtil.genSquareUV(
@@ -86,58 +88,44 @@ class TestBillboardSmokeEntity(world: Level?) : RenderEntity(world) {
             smokeShader.init()
             smokeTextures.init()
         }
-
-        fun reloadStaticResources() {
-            quadBuffer.release()
-            smokeShader.release()
-            smokeTextures.release()
-            initialized = false
-        }
     }
 
-    var width by tracked(1.6f)
-    var height by tracked(1.2f)
-    var alpha by tracked(0.85f)
-    var smokeColor by tracked(Vector3f(0.85f, 0.85f, 0.85f))
     private val size = Vector2f()
     private val color = Vector4f()
 
-    override fun initialize() {
+    override fun initialize(instance: RenderEntityInstance<TestBillboardSmokeEntity>) {
         initStatic()
     }
 
-    override fun getCodec(): StreamCodec<FriendlyByteBuf, RenderEntity> = codec
+    override fun renderLocal(input: LocalRenderInput<TestBillboardSmokeEntity>) {
+        val entity = input.instance.entity
 
-    override fun getRenderID(): ResourceLocation = id
-
-    override fun release() {
-    }
-
-    override fun render(
-        matrices: Matrix4fStack,
-        viewMatrix: Matrix4f,
-        projMatrix: Matrix4f,
-        tickDelta: Float
-    ) {
+        RenderSystem.disableCull()
+        RenderSystem.enableDepthTest()
         RenderSystem.enableBlend()
         RenderSystem.blendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
         RenderSystem.depthMask(false)
-        smokeShader.useOnContext {
-            setMatrix4("projMat", projMatrix)
-            setMatrix4("viewMat", viewMatrix)
-            setMatrix4("transMat", matrices)
-            size.set(width, height)
-            setFloat2("size", size)
-            color.set(smokeColor, alpha)
-            setFloat4("color", color)
-            setFloat("time", getTime(tickDelta))
-            setInt("smokeTex", 0)
-            smokeTextures.drawWith {
-                quadBuffer.draw()
+        try {
+            smokeShader.useOnContext {
+                setMatrix4("projMat", input.projMatrix)
+                setMatrix4("viewMat", input.viewMatrix)
+                setMatrix4("transMat", input.modelMatrix)
+                size.set(entity.width, entity.height)
+                setFloat2("size", size)
+                color.set(entity.smokeColor, entity.alpha)
+                setFloat4("color", color)
+                setFloat("time", entity.getTime(input.tickDelta))
+                setInt("smokeTex", 0)
+                smokeTextures.drawWith {
+                    quadBuffer.draw()
+                }
             }
+        } finally {
+            RenderSystem.depthMask(true)
+            RenderSystem.defaultBlendFunc()
+            RenderSystem.disableBlend()
+            RenderSystem.enableDepthTest()
+            RenderSystem.disableCull()
         }
-        RenderSystem.depthMask(true)
-        RenderSystem.defaultBlendFunc()
-        RenderSystem.disableBlend()
     }
 }

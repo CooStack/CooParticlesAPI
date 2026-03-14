@@ -2,6 +2,10 @@ package cn.coostack.cooparticlesapi.renderer.client
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.renderer.RenderEntity
+import cn.coostack.cooparticlesapi.renderer.backend.RenderBackendCapability
+import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameContext
+import cn.coostack.cooparticlesapi.renderer.effects.FrameEffectCollector
+import cn.coostack.cooparticlesapi.renderer.effects.FrameEffectSubmission
 import cn.coostack.cooparticlesapi.renderer.glow.PersistentBloom
 import cn.coostack.cooparticlesapi.renderer.glow.PersistentBloomContextProvider
 import cn.coostack.cooparticlesapi.renderer.glow.ScreenGlowRenderContext
@@ -31,9 +35,16 @@ object ClientPersistentBloomManager {
     private const val BLUR_ITERATIONS = 8
     private const val DEFAULT_BLUR_SIGMA = 4.6f
     private const val DEFAULT_BLUR_RANGE = 4.2f
+    private const val EFFECT_ID = "builtin:persistent_bloom"
+    private const val EFFECT_PRIORITY = 200
 
     private val minecraft: Minecraft
         get() = Minecraft.getInstance()
+    private val requiredCapabilities = setOf(
+        RenderBackendCapability.FINAL_FRAME_POST,
+        RenderBackendCapability.SCENE_COLOR_COPY,
+        RenderBackendCapability.SCENE_DEPTH_READ
+    )
 
     private val collectedBlooms = ArrayList<PersistentBloom>(MAX_PERSISTENT_BLOOMS * 2)
     private val sortedBlooms = ArrayList<PersistentBloom>(MAX_PERSISTENT_BLOOMS)
@@ -176,7 +187,42 @@ object ClientPersistentBloomManager {
         viewMatrix: Matrix4f,
         projMatrix: Matrix4f
     ) {
-        collectBlooms(entities, tickDelta, viewMatrix, projMatrix)
+        renderPrepared(tickDelta, viewMatrix, projMatrix) { context, output ->
+            entities.forEach { entity ->
+                if (entity is PersistentBloomContextProvider) {
+                    entity.collectPersistentBlooms(context, output)
+                }
+            }
+        }
+    }
+
+    fun submitFrameEffects(
+        sourceInstanceId: String,
+        provider: PersistentBloomContextProvider,
+        context: RenderFrameContext,
+        collector: FrameEffectCollector
+    ) {
+        collector.submit(
+            FrameEffectSubmission(
+                effectId = EFFECT_ID,
+                priority = EFFECT_PRIORITY,
+                sourceInstanceId = sourceInstanceId,
+                requiredCapabilities = requiredCapabilities
+            ) {
+                renderPrepared(context.tickDelta, context.viewMatrix, context.projMatrix) { glowContext, output ->
+                    provider.collectPersistentBlooms(glowContext, output)
+                }
+            }
+        )
+    }
+
+    private fun renderPrepared(
+        tickDelta: Float,
+        viewMatrix: Matrix4f,
+        projMatrix: Matrix4f,
+        collect: (ScreenGlowRenderContext, MutableList<PersistentBloom>) -> Unit
+    ) {
+        collectBlooms(tickDelta, viewMatrix, projMatrix, collect)
         if (!prepared || persistentBloomCount <= 0) {
             return
         }
@@ -189,41 +235,15 @@ object ClientPersistentBloomManager {
     }
 
     private fun collectBlooms(
-        entities: Collection<RenderEntity>,
         tickDelta: Float,
         viewMatrix: Matrix4f,
-        projMatrix: Matrix4f
+        projMatrix: Matrix4f,
+        collect: (ScreenGlowRenderContext, MutableList<PersistentBloom>) -> Unit
     ) {
         clear()
 
-        val cameraPosition = minecraft.gameRenderer.mainCamera.position
-        cameraWorldPos = Vector3f(
-            cameraPosition.x.toFloat(),
-            cameraPosition.y.toFloat(),
-            cameraPosition.z.toFloat()
-        )
-        this.projMatrix = Matrix4f(projMatrix)
-        viewRotationMatrix = Matrix3f(viewMatrix)
-        inverseViewRotationMatrix = Matrix3f(viewMatrix).invert()
-        screenSize = Vector2f(
-            minecraft.mainRenderTarget.width.toFloat(),
-            minecraft.mainRenderTarget.height.toFloat()
-        )
-        val context = ScreenGlowRenderContext(
-            tickDelta = tickDelta,
-            cameraWorldPos = Vector3f(cameraWorldPos),
-            viewMatrix = Matrix4f(viewMatrix),
-            viewRotationMatrix = Matrix3f(viewRotationMatrix),
-            inverseViewRotationMatrix = Matrix3f(inverseViewRotationMatrix),
-            projMatrix = Matrix4f(this.projMatrix),
-            screenSize = Vector2f(screenSize)
-        )
-
-        entities.forEach { entity ->
-            if (entity is PersistentBloomContextProvider) {
-                entity.collectPersistentBlooms(context, collectedBlooms)
-            }
-        }
+        val context = updateFrameState(tickDelta, viewMatrix, projMatrix)
+        collect(context, collectedBlooms)
 
         if (collectedBlooms.isEmpty()) {
             prepared = false
@@ -278,5 +298,34 @@ object ClientPersistentBloomManager {
             blurRange = blurRangeSum / blurWeightSum
         }
         prepared = true
+    }
+
+    private fun updateFrameState(
+        tickDelta: Float,
+        viewMatrix: Matrix4f,
+        projMatrix: Matrix4f
+    ): ScreenGlowRenderContext {
+        val cameraPosition = minecraft.gameRenderer.mainCamera.position
+        cameraWorldPos = Vector3f(
+            cameraPosition.x.toFloat(),
+            cameraPosition.y.toFloat(),
+            cameraPosition.z.toFloat()
+        )
+        this.projMatrix = Matrix4f(projMatrix)
+        viewRotationMatrix = Matrix3f(viewMatrix)
+        inverseViewRotationMatrix = Matrix3f(viewMatrix).invert()
+        screenSize = Vector2f(
+            minecraft.mainRenderTarget.width.toFloat(),
+            minecraft.mainRenderTarget.height.toFloat()
+        )
+        return ScreenGlowRenderContext(
+            tickDelta = tickDelta,
+            cameraWorldPos = Vector3f(cameraWorldPos),
+            viewMatrix = Matrix4f(viewMatrix),
+            viewRotationMatrix = Matrix3f(viewRotationMatrix),
+            inverseViewRotationMatrix = Matrix3f(inverseViewRotationMatrix),
+            projMatrix = Matrix4f(this.projMatrix),
+            screenSize = Vector2f(screenSize)
+        )
     }
 }

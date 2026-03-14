@@ -5,7 +5,6 @@ import cn.coostack.cooparticlesapi.network.packet.server.PacketRenderEntityS2C
 import cn.coostack.cooparticlesapi.api.controler.server.ServerControler
 import cn.coostack.cooparticlesapi.renderer.server.ServerRenderEntityManager
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
-import com.mojang.blaze3d.systems.RenderSystem
 import io.netty.buffer.Unpooled
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
@@ -13,9 +12,6 @@ import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
-import org.joml.Matrix4f
-import org.joml.Matrix4fStack
-import org.lwjgl.opengl.GL33.GL_ONE
 import java.util.UUID
 import kotlin.properties.ReadWriteProperty
 import kotlin.reflect.KProperty
@@ -25,13 +21,12 @@ import kotlin.reflect.KProperty
  *
  * 它负责三件事：
  * 1. 在服务端维护实体状态，并通过 `CREATE / TOGGLE / REMOVE` 包同步给客户端。
- * 2. 在客户端保存对应镜像，进入 `WORLD` 或 `POST_PROCESS` 渲染管线。
+ * 2. 在客户端保存对应镜像，并把同步状态更新到本地实例。
  * 3. 提供 `tracked(...)`、`createCodec(...)`、`loadProfileFromEntity(...)` 等通用同步工具。
  *
  * 使用子类时通常需要完成以下几个点：
  * - 用 `createCodec(...)` 为自定义字段建立编解码。
  * - 覆盖 `getRenderID()`，并在客户端完成注册。
- * - 实现 `initialize()` / `render()` / `release()`。
  * - 如果实体有额外同步字段，需要覆盖 `loadProfileFromEntity(...)` 把这些字段回写到客户端镜像。
  */
 abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) : ServerControler<RenderEntity>,
@@ -48,12 +43,6 @@ abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) : Serv
      */
     val client: Boolean
         get() = world?.isClientSide ?: false
-
-    /**
-     * 客户端初始化标记。
-     * `ClientRenderEntityManager.add(...)` 会调用 `init()`，确保 `initialize()` 只执行一次。
-     */
-    var init = false
 
     /**
      * 为 `true` 时，服务端每 tick 都会尝试发送 `TOGGLE`，即使本帧没有 dirty。
@@ -119,7 +108,7 @@ abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) : Serv
      * 可用于做插值、拖尾或和当前 `pos` 做对比。
      */
     var lastRenderPos = pos
-        private set
+        internal set
 
     /**
      * 实体已经经过的逻辑 tick 数。
@@ -325,7 +314,7 @@ abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) : Serv
     }
 
     /**
-     * @param delta tickDelta 在render方法中提供 用作着色器的 time参数
+     * @param delta tickDelta 在渲染阶段提供，用作着色器的 time 参数
      */
     fun getTime(delta: Float): Float {
         return (age + delta) / 20
@@ -349,30 +338,6 @@ abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) : Serv
     }
 
     /**
-     * 客户端初始化入口。
-     *
-     * `ClientRenderEntityManager.add(...)` 会调用此方法，
-     * 并确保 `initialize()` 对每个客户端镜像只执行一次。
-     */
-    internal fun init() {
-        if (init) {
-            return
-        }
-        init = true
-        initialize()
-    }
-
-    /**
-     * 客户端首次创建镜像时调用。
-     *
-     * 适合初始化：
-     * - shader program
-     * - vertex buffer
-     * - texture / framebuffer 句柄
-     */
-    abstract fun initialize()
-
-    /**
      * 返回该类型的同步 codec。
      *
      * 这个 codec 同时用于：
@@ -387,33 +352,6 @@ abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) : Serv
      * 获取标识符 (用于在客户端注册)
      */
     abstract fun getRenderID(): ResourceLocation
-
-    /**
-     * 返回当前实体所属的渲染 pass。
-     *
-     * 默认是 `WORLD`。
-     * 如果需要帧尾 post-process、scene copy、persistent bloom 等效果，
-     * 通常要覆盖成 `POST_PROCESS`。
-     */
-    open fun getRenderPass(): RenderEntityRenderPass {
-        return RenderEntityRenderPass.WORLD
-    }
-
-    /**
-     * 控制当前实体写入共享 pipe 输入目标时的混合模式。
-     *
-     * 默认使用 `REPLACE`，保持旧行为。
-     * 如果多个实体共享同一个 glow / bloom pipe，并且希望输入 mask 可以叠加，
-     * 通常应覆盖为 `ALPHA` 或 `ADDITIVE`，同时避免在 `render(...)` 内再次强制关闭 blend。
-     */
-    open fun getInputBlendMode(): RenderEntityInputBlendMode {
-        return RenderEntityInputBlendMode.REPLACE
-    }
-
-    /**
-     * 客户端镜像被移除时的资源释放钩子。
-     */
-    abstract fun release()
 
     override fun teleportTo(to: Vec3) {
         this.lastRenderPos = this.pos
@@ -460,63 +398,4 @@ abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) : Serv
         this.pos = pos
         ServerRenderEntityManager.spawn(this)
     }
-
-    /**
-     * 管理器使用的统一绘制入口。
-     *
-     * 它会记录 `lastRenderPos`，并设置基础渲染状态，
-     * 然后再调用子类真正实现的 `render(...)`。
-     */
-    fun renderOnWorld(
-        matrices: Matrix4fStack, viewMatrix: Matrix4f,
-        projMatrix: Matrix4f, tickDelta: Float
-    ) {
-        lastRenderPos = pos
-        RenderSystem.disableCull()
-        RenderSystem.enableDepthTest()
-        RenderSystem.depthMask(true)
-        applyInputBlendMode()
-        try {
-            render(matrices, viewMatrix, projMatrix, tickDelta)
-        } finally {
-            RenderSystem.defaultBlendFunc()
-            RenderSystem.disableBlend()
-            RenderSystem.depthMask(true)
-            RenderSystem.enableDepthTest()
-            RenderSystem.disableCull()
-        }
-    }
-
-    private fun applyInputBlendMode() {
-        when (getInputBlendMode()) {
-            RenderEntityInputBlendMode.REPLACE -> {
-                RenderSystem.defaultBlendFunc()
-                RenderSystem.disableBlend()
-            }
-
-            RenderEntityInputBlendMode.ALPHA -> {
-                RenderSystem.enableBlend()
-                RenderSystem.defaultBlendFunc()
-            }
-
-            RenderEntityInputBlendMode.ADDITIVE -> {
-                RenderSystem.enableBlend()
-                RenderSystem.blendFunc(GL_ONE, GL_ONE)
-            }
-        }
-    }
-
-    /**
-     * 子类的实际绘制逻辑。
-     *
-     * 这里应只关注“如何把自己画出来”，而不要重复处理：
-     * - 客户端注册
-     * - 网络同步
-     * - 管理器分类
-     * - 帧生命周期调度
-     */
-    abstract fun render(
-        matrices: Matrix4fStack, viewMatrix: Matrix4f,
-        projMatrix: Matrix4f, tickDelta: Float
-    )
 }

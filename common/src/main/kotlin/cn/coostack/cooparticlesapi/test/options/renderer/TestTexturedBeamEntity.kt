@@ -1,11 +1,16 @@
 package cn.coostack.cooparticlesapi.test.options.renderer
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
-import cn.coostack.cooparticlesapi.renderer.RenderEntity
+import cn.coostack.cooparticlesapi.annotations.CodecField
+import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
+import cn.coostack.cooparticlesapi.renderer.AutoRenderEntity
 import cn.coostack.cooparticlesapi.renderer.glow.DistanceAdaptiveGlow
 import cn.coostack.cooparticlesapi.renderer.glow.ScreenGlow
 import cn.coostack.cooparticlesapi.renderer.glow.ScreenGlowContextProvider
 import cn.coostack.cooparticlesapi.renderer.glow.ScreenGlowRenderContext
+import cn.coostack.cooparticlesapi.renderer.runtime.LocalRenderInput
+import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityInstance
+import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityRenderer
 import cn.coostack.cooparticlesapi.renderer.shader.ShaderProgramBuilder
 import cn.coostack.cooparticlesapi.renderer.shader.data.CooVertexFormat
 import cn.coostack.cooparticlesapi.renderer.shader.texture.IdentifierTexture
@@ -14,51 +19,87 @@ import cn.coostack.cooparticlesapi.renderer.shader.utils.ShaderUtil
 import cn.coostack.cooparticlesapi.renderer.shader.vertex.SimpleVertexBuffer
 import com.mojang.blaze3d.systems.RenderSystem
 import net.minecraft.client.Minecraft
-import net.minecraft.network.FriendlyByteBuf
-import net.minecraft.network.codec.StreamCodec
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.level.Level
-import org.joml.Matrix4f
-import org.joml.Matrix4fStack
+import net.minecraft.world.phys.Vec3
 import org.joml.Matrix3f
+import org.joml.Matrix4f
 import org.joml.Vector2f
 import org.joml.Vector3f
 import org.joml.Vector4f
-import org.lwjgl.opengl.GL33.*
+import org.lwjgl.opengl.GL33.GL_ONE
+import org.lwjgl.opengl.GL33.GL_SRC_ALPHA
 import kotlin.math.max
 import kotlin.math.sqrt
 
-class TestTexturedBeamEntity(world: Level?) : RenderEntity(world), ScreenGlowContextProvider {
+@CooAutoRegister
+class TestTexturedBeamEntity(world: Level? = null, pos: Vec3 = Vec3.ZERO) : AutoRenderEntity(world, pos),
+    ScreenGlowContextProvider {
+    constructor() : this(null, Vec3.ZERO)
+
     companion object {
         private val GLOW_SAMPLE_OFFSETS = floatArrayOf(-0.36f, 0.0f, 0.36f)
 
-        val id: ResourceLocation = ResourceLocation.fromNamespaceAndPath(
+        val ID: ResourceLocation = ResourceLocation.fromNamespaceAndPath(
             CooParticlesConstants.MOD_ID,
             "test_textured_beam"
         )
+    }
 
-        val codec: StreamCodec<FriendlyByteBuf, RenderEntity> = RenderEntity.createCodec(
-            { TestTexturedBeamEntity(null) },
-            { buf, entity ->
-                buf.writeFloat(entity.width)
-                buf.writeFloat(entity.height)
-                buf.writeFloat(entity.beamColor.x)
-                buf.writeFloat(entity.beamColor.y)
-                buf.writeFloat(entity.beamColor.z)
-                buf.writeFloat(entity.beamColor.w)
-            },
-            { buf, entity ->
-                entity.width = buf.readFloat()
-                entity.height = buf.readFloat()
-                entity.beamColor = Vector4f(
-                    buf.readFloat(),
-                    buf.readFloat(),
-                    buf.readFloat(),
-                    buf.readFloat()
-                )
-            }
+    @field:CodecField
+    var width: Float = 0.6f
+
+    @field:CodecField
+    var height: Float = 3.0f
+
+    @field:CodecField
+    var beamColor: Vector4f = Vector4f(0.5f, 0.9f, 1.0f, 1.0f)
+
+    private val glowColor = Vector3f()
+    private val glowSamplePos = Vector3f()
+    private val glowOffset = Vector3f()
+    private val glowAxis = Vector3f()
+
+    override fun getRenderID(): ResourceLocation = ID
+
+    override fun collectScreenGlows(context: ScreenGlowRenderContext, output: MutableList<ScreenGlow>) {
+        val blend = DistanceAdaptiveGlow.computeBlend(
+            worldPosition = Vector3f(pos.x.toFloat(), pos.y.toFloat(), pos.z.toFloat()),
+            worldRadius = effectRadius(),
+            context = context
         )
+        if (blend.screenGlowWeight <= 1.0e-3f) {
+            return
+        }
 
+        glowAxis.set(0.0f, 1.0f, 0.0f)
+        context.inverseViewRotationMatrix.transform(glowAxis).normalize()
+        glowColor.set(beamColor.x, beamColor.y, beamColor.z)
+        val sampleIntensity = beamColor.w * (1.6f * blend.screenGlowWeight) / GLOW_SAMPLE_OFFSETS.size
+        val sampleRadius = max(width * 0.95f, height * 0.12f)
+
+        for (offset in GLOW_SAMPLE_OFFSETS) {
+            glowOffset.set(glowAxis).mul(height * offset)
+            glowSamplePos.set(pos.x.toFloat(), pos.y.toFloat(), pos.z.toFloat()).add(glowOffset)
+            output.add(
+                ScreenGlow(
+                    position = Vector3f(glowSamplePos),
+                    color = Vector3f(glowColor),
+                    radius = sampleRadius,
+                    intensity = sampleIntensity,
+                    softness = 0.52f
+                )
+            )
+        }
+    }
+
+    private fun effectRadius(): Float {
+        return sqrt(width * width + height * height) * 0.5f
+    }
+}
+
+class TestTexturedBeamEntityRenderer : RenderEntityRenderer<TestTexturedBeamEntity> {
+    companion object {
         private val quadBuffer = SimpleVertexBuffer().apply {
             setVertexes(
                 ShaderUtil.genSquareUV(
@@ -96,121 +137,69 @@ class TestTexturedBeamEntity(world: Level?) : RenderEntity(world), ScreenGlowCon
             beamShader.init()
             beamTextures.init()
         }
-
-        fun reloadStaticResources() {
-            quadBuffer.release()
-            beamShader.release()
-            beamTextures.release()
-            initialized = false
-        }
     }
 
-    var width by tracked(0.6f)
-    var height by tracked(3.0f)
-    var beamColor by tracked(Vector4f(0.5f, 0.9f, 1.0f, 1.0f))
     private val size = Vector2f()
     private val renderColor = Vector4f()
-    private val glowColor = Vector3f()
-    private val glowSamplePos = Vector3f()
-    private val glowOffset = Vector3f()
-    private val glowAxis = Vector3f()
 
-    override fun initialize() {
+    override fun initialize(instance: RenderEntityInstance<TestTexturedBeamEntity>) {
         initStatic()
     }
 
-    override fun getCodec(): StreamCodec<FriendlyByteBuf, RenderEntity> = codec
-
-    override fun getRenderID(): ResourceLocation = id
-
-    override fun release() {
-    }
-
-    override fun render(
-        matrices: Matrix4fStack,
-        viewMatrix: Matrix4f,
-        projMatrix: Matrix4f,
-        tickDelta: Float
-    ) {
+    override fun renderLocal(input: LocalRenderInput<TestTexturedBeamEntity>) {
+        val entity = input.instance.entity
+        val glowContext = createGlowContext(input)
         val blend = DistanceAdaptiveGlow.computeBlend(
-            worldPosition = Vector3f(pos.x.toFloat(), pos.y.toFloat(), pos.z.toFloat()),
-            worldRadius = effectRadius(),
-            context = createGlowContext(tickDelta, viewMatrix, projMatrix)
+            worldPosition = Vector3f(entity.pos.x.toFloat(), entity.pos.y.toFloat(), entity.pos.z.toFloat()),
+            worldRadius = effectRadius(entity),
+            context = glowContext
         )
         if (blend.directWeight <= 1.0e-3f) {
             return
         }
 
+        RenderSystem.disableCull()
+        RenderSystem.enableDepthTest()
         RenderSystem.enableBlend()
         RenderSystem.blendFunc(GL_SRC_ALPHA, GL_ONE)
         RenderSystem.depthMask(false)
-        beamShader.useOnContext {
-            setMatrix4("projMat", projMatrix)
-            setMatrix4("viewMat", viewMatrix)
-            setMatrix4("transMat", matrices)
-            size.set(width, height)
-            setFloat2("size", size)
-            setFloat4("color", renderColor.set(beamColor).mul(blend.directWeight))
-            setFloat("time", getTime(tickDelta))
-            setInt("beamTex", 0)
-            beamTextures.drawWith {
-                quadBuffer.draw()
+        try {
+            beamShader.useOnContext {
+                setMatrix4("projMat", input.projMatrix)
+                setMatrix4("viewMat", input.viewMatrix)
+                setMatrix4("transMat", input.modelMatrix)
+                size.set(entity.width, entity.height)
+                setFloat2("size", size)
+                setFloat4("color", renderColor.set(entity.beamColor).mul(blend.directWeight))
+                setFloat("time", entity.getTime(input.tickDelta))
+                setInt("beamTex", 0)
+                beamTextures.drawWith {
+                    quadBuffer.draw()
+                }
             }
-        }
-        RenderSystem.depthMask(true)
-        RenderSystem.defaultBlendFunc()
-        RenderSystem.disableBlend()
-    }
-
-    override fun collectScreenGlows(context: ScreenGlowRenderContext, output: MutableList<ScreenGlow>) {
-        val blend = DistanceAdaptiveGlow.computeBlend(
-            worldPosition = Vector3f(pos.x.toFloat(), pos.y.toFloat(), pos.z.toFloat()),
-            worldRadius = effectRadius(),
-            context = context
-        )
-        if (blend.screenGlowWeight <= 1.0e-3f) {
-            return
-        }
-
-        glowAxis.set(0.0f, 1.0f, 0.0f)
-        context.inverseViewRotationMatrix.transform(glowAxis).normalize()
-        glowColor.set(beamColor.x, beamColor.y, beamColor.z)
-        val sampleIntensity = beamColor.w * (1.6f * blend.screenGlowWeight) / GLOW_SAMPLE_OFFSETS.size
-        val sampleRadius = max(width * 0.95f, height * 0.12f)
-
-        for (offset in GLOW_SAMPLE_OFFSETS) {
-            glowOffset.set(glowAxis).mul(height * offset)
-            glowSamplePos.set(pos.x.toFloat(), pos.y.toFloat(), pos.z.toFloat()).add(glowOffset)
-            output.add(
-                ScreenGlow(
-                    position = Vector3f(glowSamplePos),
-                    color = Vector3f(glowColor),
-                    radius = sampleRadius,
-                    intensity = sampleIntensity,
-                    softness = 0.52f
-                )
-            )
+        } finally {
+            RenderSystem.depthMask(true)
+            RenderSystem.defaultBlendFunc()
+            RenderSystem.disableBlend()
+            RenderSystem.enableDepthTest()
+            RenderSystem.disableCull()
         }
     }
 
-    private fun effectRadius(): Float {
-        return sqrt(width * width + height * height) * 0.5f
+    private fun effectRadius(entity: TestTexturedBeamEntity): Float {
+        return sqrt(entity.width * entity.width + entity.height * entity.height) * 0.5f
     }
 
-    private fun createGlowContext(
-        tickDelta: Float,
-        viewMatrix: Matrix4f,
-        projMatrix: Matrix4f
-    ): ScreenGlowRenderContext {
+    private fun createGlowContext(input: LocalRenderInput<TestTexturedBeamEntity>): ScreenGlowRenderContext {
         val minecraft = Minecraft.getInstance()
         val camera = minecraft.gameRenderer.mainCamera.position
         return ScreenGlowRenderContext(
-            tickDelta = tickDelta,
+            tickDelta = input.tickDelta,
             cameraWorldPos = Vector3f(camera.x.toFloat(), camera.y.toFloat(), camera.z.toFloat()),
-            viewMatrix = Matrix4f(viewMatrix),
-            viewRotationMatrix = Matrix3f(viewMatrix),
-            inverseViewRotationMatrix = Matrix3f(viewMatrix).invert(),
-            projMatrix = Matrix4f(projMatrix),
+            viewMatrix = Matrix4f(input.viewMatrix),
+            viewRotationMatrix = Matrix3f(input.viewMatrix),
+            inverseViewRotationMatrix = Matrix3f(input.viewMatrix).invert(),
+            projMatrix = Matrix4f(input.projMatrix),
             screenSize = Vector2f(
                 minecraft.mainRenderTarget.width.toFloat(),
                 minecraft.mainRenderTarget.height.toFloat()
