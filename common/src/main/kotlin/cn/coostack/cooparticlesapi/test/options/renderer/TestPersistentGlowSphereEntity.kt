@@ -6,9 +6,8 @@ import cn.coostack.cooparticlesapi.renderer.RenderEntityInputBlendMode
 import cn.coostack.cooparticlesapi.renderer.RenderEntityRenderPass
 import cn.coostack.cooparticlesapi.renderer.glow.BrightSourceOrbProfile
 import cn.coostack.cooparticlesapi.renderer.glow.DistanceAdaptiveGlow
+import cn.coostack.cooparticlesapi.renderer.glow.DistanceAdaptiveGlowBlend
 import cn.coostack.cooparticlesapi.renderer.glow.DistanceAdaptiveOrbGlowCompensation
-import cn.coostack.cooparticlesapi.renderer.glow.PersistentBloom
-import cn.coostack.cooparticlesapi.renderer.glow.PersistentBloomContextProvider
 import cn.coostack.cooparticlesapi.renderer.glow.ScreenGlowRenderContext
 import cn.coostack.cooparticlesapi.renderer.shader.ShaderProgramBuilder
 import cn.coostack.cooparticlesapi.renderer.shader.data.CooVertexFormat
@@ -28,19 +27,15 @@ import org.joml.Vector3f
 import kotlin.math.max
 
 /**
- * 演示“POST_PROCESS 球体本体 + PersistentBloom 帧尾外辉光”的 RenderEntity 样板。
+ * 演示“球体本体 emissive + 同一条 post-process pipe 的远距 billboard fallback”。
  *
- * 这类实体的链路和 `TestGlowSphereEntity` 不同：
- * 1. 本体不在 `WORLD` pass 直接合成，而是进入 `POST_PROCESS` pipe。
- * 2. `render(...)` 只负责把可见球体和失真/遮罩写入当前 post-process 目标。
- * 3. 额外的远距外发光不靠 `ScreenGlow`，而是通过 `PersistentBloomContextProvider`
- *    在帧尾交给 `ClientPersistentBloomManager` 统一做 blur + composite。
- *
- * 这个类更适合当“稳定辉光球”模板，而不是“运行时高频调参同步”模板：
- * 当前没有覆盖 `loadProfileFromEntity(...)`，因此 `TOGGLE` 只会稳定同步基类字段，
- * 如果需要把 radius/intensity/color 等动态回写到客户端镜像，需要额外补这个钩子。
+ * 链路：
+ * 1. 近景继续使用真实球体 mesh 写入 glow / distortion 输入。
+ * 2. 远景不再交给 `PersistentBloom`，改为在同一条 pipe 内写入一个常像素尺寸 billboard。
+ * 3. composite 仍然走 `persistentGlowSphereDistortion`，但远景 fallback 不再写 distortion，
+ *    从而避免远处把整屏背景洗灰。
  */
-class TestPersistentGlowSphereEntity(world: Level?) : RenderEntity(world), PersistentBloomContextProvider {
+class TestPersistentGlowSphereEntity(world: Level?) : RenderEntity(world) {
     companion object {
         private const val DIRECT_FADE_START_PX = 24.0f
         private const val DIRECT_FADE_END_PX = 7.0f
@@ -93,34 +88,48 @@ class TestPersistentGlowSphereEntity(world: Level?) : RenderEntity(world), Persi
             )
         }
 
+        private val quadBuffer = SimpleVertexBuffer().apply {
+            setVertexes(
+                ShaderUtil.genSquareUV(
+                    Vector3f(-0.5f, -0.5f, 0f),
+                    Vector3f(0.5f, -0.5f, 0f),
+                    Vector3f(0.5f, 0.5f, 0f),
+                    Vector3f(-0.5f, 0.5f, 0f)
+                ),
+                CooVertexFormat.POINT_TEXTURE_UV_FORMAT
+            )
+        }
+
         private val glowShader = ShaderProgramBuilder()
             .vertex("test/vtx/glow_sphere.vsh")
             .fragment("test/frag/glow_sphere.fsh")
             .build()
 
+        private val billboardShader = ShaderProgramBuilder()
+            .vertex("test/vtx/glow_sphere_screen_billboard.vsh")
+            .fragment("test/frag/glow_sphere_screen_billboard.fsh")
+            .build()
+
         private var initialized = false
 
-        /**
-         * 静态 GL 资源只初始化一次，避免每个客户端镜像都重复创建 VBO / shader。
-         */
         private fun initStatic() {
             if (initialized) return
             initialized = true
             sphereBuffer.init()
+            quadBuffer.init()
             glowShader.init()
+            billboardShader.init()
         }
 
         fun reloadStaticResources() {
             sphereBuffer.release()
+            quadBuffer.release()
             glowShader.release()
+            billboardShader.release()
             initialized = false
         }
     }
 
-    /**
-     * 这些参数全部用 `tracked(...)` 包装，服务端变更后会触发 dirty/requestSync 流程。
-     * 但要让 `TOGGLE` 真正回写这些字段，仍然需要子类覆盖 `loadProfileFromEntity(...)`。
-     */
     var radius by tracked(4.1f)
     var intensity by tracked(6.8f)
     var haloIntensity by tracked(3.4f)
@@ -132,8 +141,7 @@ class TestPersistentGlowSphereEntity(world: Level?) : RenderEntity(world), Persi
     var glowColor by tracked(Vector3f(0.58f, 0.88f, 1.30f))
 
     private val worldPosition = Vector3f()
-    private val coreGlowColor = Vector3f()
-    private val haloGlowColor = Vector3f()
+    private val billboardSizePx = Vector2f()
 
     override fun initialize() {
         initStatic()
@@ -143,26 +151,15 @@ class TestPersistentGlowSphereEntity(world: Level?) : RenderEntity(world), Persi
 
     override fun getRenderID(): ResourceLocation = id
 
-    /**
-     * 该效果必须走帧尾 pipe：
-     * 本体先写入 `glowSphereDistortion`，后续再由 post-process 和 persistent bloom 统一合成。
-     */
     override fun getRenderPass(): RenderEntityRenderPass = RenderEntityRenderPass.POST_PROCESS
 
     override fun getInputBlendMode(): RenderEntityInputBlendMode {
-        return RenderEntityInputBlendMode.ADDITIVE
+        return RenderEntityInputBlendMode.ALPHA
     }
 
     override fun release() {
     }
 
-    /**
-     * 直接绘制层。
-     *
-     * 这里不会生成最终的外辉光，只负责：
-     * - 依据 `DistanceAdaptiveGlow.computeOrbBlend(...)` 决定近景是否还需要绘制球体本体
-     * - 把球体本体和相关 mask/失真参数写进当前 post-process pipe
-     */
     override fun render(
         matrices: Matrix4fStack,
         viewMatrix: Matrix4f,
@@ -171,11 +168,41 @@ class TestPersistentGlowSphereEntity(world: Level?) : RenderEntity(world), Persi
     ) {
         val context = createGlowContext(tickDelta, viewMatrix, projMatrix)
         val blend = computeBlend(context)
+        val compensation = computeOrbCompensation(blend.projectedRadiusPx)
+        val sourceProfile = createSourceProfile(blend.projectedRadiusPx)
+        drawDirectSphere(
+            matrices = matrices,
+            viewMatrix = viewMatrix,
+            projMatrix = projMatrix,
+            tickDelta = tickDelta,
+            blend = blend,
+            compensation = compensation,
+            sourceProfile = sourceProfile
+        )
+//        drawFarBillboard(
+//            matrices = matrices,
+//            viewMatrix = viewMatrix,
+//            projMatrix = projMatrix,
+//            tickDelta = tickDelta,
+//            context = context,
+//            blend = blend,
+//            compensation = compensation,
+//            sourceProfile = sourceProfile
+//        )
+    }
+
+    private fun drawDirectSphere(
+        matrices: Matrix4fStack,
+        viewMatrix: Matrix4f,
+        projMatrix: Matrix4f,
+        tickDelta: Float,
+        blend: DistanceAdaptiveGlowBlend,
+        compensation: DistanceAdaptiveOrbGlowCompensation,
+        sourceProfile: BrightSourceOrbProfile
+    ) {
         if (blend.directWeight <= 1.0e-3f) {
             return
         }
-        val compensation = computeOrbCompensation(blend.projectedRadiusPx)
-        val sourceProfile = createSourceProfile(blend.projectedRadiusPx)
         val directProfile =
             DistanceAdaptiveGlow.persistentDirectSphereProfileFromProjectedRadiusPx(blend.projectedRadiusPx)
 
@@ -211,48 +238,49 @@ class TestPersistentGlowSphereEntity(world: Level?) : RenderEntity(world), Persi
         RenderSystem.depthMask(true)
     }
 
-    /**
-     * `PersistentBloomContextProvider` 的核心回调。
-     *
-     * `render(...)` 负责近景本体；
-     * 这个方法负责把“需要在帧尾额外扩散的辉光层”描述为 `PersistentBloom`，
-     * 交给 `ClientPersistentBloomManager` 统一排序、裁剪、blur 和 composite。
-     */
-    override fun collectPersistentBlooms(
+    private fun drawFarBillboard(
+        matrices: Matrix4fStack,
+        viewMatrix: Matrix4f,
+        projMatrix: Matrix4f,
+        tickDelta: Float,
         context: ScreenGlowRenderContext,
-        output: MutableList<PersistentBloom>
+        blend: DistanceAdaptiveGlowBlend,
+        compensation: DistanceAdaptiveOrbGlowCompensation,
+        sourceProfile: BrightSourceOrbProfile
     ) {
-        val blend = computeBlend(context)
-        val haloWeight = mix(0.68f, 1.0f, 1.0f - blend.directWeight)
-        if (haloWeight <= 1.0e-3f) {
+        val billboardWeight = computeBillboardWeight(blend)
+        if (billboardWeight <= 1.0e-3f) {
             return
         }
 
-        val compensation = computeOrbCompensation(blend.projectedRadiusPx)
-        val sourceProfile = createSourceProfile(blend.projectedRadiusPx)
-        val haloProfile = DistanceAdaptiveGlow.persistentHaloProfileFromProjectedRadiusPx(blend.projectedRadiusPx)
-        val baseIntensity = ((intensity * 0.10f) + (haloIntensity * 0.38f)) * haloWeight
-        val bloomRadius = radius * compensation.radiusScale
-        coreGlowColor.set(glowColor).lerp(Vector3f(1.0f, 1.0f, 1.0f), sourceProfile.coreWhiteness)
-        haloGlowColor.set(glowColor).lerp(Vector3f(1.0f, 1.0f, 1.0f), sourceProfile.coreWhiteness * 0.10f)
-        coreGlowColor.lerp(haloGlowColor, 0.22f + sourceProfile.shellVisibility * 0.08f)
+        val billboardDiameterPx = computeBillboardSizePx(blend, compensation, sourceProfile)
+        val billboardCoreIntensity = computeBillboardCoreIntensity(compensation)
+        val billboardHaloIntensity = computeBillboardHaloIntensity(compensation)
+        if (billboardDiameterPx <= 1.0e-3f || billboardHaloIntensity <= 1.0e-3f) {
+            return
+        }
 
-        output.add(
-            PersistentBloom(
-                position = Vector3f(currentWorldPosition()),
-                color = Vector3f(haloGlowColor),
-                radius = bloomRadius.coerceAtLeast(radius * 0.92f),
-                intensity = (baseIntensity * compensation.intensityScale).coerceAtMost(9.2f),
-                softness = (compensation.softness + 0.06f - sourceProfile.shellVisibility * 0.04f)
-                    .coerceIn(0.56f, 0.84f),
-                softOcclusionFloor = haloProfile.softOcclusionFloor,
-                haloRadiusScale = haloRadiusScale * haloProfile.haloRadiusScale * 0.86f,
-                brightnessNormalization = haloProfile.brightnessNormalization,
-                haloOpacity = haloProfile.haloOpacity,
-                blurSigma = haloProfile.blurSigma,
-                blurRange = haloProfile.blurRange
-            )
-        )
+        RenderSystem.disableCull()
+        RenderSystem.depthMask(false)
+        billboardShader.useOnContext {
+            setMatrix4("projMat", projMatrix)
+            setMatrix4("viewMat", viewMatrix)
+            setMatrix4("transMat", matrices)
+            setFloat2("screenSize", context.screenSize)
+            billboardSizePx.set(billboardDiameterPx, billboardDiameterPx)
+            setFloat2("sizePx", billboardSizePx)
+            setFloat3("color", glowColor)
+            setFloat("intensity", billboardCoreIntensity)
+            setFloat("haloIntensity", billboardHaloIntensity)
+            setFloat("opacity", billboardWeight)
+            setFloat("softness", compensation.softness)
+            setFloat("coreWhiteness", sourceProfile.coreWhiteness)
+            setFloat("haloSpread", sourceProfile.haloSpread)
+            setFloat("overbrightClamp", overbrightClamp)
+            setFloat("time", getTime(tickDelta))
+            quadBuffer.draw()
+        }
+        RenderSystem.depthMask(true)
     }
 
     private fun currentWorldPosition(): Vector3f {
@@ -263,11 +291,6 @@ class TestPersistentGlowSphereEntity(world: Level?) : RenderEntity(world), Persi
         return max(radius * 0.92f, 0.12f)
     }
 
-    /**
-     * `ScreenGlowRenderContext` 是屏幕投影分析的统一输入。
-     * `computeOrbBlend(...)` 会根据世界半径投影到屏幕后的像素尺寸，
-     * 给出“近景直接绘制权重”和“远景辉光权重”。
-     */
     private fun computeBlend(context: ScreenGlowRenderContext) = DistanceAdaptiveGlow.computeOrbBlend(
         worldPosition = currentWorldPosition(),
         worldRadius = transitionRadius(),
@@ -278,10 +301,6 @@ class TestPersistentGlowSphereEntity(world: Level?) : RenderEntity(world), Persi
         screenGlowFadeEndPx = 18.0f
     )
 
-    /**
-     * 当球体投影尺寸变得很小时，`DistanceAdaptiveGlow` 会返回一组远距补偿参数，
-     * 用来维持可读性，避免球体远处完全缩成一点。
-     */
     private fun computeOrbCompensation(projectedRadiusPx: Float): DistanceAdaptiveOrbGlowCompensation {
         val base = DistanceAdaptiveGlow.farOrbCompensationFromProjectedRadiusPx(projectedRadiusPx)
         val strength = distanceCompensation.coerceIn(0.0f, 1.0f)
@@ -293,17 +312,43 @@ class TestPersistentGlowSphereEntity(world: Level?) : RenderEntity(world), Persi
         )
     }
 
-    /**
-     * 亮源 profile 用来区分近景和远景时的核心白化、壳层可见度、halo 扩散范围。
-     */
     private fun createSourceProfile(projectedRadiusPx: Float): BrightSourceOrbProfile {
         return DistanceAdaptiveGlow.brightSourceOrbProfileFromProjectedRadiusPx(projectedRadiusPx)
     }
 
-    /**
-     * 把当前帧的相机位置、矩阵和屏幕尺寸组装成 glow 分析上下文。
-     * 这一套上下文会同时被直接绘制层和 persistent bloom 采样层复用。
-     */
+    private fun computeBillboardWeight(blend: DistanceAdaptiveGlowBlend): Float {
+        val farWeight = blend.screenGlowWeight.coerceIn(0.0f, 1.0f)
+        val directSuppression = (1.0f - blend.directWeight).coerceIn(0.0f, 1.0f)
+        return (farWeight * (0.32f + directSuppression * 0.68f)).coerceIn(0.0f, 1.0f)
+    }
+
+    private fun computeBillboardSizePx(
+        blend: DistanceAdaptiveGlowBlend,
+        compensation: DistanceAdaptiveOrbGlowCompensation,
+        sourceProfile: BrightSourceOrbProfile
+    ): Float {
+        val projectedDiameter = blend.projectedRadiusPx * 2.0f
+        val amplifiedDiameter = projectedDiameter *
+            mix(1.20f, 2.10f + haloRadiusScale * 0.16f, compensation.persistence) *
+            (0.84f + sourceProfile.haloSpread * 0.18f)
+        val minimumDiameter = mix(12.0f, 18.0f + haloRadiusScale * 1.6f, compensation.persistence)
+        return max(amplifiedDiameter, minimumDiameter).coerceIn(10.0f, 40.0f)
+    }
+
+    private fun computeBillboardCoreIntensity(compensation: DistanceAdaptiveOrbGlowCompensation): Float {
+        val baseIntensity = intensity * 0.34f + haloIntensity * 0.18f
+        return (baseIntensity * compensation.intensityScale).coerceAtMost(6.4f)
+    }
+
+    private fun computeBillboardHaloIntensity(compensation: DistanceAdaptiveOrbGlowCompensation): Float {
+        val baseIntensity = haloIntensity * 0.42f + intensity * 0.12f
+        return (
+            baseIntensity *
+                (0.92f + compensation.persistence * 0.36f) *
+                compensation.intensityScale
+            ).coerceAtMost(8.2f)
+    }
+
     private fun createGlowContext(
         tickDelta: Float,
         viewMatrix: Matrix4f,

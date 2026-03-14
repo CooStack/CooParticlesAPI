@@ -1,6 +1,8 @@
 package cn.coostack.cooparticlesapi.key
 
 import cn.coostack.cooparticlesapi.event.CooEventBus
+import cn.coostack.cooparticlesapi.event.events.key.KeyActionBatch
+import cn.coostack.cooparticlesapi.event.events.key.KeyActionData
 import cn.coostack.cooparticlesapi.event.events.key.KeyActionEvent
 import cn.coostack.cooparticlesapi.event.events.key.KeyActionType
 import cn.coostack.cooparticlesapi.network.packet.client.PacketKeyActionC2S
@@ -82,6 +84,7 @@ object CooKeyBindingManager {
         tickCounter++
         val doubleInterval = doubleClickWindowTicks.coerceAtLeast(0).toLong()
         val states = keyStates.values.toList()
+        val pendingActions = ArrayList<KeyActionData<ResourceLocation>>()
         states.forEach { state ->
             if (keyCountDowns.containsKey(state.id)) {
                 val current = keyCountDowns[state.id]!!
@@ -101,17 +104,27 @@ object CooKeyBindingManager {
                     state.pressTick = 0
                 }
                 state.pressTick++
-                sendAction(state.id, KeyActionType.LONG_PRESS, state.pressTick, false)
+                pendingActions.add(
+                    KeyActionData(state.id, listOf(KeyActionType.LONG_PRESS), state.pressTick, false)
+                )
             } else if (state.wasDown) {
-                sendAction(state.id, KeyActionType.LONG_PRESS, state.pressTick.coerceAtLeast(1), true)
+                val capturedPressTick = state.pressTick.coerceAtLeast(1)
+                pendingActions.add(
+                    KeyActionData(state.id, listOf(KeyActionType.LONG_PRESS), capturedPressTick, true)
+                )
                 val isDouble =
                     state.lastClickTick >= 0 && tickCounter - state.lastClickTick <= doubleInterval
                 val action = if (isDouble) KeyActionType.DOUBLE_CLICK else KeyActionType.SINGLE_CLICK
-                sendAction(state.id, action, state.pressTick.coerceAtLeast(1), true)
+                pendingActions.add(
+                    KeyActionData(state.id, listOf(action), capturedPressTick, true)
+                )
                 state.lastClickTick = tickCounter
                 state.pressTick = 0
             }
             state.wasDown = down
+        }
+        if (pendingActions.isNotEmpty()) {
+            sendActions(KeyActionBatch(pendingActions))
         }
     }
 
@@ -122,20 +135,15 @@ object CooKeyBindingManager {
         }
     }
 
-    private fun sendAction(
-        keyId: ResourceLocation,
-        action: KeyActionType,
-        pressTick: Int,
-        isRelease: Boolean
-    ) {
+    private fun sendActions(keyActions: KeyActionBatch<ResourceLocation>) {
         val client = Minecraft.getInstance()
         val player = client.player
         if (player == null || client.level == null) {
             return
         }
         CooEventBus.call(
-            KeyActionEvent(player, keyId, action, pressTick, isRelease, false)
+            KeyActionEvent(player, keyActions, false)
         )
-        CooParticlesServices.CLIENT_NETWORK.send(PacketKeyActionC2S(keyId, action, pressTick, isRelease))
+        CooParticlesServices.CLIENT_NETWORK.send(PacketKeyActionC2S(keyActions))
     }
 }

@@ -179,13 +179,33 @@ object DistanceAdaptiveGlow {
         val nearFactor = smoothstep(nearFadeStartPx, nearFadeEndPx, safeRadius)
 
         return PersistentHaloProfile(
-            haloRadiusScale = mix(2.25f, 1.45f, nearFactor).coerceIn(1.45f, 2.25f),
-            brightnessNormalization = mix(1.10f, 0.98f, nearFactor).coerceIn(0.98f, 1.10f),
-            softOcclusionFloor = mix(0.34f, 0.18f, nearFactor).coerceIn(0.18f, 0.34f),
-            haloOpacity = mix(0.74f, 0.68f, nearFactor).coerceIn(0.68f, 0.74f),
-            blurSigma = mix(4.20f, 3.20f, nearFactor).coerceIn(3.20f, 4.20f),
-            blurRange = mix(4.00f, 3.00f, nearFactor).coerceIn(3.00f, 4.00f)
+            haloRadiusScale = mix(1.82f, 1.34f, nearFactor).coerceIn(1.34f, 1.82f),
+            brightnessNormalization = mix(0.92f, 0.84f, nearFactor).coerceIn(0.84f, 0.92f),
+            softOcclusionFloor = mix(0.18f, 0.10f, nearFactor).coerceIn(0.10f, 0.18f),
+            haloOpacity = mix(0.50f, 0.44f, nearFactor).coerceIn(0.44f, 0.50f),
+            blurSigma = mix(3.00f, 2.30f, nearFactor).coerceIn(2.30f, 3.00f),
+            blurRange = mix(2.60f, 1.90f, nearFactor).coerceIn(1.90f, 2.60f)
         )
+    }
+
+    /**
+     * 为 `PersistentBloom` 提供一个更偏向远景的权重。
+     *
+     * 设计目标：
+     * - 当球体已经足够大、直接绘制层本身就很显眼时，persistent bloom 应明显收敛，避免把整屏背景洗灰。
+     * - 当球体投影尺寸很小、直接层难以维持可读性时，再把权重逐步交给 persistent bloom。
+     */
+    @JvmStatic
+    fun persistentBloomWeightFromOrbBlend(
+        blend: DistanceAdaptiveGlowBlend,
+        nearFloor: Float = 0.10f,
+        farCeiling: Float = 0.88f
+    ): Float {
+        val farWeight = blend.screenGlowWeight.coerceIn(0.0f, 1.0f)
+        val directWeight = blend.directWeight.coerceIn(0.0f, 1.0f)
+        val squaredFarWeight = farWeight * farWeight
+        val directSuppression = mix(nearFloor, farCeiling, 1.0f - directWeight)
+        return (squaredFarWeight * directSuppression).coerceIn(0.0f, 1.0f)
     }
 
     /**

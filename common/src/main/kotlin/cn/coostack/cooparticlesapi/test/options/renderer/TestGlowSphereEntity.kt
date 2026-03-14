@@ -127,7 +127,7 @@ class TestGlowSphereEntity(world: Level?) : RenderEntity(world), WorldLightProvi
     }
 
     override fun getInputBlendMode(): RenderEntityInputBlendMode {
-        return RenderEntityInputBlendMode.ADDITIVE
+        return RenderEntityInputBlendMode.ALPHA
     }
 
     override fun release() {

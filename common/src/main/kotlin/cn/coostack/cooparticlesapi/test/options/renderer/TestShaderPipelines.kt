@@ -16,6 +16,10 @@ import org.lwjgl.opengl.GL33
 import java.util.function.Supplier
 
 object TestShaderPipelines {
+    private const val PERSISTENT_GLOW_SPHERE_BLUR_PASSES = 4
+    private const val PERSISTENT_GLOW_SPHERE_BLUR_SIGMA = 7.0f
+    private const val PERSISTENT_GLOW_SPHERE_BLUR_RANGE = 4.0f
+
     private fun createSceneCopyPipe(): ExternalTextureShaderPipe {
         val sceneCopyTextures = SimpleTextures().apply {
             addTexture(SupplierTexture { minecraft.mainRenderTarget.colorTextureId })
@@ -46,7 +50,7 @@ object TestShaderPipelines {
                 ),
                 GlShaderType.FRAGMENT
             ),
-            Supplier { minecraft.mainRenderTarget.depthTextureId },
+            { minecraft.mainRenderTarget.depthTextureId },
             3
         )
     }
@@ -203,6 +207,74 @@ object TestShaderPipelines {
                     ResourceLocation.fromNamespaceAndPath(
                         CooParticlesConstants.MOD_ID,
                         "test/frag/glow_sphere_composite.fsh"
+                    ),
+                    GlShaderType.FRAGMENT
+                ),
+                Supplier { minecraft.mainRenderTarget.depthTextureId }
+            ).addRenderHandler { program ->
+                program.setInt("glowMask", 0)
+                program.setInt("distortionMask", 1)
+                program.setInt("sceneTex", 2)
+                program.setInt("blurredGlow", 3)
+                program.setInt("sceneDepth", 4)
+            }
+        )
+
+        beforeRender {
+            sceneCopyPipe.capture()
+        }
+        setLinkerFunc { linker ->
+            linker.from(input, 0).to(valueOutput!!, 0)
+            linker.from(input, 1).to(valueOutput!!, 1)
+            linker.from(sceneCopy, 0).to(valueOutput!!, 2)
+            linker.from(input, 0).to(glowBlur, 0)
+            linker.from(glowBlur, 0).to(valueOutput!!, 3)
+        }
+    }
+
+    val persistentGlowSphereDistortion = ShaderPipeManager(
+        ResourceLocation.fromNamespaceAndPath(
+            CooParticlesConstants.MOD_ID,
+            "test_persistent_glow_sphere_distortion"
+        )
+    ).apply {
+        enableBlend = false
+
+        val input = createDistortionInputPipe()
+        val sceneCopyPipe = createSceneCopyPipe()
+        valueInput(input)
+        val sceneCopy = addPipe(sceneCopyPipe)
+        val glowBlur = addPipe(
+            PingPongShaderPipe(
+                IdentifierShader(
+                    ResourceLocation.fromNamespaceAndPath(
+                        CooParticlesConstants.MOD_ID,
+                        "core/bloom/blur.fsh"
+                    ),
+                    GlShaderType.FRAGMENT
+                ),
+                Supplier { -1 },
+                1,
+                PERSISTENT_GLOW_SPHERE_BLUR_PASSES,
+                GL33.GL_LINEAR
+            ).addRenderHandlerPong { program ->
+                program.setInt("bright", 0)
+                program.setFloat("sigma", PERSISTENT_GLOW_SPHERE_BLUR_SIGMA)
+                program.setFloat("range", PERSISTENT_GLOW_SPHERE_BLUR_RANGE)
+                program.setBoolean("horizontal", true)
+            }.addRenderHandler { program ->
+                program.setInt("bright", 0)
+                program.setFloat("sigma", PERSISTENT_GLOW_SPHERE_BLUR_SIGMA)
+                program.setFloat("range", PERSISTENT_GLOW_SPHERE_BLUR_RANGE)
+                program.setBoolean("horizontal", false)
+            }
+        )
+        valueOutput(
+            SimpleShaderPipe(
+                IdentifierShader(
+                    ResourceLocation.fromNamespaceAndPath(
+                        CooParticlesConstants.MOD_ID,
+                        "test/frag/persistent_glow_sphere_composite.fsh"
                     ),
                     GlShaderType.FRAGMENT
                 ),

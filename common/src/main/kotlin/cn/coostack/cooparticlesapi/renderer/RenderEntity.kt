@@ -404,7 +404,7 @@ abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) : Serv
      *
      * 默认使用 `REPLACE`，保持旧行为。
      * 如果多个实体共享同一个 glow / bloom pipe，并且希望输入 mask 可以叠加，
-     * 则应覆盖为 `ADDITIVE`，同时避免在 `render(...)` 内再次强制关闭 blend。
+     * 通常应覆盖为 `ALPHA` 或 `ADDITIVE`，同时避免在 `render(...)` 内再次强制关闭 blend。
      */
     open fun getInputBlendMode(): RenderEntityInputBlendMode {
         return RenderEntityInputBlendMode.REPLACE
@@ -476,14 +476,15 @@ abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) : Serv
         RenderSystem.enableDepthTest()
         RenderSystem.depthMask(true)
         applyInputBlendMode()
-        runCatching {
+        try {
             render(matrices, viewMatrix, projMatrix, tickDelta)
+        } finally {
+            RenderSystem.defaultBlendFunc()
+            RenderSystem.disableBlend()
+            RenderSystem.depthMask(true)
+            RenderSystem.enableDepthTest()
+            RenderSystem.disableCull()
         }
-        RenderSystem.defaultBlendFunc()
-        RenderSystem.disableBlend()
-        RenderSystem.depthMask(true)
-        RenderSystem.enableDepthTest()
-        RenderSystem.disableCull()
     }
 
     private fun applyInputBlendMode() {
@@ -491,6 +492,11 @@ abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) : Serv
             RenderEntityInputBlendMode.REPLACE -> {
                 RenderSystem.defaultBlendFunc()
                 RenderSystem.disableBlend()
+            }
+
+            RenderEntityInputBlendMode.ALPHA -> {
+                RenderSystem.enableBlend()
+                RenderSystem.defaultBlendFunc()
             }
 
             RenderEntityInputBlendMode.ADDITIVE -> {

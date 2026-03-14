@@ -10,7 +10,7 @@ object ServerKeyActionHandler {
         val player = context.player()
         context.server().execute {
             CooEventBus.call(
-                KeyActionEvent(player, packet.keyId, packet.action, packet.pressTick, packet.isRelease, true)
+                KeyActionEvent(player, packet.keyActions, true)
             )
         }
     }

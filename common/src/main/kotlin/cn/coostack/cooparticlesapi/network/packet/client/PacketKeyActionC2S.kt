@@ -1,6 +1,8 @@
 package cn.coostack.cooparticlesapi.network.packet.client
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
+import cn.coostack.cooparticlesapi.event.events.key.KeyActionBatch
+import cn.coostack.cooparticlesapi.event.events.key.KeyActionData
 import cn.coostack.cooparticlesapi.event.events.key.KeyActionType
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
@@ -9,15 +11,9 @@ import net.minecraft.resources.ResourceLocation
 
 /**
  * 客户端按键动作触发时发送给服务器
- *
- * @param pressTick 按键已按住的 tick 数(长按时每 tick 递增)
- * @param isRelease 是否为松开按键时的触发
  */
 class PacketKeyActionC2S(
-    val keyId: ResourceLocation,
-    val action: KeyActionType,
-    val pressTick: Int,
-    val isRelease: Boolean
+    val keyActions: KeyActionBatch<ResourceLocation>
 ) : CustomPacketPayload {
     companion object {
         private val identifierID =
@@ -25,16 +21,32 @@ class PacketKeyActionC2S(
         val payloadID = CustomPacketPayload.Type<PacketKeyActionC2S>(identifierID)
         val CODEC: StreamCodec<FriendlyByteBuf, PacketKeyActionC2S> =
             CustomPacketPayload.codec({ packet, buf ->
-                buf.writeResourceLocation(packet.keyId)
-                buf.writeInt(packet.action.id)
-                buf.writeInt(packet.pressTick)
-                buf.writeBoolean(packet.isRelease)
+                val entries = packet.keyActions.entries
+                buf.writeVarInt(entries.size)
+                entries.forEach { entry ->
+                    buf.writeResourceLocation(entry.keyId)
+                    buf.writeVarInt(entry.actions.size)
+                    entry.actions.forEach { action ->
+                        buf.writeInt(action.id)
+                    }
+                    buf.writeInt(entry.pressTick)
+                    buf.writeBoolean(entry.released)
+                }
             }, { buf ->
-                val keyId = buf.readResourceLocation()
-                val action = KeyActionType.Companion.fromId(buf.readInt())
-                val pressTick = buf.readInt()
-                val isRelease = buf.readBoolean()
-                PacketKeyActionC2S(keyId, action, pressTick, isRelease)
+                val entryCount = buf.readVarInt()
+                val entries = ArrayList<KeyActionData<ResourceLocation>>(entryCount)
+                repeat(entryCount) {
+                    val keyId = buf.readResourceLocation()
+                    val actionCount = buf.readVarInt()
+                    val actions = ArrayList<KeyActionType>(actionCount)
+                    repeat(actionCount) {
+                        actions.add(KeyActionType.fromId(buf.readInt()))
+                    }
+                    val pressTick = buf.readInt()
+                    val released = buf.readBoolean()
+                    entries.add(KeyActionData(keyId, actions, pressTick, released))
+                }
+                PacketKeyActionC2S(KeyActionBatch(entries))
             })
     }
 

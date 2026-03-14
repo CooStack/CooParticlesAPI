@@ -10,6 +10,7 @@ object TestShaderInit {
         ClientRenderPipelineManager.register(TestShaderPipelines.blackHoleDistortion)
         ClientRenderPipelineManager.register(TestShaderPipelines.accretionDiskDistortion)
         ClientRenderPipelineManager.register(TestShaderPipelines.glowSphereDistortion)
+        ClientRenderPipelineManager.register(TestShaderPipelines.persistentGlowSphereDistortion)
         ClientRenderEntityManager.register(
             TestRendererEntity.id,
             TestRendererEntity.codec,
@@ -38,7 +39,7 @@ object TestShaderInit {
         ClientRenderEntityManager.register(
             TestPersistentGlowSphereEntity.id,
             TestPersistentGlowSphereEntity.codec,
-            TestShaderPipelines.glowSphereDistortion.pipeID
+            TestShaderPipelines.persistentGlowSphereDistortion.pipeID
         )
         ClientRenderEntityManager.register(
             TestBlackHoleEntity.id,

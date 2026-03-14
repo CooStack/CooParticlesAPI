@@ -15,6 +15,12 @@ enum class RenderEntityInputBlendMode {
     REPLACE,
 
     /**
+     * 使用标准 alpha 混合把当前实体写入共享输入 FBO。
+     * 适合 glow / distortion mask 这类需要多实例共存，但又不能让同一实体内部片元彼此纯加法放大的效果。
+     */
+    ALPHA,
+
+    /**
      * 使用加法混合把当前实体累加到共享输入 FBO。
      * 适合 glow / bloom / emissive mask 这类允许多个实体共同叠加的效果。
      */
