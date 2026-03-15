@@ -81,113 +81,27 @@ val current = angle.getWithInterpolator(lerpProgress)
 - **ModelPartPointCollector**：按模型网格采样点，用于模型转点集。
 - **ClientCameraUtil / ServerCameraUtil**：当前版本的客户端相机状态机与服务端控制入口。
 
-### 6.1 Camera operation 协议
+### 6.1 先记一条链路
 
-现在的 `Shake` 相关代码已经不是“单一 helper + 一个 shake 包”。
-完整链路是：
+```text
+ServerCameraUtil
+  -> PacketCameraShakeS2C
+  -> ClientCameraShakeHandler
+  -> ClientCameraUtil
+  -> CooParticleCameraMixin
+```
 
-1. `ServerCameraUtil` 在服务端构造相机操作。
-2. `PacketCameraShakeS2C` 用 `CameraOperation` 承载实际操作类型和参数。
-3. `ClientCameraShakeHandler` 在客户端按操作类型分流。
-4. `ClientCameraUtil` 维护持续状态，并在客户端主 tick 中推进。
-5. `CooParticleCameraMixin` 在原版 `Camera` 上读取当前状态，并用 partial tick 做插值应用。
+可以把它理解成：
 
-这意味着当前相机系统已经是一个完整的 protocol，而不是“收到包立刻算完一次抖动”的一次性逻辑。
+- 服务端只负责发“相机操作”
+- 客户端把操作存成持续状态
+- 原版 `Camera` 每帧再把这些状态真正应用上去
 
-### 6.2 `PacketCameraShakeS2C`
+所以现在的 shake 不是“收到包就抖一下”，而是一个小型状态机。
 
-当前协议支持 6 类操作：
+### 6.2 服务端最常用的 4 个调用
 
-- `SHAKE`
-- `SET_OFFSET`
-- `RESET_OFFSET`
-- `FORCE_POSITION`
-- `RESET_FORCE_POSITION`
-- `RESET_ALL`
-
-同一个 payload 会携带：
-
-- shake 参数：`range`、`origin`、`amplitude`、`tick`、`frequency`、`attenuateByDistance`
-- offset / force-position 参数：`position`、`yawOffset`、`pitchOffset`、`instant`
-
-因此这份包实际上承载的是“统一 camera operation 协议”，不是只为 shake 服务。
-
-### 6.3 `ServerCameraUtil`
-
-`ServerCameraUtil` 的 `sendShake(...)` 现在按场景提供多组重载：
-
-- 整个世界广播
-- 整个世界广播并指定频率
-- 指定中心点和作用范围
-- 指定中心点、范围、频率，并可选距离衰减
-- 单玩家版本的所有重载
-
-除此之外还提供：
-
-- `setCameraOffset(...)` / `resetCameraOffset(...)`
-- `forceCameraPosition(...)` / `resetForcedCameraPosition(...)`
-- `resetCamera(...)`
-
-当前版本最应该记住的不是某一个具体重载，而是它的能力边界：
-
-- 服务端只负责发“操作”
-- 距离衰减发生在客户端
-- 平滑过渡还是立即生效由 `instant` 控制
-
-### 6.4 `ClientCameraUtil`
-
-`ClientCameraUtil` 现在是一个三段式状态机：
-
-1. **manual offset**
-   - `manualTargetPosOffset`
-   - `manualTargetYawOffset`
-   - `manualTargetPitchOffset`
-2. **procedural shake**
-   - `shakeDuration`
-   - `shakeFrequency`
-   - `shakePhase`
-   - `shakeTargetPosOffset / shakeTargetYaw / shakeTargetPitch`
-3. **forced camera position**
-   - `forcedCameraPositionTarget`
-   - `forcedCameraPositionCurrent`
-   - `forcedPositionBlendTarget`
-   - `forcedPositionBlendCurrent`
-
-`tick()` 每次客户端逻辑更新都会推进这三段状态，然后同步回 legacy-style 的公开偏移字段。
-
-shake 本身也不再是旧版固定 retarget：
-
-- `shakeEnvelope()` 控制包络衰减
-- `shakePhaseStep(frequency)` 决定目标更新步长
-- `sampleShakeNoise(...)` 生成确定性的噪声采样
-- `shakeFollowFactor(frequency)` 让高频 shake 拥有更高的跟随率
-
-所以当前 shake 的正确理解应该是：
-
-- “包络 + 噪声 + 跟随率”的程序化抖动
-- 而不是“每 tick 改一次随机 yaw / pitch”
-
-### 6.5 `ClientCameraShakeHandler`
-
-客户端监听器的职责是协议分流，而不是保存长期状态：
-
-- `SHAKE`：先做 range 判断，再根据 `attenuateByDistance` 在客户端衰减振幅和频率，最后调用 `ClientCameraUtil.startShakeCamera(...)`
-- `SET_OFFSET / RESET_OFFSET`：切到手动 offset 状态
-- `FORCE_POSITION / RESET_FORCE_POSITION`：切到强制相机位置状态
-- `RESET_ALL`：统一清空 shake、offset、forced position
-
-### 6.6 `CooParticleCameraMixin`
-
-`CooParticleCameraMixin` 是最终把状态打到原版相机上的桥：
-
-- `tick` 注入：读取 `ClientCameraUtil` 的当前总偏移和强制位置权重
-- `setup` 注入：按 partial tick 在“上一帧目标”和“这一帧目标”之间插值
-
-这就是为什么当前相机系统看起来是平滑的，而不是网络包一到就硬切。
-
-### 6.7 常用调用示例
-
-范围抖动并按距离衰减：
+爆炸冲击：
 
 ```kotlin
 ServerCameraUtil.sendShake(
@@ -201,18 +115,30 @@ ServerCameraUtil.sendShake(
 )
 ```
 
-设置一个持续偏移：
+只对一个玩家抖：
+
+```kotlin
+ServerCameraUtil.sendShake(
+    target = player,
+    amplitude = 0.5,
+    tick = 16,
+    frequency = 4.0
+)
+```
+
+把镜头往右后方拉一点：
 
 ```kotlin
 ServerCameraUtil.setCameraOffset(
     target = player,
     positionOffset = Vec3(0.0, 0.8, -1.5),
     yawOffset = 12f,
-    pitchOffset = -4f
+    pitchOffset = -4f,
+    instant = false
 )
 ```
 
-强制镜头贴到某个位置：
+强制镜头看某个点：
 
 ```kotlin
 ServerCameraUtil.forceCameraPosition(
@@ -222,11 +148,107 @@ ServerCameraUtil.forceCameraPosition(
 )
 ```
 
-本地测试直接触发 shake：
+清空全部相机效果：
 
 ```kotlin
-ClientCameraUtil.startShakeCamera(tick = 20, amplitude = 0.6, frequency = 4.0)
+ServerCameraUtil.resetCamera(player, instant = false)
 ```
+
+### 6.3 客户端实际会发生什么
+
+`PacketCameraShakeS2C` 现在不只是 shake 包，它有 6 种操作：
+
+- `SHAKE`
+- `SET_OFFSET`
+- `RESET_OFFSET`
+- `FORCE_POSITION`
+- `RESET_FORCE_POSITION`
+- `RESET_ALL`
+
+`ClientCameraShakeHandler` 负责分流：
+
+- `SHAKE`：先做 range 判断，再按 `attenuateByDistance` 衰减，最后调用 `ClientCameraUtil.startShakeCamera(...)`
+- `SET_OFFSET` / `RESET_OFFSET`：更新手动偏移
+- `FORCE_POSITION` / `RESET_FORCE_POSITION`：更新强制相机位置
+- `RESET_ALL`：一次清空 shake、offset、forced position
+
+`CooParticleCameraMixin` 再在原版相机上做 partial tick 插值，所以你看到的是平滑过渡，不是硬切。
+
+### 6.4 3 个直接能抄的场景
+
+场景 1：爆炸中心越远，抖得越轻。
+
+```kotlin
+ServerCameraUtil.sendShake(
+    world = serverLevel,
+    origin = boss.position(),
+    range = 48.0,
+    amplitude = 1.0,
+    tick = 30,
+    frequency = 5.5,
+    attenuateByDistance = true
+)
+```
+
+场景 2：技能读条时，让镜头持续偏一点。
+
+```kotlin
+ServerCameraUtil.setCameraOffset(
+    target = player,
+    positionOffset = Vec3(0.0, 0.2, -0.6),
+    yawOffset = 6f,
+    pitchOffset = -2f,
+    instant = false
+)
+```
+
+读条结束后恢复：
+
+```kotlin
+ServerCameraUtil.resetCameraOffset(player, instant = false)
+```
+
+场景 3：过场镜头暂时锁到指定位置。
+
+```kotlin
+ServerCameraUtil.forceCameraPosition(
+    target = player,
+    position = Vec3(100.0, 72.0, 100.0),
+    instant = false
+)
+```
+
+过场结束后恢复：
+
+```kotlin
+ServerCameraUtil.resetForcedCameraPosition(player, instant = false)
+```
+
+### 6.5 本地调试怎么测
+
+不想先走网络时，客户端可以直接测 shake：
+
+```kotlin
+ClientCameraUtil.startShakeCamera(
+    tick = 20,
+    amplitude = 0.6,
+    frequency = 4.0
+)
+```
+
+停掉：
+
+```kotlin
+ClientCameraUtil.stopShakeCameraNow()
+```
+
+### 6.6 常见坑
+
+- `range` 只在带 `origin + range` 的重载里有意义。玩家超出范围，客户端会直接忽略。
+- `attenuateByDistance = true` 时，边缘玩家的效果会非常弱，这通常不是 bug。
+- `instant = false` 表示平滑过渡，不是“没生效”。
+- `resetCamera(...)` 会把 shake、offset、forced position 一起清掉。
+- `setCameraOffset(...)` 是“相机偏移”，`forceCameraPosition(...)` 是“相机位置被接管”，两者不是一回事。
 
 ## 7. 物理与碰撞
 
