@@ -18,9 +18,15 @@ object ClientRenderEntityRegistry {
     fun register(
         id: ResourceLocation,
         codec: StreamCodec<FriendlyByteBuf, RenderEntity>,
-        rendererFactory: () -> RenderEntityRenderer<out RenderEntity>
+        rendererFactory: (() -> RenderEntityRenderer<out RenderEntity>)? = null
     ) {
         register(id, ClientRenderEntityType(codec, rendererFactory))
+    }
+
+    fun registerRenderer(id: ResourceLocation, rendererFactory: () -> RenderEntityRenderer<out RenderEntity>) {
+        val existing = types[id]
+            ?: throw IllegalStateException("RenderEntity codec not registered: $id")
+        types[id] = existing.copy(rendererFactory = rendererFactory)
     }
 
     fun get(id: ResourceLocation): ClientRenderEntityType? {

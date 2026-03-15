@@ -5,7 +5,6 @@ layout (location = 0) in vec3 pos;
 uniform mat4 projMat;
 uniform mat4 viewMat;
 uniform mat4 transMat;
-
 out vec3 viewNormal;
 out vec3 viewPos;
 out vec3 localPos;

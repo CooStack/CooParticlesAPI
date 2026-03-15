@@ -41,12 +41,6 @@ data class PersistentHaloProfile(
     val blurRange: Float
 )
 
-data class PersistentDirectSphereProfile(
-    val solidCoreFill: Float,
-    val outerShellOpacity: Float,
-    val distortionOpacity: Float
-)
-
 /**
  * 一组“按当前帧投影尺寸自适应”的 glow / bloom 采样工具。
  *

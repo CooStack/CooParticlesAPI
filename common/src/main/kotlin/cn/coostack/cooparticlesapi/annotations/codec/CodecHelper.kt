@@ -42,6 +42,7 @@ import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import org.joml.Quaternionf
 import org.joml.Vector3f
+import org.joml.Vector4f
 import java.lang.reflect.Modifier
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -66,6 +67,14 @@ object CodecHelper {
         register(CompositionEmittersData::class.java, CompositionEmittersData.PACKET_CODEC)
         register(DisplayEntityEmittersData::class.java, DisplayEntityEmittersData.PACKET_CODEC)
         register(Vector3f::class.java, StreamCodec.of({ buf, i -> buf.writeVector3f(i) }, { it.readVector3f() }))
+        register(Vector4f::class.java, StreamCodec.of({ buf, v ->
+            buf.writeFloat(v.x)
+            buf.writeFloat(v.y)
+            buf.writeFloat(v.z)
+            buf.writeFloat(v.w)
+        }, {
+            Vector4f(it.readFloat(), it.readFloat(), it.readFloat(), it.readFloat())
+        }))
         register(Vec3::class.java, StreamCodec.of({ buf, i -> buf.writeVec3(i) }, { it.readVec3() }))
         register(Quaternionf::class.java, StreamCodec.of({ buf, q -> buf.writeQuaternion(q) }, { it.readQuaternion() }))
         register(AABB::class.java, StreamCodec.of({ buf, i ->
@@ -334,7 +343,9 @@ object CodecHelper {
         if (current::class.java != other::class.java) return
         val fields = current::class.java.declaredFields
         fields.filter {
-            it.isAnnotationPresent(CodecField::class.java) && !Modifier.isFinal(it.modifiers)
+            it.isAnnotationPresent(CodecField::class.java) &&
+                !Modifier.isFinal(it.modifiers) &&
+                !Modifier.isStatic(it.modifiers)
         }.forEach { field ->
             field.isAccessible = true
             field.set(current, field.get(other))

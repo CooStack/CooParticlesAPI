@@ -26,9 +26,7 @@ object RenderEntityAutoRegistry {
         if (ClientRenderEntityRegistry.get(id) != null) {
             return
         }
-        ClientRenderEntityRegistry.register(id, instance.getCodec()) {
-            throw IllegalStateException("RenderEntity renderer not registered: $id")
-        }
+        ClientRenderEntityRegistry.register(id, instance.getCodec())
     }
 
     private fun createInstance(type: Class<out RenderEntity>): RenderEntity {

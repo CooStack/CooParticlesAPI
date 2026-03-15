@@ -30,8 +30,8 @@ import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestRespawnEmit
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestWaveEmitters
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.event.TestCollideEventHandler
 import cn.coostack.cooparticlesapi.test.options.particle.style.RomaMagicTestStyle
-import cn.coostack.cooparticlesapi.test.options.renderer.TestBillboardSmokeEntity
 import cn.coostack.cooparticlesapi.test.options.renderer.TestAccretionDiskEntity
+import cn.coostack.cooparticlesapi.test.options.renderer.TestBillboardSmokeEntity
 import cn.coostack.cooparticlesapi.test.options.renderer.TestBlackHoleEntity
 import cn.coostack.cooparticlesapi.test.options.renderer.TestPersistentGlowSphereEntity
 import cn.coostack.cooparticlesapi.test.options.renderer.TestRendererEntity
@@ -199,7 +199,6 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
                     haloIntensity = 4.1f
                     haloRadiusScale = 1.46f
                     fresnelStrength = 0.82f
-                    distanceCompensation = 1.0f
                     animationSpeed = 0.92f
                     overbrightClamp = 8.4f
                     glowColor = org.joml.Vector3f(0.82f, 0.94f, 1.08f)

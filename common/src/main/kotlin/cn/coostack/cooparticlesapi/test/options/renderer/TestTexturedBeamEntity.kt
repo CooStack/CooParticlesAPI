@@ -34,7 +34,8 @@ import kotlin.math.sqrt
 
 @CooAutoRegister
 class TestTexturedBeamEntity(world: Level? = null, pos: Vec3 = Vec3.ZERO) : AutoRenderEntity(world, pos),
-    ScreenGlowContextProvider {
+    ScreenGlowContextProvider,
+    RenderEntityRenderer<TestTexturedBeamEntity> {
     constructor() : this(null, Vec3.ZERO)
 
     companion object {
@@ -44,62 +45,7 @@ class TestTexturedBeamEntity(world: Level? = null, pos: Vec3 = Vec3.ZERO) : Auto
             CooParticlesConstants.MOD_ID,
             "test_textured_beam"
         )
-    }
 
-    @field:CodecField
-    var width: Float = 0.6f
-
-    @field:CodecField
-    var height: Float = 3.0f
-
-    @field:CodecField
-    var beamColor: Vector4f = Vector4f(0.5f, 0.9f, 1.0f, 1.0f)
-
-    private val glowColor = Vector3f()
-    private val glowSamplePos = Vector3f()
-    private val glowOffset = Vector3f()
-    private val glowAxis = Vector3f()
-
-    override fun getRenderID(): ResourceLocation = ID
-
-    override fun collectScreenGlows(context: ScreenGlowRenderContext, output: MutableList<ScreenGlow>) {
-        val blend = DistanceAdaptiveGlow.computeBlend(
-            worldPosition = Vector3f(pos.x.toFloat(), pos.y.toFloat(), pos.z.toFloat()),
-            worldRadius = effectRadius(),
-            context = context
-        )
-        if (blend.screenGlowWeight <= 1.0e-3f) {
-            return
-        }
-
-        glowAxis.set(0.0f, 1.0f, 0.0f)
-        context.inverseViewRotationMatrix.transform(glowAxis).normalize()
-        glowColor.set(beamColor.x, beamColor.y, beamColor.z)
-        val sampleIntensity = beamColor.w * (1.6f * blend.screenGlowWeight) / GLOW_SAMPLE_OFFSETS.size
-        val sampleRadius = max(width * 0.95f, height * 0.12f)
-
-        for (offset in GLOW_SAMPLE_OFFSETS) {
-            glowOffset.set(glowAxis).mul(height * offset)
-            glowSamplePos.set(pos.x.toFloat(), pos.y.toFloat(), pos.z.toFloat()).add(glowOffset)
-            output.add(
-                ScreenGlow(
-                    position = Vector3f(glowSamplePos),
-                    color = Vector3f(glowColor),
-                    radius = sampleRadius,
-                    intensity = sampleIntensity,
-                    softness = 0.52f
-                )
-            )
-        }
-    }
-
-    private fun effectRadius(): Float {
-        return sqrt(width * width + height * height) * 0.5f
-    }
-}
-
-class TestTexturedBeamEntityRenderer : RenderEntityRenderer<TestTexturedBeamEntity> {
-    companion object {
         private val quadBuffer = SimpleVertexBuffer().apply {
             setVertexes(
                 ShaderUtil.genSquareUV(
@@ -139,19 +85,33 @@ class TestTexturedBeamEntityRenderer : RenderEntityRenderer<TestTexturedBeamEnti
         }
     }
 
+    @field:CodecField
+    var width: Float = 0.6f
+
+    @field:CodecField
+    var height: Float = 3.0f
+
+    @field:CodecField
+    var beamColor: Vector4f = Vector4f(0.5f, 0.9f, 1.0f, 1.0f)
+
     private val size = Vector2f()
     private val renderColor = Vector4f()
+    private val glowColor = Vector3f()
+    private val glowSamplePos = Vector3f()
+    private val glowOffset = Vector3f()
+    private val glowAxis = Vector3f()
+
+    override fun getRenderID(): ResourceLocation = ID
 
     override fun initialize(instance: RenderEntityInstance<TestTexturedBeamEntity>) {
         initStatic()
     }
 
     override fun renderLocal(input: LocalRenderInput<TestTexturedBeamEntity>) {
-        val entity = input.instance.entity
         val glowContext = createGlowContext(input)
         val blend = DistanceAdaptiveGlow.computeBlend(
-            worldPosition = Vector3f(entity.pos.x.toFloat(), entity.pos.y.toFloat(), entity.pos.z.toFloat()),
-            worldRadius = effectRadius(entity),
+            worldPosition = Vector3f(pos.x.toFloat(), pos.y.toFloat(), pos.z.toFloat()),
+            worldRadius = effectRadius(),
             context = glowContext
         )
         if (blend.directWeight <= 1.0e-3f) {
@@ -168,10 +128,10 @@ class TestTexturedBeamEntityRenderer : RenderEntityRenderer<TestTexturedBeamEnti
                 setMatrix4("projMat", input.projMatrix)
                 setMatrix4("viewMat", input.viewMatrix)
                 setMatrix4("transMat", input.modelMatrix)
-                size.set(entity.width, entity.height)
+                size.set(width, height)
                 setFloat2("size", size)
-                setFloat4("color", renderColor.set(entity.beamColor).mul(blend.directWeight))
-                setFloat("time", entity.getTime(input.tickDelta))
+                setFloat4("color", renderColor.set(beamColor).mul(blend.directWeight))
+                setFloat("time", getTime(input.tickDelta))
                 setInt("beamTex", 0)
                 beamTextures.drawWith {
                     quadBuffer.draw()
@@ -186,8 +146,39 @@ class TestTexturedBeamEntityRenderer : RenderEntityRenderer<TestTexturedBeamEnti
         }
     }
 
-    private fun effectRadius(entity: TestTexturedBeamEntity): Float {
-        return sqrt(entity.width * entity.width + entity.height * entity.height) * 0.5f
+    override fun collectScreenGlows(context: ScreenGlowRenderContext, output: MutableList<ScreenGlow>) {
+        val blend = DistanceAdaptiveGlow.computeBlend(
+            worldPosition = Vector3f(pos.x.toFloat(), pos.y.toFloat(), pos.z.toFloat()),
+            worldRadius = effectRadius(),
+            context = context
+        )
+        if (blend.screenGlowWeight <= 1.0e-3f) {
+            return
+        }
+
+        glowAxis.set(0.0f, 1.0f, 0.0f)
+        context.inverseViewRotationMatrix.transform(glowAxis).normalize()
+        glowColor.set(beamColor.x, beamColor.y, beamColor.z)
+        val sampleIntensity = beamColor.w * (1.6f * blend.screenGlowWeight) / GLOW_SAMPLE_OFFSETS.size
+        val sampleRadius = max(width * 0.95f, height * 0.12f)
+
+        for (offset in GLOW_SAMPLE_OFFSETS) {
+            glowOffset.set(glowAxis).mul(height * offset)
+            glowSamplePos.set(pos.x.toFloat(), pos.y.toFloat(), pos.z.toFloat()).add(glowOffset)
+            output.add(
+                ScreenGlow(
+                    position = Vector3f(glowSamplePos),
+                    color = Vector3f(glowColor),
+                    radius = sampleRadius,
+                    intensity = sampleIntensity,
+                    softness = 0.52f
+                )
+            )
+        }
+    }
+
+    private fun effectRadius(): Float {
+        return sqrt(width * width + height * height) * 0.5f
     }
 
     private fun createGlowContext(input: LocalRenderInput<TestTexturedBeamEntity>): ScreenGlowRenderContext {

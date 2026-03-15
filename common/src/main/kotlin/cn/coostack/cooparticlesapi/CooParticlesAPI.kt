@@ -14,6 +14,7 @@ import cn.coostack.cooparticlesapi.network.particle.emitters.event.ParticleEvent
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleStyleManager
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import cn.coostack.cooparticlesapi.renderer.server.ServerRenderEntityManager
+import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityAutoRegistry
 import cn.coostack.cooparticlesapi.scheduler.CooScheduler
 import cn.coostack.cooparticlesapi.test.APITestGroupBuilder
 import cn.coostack.cooparticlesapi.test.TestManager
@@ -59,6 +60,7 @@ object CooParticlesAPI {
         ParticleEmittersManager.registerScanner()
         DisplayEntityManager.registerScanner()
         ParticleCompositionManager.registerScanner()
+        RenderEntityAutoRegistry.registerScanner()
     }
 
     fun onServerStart(server: MinecraftServer) {

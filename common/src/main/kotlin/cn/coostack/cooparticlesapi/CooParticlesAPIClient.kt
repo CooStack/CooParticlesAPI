@@ -9,6 +9,9 @@ import cn.coostack.cooparticlesapi.particles.CooModParticles
 import cn.coostack.cooparticlesapi.particles.CooParticleTextureSheet
 import cn.coostack.cooparticlesapi.particles.control.group.ClientParticleGroupManager
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
+import cn.coostack.cooparticlesapi.renderer.backend.IrisSafeRenderBackend
+import cn.coostack.cooparticlesapi.renderer.backend.RenderBackend
+import cn.coostack.cooparticlesapi.renderer.backend.VanillaSafeRenderBackend
 import cn.coostack.cooparticlesapi.renderer.client.ClientRenderEntityManager
 import cn.coostack.cooparticlesapi.renderer.client.ClientPersistentBloomManager
 import cn.coostack.cooparticlesapi.renderer.client.ClientRenderPipelineManager
@@ -23,8 +26,6 @@ import cn.coostack.cooparticlesapi.test.options.particle.client.ScaleCircleGroup
 import cn.coostack.cooparticlesapi.test.options.particle.client.SequencedMagicCircleClient
 import cn.coostack.cooparticlesapi.test.options.particle.client.TestGroupClient
 import cn.coostack.cooparticlesapi.test.options.particle.style.*
-import cn.coostack.cooparticlesapi.test.options.renderer.TestRendererEntity
-import cn.coostack.cooparticlesapi.test.options.renderer.TestShaderInit
 import cn.coostack.cooparticlesapi.utils.ClientCameraUtil
 import net.irisshaders.iris.api.v0.IrisApi
 import net.minecraft.client.multiplayer.ClientLevel
@@ -37,6 +38,7 @@ object CooParticlesAPIClient {
 
     @JvmField
     var irisLoaded = false
+    private var selectedRenderBackend: RenderBackend = VanillaSafeRenderBackend
     lateinit var access: RegistryAccess
 
     @JvmStatic
@@ -51,6 +53,17 @@ object CooParticlesAPIClient {
     @JvmStatic
     fun checkIrisShaderPackUsed(): Boolean {
         return irisLoaded && IrisApi.getInstance().isShaderPackInUse
+    }
+
+    @JvmStatic
+    fun syncRenderBackend(): RenderBackend {
+        selectedRenderBackend = if (checkIrisShaderPackUsed()) {
+            IrisSafeRenderBackend
+        } else {
+            VanillaSafeRenderBackend
+        }
+        ClientRenderPipelineManager.setActiveBackend(selectedRenderBackend)
+        return selectedRenderBackend
     }
 
     private fun initParticleType() {
@@ -122,6 +135,7 @@ object CooParticlesAPIClient {
         renderInit = true
         ShaderPipeManagers.init() // 注册到pipeline
         ClientRenderPipelineManager.init() // 把注册的pipeline进行一个初始化
+        ClientRenderPipelineManager.setActiveBackend(selectedRenderBackend)
         ClientRenderEntityManager.init()
         CooParticlesConstants.logger.info("初始化渲染管线")
     }
@@ -138,9 +152,6 @@ object CooParticlesAPIClient {
         ClientWorldLightManager.initOnClient()
         ClientPersistentBloomManager.initOnClient()
         ClientScreenGlowManager.initOnClient()
-        ClientRenderEntityManager.register(TestRendererEntity.id, TestRendererEntity.codec)
-        ClientRenderEntityManager.bindEntityRenderPipe(TestRendererEntity.id, ShaderPipeManagers.simpleBloom.pipeID)
-        TestShaderInit.initOnClient()
         CooParticleTextureSheet.init()
     }
 

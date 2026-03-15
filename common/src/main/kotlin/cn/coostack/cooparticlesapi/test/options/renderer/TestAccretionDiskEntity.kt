@@ -33,7 +33,8 @@ import org.lwjgl.opengl.GL33.glBindTexture
 import org.lwjgl.opengl.GL33.glGetInteger
 
 @CooAutoRegister
-class TestAccretionDiskEntity(world: Level? = null, pos: Vec3 = Vec3.ZERO) : AutoRenderEntity(world, pos) {
+class TestAccretionDiskEntity(world: Level? = null, pos: Vec3 = Vec3.ZERO) : AutoRenderEntity(world, pos),
+    RenderEntityRenderer<TestAccretionDiskEntity> {
     constructor() : this(null, Vec3.ZERO)
 
     companion object {
@@ -41,6 +42,32 @@ class TestAccretionDiskEntity(world: Level? = null, pos: Vec3 = Vec3.ZERO) : Aut
             CooParticlesConstants.MOD_ID,
             "test_accretion_disk"
         )
+
+        private val screenBuffer = SimpleVertexBuffer().apply {
+            setVertexes(
+                ShaderUtil.genSquareUVScreen(
+                    Vector3f(-1f, 1f, 0f),
+                    Vector3f(1f, 1f, 0f),
+                    Vector3f(1f, -1f, 0f),
+                    Vector3f(-1f, -1f, 0f)
+                ),
+                CooVertexFormat.POINT_TEXTURE_UV_FORMAT
+            )
+        }
+
+        private val sceneShader = ShaderProgramBuilder()
+            .vertex("pipe/vertexes/screen.vsh")
+            .fragment("test/frag/accretion_disk.fsh")
+            .build()
+
+        private var initialized = false
+
+        private fun initStatic() {
+            if (initialized) return
+            initialized = true
+            screenBuffer.init()
+            sceneShader.init()
+        }
     }
 
     /**
@@ -99,57 +126,29 @@ class TestAccretionDiskEntity(world: Level? = null, pos: Vec3 = Vec3.ZERO) : Aut
     var diskColor: Vector3f = Vector3f(1.18f, 1.06f, 0.78f)
 
     override fun getRenderID(): ResourceLocation = ID
-}
-
-class TestAccretionDiskEntityRenderer : RenderEntityRenderer<TestAccretionDiskEntity> {
-    companion object {
-        private val screenBuffer = SimpleVertexBuffer().apply {
-            setVertexes(
-                ShaderUtil.genSquareUVScreen(
-                    Vector3f(-1f, 1f, 0f),
-                    Vector3f(1f, 1f, 0f),
-                    Vector3f(1f, -1f, 0f),
-                    Vector3f(-1f, -1f, 0f)
-                ),
-                CooVertexFormat.POINT_TEXTURE_UV_FORMAT
-            )
-        }
-
-        private val sceneShader = ShaderProgramBuilder()
-            .vertex("pipe/vertexes/screen.vsh")
-            .fragment("test/frag/accretion_disk.fsh")
-            .build()
-
-        private var initialized = false
-
-        private fun initStatic() {
-            if (initialized) return
-            initialized = true
-            screenBuffer.init()
-            sceneShader.init()
-        }
-    }
 
     override fun initialize(instance: RenderEntityInstance<TestAccretionDiskEntity>) {
         initStatic()
     }
 
     override fun collectFrameEffects(input: FrameEffectInput<TestAccretionDiskEntity>, collector: FrameEffectCollector) {
-        val entity = input.instance.entity
         collector.submit(
             FrameEffectSubmission(
-                effectId = TestAccretionDiskEntity.ID.toString(),
-                sourceInstanceId = entity.uuid.toString(),
-                requiredCapabilities = setOf(RenderBackendCapability.SCENE_DEPTH_READ)
+                effectId = ID.toString(),
+                sourceInstanceId = uuid.toString(),
+                requiredCapabilities = setOf(RenderBackendCapability.FINAL_FRAME_POST)
             ) {
-                renderFrameEffect(entity, input.frameContext)
+                renderFrameEffect(input.frameContext)
             }
         )
     }
 
-    private fun renderFrameEffect(entity: TestAccretionDiskEntity, context: RenderFrameContext) {
-        val depthTextureId = context.sceneDepthTextureId ?: return
+    private fun renderFrameEffect(context: RenderFrameContext) {
         val minecraft = Minecraft.getInstance()
+        val depthTextureId = minecraft.mainRenderTarget.depthTextureId
+        if (depthTextureId <= 0) {
+            return
+        }
         val cameraPosition = minecraft.gameRenderer.mainCamera.position
         val cameraWorldPos = Vector3f(
             cameraPosition.x.toFloat(),
@@ -157,26 +156,26 @@ class TestAccretionDiskEntityRenderer : RenderEntityRenderer<TestAccretionDiskEn
             cameraPosition.z.toFloat()
         )
         val blackHoleWorldPos = Vector3f(
-            entity.pos.x.toFloat(),
-            entity.pos.y.toFloat(),
-            entity.pos.z.toFloat()
+            pos.x.toFloat(),
+            pos.y.toFloat(),
+            pos.z.toFloat()
         )
         val blackHoleCameraRelativePos = Vector3f(blackHoleWorldPos).sub(cameraWorldPos)
-        val normalizedDiskNormal = Vector3f(entity.diskNormal).normalize()
+        val normalizedDiskNormal = Vector3f(diskNormal).normalize()
         val inverseProjMatrix = Matrix4f(context.projMatrix).invert()
         val viewRotationMatrix = Matrix3f(context.viewMatrix)
         val inverseViewRotationMatrix = Matrix3f(viewRotationMatrix).invert()
         val effectRadiusWorld = maxOf(
-            entity.radius,
-            entity.diskOuterRadius + entity.schwarzschildRadius * 4.5f,
-            entity.schwarzschildRadius * 6.0f
+            radius,
+            diskOuterRadius + schwarzschildRadius * 4.5f,
+            schwarzschildRadius * 6.0f
         )
         val lightingInfluenceWorld = maxOf(
-            entity.radius * 1.55f,
-            entity.diskOuterRadius * 2.15f + entity.diskEmissionStrength * 3.40f,
+            radius * 1.55f,
+            diskOuterRadius * 2.15f + diskEmissionStrength * 3.40f,
             effectRadiusWorld * 1.30f
         )
-        val traceDistanceWorld = maxOf(entity.maxDistance, effectRadiusWorld * 2.35f)
+        val traceDistanceWorld = maxOf(maxDistance, effectRadiusWorld * 2.35f)
         val screenSize = Vector2f(
             minecraft.mainRenderTarget.width.toFloat(),
             minecraft.mainRenderTarget.height.toFloat()
@@ -187,42 +186,45 @@ class TestAccretionDiskEntityRenderer : RenderEntityRenderer<TestAccretionDiskEn
         RenderSystem.disableDepthTest()
         RenderSystem.depthMask(false)
         try {
-            sceneShader.useOnContext {
-                setMatrix4("projMat", context.projMatrix)
-                setMatrix4("inverseProjMat", inverseProjMatrix)
-                setMatrix3f("viewRotationMat", viewRotationMatrix)
-                setMatrix3f("inverseViewRotationMat", inverseViewRotationMatrix)
-                setFloat("time", entity.getTime(context.tickDelta))
-                setFloat2("screenSize", screenSize)
-                setFloat3("blackHoleWorldPos", blackHoleWorldPos)
-                setFloat3("blackHoleCameraRelativePos", blackHoleCameraRelativePos)
-                setFloat("effectRadiusWorld", effectRadiusWorld)
-                setFloat("lightingInfluenceWorld", lightingInfluenceWorld)
-                setFloat("schwarzschildRadius", entity.schwarzschildRadius)
-                setFloat("diskInnerRadius", entity.diskInnerRadius)
-                setFloat("diskOuterRadius", entity.diskOuterRadius)
-                setFloat("diskHalfThickness", entity.diskHalfThickness)
-                setFloat("diskTemperatureScale", entity.diskTemperatureScale)
-                setFloat("lensingStrength", entity.lensingStrength)
-                setFloat("spinSpeed", entity.spinSpeed)
-                setInt("stepCount", entity.stepCount.coerceIn(48, 192))
-                setFloat("maxDistance", traceDistanceWorld)
-                setFloat("diskDensity", entity.diskDensity)
-                setFloat("diskEmissionStrength", entity.diskEmissionStrength)
-                setFloat3("diskColor", entity.diskColor)
-                setFloat3("diskNormal", normalizedDiskNormal)
-                val previousActiveTexture = glGetInteger(GL_ACTIVE_TEXTURE)
-                glActiveTexture(GL_TEXTURE7)
-                val previousDepthBinding = glGetInteger(GL_TEXTURE_BINDING_2D)
-                glBindTexture(GL_TEXTURE_2D, depthTextureId)
-                setInt("sceneDepth", 7)
-                screenBuffer.draw()
-                glBindTexture(GL_TEXTURE_2D, previousDepthBinding)
-                glActiveTexture(previousActiveTexture)
+            TestRelativisticShaderPipelines.renderAccretionDisk {
+                sceneShader.useOnContext {
+                    setMatrix4("projMat", context.projMatrix)
+                    setMatrix4("inverseProjMat", inverseProjMatrix)
+                    setMatrix3f("viewRotationMat", viewRotationMatrix)
+                    setMatrix3f("inverseViewRotationMat", inverseViewRotationMatrix)
+                    setFloat("time", getTime(context.tickDelta))
+                    setFloat2("screenSize", screenSize)
+                    setFloat3("blackHoleWorldPos", blackHoleWorldPos)
+                    setFloat3("blackHoleCameraRelativePos", blackHoleCameraRelativePos)
+                    setFloat("effectRadiusWorld", effectRadiusWorld)
+                    setFloat("lightingInfluenceWorld", lightingInfluenceWorld)
+                    setFloat("schwarzschildRadius", schwarzschildRadius)
+                    setFloat("diskInnerRadius", diskInnerRadius)
+                    setFloat("diskOuterRadius", diskOuterRadius)
+                    setFloat("diskHalfThickness", diskHalfThickness)
+                    setFloat("diskTemperatureScale", diskTemperatureScale)
+                    setFloat("lensingStrength", lensingStrength)
+                    setFloat("spinSpeed", spinSpeed)
+                    setInt("stepCount", stepCount.coerceIn(48, 192))
+                    setFloat("maxDistance", traceDistanceWorld)
+                    setFloat("diskDensity", diskDensity)
+                    setFloat("diskEmissionStrength", diskEmissionStrength)
+                    setFloat3("diskColor", diskColor)
+                    setFloat3("diskNormal", normalizedDiskNormal)
+                    val previousActiveTexture = glGetInteger(GL_ACTIVE_TEXTURE)
+                    glActiveTexture(GL_TEXTURE7)
+                    val previousDepthBinding = glGetInteger(GL_TEXTURE_BINDING_2D)
+                    glBindTexture(GL_TEXTURE_2D, depthTextureId)
+                    setInt("sceneDepth", 7)
+                    screenBuffer.draw()
+                    glBindTexture(GL_TEXTURE_2D, previousDepthBinding)
+                    glActiveTexture(previousActiveTexture)
+                }
             }
         } finally {
             RenderSystem.depthMask(true)
             RenderSystem.enableDepthTest()
+            RenderSystem.enableCull()
             RenderSystem.defaultBlendFunc()
             RenderSystem.disableBlend()
         }

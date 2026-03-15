@@ -1,10 +1,8 @@
 package cn.coostack.cooparticlesapi.items
 
 import cn.coostack.cooparticlesapi.event.CooEventBus
-import cn.coostack.cooparticlesapi.renderer.server.ServerRenderEntityManager
 import cn.coostack.cooparticlesapi.test.options.event.TestChildEvent
 import cn.coostack.cooparticlesapi.test.options.event.TestEvent
-import cn.coostack.cooparticlesapi.test.options.renderer.TestRendererEntity
 import net.minecraft.network.chat.Component
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
@@ -24,16 +22,14 @@ class TestTickItem : Item(Item.Properties().stacksTo(1)) {
         )
 
         if (world.isClientSide) return super.use(world, user, hand)
-//        testShader(world as ServerLevel, user as ServerPlayer)
+//        Legacy V1 renderer demo spawn is disabled during the RenderEntity V2 migration.
 
         return super.use(world, user, hand)
     }
 
-    fun testShader(world: ServerLevel, user: ServerPlayer) {
-        val shader = TestRendererEntity(world)
-        shader.setPosition(user.position())
-        ServerRenderEntityManager.spawn(shader)
-    }
+//    fun testShader(world: ServerLevel, user: ServerPlayer) {
+//        Legacy V1 renderer demo spawn is disabled during the RenderEntity V2 migration.
+//    }
 
     fun tickFrozen(world: ServerLevel, user: ServerPlayer) {
         val server = world.server!!

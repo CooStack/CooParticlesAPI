@@ -69,12 +69,6 @@ manager.updateGlobalUniform("viewMat", viewMatrix)
 - `valueOutput(...)` 必须设置，否则 `render()` 时会抛出 `RenderPipeOutputNotSetException`。
 - `ClientRenderPipelineManager.init()` 会为所有注册管线初始化 depth 纹理与 FBO。
 
-## 7. 与 RenderEntity 结合
-`ClientRenderEntityManager.bindEntityRenderPipe(...)` 可将某类 `RenderEntity` 绑定到指定管线：
-```kotlin
-ClientRenderEntityManager.bindEntityRenderPipe(MyRenderEntity.ID, ShaderPipeManagers.simpleBloom.pipeID)
-```
-
-## 8. 参考实现
+## 7. 参考实现
 - `ShaderPipeManagers.default`：最简默认输出
 - `ShaderPipeManagers.simpleBloom`：多 pass 的泛光示例

@@ -24,7 +24,8 @@ import org.lwjgl.opengl.GL33.GL_ONE_MINUS_SRC_ALPHA
 import org.lwjgl.opengl.GL33.GL_SRC_ALPHA
 
 @CooAutoRegister
-class TestBillboardSmokeEntity(world: Level? = null, pos: Vec3 = Vec3.ZERO) : AutoRenderEntity(world, pos) {
+class TestBillboardSmokeEntity(world: Level? = null, pos: Vec3 = Vec3.ZERO) : AutoRenderEntity(world, pos),
+    RenderEntityRenderer<TestBillboardSmokeEntity> {
     constructor() : this(null, Vec3.ZERO)
 
     companion object {
@@ -32,25 +33,7 @@ class TestBillboardSmokeEntity(world: Level? = null, pos: Vec3 = Vec3.ZERO) : Au
             CooParticlesConstants.MOD_ID,
             "test_billboard_smoke"
         )
-    }
 
-    @field:CodecField
-    var width: Float = 1.6f
-
-    @field:CodecField
-    var height: Float = 1.2f
-
-    @field:CodecField
-    var alpha: Float = 0.85f
-
-    @field:CodecField
-    var smokeColor: Vector3f = Vector3f(0.85f, 0.85f, 0.85f)
-
-    override fun getRenderID(): ResourceLocation = ID
-}
-
-class TestBillboardSmokeEntityRenderer : RenderEntityRenderer<TestBillboardSmokeEntity> {
-    companion object {
         private val quadBuffer = SimpleVertexBuffer().apply {
             setVertexes(
                 ShaderUtil.genSquareUV(
@@ -90,16 +73,28 @@ class TestBillboardSmokeEntityRenderer : RenderEntityRenderer<TestBillboardSmoke
         }
     }
 
+    @field:CodecField
+    var width: Float = 1.6f
+
+    @field:CodecField
+    var height: Float = 1.2f
+
+    @field:CodecField
+    var alpha: Float = 0.85f
+
+    @field:CodecField
+    var smokeColor: Vector3f = Vector3f(0.85f, 0.85f, 0.85f)
+
     private val size = Vector2f()
     private val color = Vector4f()
+
+    override fun getRenderID(): ResourceLocation = ID
 
     override fun initialize(instance: RenderEntityInstance<TestBillboardSmokeEntity>) {
         initStatic()
     }
 
     override fun renderLocal(input: LocalRenderInput<TestBillboardSmokeEntity>) {
-        val entity = input.instance.entity
-
         RenderSystem.disableCull()
         RenderSystem.enableDepthTest()
         RenderSystem.enableBlend()
@@ -110,11 +105,11 @@ class TestBillboardSmokeEntityRenderer : RenderEntityRenderer<TestBillboardSmoke
                 setMatrix4("projMat", input.projMatrix)
                 setMatrix4("viewMat", input.viewMatrix)
                 setMatrix4("transMat", input.modelMatrix)
-                size.set(entity.width, entity.height)
+                size.set(width, height)
                 setFloat2("size", size)
-                color.set(entity.smokeColor, entity.alpha)
+                color.set(smokeColor, alpha)
                 setFloat4("color", color)
-                setFloat("time", entity.getTime(input.tickDelta))
+                setFloat("time", getTime(input.tickDelta))
                 setInt("smokeTex", 0)
                 smokeTextures.drawWith {
                     quadBuffer.draw()

@@ -1,7 +1,7 @@
 package cn.coostack.cooparticlesapi.mixin;
 
 import cn.coostack.cooparticlesapi.CooParticlesAPIClient;
-import cn.coostack.cooparticlesapi.renderer.client.ClientRenderEntityManager;
+import cn.coostack.cooparticlesapi.renderer.client.ClientRenderPipelineManager;
 import net.minecraft.client.Camera;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -39,13 +39,10 @@ public class LevelRendererMixin {
             return;
         }
         CooParticlesAPIClient.initShaderPrograms();
+        CooParticlesAPIClient.syncRenderBackend();
         boolean shouldTick = level.tickRateManager().runsNormally();
         float tickDelta = deltaTracker.getGameTimeDeltaPartialTick(!shouldTick);
-        ClientRenderEntityManager.INSTANCE.cacheFrameState(tickDelta, frustumMatrix, projectionMatrix);
-        if (CooParticlesAPIClient.checkIrisShaderPackUsed()) {
-            return;
-        }
-        ClientRenderEntityManager.INSTANCE.renderWorldPass(tickDelta, frustumMatrix, projectionMatrix);
+        ClientRenderPipelineManager.INSTANCE.beginFrame(tickDelta, frustumMatrix, projectionMatrix);
     }
 
     @Inject(method = "renderLevel", at = @At("RETURN"))
@@ -62,12 +59,9 @@ public class LevelRendererMixin {
             return;
         }
         CooParticlesAPIClient.initShaderPrograms();
+        CooParticlesAPIClient.syncRenderBackend();
         boolean shouldTick = level.tickRateManager().runsNormally();
         float tickDelta = deltaTracker.getGameTimeDeltaPartialTick(!shouldTick);
-        ClientRenderEntityManager.INSTANCE.cacheFrameState(tickDelta, frustumMatrix, projectionMatrix);
-        if (CooParticlesAPIClient.checkIrisShaderPackUsed()) {
-            ClientRenderEntityManager.INSTANCE.renderWorldPass(tickDelta, frustumMatrix, projectionMatrix);
-        }
-        ClientRenderEntityManager.INSTANCE.preparePostProcess(tickDelta, frustumMatrix, projectionMatrix);
+        ClientRenderPipelineManager.INSTANCE.finishLevelRender(tickDelta, frustumMatrix, projectionMatrix);
     }
 }

@@ -22,7 +22,8 @@ import org.joml.Matrix4fStack
 import org.joml.Vector3f
 
 @CooAutoRegister
-class TestBlackHoleEntity(world: Level? = null, pos: Vec3 = Vec3.ZERO) : AutoRenderEntity(world, pos) {
+class TestBlackHoleEntity(world: Level? = null, pos: Vec3 = Vec3.ZERO) : AutoRenderEntity(world, pos),
+    RenderEntityRenderer<TestBlackHoleEntity> {
     constructor() : this(null, Vec3.ZERO)
 
     companion object {
@@ -30,6 +31,27 @@ class TestBlackHoleEntity(world: Level? = null, pos: Vec3 = Vec3.ZERO) : AutoRen
             CooParticlesConstants.MOD_ID,
             "test_black_hole"
         )
+
+        private val sphereBuffer = SimpleVertexBuffer().apply {
+            setVertexes(
+                ShaderUtil.genBall(1f, 96, 144),
+                CooVertexFormat.POINT_FORMAT
+            )
+        }
+
+        private val blackHoleShader = ShaderProgramBuilder()
+            .vertex("test/vtx/world_sphere.vsh")
+            .fragment("test/frag/black_hole_mask.fsh")
+            .build()
+
+        private var initialized = false
+
+        private fun initStatic() {
+            if (initialized) return
+            initialized = true
+            sphereBuffer.init()
+            blackHoleShader.init()
+        }
     }
 
     @field:CodecField
@@ -57,31 +79,6 @@ class TestBlackHoleEntity(world: Level? = null, pos: Vec3 = Vec3.ZERO) : AutoRen
     var ringColor: Vector3f = Vector3f(1.0f, 0.58f, 0.18f)
 
     override fun getRenderID(): ResourceLocation = ID
-}
-
-class TestBlackHoleEntityRenderer : RenderEntityRenderer<TestBlackHoleEntity> {
-    companion object {
-        private val sphereBuffer = SimpleVertexBuffer().apply {
-            setVertexes(
-                ShaderUtil.genBall(1f, 96, 144),
-                CooVertexFormat.POINT_FORMAT
-            )
-        }
-
-        private val blackHoleShader = ShaderProgramBuilder()
-            .vertex("test/vtx/world_sphere.vsh")
-            .fragment("test/frag/black_hole_mask.fsh")
-            .build()
-
-        private var initialized = false
-
-        private fun initStatic() {
-            if (initialized) return
-            initialized = true
-            sphereBuffer.init()
-            blackHoleShader.init()
-        }
-    }
 
     override fun initialize(instance: RenderEntityInstance<TestBlackHoleEntity>) {
         initStatic()
@@ -105,28 +102,32 @@ class TestBlackHoleEntityRenderer : RenderEntityRenderer<TestBlackHoleEntity> {
 
         RenderSystem.disableBlend()
         RenderSystem.disableCull()
+        RenderSystem.enableDepthTest()
         RenderSystem.depthMask(false)
         try {
-            blackHoleShader.useOnContext {
-                matrices.pushMatrix()
-                matrices.scale(entity.radius, entity.radius, entity.radius)
-                setMatrix4("projMat", input.frameContext.projMatrix)
-                setMatrix4("viewMat", input.frameContext.viewMatrix)
-                setMatrix4("transMat", matrices)
-                setFloat("time", entity.getTime(input.frameContext.tickDelta))
-                setFloat("coreRadius", entity.coreRadius)
-                setFloat("distortionStrength", entity.distortionStrength)
-                setFloat3("diskNormal", entity.diskNormal)
-                setFloat("diskThickness", entity.diskThickness)
-                setFloat("diskWidth", entity.diskWidth)
-                setFloat("spinSpeed", entity.spinSpeed)
-                setFloat3("ringColor", entity.ringColor)
-                sphereBuffer.draw()
-                matrices.popMatrix()
+            TestRelativisticShaderPipelines.renderBlackHole {
+                blackHoleShader.useOnContext {
+                    matrices.pushMatrix()
+                    matrices.scale(entity.radius, entity.radius, entity.radius)
+                    setMatrix4("projMat", input.frameContext.projMatrix)
+                    setMatrix4("viewMat", input.frameContext.viewMatrix)
+                    setMatrix4("transMat", matrices)
+                    setFloat("time", entity.getTime(input.frameContext.tickDelta))
+                    setFloat("coreRadius", entity.coreRadius)
+                    setFloat("distortionStrength", entity.distortionStrength)
+                    setFloat3("diskNormal", entity.diskNormal)
+                    setFloat("diskThickness", entity.diskThickness)
+                    setFloat("diskWidth", entity.diskWidth)
+                    setFloat("spinSpeed", entity.spinSpeed)
+                    setFloat3("ringColor", entity.ringColor)
+                    sphereBuffer.draw()
+                    matrices.popMatrix()
+                }
             }
         } finally {
             RenderSystem.depthMask(true)
             RenderSystem.enableDepthTest()
+            RenderSystem.enableCull()
             RenderSystem.defaultBlendFunc()
             RenderSystem.disableBlend()
         }

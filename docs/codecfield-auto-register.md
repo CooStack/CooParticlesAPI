@@ -7,6 +7,7 @@
 - `ParticleEmittersHelper.generateCodec`（`AutoParticleEmitters`）
 - `ParticleCompositionHelper.generateCodec`（`AutoParticleComposition` / `AutoSequencedParticleComposition`）
 - `DisplayEntityHelper.generateCodec`
+- `RenderEntityHelper.generateCodec`（`AutoRenderEntity`）
 
 ## 2. 使用规则
 - **只能标在 `var` 且非 `final` 字段**（`val` 不会被写入/更新）。
@@ -55,6 +56,9 @@ CodecHelper.register(MyOption::class.java, MY_CODEC)
 - `ParticleCompositionManager`（组合）
 - `DisplayEntityManager`（展示实体）
 - `ParticleEventHandlerManager`（发射器事件处理器）
+- `RenderEntityAutoRegistry`（RenderEntity codec）
+
+> RenderEntity 自动注册 **只处理 codec**。Renderer 仍需显式注册，否则客户端会抛异常。
 
 ### Fabric
 扫描由 API 自动触发，无需手动调用 `scan()` 或 `loadScannerPackages()`。Fabric 只需要注册扫描包：

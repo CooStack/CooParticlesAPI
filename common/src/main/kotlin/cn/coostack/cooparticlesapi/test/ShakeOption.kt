@@ -31,7 +31,8 @@ class ShakeOption(val maxTick: Int = 20, val player: Player) : TestOption {
     override fun doTick() {
         tick++
         if (player is ServerPlayer) {
-            ServerCameraUtil.sendShake(player.serverLevel(), player.eyePosition, 256.0, 3.0, 10)
+            ServerCameraUtil.sendShake(player.serverLevel(),
+                player.eyePosition, 256.0, 3.0, 10, 300.0, false)
         }
     }
 }

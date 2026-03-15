@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi.mixin;
 
-import cn.coostack.cooparticlesapi.renderer.client.ClientRenderEntityManager;
+import cn.coostack.cooparticlesapi.renderer.client.ClientRenderPipelineManager;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.renderer.GameRenderer;
 import org.spongepowered.asm.mixin.Mixin;
@@ -19,6 +19,6 @@ public class GameRendererMixin {
             )
     )
     private void renderAfterWorld(DeltaTracker deltaTracker, CallbackInfo ci) {
-        ClientRenderEntityManager.INSTANCE.flushFrameComposites();
+        ClientRenderPipelineManager.INSTANCE.endFrame();
     }
 }

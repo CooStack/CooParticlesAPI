@@ -2,8 +2,8 @@ package cn.coostack.cooparticlesapi.utils
 
 import net.minecraft.world.phys.Vec3
 import kotlin.math.abs
-import kotlin.math.roundToInt
-import kotlin.random.Random
+import kotlin.math.floor
+import kotlin.math.sin
 
 object ClientCameraUtil {
     private const val MANUAL_FOLLOW = 0.35
@@ -11,8 +11,11 @@ object ClientCameraUtil {
     private const val FORCE_POSITION_FOLLOW = 0.45
     private const val FORCE_BLEND_FOLLOW = 0.4
 
-    private const val SHAKE_TARGET_HOLD_TICKS = 2
+    private const val LEGACY_SHAKE_RETARGET_TICKS = 2.0
     private const val DEFAULT_SHAKE_FREQUENCY = 1.0
+    private const val HIGH_FREQUENCY_FOLLOW_START = 2.0
+    private const val HIGH_FREQUENCY_FOLLOW_RANGE = 8.0
+    private const val MAX_SHAKE_FOLLOW = 0.92
     private const val SHAKE_POS_SCALE = 0.45
     private const val SHAKE_ROT_SCALE = 2.0
 
@@ -53,8 +56,8 @@ object ClientCameraUtil {
     private var shakePitch = 0f
 
     private var shakeDuration = 0
-    private var shakeTargetHoldTicks = 0
     private var shakeFrequency = DEFAULT_SHAKE_FREQUENCY
+    private var shakePhase = 0.0
 
     private var forcedCameraPositionTarget = Vec3.ZERO
     private var forcedCameraPositionCurrent = Vec3.ZERO
@@ -166,7 +169,7 @@ object ClientCameraUtil {
         amp = 0.0
         ampStep = 0.0
         shakeFrequency = DEFAULT_SHAKE_FREQUENCY
-        shakeTargetHoldTicks = 0
+        shakePhase = 0.0
         shakeTargetPosOffset = Vec3.ZERO
         shakeTargetYaw = 0f
         shakeTargetPitch = 0f
@@ -225,7 +228,6 @@ object ClientCameraUtil {
         amp = maxOf(amp, amplitude)
         shakeFrequency = maxOf(shakeFrequency, frequency)
         ampStep = amp / shakeDuration.toDouble()
-        shakeTargetHoldTicks = 0
     }
 
     fun tick() {
@@ -248,14 +250,10 @@ object ClientCameraUtil {
     private fun tickShake() {
         if (tick > 0) {
             val envelope = shakeEnvelope()
-            if (shakeTargetHoldTicks <= 0) {
-                shakeTargetPosOffset = randomShakePos(envelope)
-                shakeTargetYaw = randomShakeAngle(envelope)
-                shakeTargetPitch = randomShakeAngle(envelope)
-                shakeTargetHoldTicks = shakeHoldTicks()
-            } else {
-                shakeTargetHoldTicks--
-            }
+            shakePhase += shakePhaseStep(shakeFrequency)
+            shakeTargetPosOffset = sampleShakePos(shakePhase, envelope)
+            shakeTargetYaw = sampleShakeAngle(shakePhase, 3.11, envelope)
+            shakeTargetPitch = sampleShakeAngle(shakePhase, 5.47, envelope)
             tick--
         } else {
             shakeTargetPosOffset = Vec3.ZERO
@@ -266,12 +264,14 @@ object ClientCameraUtil {
                 amp = 0.0
                 ampStep = 0.0
                 shakeFrequency = DEFAULT_SHAKE_FREQUENCY
+                shakePhase = 0.0
             }
         }
 
-        shakePosOffset = GraphMathHelper.lerp(SHAKE_FOLLOW, shakePosOffset, shakeTargetPosOffset)
-        shakeYaw = GraphMathHelper.lerp(SHAKE_FOLLOW, shakeYaw, shakeTargetYaw)
-        shakePitch = GraphMathHelper.lerp(SHAKE_FOLLOW, shakePitch, shakeTargetPitch)
+        val shakeFollow = shakeFollowFactor(shakeFrequency)
+        shakePosOffset = GraphMathHelper.lerp(shakeFollow, shakePosOffset, shakeTargetPosOffset)
+        shakeYaw = GraphMathHelper.lerp(shakeFollow, shakeYaw, shakeTargetYaw)
+        shakePitch = GraphMathHelper.lerp(shakeFollow, shakePitch, shakeTargetPitch)
 
         if (tick <= 0) {
             shakePosOffset = snapVec(shakePosOffset, Vec3.ZERO)
@@ -299,23 +299,55 @@ object ClientCameraUtil {
         return amp * decay * decay
     }
 
-    private fun shakeHoldTicks(): Int {
-        val holdTicks = (SHAKE_TARGET_HOLD_TICKS / shakeFrequency.coerceAtLeast(1.0E-3)).roundToInt()
-        return maxOf(1, holdTicks)
+    internal fun shakePhaseStep(frequency: Double): Double {
+        return frequency / LEGACY_SHAKE_RETARGET_TICKS
     }
 
-    private fun randomShakePos(envelope: Double): Vec3 {
+    internal fun shakeFollowFactor(frequency: Double): Double {
+        if (frequency <= HIGH_FREQUENCY_FOLLOW_START) {
+            return SHAKE_FOLLOW
+        }
+        val extraFrequency = frequency - HIGH_FREQUENCY_FOLLOW_START
+        val normalized = extraFrequency / (extraFrequency + HIGH_FREQUENCY_FOLLOW_RANGE)
+        return SHAKE_FOLLOW + (MAX_SHAKE_FOLLOW - SHAKE_FOLLOW) * normalized.coerceIn(0.0, 1.0)
+    }
+
+    internal fun sampleShakeNoise(phase: Double, seed: Double): Double {
+        val shiftedPhase = phase + seed
+        val index = floor(shiftedPhase)
+        val progress = smoothstep(shiftedPhase - index)
+        val from = hashNoise(index, seed)
+        val to = hashNoise(index + 1.0, seed)
+        return lerpDouble(progress, from, to)
+    }
+
+    private fun sampleShakePos(phase: Double, envelope: Double): Vec3 {
         val range = envelope * SHAKE_POS_SCALE
         return Vec3(
-            Random.nextDouble(-range, range),
-            Random.nextDouble(-range, range),
-            Random.nextDouble(-range, range)
+            sampleShakeNoise(phase, 0.13) * range,
+            sampleShakeNoise(phase, 1.37) * range,
+            sampleShakeNoise(phase, 2.73) * range
         )
     }
 
-    private fun randomShakeAngle(envelope: Double): Float {
+    private fun sampleShakeAngle(phase: Double, seed: Double, envelope: Double): Float {
         val range = envelope * SHAKE_ROT_SCALE
-        return Random.nextDouble(-range, range).toFloat()
+        return (sampleShakeNoise(phase, seed) * range).toFloat()
+    }
+
+    private fun smoothstep(progress: Double): Double {
+        val clamped = progress.coerceIn(0.0, 1.0)
+        return clamped * clamped * (3.0 - 2.0 * clamped)
+    }
+
+    private fun hashNoise(index: Double, seed: Double): Double {
+        val raw = sin(index * 12.9898 + seed * 78.233) * 43758.5453123
+        val fract = raw - floor(raw)
+        return fract * 2.0 - 1.0
+    }
+
+    private fun lerpDouble(progress: Double, from: Double, to: Double): Double {
+        return from + (to - from) * progress
     }
 
     private fun isZeroShake(): Boolean {
