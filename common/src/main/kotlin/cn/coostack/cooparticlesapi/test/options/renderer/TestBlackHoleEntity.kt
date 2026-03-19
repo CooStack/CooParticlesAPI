@@ -4,13 +4,18 @@ import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.annotations.CodecField
 import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
 import cn.coostack.cooparticlesapi.renderer.AutoRenderEntity
+import cn.coostack.cooparticlesapi.renderer.backend.RenderBackendCapability
+import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameContext
+import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameStage
+import cn.coostack.cooparticlesapi.renderer.backend.RenderSceneTargets
 import cn.coostack.cooparticlesapi.renderer.client.RenderUtil
-import cn.coostack.cooparticlesapi.renderer.effects.FrameEffectCollector
-import cn.coostack.cooparticlesapi.renderer.effects.FrameEffectInput
-import cn.coostack.cooparticlesapi.renderer.effects.FrameEffectSubmission
+import cn.coostack.cooparticlesapi.renderer.effects.RenderEffectDescriptor
+import cn.coostack.cooparticlesapi.renderer.runtime.FramePostRenderEntityRenderer
+import cn.coostack.cooparticlesapi.renderer.runtime.RenderContributionCollector
+import cn.coostack.cooparticlesapi.renderer.runtime.RenderContributionInput
+import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityFeatureSet
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityInstance
-import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityRenderer
-import cn.coostack.cooparticlesapi.renderer.shader.ShaderProgramBuilder
+import cn.coostack.cooparticlesapi.renderer.shader.AdvancedShaderProgramBuilder
 import cn.coostack.cooparticlesapi.renderer.shader.data.CooVertexFormat
 import cn.coostack.cooparticlesapi.renderer.shader.utils.ShaderUtil
 import cn.coostack.cooparticlesapi.renderer.shader.vertex.SimpleVertexBuffer
@@ -21,15 +26,29 @@ import net.minecraft.world.phys.Vec3
 import org.joml.Matrix4fStack
 import org.joml.Vector3f
 
+data class TestBlackHoleRenderRequest(
+    val entity: TestBlackHoleEntity,
+    val frameContext: RenderFrameContext
+)
+
 @CooAutoRegister
 class TestBlackHoleEntity(world: Level? = null, pos: Vec3 = Vec3.ZERO) : AutoRenderEntity(world, pos),
-    RenderEntityRenderer<TestBlackHoleEntity> {
+    FramePostRenderEntityRenderer<TestBlackHoleEntity> {
     constructor() : this(null, Vec3.ZERO)
 
     companion object {
         val ID: ResourceLocation = ResourceLocation.fromNamespaceAndPath(
             CooParticlesConstants.MOD_ID,
             "test_black_hole"
+        )
+        val FRAME_POST_EFFECT: ResourceLocation = ResourceLocation.fromNamespaceAndPath(
+            CooParticlesConstants.MOD_ID,
+            "effect/test_black_hole_mask"
+        )
+        private val FRAME_POST_CAPABILITIES = setOf(
+            RenderBackendCapability.FINAL_FRAME_POST,
+            RenderBackendCapability.SCENE_COLOR_COPY,
+            RenderBackendCapability.SCENE_DEPTH_READ
         )
 
         private val sphereBuffer = SimpleVertexBuffer().apply {
@@ -39,7 +58,7 @@ class TestBlackHoleEntity(world: Level? = null, pos: Vec3 = Vec3.ZERO) : AutoRen
             )
         }
 
-        private val blackHoleShader = ShaderProgramBuilder()
+        private val blackHoleShader = AdvancedShaderProgramBuilder()
             .vertex("test/vtx/world_sphere.vsh")
             .fragment("test/frag/black_hole_mask.fsh")
             .build()
@@ -51,6 +70,12 @@ class TestBlackHoleEntity(world: Level? = null, pos: Vec3 = Vec3.ZERO) : AutoRen
             initialized = true
             sphereBuffer.init()
             blackHoleShader.init()
+        }
+
+        fun renderRequests(requests: List<TestBlackHoleRenderRequest>) {
+            requests.forEach { request ->
+                request.entity.renderFrameEffect(request.frameContext)
+            }
         }
     }
 
@@ -80,25 +105,43 @@ class TestBlackHoleEntity(world: Level? = null, pos: Vec3 = Vec3.ZERO) : AutoRen
 
     override fun getRenderID(): ResourceLocation = ID
 
+    override fun describeFeatures(entity: TestBlackHoleEntity): RenderEntityFeatureSet {
+        return RenderEntityFeatureSet(
+            stages = setOf(RenderFrameStage.FRAME_POST),
+            requestedSceneTargets = setOf(
+                RenderSceneTargets.POST,
+                RenderSceneTargets.SCENE_COLOR,
+                RenderSceneTargets.SCENE_DEPTH
+            ),
+            effectTypes = setOf(FRAME_POST_EFFECT),
+            localRendererEnabled = false,
+            effectGraphEnabled = true
+        )
+    }
+
     override fun initialize(instance: RenderEntityInstance<TestBlackHoleEntity>) {
         initStatic()
     }
 
-    override fun collectFrameEffects(input: FrameEffectInput<TestBlackHoleEntity>, collector: FrameEffectCollector) {
+    override fun collectRenderContributions(
+        input: RenderContributionInput<TestBlackHoleEntity>,
+        collector: RenderContributionCollector
+    ) {
         val entity = input.instance.entity
         collector.submit(
-            FrameEffectSubmission(
+            RenderEffectDescriptor(
+                effectType = FRAME_POST_EFFECT,
                 effectId = TestBlackHoleEntity.ID.toString(),
-                sourceInstanceId = entity.uuid.toString()
-            ) {
-                renderFrameEffect(entity, input)
-            }
+                sourceInstanceId = entity.uuid.toString(),
+                requiredCapabilities = FRAME_POST_CAPABILITIES,
+                payload = TestBlackHoleRenderRequest(entity, input.frameContext)
+            )
         )
     }
 
-    private fun renderFrameEffect(entity: TestBlackHoleEntity, input: FrameEffectInput<TestBlackHoleEntity>) {
+    private fun renderFrameEffect(frameContext: RenderFrameContext) {
         val matrices = Matrix4fStack(16)
-        RenderUtil.setRenderStackWithEntity(matrices, entity, input.frameContext.tickDelta)
+        RenderUtil.setRenderStackWithEntity(matrices, this, frameContext.tickDelta)
 
         RenderSystem.disableBlend()
         RenderSystem.disableCull()
@@ -108,18 +151,18 @@ class TestBlackHoleEntity(world: Level? = null, pos: Vec3 = Vec3.ZERO) : AutoRen
             TestRelativisticShaderPipelines.renderBlackHole {
                 blackHoleShader.useOnContext {
                     matrices.pushMatrix()
-                    matrices.scale(entity.radius, entity.radius, entity.radius)
-                    setMatrix4("projMat", input.frameContext.projMatrix)
-                    setMatrix4("viewMat", input.frameContext.viewMatrix)
+                    matrices.scale(radius, radius, radius)
+                    setMatrix4("projMat", frameContext.projMatrix)
+                    setMatrix4("viewMat", frameContext.viewMatrix)
                     setMatrix4("transMat", matrices)
-                    setFloat("time", entity.getTime(input.frameContext.tickDelta))
-                    setFloat("coreRadius", entity.coreRadius)
-                    setFloat("distortionStrength", entity.distortionStrength)
-                    setFloat3("diskNormal", entity.diskNormal)
-                    setFloat("diskThickness", entity.diskThickness)
-                    setFloat("diskWidth", entity.diskWidth)
-                    setFloat("spinSpeed", entity.spinSpeed)
-                    setFloat3("ringColor", entity.ringColor)
+                    setFloat("time", getTime(frameContext.tickDelta))
+                    setFloat("coreRadius", coreRadius)
+                    setFloat("distortionStrength", distortionStrength)
+                    setFloat3("diskNormal", diskNormal)
+                    setFloat("diskThickness", diskThickness)
+                    setFloat("diskWidth", diskWidth)
+                    setFloat("spinSpeed", spinSpeed)
+                    setFloat3("ringColor", ringColor)
                     sphereBuffer.draw()
                     matrices.popMatrix()
                 }

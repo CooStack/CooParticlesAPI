@@ -17,25 +17,67 @@ object TestManager {
 
 
     fun getTestFromServer(user: Player): TestGroup? {
-        return validGroupsServer.find { it.getUser().uuid == user.uuid }
+        return getTest(validGroupsServer, user)
     }
 
     fun getTestFromClient(user: Player): TestGroup? {
-        return validGroupsClient.find { it.getUser().uuid == user.uuid }
+        return getTest(validGroupsClient, user)
+    }
+
+    fun getGamingTestFromServer(user: Player): GamingTestGroup? {
+        return getTestFromServer(user) as? GamingTestGroup
     }
 
     fun startTest(id: String, user: Player): TestGroup? {
         if (!builders.containsKey(id)) {
             return null
         }
-        val group = builders[id]!!(user).build()
-        if (user.level().isClientSide) {
-            validGroupsClient.add(group)
+        val groups = if (user.level().isClientSide) {
+            validGroupsClient
         } else {
-            validGroupsServer.add(group)
+            validGroupsServer
         }
+        clearGroupsFor(groups, user)
+        val group = builders[id]!!(user).build()
+        groups.add(group)
         group.start()
         return group
+    }
+
+    fun completeCurrent(user: Player): Boolean {
+        return getGamingTestFromServer(user)?.completeCurrent() != null
+    }
+
+    fun failCurrent(user: Player): Boolean {
+        return getGamingTestFromServer(user)?.failCurrent() != null
+    }
+
+    fun jumpRelative(user: Player, offset: Int): Boolean {
+        return getGamingTestFromServer(user)?.jumpRelative(offset) != null
+    }
+
+    fun jumpToFirst(user: Player): Boolean {
+        return getGamingTestFromServer(user)?.jumpToFirst() != null
+    }
+
+    fun jumpToLast(user: Player): Boolean {
+        return getGamingTestFromServer(user)?.jumpToLast() != null
+    }
+
+    fun clearServer() {
+        clearGroups(validGroupsServer)
+    }
+
+    fun clearClient() {
+        clearGroups(validGroupsClient)
+    }
+
+    fun clearServerFor(user: Player) {
+        clearGroupsFor(validGroupsServer, user)
+    }
+
+    fun clearClientFor(user: Player) {
+        clearGroupsFor(validGroupsClient, user)
     }
 
     fun doTickServer() {
@@ -59,6 +101,51 @@ object TestManager {
                 continue
             }
             group.doTick()
+        }
+    }
+
+    private fun getTest(groups: MutableSet<TestGroup>, user: Player): TestGroup? {
+        val active = groups.find { it.getUser() === user }
+        if (active != null) {
+            return active
+        }
+        clearStaleMatches(groups, user)
+        return null
+    }
+
+    private fun clearGroups(groups: MutableSet<TestGroup>) {
+        if (groups.isEmpty()) {
+            return
+        }
+        groups.toList().forEach(::cancelGroup)
+        groups.clear()
+    }
+
+    private fun clearGroupsFor(groups: MutableSet<TestGroup>, user: Player) {
+        removeMatchingGroups(groups) { it.getUser().uuid == user.uuid }
+    }
+
+    private fun clearStaleMatches(groups: MutableSet<TestGroup>, user: Player) {
+        removeMatchingGroups(groups) { it.getUser().uuid == user.uuid && it.getUser() !== user }
+    }
+
+    private fun removeMatchingGroups(
+        groups: MutableSet<TestGroup>,
+        predicate: (TestGroup) -> Boolean
+    ) {
+        val matched = groups.filter(predicate)
+        if (matched.isEmpty()) {
+            return
+        }
+        matched.forEach { group ->
+            cancelGroup(group)
+            groups.remove(group)
+        }
+    }
+
+    private fun cancelGroup(group: TestGroup) {
+        if (group is GamingTestGroup) {
+            group.cancel()
         }
     }
 }

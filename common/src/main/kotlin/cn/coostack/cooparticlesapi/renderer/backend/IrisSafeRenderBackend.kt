@@ -6,12 +6,13 @@ object IrisSafeRenderBackend : RenderBackend {
         RenderBackendCapability.FINAL_FRAME_POST
     )
 
-    override fun beginFrame(context: RenderFrameContext, hooks: RenderBackendHooks) {
-        hooks.cacheFrameState(context)
-    }
-
-    override fun finishLevelRender(context: RenderFrameContext, hooks: RenderBackendHooks) {
-        hooks.renderWorldPass(context)
-        hooks.preparePostProcess(context)
+    override fun runStage(stage: RenderFrameStage, context: RenderFrameContext, hooks: RenderBackendHooks) {
+        when (stage) {
+            RenderFrameStage.FRAME_BEGIN -> hooks.cacheFrameState(context)
+            RenderFrameStage.WORLD_PASS -> hooks.renderWorldPass(context)
+            RenderFrameStage.POST_PROCESS_PREPARE -> hooks.preparePostProcess(context)
+            RenderFrameStage.FRAME_POST -> hooks.runFramePost(context)
+            RenderFrameStage.FRAME_END -> hooks.flushFrameComposites(context)
+        }
     }
 }

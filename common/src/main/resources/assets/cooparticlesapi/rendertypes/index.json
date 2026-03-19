@@ -1,0 +1,9 @@
+{
+  "render_types": [
+    "assets/cooparticlesapi/rendertypes/glow.json",
+    "assets/cooparticlesapi/rendertypes/glow_overlay.json"
+  ],
+  "layered_render_types": [
+    "assets/cooparticlesapi/rendertypes/glow_layered.json"
+  ]
+}

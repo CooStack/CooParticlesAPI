@@ -30,12 +30,21 @@ import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestRespawnEmit
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestWaveEmitters
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.event.TestCollideEventHandler
 import cn.coostack.cooparticlesapi.test.options.particle.style.RomaMagicTestStyle
+import cn.coostack.cooparticlesapi.test.options.renderer.ExampleRendererEntity
 import cn.coostack.cooparticlesapi.test.options.renderer.TestAccretionDiskEntity
 import cn.coostack.cooparticlesapi.test.options.renderer.TestBillboardSmokeEntity
 import cn.coostack.cooparticlesapi.test.options.renderer.TestBlackHoleEntity
-import cn.coostack.cooparticlesapi.test.options.renderer.TestPersistentGlowSphereEntity
 import cn.coostack.cooparticlesapi.test.options.renderer.TestRendererEntity
 import cn.coostack.cooparticlesapi.test.options.renderer.TestTexturedBeamEntity
+import cn.coostack.cooparticlesapi.test.options.renderer.cases.CaseBlackHoleLensEntity
+import cn.coostack.cooparticlesapi.test.options.renderer.cases.CaseGlowAmbientShowcaseEntity
+import cn.coostack.cooparticlesapi.test.options.renderer.cases.CaseLaserBeamShowcaseEntity
+import cn.coostack.cooparticlesapi.test.options.renderer.cases.CaseMirrorShowcaseEntity
+import cn.coostack.cooparticlesapi.test.options.renderer.cases.CaseRenderEntityApiOverviewEntity
+import cn.coostack.cooparticlesapi.test.options.renderer.cases.CaseWaterOrbRefractionEntity
+import cn.coostack.cooparticlesapi.test.options.renderer.combat.CombatChargeEntity
+import cn.coostack.cooparticlesapi.test.options.renderer.combat.CombatEnergyShieldEntity
+import cn.coostack.cooparticlesapi.test.options.renderer.combat.CombatExplosionEntity
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.phys.Vec3
@@ -53,6 +62,9 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
 
     override fun build(): TestGroup {
         return GamingTestGroup(player, groupID())
+            .appendOption {
+                SimpleRendererEntityOption(ExampleRendererEntity(player.level(), player.eyePosition), -1)
+            }
             .appendOption {
                 SimpleEmitterOption(
                     TestEventEmitter(player.eyePosition, player.level())
@@ -77,7 +89,7 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
                 SimpleStyleOption(RomaMagicTestStyle(), player.level(), player.eyePosition, 100)
             }.appendOption {
                 SimpleRendererEntityOption(TestRendererEntity(player.level()).apply {
-                    this.setPosition(player.position())
+                    this.setPosition(player.eyePosition + player.forward * 12.0)
                 }, -1)
             }.appendOption {
                 SimpleDisplayEntityOption(
@@ -192,16 +204,8 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
                     this.setPosition(player.position())
                 }, -1)
             }.appendOption {
-                SimpleRendererEntityOption(TestPersistentGlowSphereEntity(player.level()).apply {
-                    this.setPosition(player.eyePosition + player.forward * 6.0)
-                    radius = 3.8f
-                    intensity = 8.2f
-                    haloIntensity = 4.1f
-                    haloRadiusScale = 1.46f
-                    fresnelStrength = 0.82f
-                    animationSpeed = 0.92f
-                    overbrightClamp = 8.4f
-                    glowColor = org.joml.Vector3f(0.82f, 0.94f, 1.08f)
+                SimpleRendererEntityOption(TestRendererEntity(player.level()).apply {
+                    this.setPosition(player.eyePosition + player.forward * 18.0)
                 }, -1)
             }.appendOption {
                 SimpleRendererEntityOption(TestTexturedBeamEntity(player.level()).apply {
@@ -237,6 +241,106 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
                     coreRadius = 0.22f
                     ringColor = org.joml.Vector3f(0.92f, 0.66f, 0.28f)
                 }, -1)
+            }.appendOption {
+                SimpleRendererEntityOption(
+                    CaseRenderEntityApiOverviewEntity(player.level()).apply {
+                        this.setPosition(player.eyePosition + player.forward * 10.0)
+                        radius = 0.95f
+                        emission = 1.8f
+                    },
+                    -1,
+                    "案例 / RenderEntity V2 API 总览"
+                )
+            }.appendOption {
+                SimpleRendererEntityOption(
+                    CaseGlowAmbientShowcaseEntity(player.level()).apply {
+                        this.setPosition(player.eyePosition + player.forward * 12.0)
+                        radius = 1.5f
+                        glowIntensity = 4.4f
+                        lightIntensity = 2.3f
+                    },
+                    -1,
+                    "案例 / 内容驱动 Glow + 环境光"
+                )
+            }.appendOption {
+                SimpleRendererEntityOption(
+                    CaseLaserBeamShowcaseEntity(player.level()).apply {
+                        this.setPosition(player.eyePosition + player.forward * 8.0)
+                        beamWidth = 0.34f
+                        beamLength = 12.0f
+                        beamDirection = player.forward.add(0.0, 0.18, 0.0).normalize().toVector3f()
+                    },
+                    -1,
+                    "案例 / 程序化激光 + 屏幕亮边"
+                )
+            }.appendOption {
+                SimpleRendererEntityOption(
+                    CaseWaterOrbRefractionEntity(player.level()).apply {
+                        this.setPosition(player.eyePosition + player.forward * 12.0)
+                        radius = 1.9f
+                        waveStrength = 0.95f
+                        rimStrength = 2.5f
+                    },
+                    -1,
+                    "案例 / 水球 + 折射"
+                )
+            }.appendOption {
+                SimpleRendererEntityOption(
+                    CaseMirrorShowcaseEntity(player.level()).apply {
+                        this.setPosition(player.eyePosition + player.forward * 12.0)
+                        radius = 1.8f
+                        reflectivity = 0.98f
+                        rimStrength = 2.3f
+                    },
+                    -1,
+                    "案例 / 镜面反射（镜子）"
+                )
+            }.appendOption {
+                SimpleRendererEntityOption(
+                    CaseBlackHoleLensEntity(player.level()).apply {
+                        this.setPosition(player.eyePosition + player.forward * 8.0)
+                        radius = 3.2f
+                        distortionStrength = 1.28f
+                        diskNormal = org.joml.Vector3f(0.0f, 0.42f, 0.91f)
+                        diskThickness = 0.05f
+                        diskWidth = 0.78f
+                        spinSpeed = 0.80f
+                        coreRadius = 0.24f
+                        ringColor = org.joml.Vector3f(0.96f, 0.70f, 0.32f)
+                    },
+                    -1,
+                    "案例 / 黑洞引力透镜"
+                )
+            }.appendOption {
+                SimpleRendererEntityOption(
+                    CombatExplosionEntity(player.level()).apply {
+                        this.setPosition(player.eyePosition + player.forward * 9.0)
+                        blastRadius = 0.6f
+                        shockRadius = 0.9f
+                    },
+                    -1,
+                    "实战 / 爆炸冲击波"
+                )
+            }.appendOption {
+                SimpleRendererEntityOption(
+                    CombatChargeEntity(player.level()).apply {
+                        this.setPosition(player.eyePosition + player.forward * 10.0)
+                        radius = 0.82f
+                        coreColor = org.joml.Vector3f(1.18f, 0.88f, 0.36f)
+                    },
+                    -1,
+                    "实战 / 充能核心"
+                )
+            }.appendOption {
+                SimpleRendererEntityOption(
+                    CombatEnergyShieldEntity(player.level()).apply {
+                        this.setPosition(player.eyePosition + player.forward * 12.0)
+                        radius = 3.1f
+                        shieldColor = org.joml.Vector3f(0.34f, 0.82f, 1.18f)
+                    },
+                    -1,
+                    "实战 / 能量护盾"
+                )
             }.appendOption {
                 SimpleEmitterOption(TestRespawnEmitter(player.eyePosition, player.level()).apply {
                     maxTick = 200

@@ -20,12 +20,13 @@ float luminance(vec3 color) {
 
 void main() {
     vec4 color = vec4(0.0);
-    vec2 texelSize = 1.0 / textureSize(scene, 0);
+    int lodIndex = max(int(floor(lod + 0.5)), 0);
+    vec2 texelSize = 1.0 / vec2(textureSize(scene, lodIndex));
     float weight = 0.0;
 
     for (int i = 0;i < 9; ++i) {
         vec3 kernel = tentKernel[i];
-        vec4 sampledColor = textureLod(scene, screen_uv + kernel.xy * texelSize, lod);
+        vec4 sampledColor = textureLod(scene, screen_uv + kernel.xy * texelSize, float(lodIndex));
         float l = kernel.z / (1.0 + luminance(sampledColor.rgb));
         color += sampledColor * l;
         weight += l;

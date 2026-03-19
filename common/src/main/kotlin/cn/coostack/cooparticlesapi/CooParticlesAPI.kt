@@ -20,11 +20,8 @@ import cn.coostack.cooparticlesapi.test.APITestGroupBuilder
 import cn.coostack.cooparticlesapi.test.TestManager
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.event.TestCollideEventHandler
 import com.ezylang.evalex.Expression
-import com.mojang.blaze3d.platform.InputConstants
 import net.minecraft.core.RegistryAccess
-import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.MinecraftServer
-import org.lwjgl.glfw.GLFW
 
 object CooParticlesAPI {
     var subTicks = 0.0
@@ -73,14 +70,6 @@ object CooParticlesAPI {
         TestManager.register(APITestGroupBuilder.ID) {
             APITestGroupBuilder(it)
         }
-
-//        KeyBindingManager.register(
-//            ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "test_key"),
-//            InputConstants.Type.KEYSYM,
-//            GLFW.GLFW_KEY_H,
-//            "key.cooparticlesapi.category"
-//        )
-
     }
 
     fun tickServer(server: MinecraftServer) {

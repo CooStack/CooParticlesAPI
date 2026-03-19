@@ -148,6 +148,12 @@ abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) : Serv
     }
 
 
+    /**
+     * `RenderEntity` 不参与 `Tickable` 的前置 action 链。
+     *
+     * 这里直接返回自身，是为了保持 `Tickable` 接口兼容，
+     * 同时明确这套 API 的 tick 生命周期只受 `tick()` / `clientTick()` / `serverTick()` 控制。
+     */
     final override fun addPreTickAction(action: RenderEntity.() -> Unit): Tickable<RenderEntity> {
         return this
     }
@@ -230,9 +236,10 @@ abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) : Serv
     }
 
     /**
-     * 如果想要通过 togglePacket 同步到客户端状态
-     * 修改entity的属性必须要执行该方法
-     * (调用setPos无需)
+     * 把当前实体标记为“需要在下一次同步时发送 TOGGLE”。
+     *
+     * 当你直接修改自定义字段，而不是通过 `setPosition(...)` 这类自带同步语义的方法更新时，
+     * 应该主动调用它，否则客户端镜像不会收到这次状态变化。
      */
     fun markDirty() {
         dirty = true
@@ -314,6 +321,8 @@ abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) : Serv
     }
 
     /**
+     * 把逻辑 tick 时间转换为以秒为单位的连续时间。
+     *
      * @param delta tickDelta 在渲染阶段提供，用作着色器的 time 参数
      */
     fun getTime(delta: Float): Float {
@@ -349,39 +358,83 @@ abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) : Serv
     abstract fun getCodec(): StreamCodec<FriendlyByteBuf, RenderEntity>
 
     /**
-     * 获取标识符 (用于在客户端注册)
+     * 返回当前 RenderEntity 类型的唯一注册 id。
+     *
+     * 这个 id 会直接写进同步包，并用于客户端查找：
+     * - codec
+     * - rendererFactory
+     *
+     * 因此同一种实体的服务端和客户端必须保持完全一致。
      */
     abstract fun getRenderID(): ResourceLocation
 
+    /**
+     * 直接把实体移动到指定坐标。
+     *
+     * 这个接口来自 `ServerControler`，语义上更接近“瞬移”而不是平滑同步。
+     * 它会同步更新 `lastRenderPos`，方便客户端做插值或拖尾过渡。
+     */
     override fun teleportTo(to: Vec3) {
         this.lastRenderPos = this.pos
         this.pos = to
     }
 
+    /**
+     * `teleportTo(Vec3)` 的坐标拆分重载。
+     */
     override fun teleportTo(x: Double, y: Double, z: Double) {
         teleportTo(Vec3(x, y, z))
     }
 
+    /**
+     * 旋转到目标相对位置。
+     *
+     * 当前 `RenderEntity` 基类未内置朝向状态，因此默认留空。
+     * 如果你的实体有朝向、法线、切线或局部旋转语义，需要在子类自行实现。
+     */
     override fun rotateToPoint(to: RelativeLocation) {
 
     }
 
+    /**
+     * 判断当前实体是否仍然有效。
+     *
+     * 管理器会以这个状态决定是否继续保留该实例。
+     */
     override fun isValid(): Boolean {
         return !canceled
     }
 
+    /**
+     * 以给定弧度朝向目标方向。
+     *
+     * 基类不维护旋转参数，默认是空实现，供带有自定义姿态系统的子类覆盖。
+     */
     override fun rotateToWithAngle(to: RelativeLocation, radian: Double) {
 
     }
 
+    /**
+     * 绕自身轴进行旋转。
+     *
+     * 同样由于基类不直接提供旋转存储，默认留给子类按自身数据结构决定行为。
+     */
     override fun rotateAsAxis(radian: Double) {
 
     }
 
+    /**
+     * 标记实体已移除。
+     *
+     * 调用后不会立刻销毁对象，但后续 tick / 管理器清理阶段会把它移出运行时。
+     */
     override fun remove() {
         this.canceled = true
     }
 
+    /**
+     * 返回当前控制器承载的实体值本身。
+     */
     override fun getValue(): RenderEntity {
         return this
     }

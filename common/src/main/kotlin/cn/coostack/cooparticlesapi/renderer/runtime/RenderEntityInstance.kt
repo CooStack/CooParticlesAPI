@@ -1,31 +1,56 @@
 package cn.coostack.cooparticlesapi.renderer.runtime
 
-import cn.coostack.cooparticlesapi.renderer.client.ClientPersistentBloomManager
-import cn.coostack.cooparticlesapi.renderer.client.ClientScreenGlowManager
-import cn.coostack.cooparticlesapi.renderer.client.ClientWorldLightManager
 import cn.coostack.cooparticlesapi.renderer.RenderEntity
 import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameContext
-import cn.coostack.cooparticlesapi.renderer.effects.FrameEffectCollector
-import cn.coostack.cooparticlesapi.renderer.effects.FrameEffectInput
-import cn.coostack.cooparticlesapi.renderer.glow.PersistentBloomContextProvider
-import cn.coostack.cooparticlesapi.renderer.glow.ScreenGlowContextProvider
-import cn.coostack.cooparticlesapi.renderer.glow.ScreenGlowProvider
-import cn.coostack.cooparticlesapi.renderer.light.WorldLightProvider
+import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameStage
+import cn.coostack.cooparticlesapi.renderer.effects.builtin.BuiltinRenderEffectDescriptors
 import cn.coostack.cooparticlesapi.renderer.state.RenderStateGuard
 import org.joml.Matrix4f
 import org.joml.Matrix4fStack
 
+/**
+ * 客户端对单个 RenderEntity 的运行时包装。
+ *
+ * 它把“同步对象”和“渲染对象”拼接起来，负责：
+ * - 初始化 renderer 生命周期
+ * - 缓存 visual profile / feature set
+ * - 执行 world pass 渲染
+ * - 收集 frame-post contribution
+ * - 在移除时释放本地资源
+ */
 class RenderEntityInstance<T : RenderEntity>(
     val entity: T,
     val renderer: RenderEntityRenderer<T>
 ) {
+    /**
+     * 当前实体的视觉画像快照。
+     *
+     * 由 renderer 根据实体状态重新计算，用于向管线声明颜色拷贝、深度依赖、混合模式等需求。
+     */
     var visualProfile: RenderEntityVisualProfile = renderer.createVisualProfile(entity)
         private set
+    /**
+     * 当前实体声明的功能集。
+     */
+    var featureSet: RenderEntityFeatureSet = renderer.describeFeatures(entity)
+        private set
+    /**
+     * 本地 world pass 渲染用的临时目标池。
+     */
     val localRenderTargetPool = LocalRenderTargetPool()
+    /**
+     * world pass 后串行执行的本地 effect chain。
+     */
     var localEffectChain = LocalEffectChain(localRenderTargetPool)
     private var initialized = false
     private var released = false
 
+    /**
+     * 初始化 renderer 生命周期。
+     *
+     * 这个方法是幂等的；重复调用不会二次初始化。
+     * 初始化完成后会重新拉取 visual profile 和 feature set，保证和 renderer 当前实现一致。
+     */
     fun initialize() {
         if (initialized) {
             return
@@ -33,19 +58,42 @@ class RenderEntityInstance<T : RenderEntity>(
         initialized = true
         renderer.initialize(this)
         visualProfile = renderer.createVisualProfile(entity)
+        featureSet = renderer.describeFeatures(entity)
     }
 
+    /**
+     * 强制重新初始化 runtime 包装。
+     *
+     * 适合 renderer 配置、资源或生命周期语义发生明显变化后重建状态。
+     */
     fun reinitialize() {
         initialized = false
         initialize()
     }
 
+    /**
+     * 用网络同步过来的临时实体覆盖当前实例状态。
+     *
+     * 更新顺序是：
+     * 1. 把同步字段回写到 `entity`
+     * 2. 重新计算 visual profile / feature set
+     * 3. 如果 renderer 显式声明了更新钩子，再通知其刷新本地缓存
+     */
     fun updateFrom(profile: RenderEntity) {
         entity.loadProfileFromEntity(profile)
         visualProfile = renderer.createVisualProfile(entity)
-        renderer.update(this, entity)
+        featureSet = renderer.describeFeatures(entity)
+        @Suppress("UNCHECKED_CAST")
+        val updateHook = renderer as? RenderEntityUpdateHook<T>
+        updateHook?.update(this, entity)
     }
 
+    /**
+     * 执行当前实例的 world pass 渲染。
+     *
+     * 只有在 `localRendererEnabled == true`、声明了 `WORLD_PASS` 阶段，
+     * 且 renderer 实现了 `WorldPassRenderEntityRenderer` 时才会进入真正绘制。
+     */
     fun renderLocal(
         tickDelta: Float,
         viewMatrix: Matrix4f,
@@ -53,8 +101,13 @@ class RenderEntityInstance<T : RenderEntity>(
         modelMatrix: Matrix4fStack,
         stateGuard: RenderStateGuard
     ) {
+        if (!featureSet.localRendererEnabled || RenderFrameStage.WORLD_PASS !in featureSet.stages) {
+            return
+        }
+        @Suppress("UNCHECKED_CAST")
+        val localRenderer = renderer as? WorldPassRenderEntityRenderer<T> ?: return
         stateGuard.use { renderState ->
-            renderer.renderLocal(
+            localRenderer.renderLocal(
                 LocalRenderInput(
                     instance = this,
                     tickDelta = tickDelta,
@@ -68,61 +121,48 @@ class RenderEntityInstance<T : RenderEntity>(
         }
     }
 
+    /**
+     * 仅在客户端运行时侧把实体标记为已移除。
+     */
     fun markRemoved() {
         entity.canceled = true
     }
 
-    fun collectFrameEffects(context: RenderFrameContext, collector: FrameEffectCollector) {
-        renderer.collectFrameEffects(
-            FrameEffectInput(
+    /**
+     * 收集当前实例在 frame-post 阶段提交的 descriptor。
+     *
+     * 只有在声明启用了 effect graph 且包含 `FRAME_POST` 阶段时才会进入。
+     * 收集完成后，builtin effect provider 也会继续补充自己的贡献。
+     */
+    fun collectRenderContributions(context: RenderFrameContext, collector: RenderContributionCollector) {
+        if (!featureSet.effectGraphEnabled || RenderFrameStage.FRAME_POST !in featureSet.stages) {
+            return
+        }
+        @Suppress("UNCHECKED_CAST")
+        val framePostRenderer = renderer as? FramePostRenderEntityRenderer<T>
+        framePostRenderer?.collectRenderContributions(
+            RenderContributionInput(
                 instance = this,
                 frameContext = context
             ),
             collector
         )
-        when (entity) {
-            is ScreenGlowContextProvider -> {
-                ClientScreenGlowManager.submitFrameEffects(
-                    sourceInstanceId = entity.uuid.toString(),
-                    provider = entity,
-                    context = context,
-                    collector = collector
-                )
-            }
-
-            is ScreenGlowProvider -> {
-                ClientScreenGlowManager.submitFrameEffects(
-                    sourceInstanceId = entity.uuid.toString(),
-                    provider = entity,
-                    context = context,
-                    collector = collector
-                )
-            }
-        }
-        if (entity is PersistentBloomContextProvider) {
-            ClientPersistentBloomManager.submitFrameEffects(
-                sourceInstanceId = entity.uuid.toString(),
-                provider = entity,
-                context = context,
-                collector = collector
-            )
-        }
-        if (entity is WorldLightProvider) {
-            ClientWorldLightManager.submitFrameEffects(
-                sourceInstanceId = entity.uuid.toString(),
-                provider = entity,
-                context = context,
-                collector = collector
-            )
-        }
+        BuiltinRenderEffectDescriptors.collectEntity(entity, context, collector)
     }
 
+    /**
+     * 释放 runtime 包装持有的本地资源。
+     *
+     * 该方法也是幂等的；一旦释放过，就不会重复执行 release 逻辑。
+     */
     fun release() {
         if (released) {
             return
         }
         released = true
         localEffectChain.replaceSteps(emptyList())
-        renderer.release(this)
+        @Suppress("UNCHECKED_CAST")
+        val releaseHook = renderer as? RenderEntityReleaseHook<T>
+        releaseHook?.release(this)
     }
 }

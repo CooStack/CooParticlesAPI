@@ -1,7 +1,7 @@
 package cn.coostack.cooparticlesapi.renderer.shader.pipe.pipes
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
-import cn.coostack.cooparticlesapi.renderer.shader.ShaderProgramBuilder
+import cn.coostack.cooparticlesapi.renderer.shader.AdvancedShaderProgramBuilder
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlFrameBuffer
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlShaderType
 import cn.coostack.cooparticlesapi.renderer.shader.api.pipe.PipeChannels
@@ -14,6 +14,12 @@ import cn.coostack.cooparticlesapi.renderer.shader.vertex.VertexBuffers
 import com.mojang.blaze3d.systems.RenderSystem
 import net.minecraft.resources.ResourceLocation
 import org.lwjgl.opengl.GL33
+import org.lwjgl.opengl.GL33.GL_CULL_FACE
+import org.lwjgl.opengl.GL33.GL_DEPTH_TEST
+import org.lwjgl.opengl.GL33.GL_SCISSOR_TEST
+import org.lwjgl.opengl.GL33.glDisable
+import org.lwjgl.opengl.GL33.glEnable
+import org.lwjgl.opengl.GL33.glIsEnabled
 import java.util.function.Supplier
 
 class ExternalTextureShaderPipe(
@@ -32,7 +38,7 @@ class ExternalTextureShaderPipe(
     )
     private val shaderVertexes = VertexBuffers.getScreenBuffer()
     private val handles = ArrayList<ShaderProgramUploader>()
-    private val screenProgram = ShaderProgramBuilder()
+    private val screenProgram = AdvancedShaderProgramBuilder()
         .vertex(screenVertex)
         .fragment(screenFragment)
         .build()
@@ -48,13 +54,34 @@ class ExternalTextureShaderPipe(
 
     fun capture() {
         screenProgram.useOnContext {
+            setInt("tex", 0)
             handles.forEach {
                 it.uploadShaderData(this)
             }
             fbo.writeFrameBufferWith {
+                val depthEnabled = glIsEnabled(GL_DEPTH_TEST)
+                val cullEnabled = glIsEnabled(GL_CULL_FACE)
+                val scissorEnabled = glIsEnabled(GL_SCISSOR_TEST)
                 RenderSystem.disableBlend()
-                textures.drawWith {
-                    shaderVertexes.draw()
+                RenderSystem.disableDepthTest()
+                RenderSystem.disableCull()
+                if (scissorEnabled) {
+                    glDisable(GL_SCISSOR_TEST)
+                }
+                try {
+                    textures.drawWith {
+                        shaderVertexes.draw()
+                    }
+                } finally {
+                    if (depthEnabled) {
+                        RenderSystem.enableDepthTest()
+                    }
+                    if (cullEnabled) {
+                        RenderSystem.enableCull()
+                    }
+                    if (scissorEnabled) {
+                        glEnable(GL_SCISSOR_TEST)
+                    }
                 }
             }
         }
@@ -80,13 +107,34 @@ class ExternalTextureShaderPipe(
 
     override fun writeFromChannel(channel: PipeChannels): ShaderPipe {
         screenProgram.useOnContext {
+            setInt("tex", 0)
             handles.forEach {
                 it.uploadShaderData(this)
             }
             fbo.writeFrameBufferWith {
+                val depthEnabled = glIsEnabled(GL_DEPTH_TEST)
+                val cullEnabled = glIsEnabled(GL_CULL_FACE)
+                val scissorEnabled = glIsEnabled(GL_SCISSOR_TEST)
                 RenderSystem.disableBlend()
-                channel.useOnContext {
-                    shaderVertexes.draw()
+                RenderSystem.disableDepthTest()
+                RenderSystem.disableCull()
+                if (scissorEnabled) {
+                    glDisable(GL_SCISSOR_TEST)
+                }
+                try {
+                    channel.useOnContext {
+                        shaderVertexes.draw()
+                    }
+                } finally {
+                    if (depthEnabled) {
+                        RenderSystem.enableDepthTest()
+                    }
+                    if (cullEnabled) {
+                        RenderSystem.enableCull()
+                    }
+                    if (scissorEnabled) {
+                        glEnable(GL_SCISSOR_TEST)
+                    }
                 }
             }
         }
@@ -95,6 +143,7 @@ class ExternalTextureShaderPipe(
 
     override fun drawPipeFrame() {
         screenProgram.useOnContext {
+            setInt("tex", 0)
             handles.forEach {
                 it.uploadShaderData(this)
             }

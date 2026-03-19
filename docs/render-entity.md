@@ -1,282 +1,309 @@
-# RenderEntity 快速上手
+# RenderEntity V2 指南
 
-这份文档给“会写代码，但没有 shader 基础”的人。
+这份文档描述当前仓库已经收敛后的 `RenderEntity` V2 真相，而不是旧的 V1 渲染习惯。
 
-先记住 3 句话：
+## 1. 先记住边界
 
-- `renderLocal(...)` = 像普通世界模型那样直接画
-- `collectFrameEffects(...)` = 场景画完后再叠一层效果
-- bloom = 先提亮，再模糊，再叠回去
+- `RenderEntity` 是服务端权威状态和客户端镜像同步基类。
+- `RenderEntityInstance` 是客户端真正持有的运行时实例。
+- `RenderEntityRenderer` 负责声明视觉能力并提交渲染贡献。
+- `ClientRenderPipelineManager` 负责帧阶段、场景资源解析和 backend 调度。
+- framebuffer、scene copy、depth read、post graph、final composite 都属于平台层，不属于 `RenderEntity` 本体。
 
-当前 V2 模型也只要记一件事：
+如果你在 `RenderEntity` 里直接做这些事，方向就是错的：
 
-- `RenderEntity` 负责同步
-- 客户端真正跑起来的是 `RenderEntityInstance`
+- 自己读写 `minecraft.mainRenderTarget`
+- 自己做整屏 copy / blur / composite
+- 把某个实体绑定成“负责最终合成”的执行器
+- 在实体本体里维护 framebuffer 生命周期
 
-## 1. 先选路线
+## 2. 当前主路径
 
-| 你要的效果 | 入口 | 一句话理解 |
-| --- | --- | --- |
-| 真正画进世界里的几何体 | `renderLocal(...)` | 像普通模型那样画 |
-| 带本体的发光球 | `collectFrameEffects(...)` + `PostGlowSphereRenderer` | 场景画完后补一颗会发光的球 |
-| 只有柔和外辉光 | `PersistentBloomContextProvider` | 先采样亮源，再做 blur |
+### World Pass
 
-如果你是第一次做，优先顺序建议是：
+- `LevelRendererMixin` 调 `ClientRenderPipelineManager.beginFrame(...)`
+- 同一帧内 `finishLevelRender(...)` 触发 `RenderFrameStage.WORLD_PASS`
+- `ClientRenderEntityManager.renderWorldPass(...)`
+- `RenderEntityInstance.renderLocal(...)`
+- `RenderEntityRenderer.renderLocal(...)`
 
-1. 发光球：`PostGlowSphereRenderer`
-2. 纯外辉光：`PersistentBloomContextProvider`
-3. 自己写 world pass：`renderLocal(...)`
+这是“像普通世界模型一样直接画”的路径。
 
-## 2. 最小骨架
+### Frame Post
 
-先把同步骨架搭起来：
+- `LevelRendererMixin` 在尾部调 `ClientRenderPipelineManager.endFrame()`
+- backend 进入 `RenderFrameStage.FRAME_POST`
+- `ClientRenderEntityManager.runFramePost(...)`
+- 每个 instance 调 `collectRenderContributions(...)`
+- contribution 进入 `RenderEffectGraph`
+- `RenderEffectRegistry` 统一分发到 builtin effect executor
+
+这是当前的统一帧后处理主路径。
+
+## 3. 现在应该写哪个接口
+
+- `RenderEntityRenderer`
+  只放共享生命周期和能力声明，不再把 world pass / frame-post 做成接口默认空实现。
+- `WorldPassRenderEntityRenderer`
+  只有真的要画本地几何时才实现它。
+- `FramePostRenderEntityRenderer`
+  只有真的要往 effect graph 提交 descriptor 时才实现它。
+- `renderLocal(...)`
+  适合真正的 world pass 几何绘制。
+- `collectRenderContributions(...)`
+  这是 V2 当前推荐的 frame-post 入口。你提交的是 `RenderEffectDescriptor`，不是直接执行整屏后处理。
+- 自定义 frame-post 效果
+  直接定义 `effectType + payload + executor`，然后仍然通过 `collectRenderContributions(...)` 提交，不要再把执行 lambda 塞回实体接口。
+
+## 4. Stage 与 Scene Resource
+
+当前统一阶段枚举是 `renderer.backend.RenderFrameStage`：
+
+- `FRAME_BEGIN`
+- `WORLD_PASS`
+- `POST_PROCESS_PREPARE`
+- `FRAME_POST`
+- `FRAME_END`
+
+当前统一场景资源命名表是 `renderer.backend.RenderSceneTargets`：
+
+- `MAIN`
+- `POST`
+- `SCENE_COLOR`
+- `SCENE_DEPTH`
+- `BLOOM`
+- `LIGHT`
+- `TRANSLUCENT_TARGET`
+- `ITEM_ENTITY_TARGET`
+- `PARTICLES_TARGET`
+- `WEATHER_TARGET`
+- `CLOUDS_TARGET`
+
+`ClientRenderPipelineManager` 每个阶段都会构造 `RenderFrameContext`，其中携带：
+
+- 当前 backend
+- 当前 stage
+- 当前 `RenderSceneResources`
+- 当前解析出的 color/depth/final target
+
+这套命名资源思路是当前仓库向 Veil 靠拢的核心之一。
+
+## 5. Builtin Effect 如何挂接
+
+当前内建 glow / bloom / world light 的 provider 判断已经收敛到 `BuiltinRenderEffectDescriptors`，而不是散落在 runtime core 里。
+
+它负责三件事：
+
+- `describeEntity(entity)`：把实体扩展成 `RenderEntityFeatureSet`
+- `collectEntity(...)`：把 provider 扩展成统一的 `RenderEffectDescriptor`
+- `screenGlow(...) / persistentBloom(...) / worldLight(...) / sharedModelMaskBloom(...) / customGlowMaskBloom(...) / computeDispatch(...)`：构造 typed descriptor
+
+这意味着 `RenderEntityInstance` 不再直接认识 `ScreenGlowProvider`、`PersistentBloomContextProvider`、`WorldLightProvider` 的细节分支。
+
+RenderEntity glow 目前推荐的 builtin 路径已经切到 `MASK_BLOOM`，并分成两类明确语义：
+
+- `SharedModelMaskBloomRenderEntityRenderer`
+  适用于“已有 world-pass 模型路径”的实体。它复用同一套模型绘制逻辑，把模型实际颜色/alpha/贴图内容直接写进 glow mask。
+- `DedicatedGlowMaskRenderEntityRenderer`
+  适用于“没有现成 world-pass 模型路径，但仍需要局部 glow”的实体。它只实现 `renderGlowMask(...)`，专门把局部模型内容绘制到 mask target。
+
+`postGlowSphere(...)` 现在只保留兼容残留，不再是 RenderEntity glow 的默认或推荐实现。
+
+## 6. 最小示例
+
+`TestRendererEntity` 是当前新 API 下的 smoke example。它展示的是：
+
+- `RenderEntity` 仍然只是同步对象
+- renderer 通过 `SharedModelMaskBloomRenderEntityRenderer` 复用同一套模型绘制
+- glow descriptor 走 `MASK_BLOOM`，颜色来自模型纹理内容本身
+
+核心模式如下：
 
 ```kotlin
-@CooAutoRegister
-class MyRenderEntity(
-    world: Level? = null,
-    pos: Vec3 = Vec3.ZERO
-) : AutoRenderEntity(world, pos),
-    RenderEntityRenderer<MyRenderEntity> {
+class TestRendererEntity(...) :
+    AutoRenderEntity(...),
+    SharedModelMaskBloomRenderEntityRenderer<TestRendererEntity> {
 
-    constructor() : this(null, Vec3.ZERO)
-
-    companion object {
-        val ID: ResourceLocation = ResourceLocation.fromNamespaceAndPath(
-            "yourmod",
-            "my_render_entity"
-        )
+    override fun renderSharedModel(input: SharedModelMaskBloomInput<TestRendererEntity>) {
+        texturedBillboardShader.useOnContext {
+            setMatrix4("projMat", input.projMatrix)
+            setMatrix4("viewMat", input.viewMatrix)
+            setMatrix4("transMat", input.modelMatrix)
+            setFloat2("size", billboardSize)
+            setInt("tex", 0)
+            magicTexture.drawWith {
+                RenderEntityExampleSupport.billboardBuffer().draw()
+            }
+        }
     }
 
-    @field:CodecField
-    var radius: Float = 4.0f
-
-    @field:CodecField
-    var intensity: Float = 6.0f
-
-    @field:CodecField
-    var glowColor: Vector3f = Vector3f(0.6f, 0.9f, 1.2f)
-
-    override fun getRenderID(): ResourceLocation = ID
+    override fun glowMaskConfig(entity: TestRendererEntity): MaskBloomConfig {
+        return BuiltinRenderEffectDescriptors.defaultRenderEntityModelGlowConfig().copy(
+            blurSigma = 15.0f,
+            blurRange = 10.0f,
+            intensity = 2.8f,
+            baseMaskIntensity = 0.24f
+        )
+    }
 }
 ```
 
-服务端生成：
+如果你没有现成的 world-pass 模型路径，但仍需要局部 glow，则改用第二类接口：
 
 ```kotlin
-val entity = MyRenderEntity().apply {
-    radius = 5.0f
-    intensity = 7.5f
-    glowColor = Vector3f(1.0f, 0.7f, 0.3f)
-    renderRange = 256.0
-}
-entity.spawn(serverLevel, Vec3(x, y, z))
-```
+class MyGlowMaskOnlyEntity(...) :
+    AutoRenderEntity(...),
+    DedicatedGlowMaskRenderEntityRenderer<MyGlowMaskOnlyEntity> {
 
-这段代码只解决两件事：
-
-- `AutoRenderEntity` 自动处理 `@CodecField` 的 codec 和镜像回写
-- `spawn(serverLevel, pos)` 把它交给 `ServerRenderEntityManager`
-
-它还不会显示任何东西。真正的显示逻辑写在下面 3 条路线里。
-
-## 3. 最短可用的发光球
-
-如果你要的是“能看见球体本体，还带 halo”，直接抄这条。
-
-把下面的方法加到上面的类里：
-
-```kotlin
-override fun initialize(instance: RenderEntityInstance<MyRenderEntity>) {
-    PostGlowSphereRenderer.initialize()
-}
-
-override fun collectFrameEffects(
-    input: FrameEffectInput<MyRenderEntity>,
-    collector: FrameEffectCollector
-) {
-    val entity = input.instance.entity
-    PostGlowSphereRenderer.submit(
-        collector = collector,
-        effectId = ID.toString(),
-        sourceInstanceId = entity.uuid.toString(),
-        entity = entity,
-        frameContext = input.frameContext,
-        config = PostGlowSphereConfig(
-            radius = entity.radius,
-            intensity = entity.intensity,
-            haloIntensity = 3.2f,
-            haloRadiusScale = 1.8f,
-            fresnelStrength = 1.3f,
-            animationSpeed = 1.0f,
-            overbrightClamp = 6.0f,
-            glowColor = Vector3f(entity.glowColor)
+    override fun renderGlowMask(input: GlowMaskRenderInput<MyGlowMaskOnlyEntity>) {
+        input.maskContext.drawTexturedBillboard(
+            MaskBloomTexturedBillboard(
+                textures = runeTextures,
+                modelMatrix = input.modelMatrix,
+                tint = Vector4f(1.0f, 0.85f, 0.45f, 1.0f)
+            )
         )
     )
 }
 ```
 
-可以直接这样生成：
+### 旧 demo 备份
+
+迁移前注释备份保存在：
+
+- `.ai/backups/renderentity/TestRendererEntity.v2-commented-backup.kt`
+
+## 7. 什么时候还会碰到 `ShaderPipeManager`
+
+`ShaderPipeManager` 还在用，但它现在是 effect executor 的低层工具，不是 `RenderEntity` 作者应该优先面向的顶层 API。
+
+正确心智模型是：
+
+- `RenderEntity` / `RenderEntityRenderer`：声明需求
+- `RenderEffectGraph` / `RenderEffectRegistry`：统一调度
+- `Client*Manager`：具体执行器
+- `ShaderPipeManager`：执行器内部的 pipe DAG 工具
+
+## 8. Backend 能力注意点
+
+当前 capability 仍然重要：
+
+- `SCENE_COLOR_COPY`
+- `SCENE_DEPTH_READ`
+- `SAFE_WORLD_COMPOSITE`
+- `FINAL_FRAME_POST`
+
+例如：
+
+- `VanillaSafeRenderBackend` 具备 `SCENE_COLOR_COPY` 和 `SCENE_DEPTH_READ`
+- `IrisSafeRenderBackend` 当前只有 `FINAL_FRAME_POST` 和 `SAFE_WORLD_COMPOSITE`
+
+所以依赖 scene color / depth 的 glow/bloom 效果，不能假设在所有 backend 上都一定可用。
+
+## 9. Veil 对照检测
+
+按 Veil 官方 wiki、javadocs 和 Context7 复核后，当前仓库并不拥有 Veil 的“所有着色功能”。当前状态应被准确理解为“部分对齐统一渲染平台方向”，而不是“全量 Veil parity”。
+
+### 已覆盖或部分覆盖
+
+- 命名 scene target / framebuffer 语义：部分覆盖
+- frame-post descriptor + registry + graph：部分覆盖
+- world pass / frame-post 两段式 stage：部分覆盖
+- 低层 shader pipe / ping-pong / offscreen FBO：已覆盖
+
+### 仍然缺失
+
+- layered / data-driven render type
+- Veil 式更细粒度的 render stage hook / fixed buffer stage
+- 资源驱动的 framebuffer / post pipeline descriptor
+
+### 本轮已补的着色能力
+
+- 新增 Veil 风格的 `CooRenderTypeDescriptor` / `CooLayeredRenderType`
+- 新增 data-driven `rendertypes/*.json` + `CooRenderTypeResourceRegistry`
+- 新增 `AdvancedShaderProgramBuilder`
+- 新增 `GEOMETRY / TESSELLATION_CONTROL / TESSELLATION_EVALUATION / COMPUTE` stage API
+- 新增 `CooComputeShaderProgram` / `ComputeShaderProgram`
+- 新增 Veil 风格的 `ShaderBufferLayout` / `ShaderBufferRegistry`
+- 新增 `ShaderBufferObject` / `ShaderBufferCache`
+- 新增 compute `RenderEffectDescriptor` / `ComputeDispatchRenderer`
+
+所以当前缺口已经缩成：
+
+- 还没有真正的 shader buffer upload/cache runtime
+- 还没有更细粒度 stage hook / fixed buffer stage
+- 还没有资源驱动的 framebuffer / post pipeline descriptor
+
+其中 shader buffer 这块现在已经从“只有 layout”推进到了“layout + runtime object + cache”，剩余缺口主要在于和 shader 编译/重编译生命周期做更深绑定。
+
+### compute 已接入 effect graph
+
+当前 compute 不再只是独立 program API，而是已经能通过 builtin descriptor 进入 `RenderEffectGraph`：
+
+- `BuiltinRenderEffectTypes.COMPUTE_DISPATCH`
+- `BuiltinRenderEffectDescriptors.computeDispatch(...)`
+- `ComputeDispatchRenderer`
+
+并且仓库里已经有一个最小 smoke entity：
+
+- `common/src/main/kotlin/cn/coostack/cooparticlesapi/test/options/renderer/TestComputeShaderEntity.kt`
+
+### data-driven render type 入口
+
+当前已经新增：
+
+- `common/src/main/resources/assets/cooparticlesapi/rendertypes/index.json`
+- `common/src/main/resources/assets/cooparticlesapi/rendertypes/*.json`
+- `CooRenderTypeResourceRegistry`
+
+provider 现在既支持代码 builder，也支持按资源 id 取命名 render type：
 
 ```kotlin
-MyRenderEntity().apply {
-    radius = 4.5f
-    intensity = 6.8f
-    glowColor = Vector3f(0.58f, 0.88f, 1.30f)
-}.spawn(serverLevel, explosionCenter)
+val glow = CooParticlesServices.PLATFORM.getRenderTypesProvider()
+    .named(ResourceLocation.fromNamespaceAndPath("cooparticlesapi", "glow"))
+
+val layered = CooParticlesServices.PLATFORM.getRenderTypesProvider()
+    .layered(ResourceLocation.fromNamespaceAndPath("cooparticlesapi", "glow_layered"))
 ```
 
-这条路线的特点：
+当前仓库内的真实使用样例：
 
-- 不用自己写 glow shader
-- 不用自己管球体网格
-- 是 frame-post 路线，不是 world pass
-- 画出来的是“有本体的发光球”，不是 blur bloom
+- `common/src/main/kotlin/cn/coostack/cooparticlesapi/test/options/display/TestShapeDisplayEntity.kt`
 
-## 4. 只要柔和外辉光
+它会优先使用命名的 `glow_layered` render type，找不到时再回退到旧 `glow()`。
 
-如果你不要球体本体，只想要“亮源外面一圈软的辉光”，用 `PersistentBloomContextProvider`。
+### 本轮删除的多余内容
 
-```kotlin
-@CooAutoRegister
-class MyBloomEntity(
-    world: Level? = null,
-    pos: Vec3 = Vec3.ZERO
-) : AutoRenderEntity(world, pos),
-    RenderEntityRenderer<MyBloomEntity>,
-    PersistentBloomContextProvider {
+- 删除了未接线的 `FrameEffectStack` 旧包装层
+- 删除了从未实现过、会误导调用方的 `EARLY_WORLD_HOOK` capability
 
-    constructor() : this(null, Vec3.ZERO)
+这些删除的目的不是“砍功能”，而是让公开 API 与真实能力保持一致。
 
-    companion object {
-        val ID: ResourceLocation = ResourceLocation.fromNamespaceAndPath(
-            "yourmod",
-            "my_bloom_entity"
-        )
-    }
+## 10. 开发建议
 
-    @field:CodecField
-    var bloomRadius: Float = 4.0f
+优先顺序：
 
-    @field:CodecField
-    var bloomIntensity: Float = 1.8f
+1. 如果你只是想提交后处理效果，用 `collectRenderContributions(...)`
+2. 如果你只是想画世界几何，用 `renderLocal(...)`
+3. 只有在实现新 effect executor 时，才直接碰 `ShaderPipeManager`
 
-    @field:CodecField
-    var bloomColor: Vector3f = Vector3f(0.7f, 0.9f, 1.3f)
+避免这些回退行为：
 
-    override fun getRenderID(): ResourceLocation = ID
+- 把 provider 判断重新写回 `RenderEntityInstance`
+- 让每个新效果再复制一套 manager 生命周期
+- 把“直接执行的 lambda payload”重新塞回 descriptor graph
+- 把 framebuffer/scene target 逻辑重新塞回实体
 
-    override fun collectPersistentBlooms(
-        context: ScreenGlowRenderContext,
-        output: MutableList<PersistentBloom>
-    ) {
-        output += PersistentBloom(
-            position = Vector3f(pos.x.toFloat(), pos.y.toFloat(), pos.z.toFloat()),
-            color = Vector3f(bloomColor),
-            radius = bloomRadius,
-            intensity = bloomIntensity,
-            softness = 0.58f,
-            haloRadiusScale = 3.0f,
-            blurSigma = 4.6f,
-            blurRange = 4.2f
-        )
-    }
-}
+## 11. 验证基线
+
+当前与 V2 contract 直接相关的回归测试：
+
+- `RenderEntityV2ContractTest`
+- `RenderEntityInstanceLifecycleTest`
+- `ClientRenderEntityPacketHandlerV2Test`
+
+推荐验证命令：
+
+```powershell
+gradlew.bat :common:test --no-daemon -Dkotlin.incremental=false --tests cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityV2ContractTest --tests cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityInstanceLifecycleTest --tests cn.coostack.cooparticlesapi.network.packet.client.ClientRenderEntityPacketHandlerV2Test
 ```
-
-这条路线要注意两点：
-
-- 你不用自己手写 `collectFrameEffects(...)`，`RenderEntityInstance` 会自动识别 `PersistentBloomContextProvider`
-- 它依赖 `FINAL_FRAME_POST + SCENE_COLOR_COPY + SCENE_DEPTH_READ`
-
-当前后端上，这基本意味着：
-
-- `VanillaSafeRenderBackend` 可以跑
-- `IrisSafeRenderBackend` 只有 `FINAL_FRAME_POST`，所以这类 bloom 现在不会生效
-
-## 5. 真要 world pass，再用 `renderLocal(...)`
-
-这条路线最自由，但也是最像“自己写渲染器”。
-
-```kotlin
-override fun renderLocal(input: LocalRenderInput<MyRenderEntity>) {
-    myShader.useOnContext {
-        setMatrix4("projMat", input.projMatrix)
-        setMatrix4("viewMat", input.viewMatrix)
-        setMatrix4("transMat", Matrix4f(input.modelMatrix))
-        setFloat("time", input.instance.entity.getTime(input.tickDelta))
-        myBuffer.draw()
-    }
-}
-```
-
-你可以把它理解成：
-
-- 顶点着色器决定“东西画在哪”
-- 片元着色器决定“这个像素长什么样”
-
-如果你现在还不熟 shader，别从这条开始。先把第 3 节跑通，再回来看它会轻松很多。
-
-## 6. 什么时候需要 `markDirty()`
-
-最容易踩坑的一点是：
-
-- `@CodecField` 会参与同步
-- 但“字段改了”不会自动发包
-
-也就是说，这样写还不够：
-
-```kotlin
-entity.radius = 8.0f
-entity.intensity = 10.0f
-```
-
-如果你要客户端马上看到变化，还要手动同步：
-
-```kotlin
-entity.radius = 8.0f
-entity.intensity = 10.0f
-entity.markDirty()
-```
-
-只想同步一次时：
-
-```kotlin
-entity.glowColor = Vector3f(1.0f, 0.3f, 0.3f)
-entity.requestSync()
-```
-
-位置更新可以直接用：
-
-```kotlin
-entity.setPosition(newPos)
-```
-
-因为 `setPosition(...)` 内部已经会 `markDirty()`。
-
-## 7. 不显示时先查这几个
-
-- 是否真的在服务端调用了 `spawn(serverLevel, pos)`，不是客户端世界
-- 是否加了 `@CooAutoRegister`
-- `getRenderID()` 是否稳定、唯一
-- 玩家是否超出 `renderRange`
-- 改字段后是否忘了 `markDirty()` 或 `requestSync()`
-- 发光球路线是否调用了 `PostGlowSphereRenderer.initialize()`
-- 你选的是不是错误路线
-- `PersistentBloom` 是否跑在 `IrisSafeRenderBackend`
-- 实体是否已经 `canceled`
-
-最常见的误判是：
-
-- “类已经写好了，但没有任何渲染逻辑”
-- “值改了，但没同步”
-- “选了 bloom，却在不支持 `SCENE_COLOR_COPY / SCENE_DEPTH_READ` 的后端里测试”
-
-## 8. 术语速查
-
-- `RenderEntity`：服务端权威同步对象
-- `RenderEntityInstance`：客户端真正持有的运行时实例
-- world pass：像普通世界模型那样直接画
-- frame-post：场景画完后再叠效果
-- glow：看起来在发光
-- bloom：高亮区域模糊后再叠回去

@@ -1,30 +1,42 @@
 package cn.coostack.cooparticlesapi.renderer.shader.data
+
+/**
+ * 顶点缓冲中每个顶点的布局格式枚举。
+ */
 enum class CooVertexFormat {
     /**
-     * float 参数为 3
-     * layer 0 vec3 pos
+     * 仅包含位置的顶点格式。
+     *
+     * - 总 float 数：3
+     * - 第 0 层：`vec3 position`
      */
     POINT_FORMAT,
 
     /**
-     * float 参数为 6
-     * layer 0 vec3 pos
-     * layer 1 vec3 color
+     * 包含位置和颜色的顶点格式。
+     *
+     * - 总 float 数：6
+     * - 第 0 层：`vec3 position`
+     * - 第 1 层：`vec3 color`
      */
     POINT_COLOR_FORMAT,
 
     /**
-     * float 参数为 5
-     * layer 0 vec3 pos
-     * layer 1 vec2 uv
+     * 包含位置和 UV 的顶点格式。
+     *
+     * - 总 float 数：5
+     * - 第 0 层：`vec3 position`
+     * - 第 1 层：`vec2 uv`
      */
     POINT_TEXTURE_UV_FORMAT,
 
     /**
-     * float 参数为 8
-     * layer 0 vec3 pos
-     * layer 1 vec3 color
-     * layer 2 vec2 uv
+     * 包含位置、颜色和 UV 的顶点格式。
+     *
+     * - 总 float 数：8
+     * - 第 0 层：`vec3 position`
+     * - 第 1 层：`vec3 color`
+     * - 第 2 层：`vec2 uv`
      */
     POINT_COLOR_TEXTURE_UV_FORMAT,
 }

@@ -4,8 +4,7 @@ import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.renderer.RenderEntity
 import cn.coostack.cooparticlesapi.renderer.backend.RenderBackendCapability
 import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameContext
-import cn.coostack.cooparticlesapi.renderer.effects.FrameEffectCollector
-import cn.coostack.cooparticlesapi.renderer.effects.FrameEffectSubmission
+import cn.coostack.cooparticlesapi.renderer.effects.builtin.WorldLightRenderRequest
 import cn.coostack.cooparticlesapi.renderer.light.WorldLight
 import cn.coostack.cooparticlesapi.renderer.light.WorldLightProvider
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlShaderType
@@ -58,7 +57,7 @@ object ClientWorldLightManager {
 
     private fun createSceneCopyPipe(): ExternalTextureShaderPipe {
         val sceneCopyTextures = SimpleTextures().apply {
-            addTexture(SupplierTexture { minecraft.mainRenderTarget.colorTextureId })
+            addTexture(SupplierTexture { ClientRenderPipelineManager.currentSceneColorTextureId() })
         }
         return ExternalTextureShaderPipe(sceneCopyTextures, Supplier { -1 })
     }
@@ -72,7 +71,7 @@ object ClientWorldLightManager {
         enableBlend = false
 
         val sceneCopyPipe = createSceneCopyPipe()
-        val sceneDepthPipe = OutputDepthPipe(Supplier { minecraft.mainRenderTarget.depthTextureId })
+        val sceneDepthPipe = OutputDepthPipe(Supplier { ClientRenderPipelineManager.currentSceneDepthTextureId() })
         addPipe(sceneCopyPipe)
         addPipe(sceneDepthPipe)
         valueOutput(
@@ -84,7 +83,7 @@ object ClientWorldLightManager {
                     ),
                     GlShaderType.FRAGMENT
                 ),
-                Supplier { minecraft.mainRenderTarget.depthTextureId },
+                Supplier { ClientRenderPipelineManager.currentSceneDepthTextureId() },
                 2
             ).addRenderHandler { program ->
                 program.setInt("sceneTex", 0)
@@ -140,24 +139,14 @@ object ClientWorldLightManager {
         }
     }
 
-    fun submitFrameEffects(
-        sourceInstanceId: String,
-        provider: WorldLightProvider,
-        context: RenderFrameContext,
-        collector: FrameEffectCollector
-    ) {
-        collector.submit(
-            FrameEffectSubmission(
-                effectId = EFFECT_ID,
-                priority = EFFECT_PRIORITY,
-                sourceInstanceId = sourceInstanceId,
-                requiredCapabilities = requiredCapabilities
-            ) {
-                renderPrepared(context.tickDelta, context.viewMatrix, context.projMatrix) { output ->
-                    provider.collectWorldLights(context.tickDelta, output)
-                }
+    fun renderRequests(requests: List<WorldLightRenderRequest>) {
+        val first = requests.firstOrNull() ?: return
+        val context = first.frameContext
+        renderPrepared(context.tickDelta, context.viewMatrix, context.projMatrix) { output ->
+            requests.forEach { request ->
+                request.collect(output)
             }
-        )
+        }
     }
 
     private fun renderPrepared(
@@ -170,9 +159,15 @@ object ClientWorldLightManager {
         if (!prepared || worldLightCount <= 0) {
             return
         }
-        minecraft.mainRenderTarget.bindWrite(false)
         RenderSystem.disableDepthTest()
         RenderSystem.depthMask(false)
+        CooParticlesConstants.logger.debug(
+            "World light render count={} target={} sceneColor={} sceneDepth={}",
+            worldLightCount,
+            ClientRenderPipelineManager.currentRenderTargetLabel(),
+            ClientRenderPipelineManager.currentSceneColorTextureId(),
+            ClientRenderPipelineManager.currentSceneDepthTextureId()
+        )
         pipeline.render()
         RenderSystem.depthMask(true)
         RenderSystem.enableDepthTest()
@@ -249,8 +244,8 @@ object ClientWorldLightManager {
         inverseProjMatrix = Matrix4f(projMatrix).invert()
         inverseViewRotationMatrix = Matrix3f(viewMatrix).invert()
         screenSize = Vector2f(
-            minecraft.mainRenderTarget.width.toFloat(),
-            minecraft.mainRenderTarget.height.toFloat()
+            ClientRenderPipelineManager.currentRenderWidth().toFloat(),
+            ClientRenderPipelineManager.currentRenderHeight().toFloat()
         )
     }
 }

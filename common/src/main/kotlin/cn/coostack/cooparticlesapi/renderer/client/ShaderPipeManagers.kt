@@ -37,7 +37,7 @@ object ShaderPipeManagers {
         )
     ).setLinkerFunc {
         valueOutput(ShaderPipes.simpleScreenOutput {
-            minecraft.mainRenderTarget.depthTextureId
+            ClientRenderPipelineManager.currentSceneDepthTextureId()
         })
         it.from(valueInputPipe!!, 0).to(valueOutput!!, 0)
     }
@@ -47,7 +47,11 @@ object ShaderPipeManagers {
                 CooParticlesConstants.MOD_ID,
                 "simple_bloom"
             )
-        ).setLinkerFunc {
+        ).apply {
+            // The bloom composite shader already outputs scene + bloom.
+            // Rendering that result with additive blend doubles the whole frame.
+            enableBlend = false
+        }.setLinkerFunc {
         }.addBloomEffect(
             10,
             1.5f,
@@ -74,7 +78,7 @@ object ShaderPipeManagers {
                 IdentifierShader(
                     ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "core/bloom/bright.fsh"),
                     GlShaderType.FRAGMENT
-                ), { minecraft.mainRenderTarget.depthTextureId }, 2, GL33.GL_NEAREST_MIPMAP_LINEAR
+                ), { ClientRenderPipelineManager.currentSceneDepthTextureId() }, 2, GL33.GL_NEAREST_MIPMAP_LINEAR
             ).addRenderHandler {
                 it.setFloat("threshold", bloomIntensity)
             }.useMipmap()
@@ -89,7 +93,7 @@ object ShaderPipeManagers {
                     ),
                     GlShaderType.FRAGMENT
                 ),
-                { minecraft.mainRenderTarget.depthTextureId }, 1, blurIterations,
+                { ClientRenderPipelineManager.currentSceneDepthTextureId() }, 1, blurIterations,
                 GL33.GL_LINEAR
             ).addRenderHandlerPong { program ->
                 program.setInt("bright", 0)
@@ -108,7 +112,7 @@ object ShaderPipeManagers {
                 IdentifierShader(
                     ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "core/bloom/tent.fsh"),
                     GlShaderType.FRAGMENT
-                ), { minecraft.mainRenderTarget.depthTextureId }, 1, GL33.GL_NEAREST_MIPMAP_LINEAR
+                ), { ClientRenderPipelineManager.currentSceneDepthTextureId() }, 1, GL33.GL_NEAREST_MIPMAP_LINEAR
             ).addRenderHandler { program ->
                 program.setInt("scene", 0)
                 program.setFloat("lod", lodLevel)
@@ -122,7 +126,7 @@ object ShaderPipeManagers {
                         "core/bloom/accumulate.fsh"
                     ),
                     GlShaderType.FRAGMENT
-                ), { minecraft.mainRenderTarget.depthTextureId }
+                ), { ClientRenderPipelineManager.currentSceneDepthTextureId() }
             ).addRenderHandler { program ->
                 program.setFloat("intensity", bloomIntensity)
                 program.setInt("levels", lodLevel.toInt())
@@ -137,7 +141,7 @@ object ShaderPipeManagers {
                 IdentifierShader(
                     ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "core/bloom/bloom.fsh"),
                     GlShaderType.FRAGMENT
-                ), { minecraft.mainRenderTarget.depthTextureId }, 1
+                ), { ClientRenderPipelineManager.currentSceneDepthTextureId() }, 1
             ).addRenderHandler { program ->
                 program.setInt("scene", 0)
                 program.setInt("bloomBlur", 1)

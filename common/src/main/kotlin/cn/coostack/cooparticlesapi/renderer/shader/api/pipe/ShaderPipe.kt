@@ -3,54 +3,59 @@ package cn.coostack.cooparticlesapi.renderer.shader.api.pipe
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlFrameBuffer
 import cn.coostack.cooparticlesapi.renderer.shader.api.pipe.handler.ShaderProgramUploader
 
+/**
+ * shader pipe 抽象。
+ *
+ * 一个 pipe 通常对应“输入若干纹理通道，经过一个 shader 处理后写入自己的 FBO”。
+ */
 interface ShaderPipe {
     /**
-     * 初始化渲染管道
+     * 初始化当前渲染管道。
      */
     fun init()
 
+    /**
+     * 添加一个在绘制前上传 program 数据的处理器。
+     */
     fun addRenderHandler(handler: ShaderProgramUploader): ShaderPipe
 
     /**
-     * 获取当前渲染管道拥有的framebuffer
+     * 返回当前 pipe 使用的 framebuffer。
      */
     fun fbo(): GlFrameBuffer
 
     /**
-     * 使用mipmap
+     * 启用 mipmap 模式。
      */
     fun useMipmap(): ShaderPipe
 
     /**
-     * 向这个pipe写入内容
-     * 会经过当前的frag的处理
+     * 在当前 pipe 的写入上下文中执行自定义写入逻辑。
      */
     fun write(invoker: ShaderPipe.() -> Unit)
 
     /**
-     * 从输入的channels读取内容到当前的fbo中
-     *
-     * @param channel 输入的channel
+     * 把输入通道内容读取并处理后写入当前 FBO。
      */
     fun writeFromChannel(channel: PipeChannels): ShaderPipe
 
     /**
-     * 输出当前pipe已经绘制的内容
-     *
-     * 通过pipe内的屏幕渲染器绘制 fbo
-     * 在read时 会调用 handler执行渲染前操作
+     * 将当前 pipe 的 FBO 内容真正绘制出来。
      */
     fun drawPipeFrame()
 
     /**
-     * 将这个fbo绘制的内容打包输出
+     * 把当前 FBO 的输出包装成可继续传递的 `PipeChannels`。
      */
     fun getFrameOutput(): PipeChannels
 
+    /**
+     * 调整当前 pipe 的内部尺寸。
+     */
     fun resize(width: Int, height: Int)
 
     /**
-     * 释放资源
+     * 释放当前 pipe 持有的资源。
      */
     fun release()
 }

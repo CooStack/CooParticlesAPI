@@ -3,6 +3,7 @@ package cn.coostack.cooparticlesapi.renderer.client
 import cn.coostack.cooparticlesapi.renderer.RenderEntity
 import net.minecraft.client.Minecraft
 import net.minecraft.util.Mth
+import org.joml.Matrix4f
 import org.joml.Matrix4fStack
 
 object RenderUtil {
@@ -20,5 +21,10 @@ object RenderUtil {
         val z = Mth.lerp(tickDelta, last.z, now.z)
         stack.translate(x - camera.x, y - camera.y, z - camera.z)
         return stack
+    }
+
+    @JvmStatic
+    fun buildModelMatrix(entity: RenderEntity, tickDelta: Float): Matrix4f {
+        return Matrix4f(setRenderStackWithEntity(Matrix4fStack(16), entity, tickDelta))
     }
 }

@@ -16,16 +16,20 @@ object CooModEntityTypes {
     val types = HashSet<CommonDeferredEntityType<*>>()
 
 
-    val TEST_RENDER = register("test_render") {
+    val TEST_RENDER = register("test_render") { entityId ->
         EntityType.Builder.of(::TestRenderEntity, MobCategory.MISC)
             .sized(0.1f, 0.1f)
             .clientTrackingRange(16)
-            .build("test_render")
+            .build(null)
     }
 
-    fun <T : Entity> register(id: String, supplier: Supplier<EntityType<T>>): CommonDeferredEntityType<T> {
+    fun <T : Entity> register(
+        id: String,
+        supplier: (ResourceLocation) -> EntityType<T>
+    ): CommonDeferredEntityType<T> {
+        val entityId = ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, id)
         val type =
-            CommonDeferredEntityType(ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, id), supplier)
+            CommonDeferredEntityType(entityId, Supplier { supplier(entityId) })
         types.add(type)
         return type
     }

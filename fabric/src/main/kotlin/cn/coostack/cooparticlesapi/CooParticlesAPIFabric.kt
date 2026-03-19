@@ -23,10 +23,12 @@ import cn.coostack.cooparticlesapi.network.packet.server.listener.ServerKeyActio
 import cn.coostack.cooparticlesapi.platform.network.FabricServerContext
 import cn.coostack.cooparticlesapi.particles.CooModParticles
 import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
+import cn.coostack.cooparticlesapi.test.TestManager
 import net.fabricmc.api.ModInitializer
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents
 import net.fabricmc.fabric.api.event.player.UseBlockCallback
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry
@@ -96,6 +98,12 @@ object CooParticlesAPIFabric : ModInitializer {
             // 注册？
             CooParticlesConstants.logger.info("Server Started Test")
             CooParticlesAPI.loadScannerPackages()
+        }
+        ServerLifecycleEvents.SERVER_STOPPED.register {
+            TestManager.clearServer()
+        }
+        ServerPlayConnectionEvents.DISCONNECT.register { handler, _ ->
+            TestManager.clearServerFor(handler.player)
         }
 
         UseBlockCallback.EVENT.register { player, level, hand, result ->

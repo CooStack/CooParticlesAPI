@@ -1,5 +1,10 @@
 package cn.coostack.cooparticlesapi.test.api
 
+enum class TestReviewMode {
+    AUTO,
+    MANUAL_VISUAL
+}
+
 /**
  * 测试单项
  *
@@ -23,4 +28,12 @@ interface TestOption {
     fun optionID(): String
 
     fun doTick()
+
+    fun reviewMode(): TestReviewMode {
+        return TestReviewMode.AUTO
+    }
+
+    fun reviewDescription(): String? {
+        return null
+    }
 }

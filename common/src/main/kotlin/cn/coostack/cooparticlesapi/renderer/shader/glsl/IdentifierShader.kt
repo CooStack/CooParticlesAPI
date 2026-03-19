@@ -29,6 +29,8 @@ class IdentifierShader(val id: ResourceLocation, override val type: GlShaderType
         glDeleteShader(shaderID)
     }
 
+    override fun sourceLocation(): ResourceLocation = id
+
     private fun readFromJar(): String {
         return GlslUtil.readGlslCodeFromJar(id)
     }

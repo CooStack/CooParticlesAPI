@@ -18,11 +18,18 @@ import org.joml.Vector3f
  * 都依赖这份上下文来判断一个世界物体在当前帧投影到屏幕后到底有多大。
  */
 data class ScreenGlowRenderContext(
+    /** 当前帧部分 tick 插值。 */
     val tickDelta: Float,
+    /** 相机在世界空间中的位置。 */
     val cameraWorldPos: Vector3f,
+    /** 当前 view 矩阵。 */
     val viewMatrix: Matrix4f,
+    /** 仅旋转部分的 view 矩阵。 */
     val viewRotationMatrix: Matrix3f,
+    /** `viewRotationMatrix` 的逆矩阵。 */
     val inverseViewRotationMatrix: Matrix3f,
+    /** 当前 projection 矩阵。 */
     val projMatrix: Matrix4f,
+    /** 当前屏幕尺寸。 */
     val screenSize: Vector2f
 )

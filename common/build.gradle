@@ -37,6 +37,7 @@ dependencies {
 
     implementation 'io.github.classgraph:classgraph:4.8.184'
     testImplementation 'org.jetbrains.kotlin:kotlin-test'
+    testImplementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2"
     testImplementation 'org.joml:joml:1.10.8'
 }
 tasks.named('jar', Jar) {
@@ -68,4 +69,3 @@ configurations {
 tasks.withType(Test).configureEach {
     useJUnitPlatform()
 }
-

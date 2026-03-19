@@ -13,7 +13,6 @@ import cn.coostack.cooparticlesapi.renderer.shader.texture.SimpleTextures
 import cn.coostack.cooparticlesapi.renderer.shader.texture.SupplierTexture
 import net.minecraft.client.Minecraft
 import net.minecraft.resources.ResourceLocation
-import org.lwjgl.opengl.GL33
 import java.util.function.Supplier
 
 internal object TestRelativisticShaderPipelines {
@@ -123,8 +122,7 @@ internal object TestRelativisticShaderPipelines {
                 ),
                 Supplier { -1 },
                 1,
-                GLOW_SPHERE_BLUR_PASSES,
-                GL33.GL_LINEAR
+                GLOW_SPHERE_BLUR_PASSES
             ).addRenderHandlerPong { program ->
                 program.setInt("bright", 0)
                 program.setFloat("sigma", GLOW_SPHERE_BLUR_SIGMA)
@@ -188,8 +186,7 @@ internal object TestRelativisticShaderPipelines {
                 ),
                 Supplier { -1 },
                 1,
-                ACCRETION_BLUR_PASSES,
-                GL33.GL_LINEAR
+                ACCRETION_BLUR_PASSES
             ).addRenderHandlerPong { program ->
                 program.setInt("bright", 0)
                 program.setFloat("sigma", ACCRETION_BLUR_SIGMA)

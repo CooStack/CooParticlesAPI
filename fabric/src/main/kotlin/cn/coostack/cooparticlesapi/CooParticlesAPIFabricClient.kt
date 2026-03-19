@@ -46,6 +46,7 @@ import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents
 object CooParticlesAPIFabricClient : ClientModInitializer {
     override fun onInitializeClient() {
         CooKeyBindingManager.setRegistrar { KeyBindingHelper.registerKeyBinding(it) }
+        CooShaderReloadListenerFabric.register()
         registerParticleFabric()
         registerNetworkFabric()
         CooParticlesAPIClient.init()

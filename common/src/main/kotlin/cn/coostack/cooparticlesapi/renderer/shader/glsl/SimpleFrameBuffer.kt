@@ -1,6 +1,7 @@
 package cn.coostack.cooparticlesapi.renderer.shader.glsl
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
+import cn.coostack.cooparticlesapi.renderer.client.ClientRenderPipelineManager
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlFrameBuffer
 import cn.coostack.cooparticlesapi.renderer.shader.api.pipe.PipeChannels
 import cn.coostack.cooparticlesapi.renderer.shader.pipe.manager.FramePipeChannels
@@ -13,6 +14,7 @@ open class SimpleFrameBuffer(
     val colorChannelCount: Int,
     override var depthSupplier: Supplier<Int>
 ) : GlFrameBuffer {
+    private var warnedZeroRead = false
     override val colorAttachments: IntArray = IntArray(colorChannelCount)
 
     override fun getOutputChannelCount(): Int {
@@ -34,11 +36,11 @@ open class SimpleFrameBuffer(
     }
 
     override fun width(): Int {
-        return Minecraft.getInstance().mainRenderTarget.width
+        return ClientRenderPipelineManager.currentRenderWidth()
     }
 
     override fun height(): Int {
-        return Minecraft.getInstance().mainRenderTarget.height
+        return ClientRenderPipelineManager.currentRenderHeight()
     }
 
     override fun useMipmap() {
@@ -115,7 +117,10 @@ open class SimpleFrameBuffer(
             init()
             return
         }
+        val previousViewport = IntArray(4)
+        glGetIntegerv(GL_VIEWPORT, previousViewport)
         bindFramebuffer()
+        glViewport(0, 0, width(), height())
         if (newDepth) {
             clear()
         } else {
@@ -132,13 +137,12 @@ open class SimpleFrameBuffer(
             }
             glBindTexture(GL_TEXTURE_2D, current)
         }
+        glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3])
         reset()
     }
 
     override fun readFrameBufferWith(readScope: GlFrameBuffer.() -> Unit) {
         if (fbo == 0) {
-            CooParticlesConstants.logger.error("trying to read frame buffer but fbo is zero")
-            initialized = false
             return
         }
         val zero = GL_TEXTURE0
@@ -169,6 +173,7 @@ open class SimpleFrameBuffer(
         if (!initialized) {
             return
         }
+        warnedZeroRead = false
         glDeleteFramebuffers(fbo)
         fbo = 0
         colorAttachments.forEachIndexed { channel, texture ->
@@ -195,7 +200,7 @@ open class SimpleFrameBuffer(
                     width(), height(), 0, GL_RGBA, GL_FLOAT, null as ByteBuffer?
                 )
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, textureFilterMod)
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, textureFilterMod)
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, normalizeMagFilter(textureFilterMod))
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
                 glGenerateMipmap(GL_TEXTURE_2D)
@@ -242,12 +247,18 @@ open class SimpleFrameBuffer(
         glBindTexture(GL_TEXTURE_2D, prev)
     }
 
+    private fun normalizeMagFilter(filter: Int): Int {
+        return when (filter) {
+            GL_NEAREST,
+            GL_NEAREST_MIPMAP_NEAREST,
+            GL_NEAREST_MIPMAP_LINEAR -> GL_NEAREST
+            else -> GL_LINEAR
+        }
+    }
+
     override fun resize(width: Int, height: Int) {
         if (!initialized) {
             return
-        }
-        readFrameBufferWith {
-            clear()
         }
         release()
         initialized = false

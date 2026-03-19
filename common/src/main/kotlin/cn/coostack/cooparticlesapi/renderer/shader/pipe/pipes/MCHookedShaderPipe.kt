@@ -1,7 +1,7 @@
 package cn.coostack.cooparticlesapi.renderer.shader.pipe.pipes
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
-import cn.coostack.cooparticlesapi.renderer.shader.ShaderProgramBuilder
+import cn.coostack.cooparticlesapi.renderer.shader.AdvancedShaderProgramBuilder
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlFrameBuffer
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlShader
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlShaderType
@@ -36,7 +36,7 @@ class MCHookedShaderPipe(
 
     private val handles = ArrayList<ShaderProgramUploader>()
 
-    private val screenProgram = ShaderProgramBuilder()
+    private val screenProgram = AdvancedShaderProgramBuilder()
         .vertex(screenVertex)
         .fragment(fragment)
         .build()

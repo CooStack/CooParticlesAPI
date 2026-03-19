@@ -2,28 +2,34 @@ package cn.coostack.cooparticlesapi.renderer.shader.api.pipe
 
 import java.util.function.Supplier
 
+/**
+ * shader pipe 输入输出通道集合抽象。
+ */
 interface PipeChannels {
     /**
-     * 设置一个channel
-     * 设置顺序和通道ID有关
-     * @param id 获取材质通道的提供器
+     * 添加一个输入通道提供器。
+     *
+     * 添加顺序会影响后续在 shader 中对应的纹理槽位。
      */
     fun addChannel(id: Supplier<Int>): PipeChannels
 
+    /**
+     * 返回当前全部通道提供器。
+     */
     fun getChannels(): List<Supplier<Int>>
 
+    /**
+     * 返回指定索引的通道提供器。
+     */
     fun getChannel(index: Int): Supplier<Int>
 
     /**
-     * 当前已经添加的材质通道
+     * 返回当前已经添加的通道数量。
      */
     fun currentInputCount(): Int
 
     /**
-     * 绑定输入的input
-     *
-     * 需要自行绑定对应的通道ID
-     * 绑定材质后，在内进行着色器程序的绑定，然后绘制到对应的fbo输出通道中
+     * 在当前通道绑定好的上下文中执行绘制逻辑。
      */
     fun useOnContext(vertexDraw: Runnable): PipeChannels
 }

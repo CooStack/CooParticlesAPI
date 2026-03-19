@@ -4,8 +4,7 @@ import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.renderer.RenderEntity
 import cn.coostack.cooparticlesapi.renderer.backend.RenderBackendCapability
 import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameContext
-import cn.coostack.cooparticlesapi.renderer.effects.FrameEffectCollector
-import cn.coostack.cooparticlesapi.renderer.effects.FrameEffectSubmission
+import cn.coostack.cooparticlesapi.renderer.effects.builtin.PersistentBloomRenderRequest
 import cn.coostack.cooparticlesapi.renderer.glow.PersistentBloom
 import cn.coostack.cooparticlesapi.renderer.glow.PersistentBloomContextProvider
 import cn.coostack.cooparticlesapi.renderer.glow.ScreenGlowRenderContext
@@ -65,7 +64,7 @@ object ClientPersistentBloomManager {
 
     private fun createSceneCopyPipe(): ExternalTextureShaderPipe {
         val sceneCopyTextures = SimpleTextures().apply {
-            addTexture(SupplierTexture { minecraft.mainRenderTarget.colorTextureId })
+            addTexture(SupplierTexture { ClientRenderPipelineManager.currentSceneColorTextureId() })
         }
         return ExternalTextureShaderPipe(sceneCopyTextures, Supplier { -1 })
     }
@@ -79,7 +78,7 @@ object ClientPersistentBloomManager {
         enableBlend = false
 
         val sceneCopyPipe = createSceneCopyPipe()
-        val sceneDepthPipe = OutputDepthPipe(Supplier { minecraft.mainRenderTarget.depthTextureId })
+        val sceneDepthPipe = OutputDepthPipe(Supplier { ClientRenderPipelineManager.currentSceneDepthTextureId() })
         val bloomMaskPipe = addPipe(
             SimpleShaderPipe(
                 IdentifierShader(
@@ -89,7 +88,7 @@ object ClientPersistentBloomManager {
                     ),
                     GlShaderType.FRAGMENT
                 ),
-                Supplier { minecraft.mainRenderTarget.depthTextureId }
+                Supplier { ClientRenderPipelineManager.currentSceneDepthTextureId() }
             ).addRenderHandler { program ->
                 program.setInt("sceneDepth", 0)
                 program.setInt("persistentBloomCount", persistentBloomCount)
@@ -141,7 +140,7 @@ object ClientPersistentBloomManager {
                     ),
                     GlShaderType.FRAGMENT
                 ),
-                Supplier { minecraft.mainRenderTarget.depthTextureId }
+                Supplier { ClientRenderPipelineManager.currentSceneDepthTextureId() }
             ).addRenderHandler { program ->
                 program.setInt("sceneTex", 0)
                 program.setInt("persistentGlowMask", 1)
@@ -196,24 +195,14 @@ object ClientPersistentBloomManager {
         }
     }
 
-    fun submitFrameEffects(
-        sourceInstanceId: String,
-        provider: PersistentBloomContextProvider,
-        context: RenderFrameContext,
-        collector: FrameEffectCollector
-    ) {
-        collector.submit(
-            FrameEffectSubmission(
-                effectId = EFFECT_ID,
-                priority = EFFECT_PRIORITY,
-                sourceInstanceId = sourceInstanceId,
-                requiredCapabilities = requiredCapabilities
-            ) {
-                renderPrepared(context.tickDelta, context.viewMatrix, context.projMatrix) { glowContext, output ->
-                    provider.collectPersistentBlooms(glowContext, output)
-                }
+    fun renderRequests(requests: List<PersistentBloomRenderRequest>) {
+        val first = requests.firstOrNull() ?: return
+        val context = first.frameContext
+        renderPrepared(context.tickDelta, context.viewMatrix, context.projMatrix) { glowContext, output ->
+            requests.forEach { request ->
+                request.collect(glowContext, output)
             }
-        )
+        }
     }
 
     private fun renderPrepared(
@@ -226,9 +215,15 @@ object ClientPersistentBloomManager {
         if (!prepared || persistentBloomCount <= 0) {
             return
         }
-        minecraft.mainRenderTarget.bindWrite(false)
         RenderSystem.disableDepthTest()
         RenderSystem.depthMask(false)
+        CooParticlesConstants.logger.debug(
+            "Persistent bloom render count={} target={} sceneColor={} sceneDepth={}",
+            persistentBloomCount,
+            ClientRenderPipelineManager.currentRenderTargetLabel(),
+            ClientRenderPipelineManager.currentSceneColorTextureId(),
+            ClientRenderPipelineManager.currentSceneDepthTextureId()
+        )
         pipeline.render()
         RenderSystem.depthMask(true)
         RenderSystem.enableDepthTest()
@@ -315,8 +310,8 @@ object ClientPersistentBloomManager {
         viewRotationMatrix = Matrix3f(viewMatrix)
         inverseViewRotationMatrix = Matrix3f(viewMatrix).invert()
         screenSize = Vector2f(
-            minecraft.mainRenderTarget.width.toFloat(),
-            minecraft.mainRenderTarget.height.toFloat()
+            ClientRenderPipelineManager.currentRenderWidth().toFloat(),
+            ClientRenderPipelineManager.currentRenderHeight().toFloat()
         )
         return ScreenGlowRenderContext(
             tickDelta = tickDelta,

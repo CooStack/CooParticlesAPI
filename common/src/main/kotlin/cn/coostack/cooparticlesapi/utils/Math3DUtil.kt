@@ -25,12 +25,14 @@ object Math3DUtil {
     private val random = Random(System.currentTimeMillis())
 
     @OptIn(DelicateCoroutinesApi::class)
-    private val scope = CoroutineScope(
-        newFixedThreadPoolContext(
-            CooParticlesServices.API_CONFIG_MANAGER.getConfig().calculateThreadCount,
-            "Math3DUtil-ThreadPool"
+    private val scope: CoroutineScope by lazy {
+        CoroutineScope(
+            newFixedThreadPoolContext(
+                CooParticlesServices.API_CONFIG_MANAGER.getConfig().calculateThreadCount,
+                "Math3DUtil-ThreadPool"
+            )
         )
-    )
+    }
 
 
     /**
@@ -1181,7 +1183,7 @@ object Math3DUtil {
         return res
     }
 
-    /** 生成三次贝塞尔曲线 (二维) */
+    /** 生成三次贝塞尔曲线（兼容旧的原点起笔二维曲线，Z 固定为 0） */
     fun generateBezierCurve(
         target: RelativeLocation,
         /** 起点的曲柄向量 */
@@ -1217,6 +1219,34 @@ object Math3DUtil {
         }
     }
 
+    /**
+     * 生成三次贝塞尔曲线（空间曲线）。
+     *
+     * @param start 起点
+     * @param end 终点
+     * @param startHandle 起点的曲柄向量（以 start 为原点）
+     * @param endHandle 终点的曲柄向量（以 end 为原点）
+     * @param count 采样点数量，count > 1 时会包含起点与终点
+     */
+    fun generateBezierCurve(
+        start: RelativeLocation,
+        end: RelativeLocation,
+        startHandle: RelativeLocation,
+        endHandle: RelativeLocation,
+        count: Int
+    ): List<RelativeLocation> {
+        require(count >= 1) { "Number of points must be at least 1" }
+        val startControlPoint = start + startHandle
+        val endControlPoint = end + endHandle
+        return List(count) { i ->
+            val t = when (count) {
+                1 -> 1.0
+                else -> i.toDouble() / (count - 1)
+            }
+            cubicBezierPoint(t, start, startControlPoint, endControlPoint, end)
+        }
+    }
+
     fun evaluateBezierCurveYAtX(
         target: RelativeLocation,
         startHandle: RelativeLocation,
@@ -1242,6 +1272,20 @@ object Math3DUtil {
             }
         }
         return cubicBezier(mid, 0.0, startHandle.y, end.y, target.y)
+    }
+
+    private fun cubicBezierPoint(
+        t: Double,
+        p0: RelativeLocation,
+        p1: RelativeLocation,
+        p2: RelativeLocation,
+        p3: RelativeLocation
+    ): RelativeLocation {
+        return RelativeLocation(
+            cubicBezier(t, p0.x, p1.x, p2.x, p3.x),
+            cubicBezier(t, p0.y, p1.y, p2.y, p3.y),
+            cubicBezier(t, p0.z, p1.z, p2.z, p3.z)
+        )
     }
 
     fun cubicBezier(t: Double, p0: Double, p1: Double, p2: Double, p3: Double): Double {

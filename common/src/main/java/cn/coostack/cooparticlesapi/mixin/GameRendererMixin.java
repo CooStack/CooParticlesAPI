@@ -11,14 +11,14 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(GameRenderer.class)
 public class GameRendererMixin {
     @Inject(
-            method = "renderLevel",
+            method = "render",
             at = @At(
                     value = "INVOKE",
-                    target = "Lnet/minecraft/client/renderer/LevelRenderer;renderLevel(Lnet/minecraft/client/DeltaTracker;ZLnet/minecraft/client/Camera;Lnet/minecraft/client/renderer/GameRenderer;Lnet/minecraft/client/renderer/LightTexture;Lorg/joml/Matrix4f;Lorg/joml/Matrix4f;)V",
-                    shift = At.Shift.AFTER
+                    target = "Lcom/mojang/blaze3d/systems/RenderSystem;clear(IZ)V",
+                    shift = At.Shift.BEFORE
             )
     )
-    private void renderAfterWorld(DeltaTracker deltaTracker, CallbackInfo ci) {
+    private void renderAfterWorld(DeltaTracker deltaTracker, boolean tick, CallbackInfo ci) {
         ClientRenderPipelineManager.INSTANCE.endFrame();
     }
 }

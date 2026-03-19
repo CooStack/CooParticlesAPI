@@ -1,17 +1,17 @@
 package cn.coostack.cooparticlesapi.renderer.glow
 
+import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.renderer.RenderEntity
 import cn.coostack.cooparticlesapi.renderer.backend.RenderBackendCapability
 import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameContext
+import cn.coostack.cooparticlesapi.renderer.client.ClientRenderPipelineManager
 import cn.coostack.cooparticlesapi.renderer.client.RenderUtil
-import cn.coostack.cooparticlesapi.renderer.effects.FrameEffectCollector
-import cn.coostack.cooparticlesapi.renderer.effects.FrameEffectSubmission
-import cn.coostack.cooparticlesapi.renderer.shader.ShaderProgramBuilder
+import cn.coostack.cooparticlesapi.renderer.effects.builtin.PostGlowSphereRenderRequest
+import cn.coostack.cooparticlesapi.renderer.shader.AdvancedShaderProgramBuilder
 import cn.coostack.cooparticlesapi.renderer.shader.data.CooVertexFormat
 import cn.coostack.cooparticlesapi.renderer.shader.utils.ShaderUtil
 import cn.coostack.cooparticlesapi.renderer.shader.vertex.SimpleVertexBuffer
 import com.mojang.blaze3d.systems.RenderSystem
-import net.minecraft.client.Minecraft
 import org.joml.Matrix4f
 import org.joml.Matrix4fStack
 import org.joml.Vector3f
@@ -175,43 +175,32 @@ val DEFAULT_POST_GLOW_SPHERE_LAYERS = listOf(
 )
 
 /**
- * 描述一个完整 glow 球体的总配置。
+ * 帧尾 glow 球体效果的参数配置。
+ *
+ * 这个配置会作为 `BuiltinRenderEffectDescriptors.postGlowSphere(...)`
+ * 的 payload 一部分被提交到 effect graph。
  *
  * 如果说 `PostGlowSphereLayerProfile` 描述的是“单层怎么画”，
  * 那这个类描述的就是“整个发光球体是什么样”。
- *
- * 使用方通常只需要准备好这一份配置对象，然后把它交给
- * `PostGlowSphereRenderer.submit(...)` 即可。
- *
- * 各字段的大体职责如下：
- * - `radius`
- *   整个球体的基础世界半径
- * - `intensity`
- *   核心和主体部分的总亮度
- * - `haloIntensity`
- *   halo 部分的总亮度
- * - `haloRadiusScale`
- *   shader 内部 halo 形状的额外拉伸因子
- * - `fresnelStrength`
- *   轮廓与壳层感的强度
- * - `animationSpeed`
- *   shader 内部噪声、脉动和流动速度
- * - `overbrightClamp`
- *   输出前的过亮限制，避免亮度失控
- * - `glowColor`
- *   发光主色
- * - `layers`
- *   这个光球最终由哪些层叠加组成
  */
 data class PostGlowSphereConfig(
+    /** 球体主体半径。 */
     val radius: Float,
+    /** 主体亮度强度。 */
     val intensity: Float,
+    /** 外层 halo 强度。 */
     val haloIntensity: Float,
+    /** halo 半径相对主体半径的倍率。 */
     val haloRadiusScale: Float,
+    /** 菲涅耳边缘增强强度。 */
     val fresnelStrength: Float,
+    /** 动画流动速度。 */
     val animationSpeed: Float,
+    /** 过亮钳制值。 */
     val overbrightClamp: Float,
+    /** glow 主颜色。 */
     val glowColor: Vector3f,
+    /** 分层配置列表，用于形成更复杂的球体体积层次。 */
     val layers: List<PostGlowSphereLayerProfile> = DEFAULT_POST_GLOW_SPHERE_LAYERS
 )
 
@@ -231,6 +220,10 @@ data class PostGlowSphereConfig(
  * - 避免“测试代码逐渐变成公共 API”的结构污染
  * - 后续如果正式开放这一能力，可以直接复用这里的入口
  */
+@Deprecated(
+    message = "Legacy compatibility only. RenderEntity glow should use content-driven MASK_BLOOM.",
+    replaceWith = ReplaceWith("BuiltinRenderEffectDescriptors.sharedModelMaskBloom(...)")
+)
 object PostGlowSphereRenderer {
     /**
      * 共享球体网格。
@@ -259,7 +252,7 @@ object PostGlowSphereRenderer {
      * - 根据层配置生成 core / body / halo / shell 的分布
      * - 处理 halo 中心抑制，让扩散更多向外释放
      */
-    private val glowDirectShader = ShaderProgramBuilder()
+    private val glowDirectShader = AdvancedShaderProgramBuilder()
         .vertex("world/vtx/glow_sphere.vsh")
         .fragment("world/frag/glow_sphere_direct.fsh")
         .build()
@@ -290,39 +283,10 @@ object PostGlowSphereRenderer {
         glowDirectShader.init()
     }
 
-    /**
-     * 提交一次 glow 球体的帧效果任务。
-     *
-     * 这是给外部实体调用的主要入口。
-     *
-     * 它本身不立即绘制，而是向 `FrameEffectCollector` 提交一个延迟执行任务，
-     * 等到帧尾真正进入后处理阶段时，再调用 `render(...)`。
-     *
-     * 基本原理是把“声明需求”和“真正执行”拆开：
-     * - 实体收集阶段只说自己想画什么
-     * - 帧尾执行阶段再根据当前 backend 能力和帧上下文进行真正绘制
-     *
-     * 默认要求 `FINAL_FRAME_POST` 能力，
-     * 说明这套 glow 天生就是面向帧尾后处理路径设计的。
-     */
-    fun submit(
-        collector: FrameEffectCollector,
-        effectId: String,
-        sourceInstanceId: String,
-        entity: RenderEntity,
-        frameContext: RenderFrameContext,
-        config: PostGlowSphereConfig,
-        requiredCapabilities: Set<RenderBackendCapability> = setOf(RenderBackendCapability.FINAL_FRAME_POST)
-    ) {
-        collector.submit(
-            FrameEffectSubmission(
-                effectId = effectId,
-                sourceInstanceId = sourceInstanceId,
-                requiredCapabilities = requiredCapabilities
-            ) {
-                render(entity, frameContext, config)
-            }
-        )
+    fun renderRequests(requests: List<PostGlowSphereRenderRequest>) {
+        requests.forEach { request ->
+            render(request.entity, request.frameContext, request.config)
+        }
     }
 
     /**
@@ -347,7 +311,14 @@ object PostGlowSphereRenderer {
         val matrices = Matrix4fStack(16)
         RenderUtil.setRenderStackWithEntity(matrices, entity, context.tickDelta)
 
-        Minecraft.getInstance().mainRenderTarget.bindWrite(false)
+        val compositeTarget = context.finalCompositeTarget ?: ClientRenderPipelineManager.currentFinalCompositeTarget()
+        compositeTarget.bindWrite(false)
+        CooParticlesConstants.logger.debug(
+            "Post glow sphere draw source={} target={} targetFbo={}",
+            entity.uuid,
+            context.resolvedTargetLabel,
+            compositeTarget.frameBufferId
+        )
         RenderSystem.enableBlend()
         RenderSystem.blendFunc(GL_SRC_ALPHA, GL_ONE)
         RenderSystem.enableCull()

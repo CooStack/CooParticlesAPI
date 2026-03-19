@@ -1,0 +1,14 @@
+{
+  "id": "cooparticlesapi:glow_overlay",
+  "name": "coo_glow_overlay",
+  "vertex_format": "position_color",
+  "mode": "quads",
+  "buffer_size": 256,
+  "affects_crumbling": false,
+  "sort_on_upload": false,
+  "shader_preset": "position_color",
+  "transparency_mode": "none",
+  "cull_mode": "disabled",
+  "lightmap_mode": "disabled",
+  "depth_test_mode": "lequal"
+}

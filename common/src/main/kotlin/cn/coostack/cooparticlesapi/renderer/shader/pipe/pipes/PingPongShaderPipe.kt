@@ -1,7 +1,8 @@
 package cn.coostack.cooparticlesapi.renderer.shader.pipe.pipes
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
-import cn.coostack.cooparticlesapi.renderer.shader.ShaderProgramBuilder
+import cn.coostack.cooparticlesapi.renderer.client.ClientRenderPipelineManager
+import cn.coostack.cooparticlesapi.renderer.shader.AdvancedShaderProgramBuilder
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlFrameBuffer
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlShader
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlShaderType
@@ -12,7 +13,6 @@ import cn.coostack.cooparticlesapi.renderer.shader.glsl.IdentifierShader
 import cn.coostack.cooparticlesapi.renderer.shader.glsl.SimpleFrameBuffer
 import cn.coostack.cooparticlesapi.renderer.shader.vertex.VertexBuffers
 import com.mojang.blaze3d.systems.RenderSystem
-import net.minecraft.client.Minecraft
 import net.minecraft.resources.ResourceLocation
 import org.lwjgl.opengl.GL33
 import java.util.function.Supplier
@@ -33,7 +33,7 @@ class PingPongShaderPipe(
     private val pingHandlers = ArrayList<ShaderProgramUploader>()
     private val pongHandles = ArrayList<ShaderProgramUploader>()
 
-    private val screenBlit = ShaderProgramBuilder()
+    private val screenBlit = AdvancedShaderProgramBuilder()
         .vertex(screenVertex)
         .fragment(fragment)
         .build()
@@ -42,9 +42,9 @@ class PingPongShaderPipe(
 
     private var ping = true
     val width: Int
-        get() = Minecraft.getInstance().mainRenderTarget.width
+        get() = ClientRenderPipelineManager.currentRenderWidth()
     val height: Int
-        get() = Minecraft.getInstance().mainRenderTarget.height
+        get() = ClientRenderPipelineManager.currentRenderHeight()
 
     override fun init() {
         require(fragment.type == GlShaderType.FRAGMENT)
@@ -89,7 +89,7 @@ class PingPongShaderPipe(
         writePingPong()
         // 结果向外绘制
         screenBlit.useOnContext {
-            for (handler in getAnotherHandler()) {
+            for (handler in getCurrentHandler()) {
                 handler.uploadShaderData(screenBlit)
             }
             fbo().readFrameBufferWith {
@@ -105,8 +105,9 @@ class PingPongShaderPipe(
     }
 
     override fun writeFromChannel(channel: PipeChannels): PingPongShaderPipe {
+        ping = true
         channel.useOnContext {
-            val currentHandlers = getAnotherHandler()
+            val currentHandlers = getCurrentHandler()
             // 绑定当前的片段着色器
             // 绘制到ping
             write {
@@ -119,10 +120,7 @@ class PingPongShaderPipe(
             }
         }
         // ping pong 渲染
-        ping = true
         writePingPong()
-        // 重置
-        ping = true
         return this
     }
 
@@ -164,5 +162,6 @@ class PingPongShaderPipe(
     }
 
     private fun getAnother(): GlFrameBuffer = if (ping) pongFBO else pingFBO
+    private fun getCurrentHandler(): List<ShaderProgramUploader> = if (ping) pingHandlers else pongHandles
     private fun getAnotherHandler(): List<ShaderProgramUploader> = if (ping) pongHandles else pingHandlers
 }

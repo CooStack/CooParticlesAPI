@@ -3,7 +3,8 @@ package cn.coostack.cooparticlesapi.renderer.shader.pipe.manager
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.exceptions.RenderPipeLinkerNotSetException
 import cn.coostack.cooparticlesapi.exceptions.RenderPipeOutputNotSetException
-import cn.coostack.cooparticlesapi.renderer.shader.ShaderProgramBuilder
+import cn.coostack.cooparticlesapi.renderer.client.ClientRenderTargetResolver
+import cn.coostack.cooparticlesapi.renderer.shader.AdvancedShaderProgramBuilder
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlShaderType
 import cn.coostack.cooparticlesapi.renderer.shader.api.pipe.GlobalUniform
 import cn.coostack.cooparticlesapi.renderer.shader.api.pipe.PipeLinker
@@ -14,6 +15,7 @@ import cn.coostack.cooparticlesapi.renderer.shader.pipe.Matrix4fGlobalUniform
 import cn.coostack.cooparticlesapi.renderer.shader.pipe.pipes.SimpleShaderPipe
 import cn.coostack.cooparticlesapi.renderer.shader.vertex.VertexBuffers
 import com.mojang.blaze3d.systems.RenderSystem
+import com.mojang.blaze3d.pipeline.RenderTarget
 import net.minecraft.resources.ResourceLocation
 import org.lwjgl.opengl.GL33.*
 import java.util.function.Supplier
@@ -34,7 +36,7 @@ class ShaderPipeManager(
         ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "pipe/frags/screen.fsh"),
         GlShaderType.FRAGMENT
     )
-    private val screenProgram = ShaderProgramBuilder()
+    private val screenProgram = AdvancedShaderProgramBuilder()
         .vertex(screenVertex)
         .fragment(screenFragment)
         .build()
@@ -222,6 +224,14 @@ class ShaderPipeManager(
      * 传递管线, 最后绘制last
      */
     fun render() {
+        val resolvedTargets = ClientRenderTargetResolver.resolveCurrentTargets()
+        render(resolvedTargets.finalCompositeTarget, resolvedTargets.targetLabel)
+    }
+
+    fun render(
+        finalCompositeTarget: RenderTarget,
+        targetLabel: String
+    ) {
         if (!initialized) {
             return
         }
@@ -232,21 +242,57 @@ class ShaderPipeManager(
             it()
         }
         inputPipe(HashSet(), valueOutput!!)
-        // 绘制到当前 (公共 frame)
-        if (enableBlend) {
-            RenderSystem.enableBlend()
-            RenderSystem.blendFunc(blendFuncSrc, blendFuncDst)
-        } else {
-            RenderSystem.disableBlend()
+        val previousFramebuffer = glGetInteger(GL_FRAMEBUFFER_BINDING)
+        val depthTestEnabled = glIsEnabled(GL_DEPTH_TEST)
+        val cullEnabled = glIsEnabled(GL_CULL_FACE)
+        val scissorEnabled = glIsEnabled(GL_SCISSOR_TEST)
+        // Final bridge pass must restore the target viewport, otherwise the full-screen
+        // composite can be drawn into the previous pass viewport and never reach the screen.
+        finalCompositeTarget.bindWrite(true)
+        if (scissorEnabled) {
+            glDisable(GL_SCISSOR_TEST)
         }
-        RenderSystem.depthMask(false)
-        screenProgram.useOnContext {
-            valueOutput!!.getFrameOutput().useOnContext {
-                screenBuffer.draw()
+        RenderSystem.disableDepthTest()
+        RenderSystem.disableCull()
+        try {
+            // 绘制到当前 (公共 frame)
+            if (enableBlend) {
+                RenderSystem.enableBlend()
+                RenderSystem.blendFunc(blendFuncSrc, blendFuncDst)
+            } else {
+                RenderSystem.disableBlend()
+            }
+            RenderSystem.depthMask(false)
+            CooParticlesConstants.logger.debug(
+                "Shader pipe render pipe={} targetLabel={} previousFbo={} targetFbo={} outputFbo={}",
+                pipeID,
+                targetLabel,
+                previousFramebuffer,
+                finalCompositeTarget.frameBufferId,
+                valueOutput!!.fbo().fbo()
+            )
+            screenProgram.useOnContext {
+                setInt("tex", 0)
+                valueOutput!!.getFrameOutput().useOnContext {
+                    screenBuffer.draw()
+                }
+            }
+        } finally {
+            RenderSystem.defaultBlendFunc()
+            RenderSystem.depthMask(true)
+            if (cullEnabled) {
+                RenderSystem.enableCull()
+            }
+            if (depthTestEnabled) {
+                RenderSystem.enableDepthTest()
+            }
+            if (scissorEnabled) {
+                glEnable(GL_SCISSOR_TEST)
+            }
+            if (previousFramebuffer != finalCompositeTarget.frameBufferId) {
+                glBindFramebuffer(GL_FRAMEBUFFER, previousFramebuffer)
             }
         }
-        RenderSystem.defaultBlendFunc()
-        RenderSystem.depthMask(true)
     }
 
     fun release() {

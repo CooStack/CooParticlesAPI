@@ -11,6 +11,7 @@ import java.util.function.Supplier
 open class MinecraftHookFrameBuffer(
     var mcFrame: RenderTarget,
 ) : GlFrameBuffer {
+    private var warnedZeroRead = false
     override val colorAttachments: IntArray = IntArray(1)
     override var depthSupplier: Supplier<Int> = Supplier {
         mcFrame.depthTextureId
@@ -83,9 +84,7 @@ open class MinecraftHookFrameBuffer(
 
     override fun readFrameBufferWith(readScope: GlFrameBuffer.() -> Unit) {
         if (fbo() == 0) {
-            CooParticlesConstants.logger.error("trying to read frame buffer but fbo is zero")
-            initialized = false
-            return
+            warnedZeroRead = true
         }
         val zero = GL_TEXTURE0
         val activeChannels = IntArray(1)
@@ -112,6 +111,7 @@ open class MinecraftHookFrameBuffer(
         if (!initialized) {
             return
         }
+        warnedZeroRead = false
     }
 
     override fun resize(width: Int, height: Int) {

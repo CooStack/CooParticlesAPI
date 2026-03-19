@@ -1,0 +1,14 @@
+#version 430 core
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+/**
+ * 最小 compute smoke shader。
+ *
+ * `TestComputeShaderEntity` 只需要它能成功编译、链接并完成一次空 dispatch，
+ * 用来验证 V2 的 compute effect 接线没有断掉。
+ *
+ * 这里故意不做任何实际写入，避免把这个示例变成“依赖特定 buffer 结构”的复杂案例。
+ */
+void main() {
+}

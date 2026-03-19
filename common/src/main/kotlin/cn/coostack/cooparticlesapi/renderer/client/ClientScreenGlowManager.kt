@@ -4,8 +4,7 @@ import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.renderer.RenderEntity
 import cn.coostack.cooparticlesapi.renderer.backend.RenderBackendCapability
 import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameContext
-import cn.coostack.cooparticlesapi.renderer.effects.FrameEffectCollector
-import cn.coostack.cooparticlesapi.renderer.effects.FrameEffectSubmission
+import cn.coostack.cooparticlesapi.renderer.effects.builtin.ScreenGlowRenderRequest
 import cn.coostack.cooparticlesapi.renderer.glow.ScreenGlow
 import cn.coostack.cooparticlesapi.renderer.glow.ScreenGlowContextProvider
 import cn.coostack.cooparticlesapi.renderer.glow.ScreenGlowProvider
@@ -58,7 +57,7 @@ object ClientScreenGlowManager {
 
     private fun createSceneCopyPipe(): ExternalTextureShaderPipe {
         val sceneCopyTextures = SimpleTextures().apply {
-            addTexture(SupplierTexture { minecraft.mainRenderTarget.colorTextureId })
+            addTexture(SupplierTexture { ClientRenderPipelineManager.currentSceneColorTextureId() })
         }
         return ExternalTextureShaderPipe(sceneCopyTextures, Supplier { -1 })
     }
@@ -72,7 +71,7 @@ object ClientScreenGlowManager {
         enableBlend = false
 
         val sceneCopyPipe = createSceneCopyPipe()
-        val sceneDepthPipe = OutputDepthPipe(Supplier { minecraft.mainRenderTarget.depthTextureId })
+        val sceneDepthPipe = OutputDepthPipe({ ClientRenderPipelineManager.currentSceneDepthTextureId() })
         addPipe(sceneCopyPipe)
         addPipe(sceneDepthPipe)
         valueOutput(
@@ -84,7 +83,7 @@ object ClientScreenGlowManager {
                     ),
                     GlShaderType.FRAGMENT
                 ),
-                Supplier { minecraft.mainRenderTarget.depthTextureId },
+                Supplier { ClientRenderPipelineManager.currentSceneDepthTextureId() },
                 2
             ).addRenderHandler { program ->
                 program.setInt("sceneTex", 0)
@@ -138,44 +137,14 @@ object ClientScreenGlowManager {
         }
     }
 
-    fun submitFrameEffects(
-        sourceInstanceId: String,
-        provider: ScreenGlowProvider,
-        context: RenderFrameContext,
-        collector: FrameEffectCollector
-    ) {
-        collector.submit(
-            FrameEffectSubmission(
-                effectId = EFFECT_ID,
-                priority = EFFECT_PRIORITY,
-                sourceInstanceId = sourceInstanceId,
-                requiredCapabilities = requiredCapabilities
-            ) {
-                renderPrepared(context.tickDelta, context.viewMatrix, context.projMatrix) { _, output ->
-                    provider.collectScreenGlows(context.tickDelta, output)
-                }
+    fun renderRequests(requests: List<ScreenGlowRenderRequest>) {
+        val first = requests.firstOrNull() ?: return
+        val context = first.frameContext
+        renderPrepared(context.tickDelta, context.viewMatrix, context.projMatrix) { glowContext, output ->
+            requests.forEach { request ->
+                request.collect(glowContext, output)
             }
-        )
-    }
-
-    fun submitFrameEffects(
-        sourceInstanceId: String,
-        provider: ScreenGlowContextProvider,
-        context: RenderFrameContext,
-        collector: FrameEffectCollector
-    ) {
-        collector.submit(
-            FrameEffectSubmission(
-                effectId = EFFECT_ID,
-                priority = EFFECT_PRIORITY,
-                sourceInstanceId = sourceInstanceId,
-                requiredCapabilities = requiredCapabilities
-            ) {
-                renderPrepared(context.tickDelta, context.viewMatrix, context.projMatrix) { glowContext, output ->
-                    provider.collectScreenGlows(glowContext, output)
-                }
-            }
-        )
+        }
     }
 
     private fun renderPrepared(
@@ -188,9 +157,15 @@ object ClientScreenGlowManager {
         if (!prepared || screenGlowCount <= 0) {
             return
         }
-        minecraft.mainRenderTarget.bindWrite(false)
         RenderSystem.disableDepthTest()
         RenderSystem.depthMask(false)
+        CooParticlesConstants.logger.debug(
+            "Screen glow render count={} target={} sceneColor={} sceneDepth={}",
+            screenGlowCount,
+            ClientRenderPipelineManager.currentRenderTargetLabel(),
+            ClientRenderPipelineManager.currentSceneColorTextureId(),
+            ClientRenderPipelineManager.currentSceneDepthTextureId()
+        )
         pipeline.render()
         RenderSystem.depthMask(true)
         RenderSystem.enableDepthTest()
@@ -260,8 +235,8 @@ object ClientScreenGlowManager {
         this.viewRotationMatrix = Matrix3f(viewMatrix)
         inverseViewRotationMatrix = Matrix3f(viewMatrix).invert()
         screenSize = Vector2f(
-            minecraft.mainRenderTarget.width.toFloat(),
-            minecraft.mainRenderTarget.height.toFloat()
+            ClientRenderPipelineManager.currentRenderWidth().toFloat(),
+            ClientRenderPipelineManager.currentRenderHeight().toFloat()
         )
         return ScreenGlowRenderContext(
             tickDelta = tickDelta,

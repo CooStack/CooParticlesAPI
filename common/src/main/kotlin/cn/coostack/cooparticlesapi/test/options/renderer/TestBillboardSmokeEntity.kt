@@ -5,14 +5,16 @@ import cn.coostack.cooparticlesapi.annotations.CodecField
 import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
 import cn.coostack.cooparticlesapi.renderer.AutoRenderEntity
 import cn.coostack.cooparticlesapi.renderer.runtime.LocalRenderInput
+import cn.coostack.cooparticlesapi.renderer.runtime.RenderContributionCollector
+import cn.coostack.cooparticlesapi.renderer.runtime.RenderContributionInput
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityInstance
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityRenderer
-import cn.coostack.cooparticlesapi.renderer.shader.ShaderProgramBuilder
+import cn.coostack.cooparticlesapi.renderer.runtime.WorldPassRenderEntityRenderer
+import cn.coostack.cooparticlesapi.renderer.shader.AdvancedShaderProgramBuilder
 import cn.coostack.cooparticlesapi.renderer.shader.data.CooVertexFormat
-import cn.coostack.cooparticlesapi.renderer.shader.texture.IdentifierTexture
-import cn.coostack.cooparticlesapi.renderer.shader.texture.SimpleTextures
 import cn.coostack.cooparticlesapi.renderer.shader.utils.ShaderUtil
 import cn.coostack.cooparticlesapi.renderer.shader.vertex.SimpleVertexBuffer
+import com.mojang.blaze3d.platform.GlStateManager
 import com.mojang.blaze3d.systems.RenderSystem
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.level.Level
@@ -20,12 +22,10 @@ import net.minecraft.world.phys.Vec3
 import org.joml.Vector2f
 import org.joml.Vector3f
 import org.joml.Vector4f
-import org.lwjgl.opengl.GL33.GL_ONE_MINUS_SRC_ALPHA
-import org.lwjgl.opengl.GL33.GL_SRC_ALPHA
 
 @CooAutoRegister
 class TestBillboardSmokeEntity(world: Level? = null, pos: Vec3 = Vec3.ZERO) : AutoRenderEntity(world, pos),
-    RenderEntityRenderer<TestBillboardSmokeEntity> {
+    WorldPassRenderEntityRenderer<TestBillboardSmokeEntity> {
     constructor() : this(null, Vec3.ZERO)
 
     companion object {
@@ -46,21 +46,10 @@ class TestBillboardSmokeEntity(world: Level? = null, pos: Vec3 = Vec3.ZERO) : Au
             )
         }
 
-        private val smokeShader = ShaderProgramBuilder()
+        private val smokeShader = AdvancedShaderProgramBuilder()
             .vertex("test/vtx/billboard.vsh")
             .fragment("test/frag/smoke.fsh")
             .build()
-
-        private val smokeTextures = SimpleTextures().apply {
-            addTexture(
-                IdentifierTexture(
-                    ResourceLocation.fromNamespaceAndPath(
-                        CooParticlesConstants.MOD_ID,
-                        "test/dirt.png"
-                    )
-                )
-            )
-        }
 
         private var initialized = false
 
@@ -69,7 +58,6 @@ class TestBillboardSmokeEntity(world: Level? = null, pos: Vec3 = Vec3.ZERO) : Au
             initialized = true
             quadBuffer.init()
             smokeShader.init()
-            smokeTextures.init()
         }
     }
 
@@ -98,7 +86,10 @@ class TestBillboardSmokeEntity(world: Level? = null, pos: Vec3 = Vec3.ZERO) : Au
         RenderSystem.disableCull()
         RenderSystem.enableDepthTest()
         RenderSystem.enableBlend()
-        RenderSystem.blendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+        RenderSystem.blendFunc(
+            GlStateManager.SourceFactor.SRC_ALPHA,
+            GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA
+        )
         RenderSystem.depthMask(false)
         try {
             smokeShader.useOnContext {
@@ -110,10 +101,7 @@ class TestBillboardSmokeEntity(world: Level? = null, pos: Vec3 = Vec3.ZERO) : Au
                 color.set(smokeColor, alpha)
                 setFloat4("color", color)
                 setFloat("time", getTime(input.tickDelta))
-                setInt("smokeTex", 0)
-                smokeTextures.drawWith {
-                    quadBuffer.draw()
-                }
+                quadBuffer.draw()
             }
         } finally {
             RenderSystem.depthMask(true)

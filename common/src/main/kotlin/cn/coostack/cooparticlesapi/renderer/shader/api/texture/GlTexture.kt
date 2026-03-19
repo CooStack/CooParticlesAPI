@@ -1,22 +1,32 @@
 package cn.coostack.cooparticlesapi.renderer.shader.api.texture
 
 /**
- * 外部引用 并且绑定 texture
- * 使用 GlTextureManager
+ * OpenGL 纹理对象抽象。
  */
 interface GlTexture {
+    /**
+     * 返回底层纹理 id。
+     */
     fun textureID(): Int
 
+    /**
+     * 初始化纹理对象。
+     */
     fun init()
 
+    /**
+     * 释放纹理资源。
+     */
     fun release() {
     }
 
     /**
-     * 在当前已经激活的 texture通道中绑定 texture
+     * 在当前已激活的 texture slot 上绑定该纹理。
      */
     fun useOnCurrent()
 
+    /**
+     * 恢复纹理绑定前的状态。
+     */
     fun reset()
-
 }

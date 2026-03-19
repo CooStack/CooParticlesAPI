@@ -300,7 +300,7 @@ class PointsBuilder {
     }
 
     /**
-     * 添加一条三次贝塞尔曲线点集（二维曲线，Z 默认为 0）。
+     * 添加一条三次贝塞尔曲线点集（兼容旧的原点起笔二维曲线，Z 固定为 0）。
      *
      * @param target 终点（相对坐标）
      * @param startHandle 起点控制柄（影响起点切线方向/弯曲程度）
@@ -313,6 +313,23 @@ class PointsBuilder {
         endHandle: RelativeLocation,
         count: Int
     ): PointsBuilder = addWith { generateBezierCurve(target, startHandle, endHandle, count) }
+
+    /**
+     * 添加一条三次贝塞尔曲线点集（空间曲线）。
+     *
+     * @param start 起点
+     * @param end 终点
+     * @param startHandle 起点控制柄（以 start 为原点的偏移）
+     * @param endHandle 终点控制柄（以 end 为原点的偏移）
+     * @param count 采样点数量（count > 1 时会包含起点与终点）
+     */
+    fun addBezierCurve(
+        start: RelativeLocation,
+        end: RelativeLocation,
+        startHandle: RelativeLocation,
+        endHandle: RelativeLocation,
+        count: Int
+    ): PointsBuilder = addWith { generateBezierCurve(start, end, startHandle, endHandle, count) }
 
     /**
      * 合并另一个 builder 的点集（会复制加入）。

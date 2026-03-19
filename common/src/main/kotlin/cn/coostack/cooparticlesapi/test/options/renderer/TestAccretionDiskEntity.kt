@@ -6,12 +6,15 @@ import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
 import cn.coostack.cooparticlesapi.renderer.AutoRenderEntity
 import cn.coostack.cooparticlesapi.renderer.backend.RenderBackendCapability
 import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameContext
-import cn.coostack.cooparticlesapi.renderer.effects.FrameEffectCollector
-import cn.coostack.cooparticlesapi.renderer.effects.FrameEffectInput
-import cn.coostack.cooparticlesapi.renderer.effects.FrameEffectSubmission
+import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameStage
+import cn.coostack.cooparticlesapi.renderer.backend.RenderSceneTargets
+import cn.coostack.cooparticlesapi.renderer.effects.RenderEffectDescriptor
+import cn.coostack.cooparticlesapi.renderer.runtime.FramePostRenderEntityRenderer
+import cn.coostack.cooparticlesapi.renderer.runtime.RenderContributionCollector
+import cn.coostack.cooparticlesapi.renderer.runtime.RenderContributionInput
+import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityFeatureSet
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityInstance
-import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityRenderer
-import cn.coostack.cooparticlesapi.renderer.shader.ShaderProgramBuilder
+import cn.coostack.cooparticlesapi.renderer.shader.AdvancedShaderProgramBuilder
 import cn.coostack.cooparticlesapi.renderer.shader.data.CooVertexFormat
 import cn.coostack.cooparticlesapi.renderer.shader.utils.ShaderUtil
 import cn.coostack.cooparticlesapi.renderer.shader.vertex.SimpleVertexBuffer
@@ -24,23 +27,30 @@ import org.joml.Matrix3f
 import org.joml.Matrix4f
 import org.joml.Vector2f
 import org.joml.Vector3f
-import org.lwjgl.opengl.GL33.GL_ACTIVE_TEXTURE
-import org.lwjgl.opengl.GL33.GL_TEXTURE_2D
-import org.lwjgl.opengl.GL33.GL_TEXTURE7
-import org.lwjgl.opengl.GL33.GL_TEXTURE_BINDING_2D
-import org.lwjgl.opengl.GL33.glActiveTexture
-import org.lwjgl.opengl.GL33.glBindTexture
-import org.lwjgl.opengl.GL33.glGetInteger
+
+data class TestAccretionDiskRenderRequest(
+    val entity: TestAccretionDiskEntity,
+    val frameContext: RenderFrameContext
+)
 
 @CooAutoRegister
 class TestAccretionDiskEntity(world: Level? = null, pos: Vec3 = Vec3.ZERO) : AutoRenderEntity(world, pos),
-    RenderEntityRenderer<TestAccretionDiskEntity> {
+    FramePostRenderEntityRenderer<TestAccretionDiskEntity> {
     constructor() : this(null, Vec3.ZERO)
 
     companion object {
         val ID: ResourceLocation = ResourceLocation.fromNamespaceAndPath(
             CooParticlesConstants.MOD_ID,
             "test_accretion_disk"
+        )
+        val FRAME_POST_EFFECT: ResourceLocation = ResourceLocation.fromNamespaceAndPath(
+            CooParticlesConstants.MOD_ID,
+            "effect/test_accretion_disk"
+        )
+        private val FRAME_POST_CAPABILITIES = setOf(
+            RenderBackendCapability.FINAL_FRAME_POST,
+            RenderBackendCapability.SCENE_COLOR_COPY,
+            RenderBackendCapability.SCENE_DEPTH_READ
         )
 
         private val screenBuffer = SimpleVertexBuffer().apply {
@@ -55,7 +65,7 @@ class TestAccretionDiskEntity(world: Level? = null, pos: Vec3 = Vec3.ZERO) : Aut
             )
         }
 
-        private val sceneShader = ShaderProgramBuilder()
+        private val sceneShader = AdvancedShaderProgramBuilder()
             .vertex("pipe/vertexes/screen.vsh")
             .fragment("test/frag/accretion_disk.fsh")
             .build()
@@ -67,6 +77,12 @@ class TestAccretionDiskEntity(world: Level? = null, pos: Vec3 = Vec3.ZERO) : Aut
             initialized = true
             screenBuffer.init()
             sceneShader.init()
+        }
+
+        fun renderRequests(requests: List<TestAccretionDiskRenderRequest>) {
+            requests.forEach { request ->
+                request.entity.renderFrameEffect(request.frameContext)
+            }
         }
     }
 
@@ -127,19 +143,37 @@ class TestAccretionDiskEntity(world: Level? = null, pos: Vec3 = Vec3.ZERO) : Aut
 
     override fun getRenderID(): ResourceLocation = ID
 
+    override fun describeFeatures(entity: TestAccretionDiskEntity): RenderEntityFeatureSet {
+        return RenderEntityFeatureSet(
+            stages = setOf(RenderFrameStage.FRAME_POST),
+            requestedSceneTargets = setOf(
+                RenderSceneTargets.POST,
+                RenderSceneTargets.SCENE_COLOR,
+                RenderSceneTargets.SCENE_DEPTH
+            ),
+            effectTypes = setOf(FRAME_POST_EFFECT),
+            localRendererEnabled = false,
+            effectGraphEnabled = true
+        )
+    }
+
     override fun initialize(instance: RenderEntityInstance<TestAccretionDiskEntity>) {
         initStatic()
     }
 
-    override fun collectFrameEffects(input: FrameEffectInput<TestAccretionDiskEntity>, collector: FrameEffectCollector) {
+    override fun collectRenderContributions(
+        input: RenderContributionInput<TestAccretionDiskEntity>,
+        collector: RenderContributionCollector
+    ) {
+        val entity = input.instance.entity
         collector.submit(
-            FrameEffectSubmission(
+            RenderEffectDescriptor(
+                effectType = FRAME_POST_EFFECT,
                 effectId = ID.toString(),
-                sourceInstanceId = uuid.toString(),
-                requiredCapabilities = setOf(RenderBackendCapability.FINAL_FRAME_POST)
-            ) {
-                renderFrameEffect(input.frameContext)
-            }
+                sourceInstanceId = entity.uuid.toString(),
+                requiredCapabilities = FRAME_POST_CAPABILITIES,
+                payload = TestAccretionDiskRenderRequest(entity, input.frameContext)
+            )
         )
     }
 
@@ -211,14 +245,10 @@ class TestAccretionDiskEntity(world: Level? = null, pos: Vec3 = Vec3.ZERO) : Aut
                     setFloat("diskEmissionStrength", diskEmissionStrength)
                     setFloat3("diskColor", diskColor)
                     setFloat3("diskNormal", normalizedDiskNormal)
-                    val previousActiveTexture = glGetInteger(GL_ACTIVE_TEXTURE)
-                    glActiveTexture(GL_TEXTURE7)
-                    val previousDepthBinding = glGetInteger(GL_TEXTURE_BINDING_2D)
-                    glBindTexture(GL_TEXTURE_2D, depthTextureId)
+                    RenderSystem.setShaderTexture(7, depthTextureId)
                     setInt("sceneDepth", 7)
                     screenBuffer.draw()
-                    glBindTexture(GL_TEXTURE_2D, previousDepthBinding)
-                    glActiveTexture(previousActiveTexture)
+                    RenderSystem.setShaderTexture(7, 0)
                 }
             }
         } finally {

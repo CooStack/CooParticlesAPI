@@ -50,7 +50,7 @@ afterEvaluate {
         if (file.name.startsWith("sponge-mixin")) {
             tasks.named("runClient", JavaExec) {
                 jvmArgs("-javaagent:${file.absolutePath}")
-                jvmArgs("-XX:+AllowEnhancedClassRedefinition") // 如果你没有用jbr那么就删掉这行
+//                jvmArgs("-XX:+AllowEnhancedClassRedefinition") // 如果你没有用jbr那么就删掉这行
             }
         }
     }

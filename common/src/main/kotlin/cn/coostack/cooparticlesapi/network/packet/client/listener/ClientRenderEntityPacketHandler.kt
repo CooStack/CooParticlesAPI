@@ -21,20 +21,22 @@ object ClientRenderEntityPacketHandler {
         val buf = FriendlyByteBuf(Unpooled.wrappedBuffer(data))
         val type = ClientRenderEntityRegistry.get(id) ?: return
         val entity = type.codec.decode(buf)
-        entity.world = context.client().level
-        when (method) {
-            PacketRenderEntityS2C.Method.CREATE -> {
-                val renderer = resolveRenderer(entity, type, id)
-                val instance = RenderEntityInstance(entity, renderer)
-                ClientRenderEntityManager.add(instance)
-            }
+        context.client().execute {
+            entity.world = context.client().level
+            when (method) {
+                PacketRenderEntityS2C.Method.CREATE -> {
+                    val renderer = resolveRenderer(entity, type, id)
+                    val instance = RenderEntityInstance(entity, renderer)
+                    ClientRenderEntityManager.add(instance)
+                }
 
-            PacketRenderEntityS2C.Method.TOGGLE -> {
-                ClientRenderEntityManager.getFrom(packet.uuid)?.updateFrom(entity)
-            }
+                PacketRenderEntityS2C.Method.TOGGLE -> {
+                    ClientRenderEntityManager.getFrom(packet.uuid)?.updateFrom(entity)
+                }
 
-            PacketRenderEntityS2C.Method.REMOVE -> {
-                ClientRenderEntityManager.getFrom(packet.uuid)?.markRemoved()
+                PacketRenderEntityS2C.Method.REMOVE -> {
+                    ClientRenderEntityManager.getFrom(packet.uuid)?.markRemoved()
+                }
             }
         }
     }

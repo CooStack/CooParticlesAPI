@@ -1,0 +1,8 @@
+{
+  "id": "cooparticlesapi:glow_layered",
+  "name": "coo_glow_layered",
+  "layers": [
+    "cooparticlesapi:glow_overlay",
+    "cooparticlesapi:glow"
+  ]
+}

@@ -1,11 +1,15 @@
 package cn.coostack.cooparticlesapi.renderer.client
 
+import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.renderer.backend.RenderBackend
 import cn.coostack.cooparticlesapi.renderer.backend.RenderBackendCapability
 import cn.coostack.cooparticlesapi.renderer.backend.RenderBackendHooks
 import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameContext
+import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameStage
+import cn.coostack.cooparticlesapi.renderer.backend.RenderSceneTargets
 import cn.coostack.cooparticlesapi.renderer.backend.VanillaSafeRenderBackend
 import cn.coostack.cooparticlesapi.renderer.shader.pipe.manager.ShaderPipeManager
+import com.mojang.blaze3d.pipeline.RenderTarget
 import net.minecraft.client.Minecraft
 import net.minecraft.resources.ResourceLocation
 import org.joml.Matrix4f
@@ -21,6 +25,7 @@ object ClientRenderPipelineManager {
     var activeBackend: RenderBackend = VanillaSafeRenderBackend
         private set
     private var currentFrameContext: RenderFrameContext? = null
+    private var lastLoggedTargetSignature: String? = null
     private val backendHooks = object : RenderBackendHooks {
         override fun cacheFrameState(context: RenderFrameContext) {
             ClientRenderEntityManager.cacheFrameState(context.tickDelta, context.viewMatrix, context.projMatrix)
@@ -47,7 +52,7 @@ object ClientRenderPipelineManager {
         registerPipeLines[pipe.pipeID] = pipe
         if (initialized) {
             pipe.depthSupplier = Supplier {
-                minecraft.mainRenderTarget.depthTextureId
+                currentSceneDepthTextureId()
             }
             pipe.init()
         }
@@ -57,7 +62,7 @@ object ClientRenderPipelineManager {
         initialized = true
         for (manager in registerPipeLines.values) {
             manager.depthSupplier = Supplier {
-                minecraft.mainRenderTarget.depthTextureId
+                currentSceneDepthTextureId()
             }
             manager.resize(width, height)
             manager.init()
@@ -77,39 +82,143 @@ object ClientRenderPipelineManager {
     }
 
     fun beginFrame(tickDelta: Float, viewMatrix: Matrix4f, projMatrix: Matrix4f) {
-        val context = buildFrameContext(tickDelta, viewMatrix, projMatrix)
-        currentFrameContext = context
-        activeBackend.beginFrame(context, backendHooks)
+        runStages(
+            listOf(RenderFrameStage.FRAME_BEGIN),
+            tickDelta,
+            viewMatrix,
+            projMatrix
+        )
     }
 
     fun finishLevelRender(tickDelta: Float, viewMatrix: Matrix4f, projMatrix: Matrix4f) {
-        val context = currentFrameContext ?: buildFrameContext(tickDelta, viewMatrix, projMatrix).also {
-            currentFrameContext = it
-        }
-        activeBackend.finishLevelRender(context, backendHooks)
-    }
-
-    fun endFrame() {
-        val context = currentFrameContext ?: return
-        activeBackend.endFrame(context, backendHooks)
+        runStages(
+            listOf(
+                RenderFrameStage.WORLD_PASS,
+                RenderFrameStage.POST_PROCESS_PREPARE,
+                RenderFrameStage.FRAME_POST,
+                RenderFrameStage.FRAME_END
+            ),
+            tickDelta,
+            viewMatrix,
+            projMatrix
+        )
         currentFrameContext = null
     }
 
-    private fun buildFrameContext(tickDelta: Float, viewMatrix: Matrix4f, projMatrix: Matrix4f): RenderFrameContext {
+    fun endFrame() {
+        currentFrameContext = null
+    }
+
+    private fun runStages(
+        stages: List<RenderFrameStage>,
+        tickDelta: Float,
+        viewMatrix: Matrix4f,
+        projMatrix: Matrix4f
+    ) {
+        stages.forEach { stage ->
+            val context = buildFrameContext(tickDelta, viewMatrix, projMatrix, stage)
+            currentFrameContext = context
+            activeBackend.runStage(stage, context, backendHooks)
+        }
+    }
+
+    private fun buildFrameContext(
+        tickDelta: Float,
+        viewMatrix: Matrix4f,
+        projMatrix: Matrix4f,
+        stage: RenderFrameStage
+    ): RenderFrameContext {
+        val resolvedTargets = ClientRenderTargetResolver.resolveCurrentTargets()
+        val sceneResources = ClientRenderSceneResourcesResolver.resolveCurrentResources()
+        logResolvedTargets(resolvedTargets)
         val sceneColorTextureId =
-            if (activeBackend.supports(RenderBackendCapability.SCENE_COLOR_COPY)) minecraft.mainRenderTarget.colorTextureId else null
+            if (activeBackend.supports(RenderBackendCapability.SCENE_COLOR_COPY)) resolvedTargets.sceneColorTextureId else null
         val sceneDepthTextureId =
-            if (activeBackend.supports(RenderBackendCapability.SCENE_DEPTH_READ)) minecraft.mainRenderTarget.depthTextureId else null
+            if (activeBackend.supports(RenderBackendCapability.SCENE_DEPTH_READ)) resolvedTargets.sceneDepthTextureId else null
         return RenderFrameContext(
             tickDelta = tickDelta,
             viewMatrix = Matrix4f(viewMatrix),
             projMatrix = Matrix4f(projMatrix),
             backend = activeBackend,
+            stage = stage,
+            sceneResources = sceneResources,
             sceneColorTextureId = sceneColorTextureId,
-            sceneDepthTextureId = sceneDepthTextureId
+            sceneDepthTextureId = sceneDepthTextureId,
+            finalCompositeTarget = resolvedTargets.finalCompositeTarget,
+            resolvedTargetLabel = resolvedTargets.targetLabel,
+            boundFramebufferId = resolvedTargets.boundFramebufferId,
+            targetWidth = resolvedTargets.width,
+            targetHeight = resolvedTargets.height
         )
     }
 
+    fun currentSceneColorTextureId(): Int {
+        val context = currentFrameContext
+        if (context == null) {
+            return minecraft.mainRenderTarget.colorTextureId
+        }
+        return context.sceneColorTextureId
+            ?: context.sceneResources.get(RenderSceneTargets.SCENE_COLOR)?.colorTextureId
+            ?: minecraft.mainRenderTarget.colorTextureId
+    }
+
+    fun currentSceneDepthTextureId(): Int {
+        val context = currentFrameContext
+        if (context == null) {
+            return minecraft.mainRenderTarget.depthTextureId
+        }
+        return context.sceneDepthTextureId
+            ?: context.sceneResources.get(RenderSceneTargets.SCENE_DEPTH)?.depthTextureId
+            ?: minecraft.mainRenderTarget.depthTextureId
+    }
+
+    fun currentFinalCompositeTarget(): RenderTarget {
+        val context = currentFrameContext
+        if (context == null) {
+            return minecraft.mainRenderTarget
+        }
+        return context.sceneResources.get(RenderSceneTargets.POST)?.target
+            ?: context.finalCompositeTarget
+            ?: minecraft.mainRenderTarget
+    }
+
+    fun currentRenderTargetLabel(): String {
+        return currentFrameContext?.resolvedTargetLabel ?: "main"
+    }
+
+    fun currentRenderWidth(): Int {
+        return currentFrameContext?.targetWidth ?: minecraft.mainRenderTarget.width
+    }
+
+    fun currentRenderHeight(): Int {
+        return currentFrameContext?.targetHeight ?: minecraft.mainRenderTarget.height
+    }
+
+    private fun logResolvedTargets(targets: ResolvedRenderTargets) {
+        val signature = buildString {
+            append(targets.targetLabel)
+            append(':')
+            append(targets.boundFramebufferId)
+            append(':')
+            append(targets.finalCompositeTarget.frameBufferId)
+            append(':')
+            append(targets.sceneColorTextureId)
+            append(':')
+            append(targets.sceneDepthTextureId)
+        }
+        if (signature == lastLoggedTargetSignature) {
+            return
+        }
+        lastLoggedTargetSignature = signature
+        CooParticlesConstants.logger.info(
+            "Resolved post target label={} boundFbo={} targetFbo={} sceneColor={} sceneDepth={}",
+            targets.targetLabel,
+            targets.boundFramebufferId,
+            targets.finalCompositeTarget.frameBufferId,
+            targets.sceneColorTextureId,
+            targets.sceneDepthTextureId
+        )
+    }
 
     fun resizeTo(width: Int, height: Int) {
         this.width = width
@@ -118,5 +227,4 @@ object ClientRenderPipelineManager {
             it.value.resize(width, height)
         }
     }
-
 }

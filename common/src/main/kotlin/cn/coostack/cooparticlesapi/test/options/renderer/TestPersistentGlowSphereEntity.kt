@@ -4,20 +4,25 @@ import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.annotations.CodecField
 import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
 import cn.coostack.cooparticlesapi.renderer.AutoRenderEntity
-import cn.coostack.cooparticlesapi.renderer.effects.FrameEffectCollector
-import cn.coostack.cooparticlesapi.renderer.effects.FrameEffectInput
+import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameStage
+import cn.coostack.cooparticlesapi.renderer.effects.builtin.BuiltinRenderEffectDescriptors
+import cn.coostack.cooparticlesapi.renderer.effects.builtin.BuiltinRenderEffectTypes
 import cn.coostack.cooparticlesapi.renderer.glow.PostGlowSphereConfig
 import cn.coostack.cooparticlesapi.renderer.glow.PostGlowSphereRenderer
+import cn.coostack.cooparticlesapi.renderer.runtime.FramePostRenderEntityRenderer
+import cn.coostack.cooparticlesapi.renderer.runtime.RenderContributionCollector
+import cn.coostack.cooparticlesapi.renderer.runtime.RenderContributionInput
+import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityFeatureSet
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityInstance
-import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityRenderer
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
 
+@Deprecated("Legacy compatibility demo only. RenderEntity glow should use content-driven MASK_BLOOM.")
 @CooAutoRegister
 class TestPersistentGlowSphereEntity(world: Level? = null, pos: Vec3 = Vec3.ZERO) : AutoRenderEntity(world, pos),
-    RenderEntityRenderer<TestPersistentGlowSphereEntity> {
+    FramePostRenderEntityRenderer<TestPersistentGlowSphereEntity> {
     constructor() : this(null, Vec3.ZERO)
 
     companion object {
@@ -53,22 +58,32 @@ class TestPersistentGlowSphereEntity(world: Level? = null, pos: Vec3 = Vec3.ZERO
 
     override fun getRenderID(): ResourceLocation = ID
 
+    override fun describeFeatures(entity: TestPersistentGlowSphereEntity): RenderEntityFeatureSet {
+        return RenderEntityFeatureSet(
+            stages = setOf(RenderFrameStage.FRAME_POST),
+            effectTypes = setOf(BuiltinRenderEffectTypes.POST_GLOW_SPHERE),
+            localRendererEnabled = false,
+            effectGraphEnabled = true
+        )
+    }
+
     override fun initialize(instance: RenderEntityInstance<TestPersistentGlowSphereEntity>) {
         PostGlowSphereRenderer.initialize()
     }
 
-    override fun collectFrameEffects(
-        input: FrameEffectInput<TestPersistentGlowSphereEntity>,
-        collector: FrameEffectCollector
+    override fun collectRenderContributions(
+        input: RenderContributionInput<TestPersistentGlowSphereEntity>,
+        collector: RenderContributionCollector
     ) {
         val entity = input.instance.entity
-        PostGlowSphereRenderer.submit(
-            collector = collector,
-            effectId = ID.toString(),
-            sourceInstanceId = entity.uuid.toString(),
-            entity = entity,
-            frameContext = input.frameContext,
-            config = entity.createGlowConfig()
+        collector.submit(
+            BuiltinRenderEffectDescriptors.postGlowSphere(
+                effectId = ID.toString(),
+                sourceInstanceId = entity.uuid.toString(),
+                entity = entity,
+                frameContext = input.frameContext,
+                config = entity.createGlowConfig()
+            )
         )
     }
 

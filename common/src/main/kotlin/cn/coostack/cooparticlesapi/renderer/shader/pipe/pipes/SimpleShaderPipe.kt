@@ -1,7 +1,8 @@
 package cn.coostack.cooparticlesapi.renderer.shader.pipe.pipes
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
-import cn.coostack.cooparticlesapi.renderer.shader.ShaderProgramBuilder
+import cn.coostack.cooparticlesapi.renderer.client.ClientRenderPipelineManager
+import cn.coostack.cooparticlesapi.renderer.shader.AdvancedShaderProgramBuilder
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlFrameBuffer
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlShader
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlShaderType
@@ -12,9 +13,14 @@ import cn.coostack.cooparticlesapi.renderer.shader.glsl.IdentifierShader
 import cn.coostack.cooparticlesapi.renderer.shader.glsl.SimpleFrameBuffer
 import cn.coostack.cooparticlesapi.renderer.shader.vertex.VertexBuffers
 import com.mojang.blaze3d.systems.RenderSystem
-import net.minecraft.client.Minecraft
 import net.minecraft.resources.ResourceLocation
 import org.lwjgl.opengl.GL33
+import org.lwjgl.opengl.GL33.GL_CULL_FACE
+import org.lwjgl.opengl.GL33.GL_DEPTH_TEST
+import org.lwjgl.opengl.GL33.GL_SCISSOR_TEST
+import org.lwjgl.opengl.GL33.glDisable
+import org.lwjgl.opengl.GL33.glEnable
+import org.lwjgl.opengl.GL33.glIsEnabled
 import java.util.function.Supplier
 
 /**
@@ -41,14 +47,14 @@ class SimpleShaderPipe(
     )
     private val shaderVertexes = VertexBuffers.getScreenBuffer()
     private val handles = ArrayList<ShaderProgramUploader>()
-    private val screenProgram = ShaderProgramBuilder()
+    private val screenProgram = AdvancedShaderProgramBuilder()
         .vertex(screenVertex)
         .fragment(fragment)
         .build()
     val width: Int
-        get() = Minecraft.getInstance().mainRenderTarget.width
+        get() = ClientRenderPipelineManager.currentRenderWidth()
     val height: Int
-        get() = Minecraft.getInstance().mainRenderTarget.height
+        get() = ClientRenderPipelineManager.currentRenderHeight()
     private val fbo = SimpleFrameBuffer(colorChannelCount, depthSupplier)
 
     override fun init() {
@@ -77,12 +83,33 @@ class SimpleShaderPipe(
     override fun write(invoker: ShaderPipe.() -> Unit) {
         // 向fbo写入内容
         screenProgram.useOnContext {
+            setInt("tex", 0)
             handles.forEach {
                 it.uploadShaderData(this)
             }
             fbo.writeFrameBufferWith {
+                val depthEnabled = glIsEnabled(GL_DEPTH_TEST)
+                val cullEnabled = glIsEnabled(GL_CULL_FACE)
+                val scissorEnabled = glIsEnabled(GL_SCISSOR_TEST)
                 RenderSystem.disableBlend()
-                invoker()
+                RenderSystem.disableDepthTest()
+                RenderSystem.disableCull()
+                if (scissorEnabled) {
+                    glDisable(GL_SCISSOR_TEST)
+                }
+                try {
+                    invoker()
+                } finally {
+                    if (depthEnabled) {
+                        RenderSystem.enableDepthTest()
+                    }
+                    if (cullEnabled) {
+                        RenderSystem.enableCull()
+                    }
+                    if (scissorEnabled) {
+                        glEnable(GL_SCISSOR_TEST)
+                    }
+                }
             }
         }
     }
@@ -111,6 +138,7 @@ class SimpleShaderPipe(
 
     private fun drawOnce() {
         screenProgram.useOnContext {
+            setInt("tex", 0)
             for (handler in handles) {
                 handler.uploadShaderData(screenProgram)
             }

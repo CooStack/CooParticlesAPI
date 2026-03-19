@@ -2,6 +2,7 @@ package cn.coostack.cooparticlesapi
 
 import cn.coostack.cooparticlesapi.animation.AnimateManager
 import cn.coostack.cooparticlesapi.display.DisplayEntityManager
+import cn.coostack.cooparticlesapi.display.CooRenderTypeResourceRegistry
 import cn.coostack.cooparticlesapi.network.particle.composition.manager.ParticleCompositionManager
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersManager
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleStyleManager
@@ -12,13 +13,17 @@ import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import cn.coostack.cooparticlesapi.renderer.backend.IrisSafeRenderBackend
 import cn.coostack.cooparticlesapi.renderer.backend.RenderBackend
 import cn.coostack.cooparticlesapi.renderer.backend.VanillaSafeRenderBackend
-import cn.coostack.cooparticlesapi.renderer.client.ClientRenderEntityManager
 import cn.coostack.cooparticlesapi.renderer.client.ClientPersistentBloomManager
+import cn.coostack.cooparticlesapi.renderer.client.ClientRenderEntityManager
 import cn.coostack.cooparticlesapi.renderer.client.ClientRenderPipelineManager
 import cn.coostack.cooparticlesapi.renderer.client.ClientScreenGlowManager
 import cn.coostack.cooparticlesapi.renderer.client.ClientWorldLightManager
+import cn.coostack.cooparticlesapi.renderer.client.ClientMaskBloomManager
 import cn.coostack.cooparticlesapi.renderer.client.ShaderPipeManagers
+import cn.coostack.cooparticlesapi.renderer.effects.builtin.BuiltinRenderEffectRegistry
+import cn.coostack.cooparticlesapi.renderer.shader.ShaderProgramRegistry
 import cn.coostack.cooparticlesapi.scheduler.CooScheduler
+import cn.coostack.cooparticlesapi.test.TestControlKeyBindings
 import cn.coostack.cooparticlesapi.test.TestManager
 import cn.coostack.cooparticlesapi.test.options.display.TestDisplayerStyle
 import cn.coostack.cooparticlesapi.test.options.particle.client.BarrierSwordGroupClient
@@ -26,10 +31,11 @@ import cn.coostack.cooparticlesapi.test.options.particle.client.ScaleCircleGroup
 import cn.coostack.cooparticlesapi.test.options.particle.client.SequencedMagicCircleClient
 import cn.coostack.cooparticlesapi.test.options.particle.client.TestGroupClient
 import cn.coostack.cooparticlesapi.test.options.particle.style.*
+import cn.coostack.cooparticlesapi.test.options.renderer.RenderEntityExampleEffectRegistry
 import cn.coostack.cooparticlesapi.utils.ClientCameraUtil
 import net.irisshaders.iris.api.v0.IrisApi
+import net.minecraft.client.Minecraft
 import net.minecraft.client.multiplayer.ClientLevel
-import net.minecraft.client.renderer.RenderType
 import net.minecraft.core.RegistryAccess
 
 object CooParticlesAPIClient {
@@ -43,6 +49,7 @@ object CooParticlesAPIClient {
 
     @JvmStatic
     fun init() {
+        TestControlKeyBindings.register()
         initGroup()
         initStyle()
         initParticleType()
@@ -71,7 +78,6 @@ object CooParticlesAPIClient {
         CooModParticles.reg()
     }
 
-
     private fun initGroup() {
         ClientParticleGroupManager.register(
             TestGroupClient::class.java,
@@ -90,7 +96,6 @@ object CooParticlesAPIClient {
             SequencedMagicCircleClient.Provider()
         )
     }
-
 
     private fun initStyle() {
         ParticleStyleManager.register(
@@ -123,9 +128,6 @@ object CooParticlesAPIClient {
         )
     }
 
-    /**
-     * 在 render 第一次执行时初始化
-     */
     @JvmStatic
     private var renderInit = false
 
@@ -133,10 +135,11 @@ object CooParticlesAPIClient {
     fun initShaderPrograms() {
         if (renderInit) return
         renderInit = true
-        ShaderPipeManagers.init() // 注册到pipeline
-        ClientRenderPipelineManager.init() // 把注册的pipeline进行一个初始化
+        ShaderPipeManagers.init()
+        ClientRenderPipelineManager.init()
         ClientRenderPipelineManager.setActiveBackend(selectedRenderBackend)
         ClientRenderEntityManager.init()
+        ShaderProgramRegistry.reinitializeAll()
         CooParticlesConstants.logger.info("初始化渲染管线")
     }
 
@@ -144,37 +147,56 @@ object CooParticlesAPIClient {
     fun reloadShaderPrograms() {
         renderInit = false
         ClientRenderPipelineManager.release()
+        ClientMaskBloomManager.clear()
         ClientRenderEntityManager.onShaderReload()
         initShaderPrograms()
     }
 
     private fun initRender() {
+        CooRenderTypeResourceRegistry.reloadFromClasspath()
+        BuiltinRenderEffectRegistry.initOnClient()
+        RenderEntityExampleEffectRegistry.initOnClient()
         ClientWorldLightManager.initOnClient()
         ClientPersistentBloomManager.initOnClient()
+        ClientMaskBloomManager.initOnClient()
         ClientScreenGlowManager.initOnClient()
         CooParticleTextureSheet.init()
     }
 
     fun onDisconnect() {
-        ParticleEmittersManager.clientEmitters.clear()
-        ParticleStyleManager.clearAllVisible()
-        ClientRenderEntityManager.clear()
-        ClientWorldLightManager.clear()
-        ClientParticleGroupManager.clearAllVisible()
-        ParticleCompositionManager.clearClient()
+        Minecraft.getInstance().execute {
+            onDisconnectInternal()
+        }
     }
 
+    private fun onDisconnectInternal() {
+        ParticleEmittersManager.clientEmitters.clear()
+        ParticleStyleManager.clearAllVisible()
+        ClientRenderEntityManager.clear()
+        ClientWorldLightManager.clear()
+        ClientMaskBloomManager.clear()
+        ClientParticleGroupManager.clearAllVisible()
+        ParticleCompositionManager.clearClient()
+        TestManager.clearClient()
+    }
 
     fun afterClientWorldChange() {
+        Minecraft.getInstance().execute {
+            afterClientWorldChangeInternal()
+        }
+    }
+
+    private fun afterClientWorldChangeInternal() {
         ParticleEmittersManager.clientEmitters.clear()
         ParticleStyleManager.clearAllVisible()
         ClientParticleGroupManager.clearAllVisible()
         ClientRenderEntityManager.clear()
         ClientWorldLightManager.clear()
+        ClientMaskBloomManager.clear()
         ParticleCompositionManager.clearClient()
+        TestManager.clearClient()
 
         DisplayEntityManager.clearClient()
-
     }
 
     var subTicks = 0.0
@@ -184,19 +206,17 @@ object CooParticlesAPIClient {
             access = world.registryAccess()
         }
 
-        // resize test
         val tickManager = world.tickRateManager()
         if (!tickManager.runsNormally()) {
             return
         }
         val rate = tickManager.tickrate()
-        val preInvokeTimes = rate / 20.0 // 平均每 tick 执行的次数
+        val preInvokeTimes = rate / 20.0
         subTicks += preInvokeTimes
         if (subTicks >= 1) {
             val toInt = subTicks.toInt()
             subTicks -= toInt
             repeat(toInt) {
-                // 这里要同步应用上tick rate
                 scheduler.doTick()
                 ClientParticleGroupManager.doClientTick()
                 ParticleStyleManager.doTickClient()

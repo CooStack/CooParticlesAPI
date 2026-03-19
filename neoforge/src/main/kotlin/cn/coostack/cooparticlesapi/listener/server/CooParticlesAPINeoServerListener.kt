@@ -5,8 +5,11 @@ import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.event.CooEventBus
 import cn.coostack.cooparticlesapi.event.events.server.ServerPostTickEvent
 import cn.coostack.cooparticlesapi.event.events.server.ServerPreTickEvent
+import cn.coostack.cooparticlesapi.test.TestManager
 import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.fml.common.EventBusSubscriber
+import net.neoforged.neoforge.event.entity.player.PlayerEvent
+import net.neoforged.neoforge.event.server.ServerStoppedEvent
 import net.neoforged.neoforge.event.server.ServerStartingEvent
 import net.neoforged.neoforge.event.tick.ServerTickEvent
 
@@ -18,6 +21,18 @@ object CooParticlesAPINeoServerListener {
     fun onServerLoad(event: ServerStartingEvent) {
         val server = event.server
         CooParticlesAPI.onServerStart(server)
+    }
+
+    @SubscribeEvent
+    fun onPlayerLogout(event: PlayerEvent.PlayerLoggedOutEvent) {
+        if (!event.entity.level().isClientSide) {
+            TestManager.clearServerFor(event.entity)
+        }
+    }
+
+    @SubscribeEvent
+    fun onServerStopped(event: ServerStoppedEvent) {
+        TestManager.clearServer()
     }
 
     @SubscribeEvent

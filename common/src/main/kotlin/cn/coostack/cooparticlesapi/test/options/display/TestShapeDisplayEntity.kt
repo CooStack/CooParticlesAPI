@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi.test.options.display
 
+import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
 import cn.coostack.cooparticlesapi.annotations.CodecField
 import cn.coostack.cooparticlesapi.annotations.display.handle.DisplayEntityHelper
@@ -14,6 +15,7 @@ import net.minecraft.client.renderer.MultiBufferSource
 import net.minecraft.client.renderer.texture.OverlayTexture
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
+import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
 import org.joml.Matrix4f
@@ -34,6 +36,13 @@ import kotlin.math.sin
  */
 @CooAutoRegister
 class TestShapeDisplayEntity(pos: Vec3, world: Level?) : DisplayEntity(pos, world) {
+    companion object {
+        private val LAYERED_GLOW_ID = ResourceLocation.fromNamespaceAndPath(
+            CooParticlesConstants.MOD_ID,
+            "glow_layered"
+        )
+    }
+
     @CodecField
     var direction = Vec3(0.0, 1.0, 0.0)
     override fun render(
@@ -45,15 +54,17 @@ class TestShapeDisplayEntity(pos: Vec3, world: Level?) : DisplayEntity(pos, worl
         camera: Camera
     ) {
         modelMatrixStack.pushPose()
-        repeat(10) {
-            // 泛光叠加
-            renderCylinder(
-                buffer.getBuffer(
-                    CooParticlesServices.PLATFORM.getRenderTypesProvider().glow()
-                ), modelMatrixStack, 5f, 100f, 10f,
-                Vector3f(10f, 10f, 10f)
-            )
-        }
+        val provider = CooParticlesServices.PLATFORM.getRenderTypesProvider()
+        val layeredConsumer = provider.layered(LAYERED_GLOW_ID)?.consumer(buffer)
+        val consumer = layeredConsumer ?: buffer.getBuffer(provider.glow())
+        renderCylinder(
+            consumer,
+            modelMatrixStack,
+            5f,
+            100f,
+            10f,
+            Vector3f(10f, 10f, 10f)
+        )
         modelMatrixStack.popPose()
     }
 

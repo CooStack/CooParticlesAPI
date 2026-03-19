@@ -1,7 +1,9 @@
 package cn.coostack.cooparticlesapi.renderer.shader.api.pipe
 
 /**
- * 使用有向图制作
+ * shader pipe 有向图连接器。
+ *
+ * 用于描述“哪个 pipe 的哪个输出通道，连接到另一个 pipe 的哪个输入通道”。
  */
 interface PipeLinker {
 
@@ -14,37 +16,35 @@ interface PipeLinker {
     fun link(inputPipe: ShaderPipe, inputChannel: Int, outputPipe: ShaderPipe, outputChannel: Int): PipeLinker
 
     /**
-     * @param input 输入的渲染管线
-     * @param output 提供内容的渲染管线
+     * 使用 `(pipe, channel)` 对形式建立连接。
      */
     fun link(input: Pair<ShaderPipe, Int>, output: Pair<ShaderPipe, Int>): PipeLinker
 
     /**
-     * @param input 输入的渲染管线
-     * @param output 提供内容的渲染管线
+     * 使用 `PipeLinkerNode` 建立连接。
      */
     fun link(input: PipeLinkerNode, output: PipeLinkerNode): PipeLinker
 
     /**
-     * Output-first helper to improve readability: output -> input.
+     * 以更符合阅读习惯的 “output -> input” 顺序建立连接。
      */
     fun connect(outputPipe: ShaderPipe, outputChannel: Int, inputPipe: ShaderPipe, inputChannel: Int): PipeLinker {
         return link(inputPipe, inputChannel, outputPipe, outputChannel)
     }
 
     /**
-     * Output-first helper to improve readability: output -> input.
+     * `connect(...)` 的 `PipeLinkerNode` 重载。
      */
     fun connect(output: PipeLinkerNode, input: PipeLinkerNode): PipeLinker {
         return connect(output.pipe, output.channel, input.pipe, input.channel)
     }
 
     /**
-     * 找到这个渲染管线的所有提供者
-     * @param input 需要输入的渲染管线
-     * @return 索引代表输入的通道 值代表提供者
+     * 查找某个输入 pipe 的全部上游提供者。
+     *
+     * 返回值中：
+     * - key 是输入通道索引
+     * - value 是对应的上游节点
      */
     fun findAllChannel(input: ShaderPipe): Map<Int, PipeLinkerNode>
-
-
 }

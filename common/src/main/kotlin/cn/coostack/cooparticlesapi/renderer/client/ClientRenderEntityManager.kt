@@ -3,7 +3,7 @@ package cn.coostack.cooparticlesapi.renderer.client
 import cn.coostack.cooparticlesapi.renderer.RenderEntity
 import cn.coostack.cooparticlesapi.renderer.backend.RenderBackendCapability
 import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameContext
-import cn.coostack.cooparticlesapi.renderer.effects.FrameEffectStack
+import cn.coostack.cooparticlesapi.renderer.effects.RenderEffectGraph
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityInstance
 import cn.coostack.cooparticlesapi.renderer.state.RenderStateGuard
 import net.minecraft.client.Minecraft
@@ -55,6 +55,7 @@ object ClientRenderEntityManager {
 
     fun add(instance: RenderEntityInstance<RenderEntity>) {
         instance.entity.world = minecraft.level
+        instance.entity.lastRenderPos = instance.entity.pos
         instance.initialize()
         entities[instance.entity.uuid] = instance
     }
@@ -97,11 +98,11 @@ object ClientRenderEntityManager {
         if (!context.backend.supports(RenderBackendCapability.FINAL_FRAME_POST)) {
             return
         }
-        val stack = FrameEffectStack(context.backend.capabilities)
+        val graph = RenderEffectGraph(context.backend.capabilities)
         entities.values.forEach { instance ->
-            instance.collectFrameEffects(context, stack)
+            instance.collectRenderContributions(context, graph)
         }
-        stack.execute()
+        graph.execute()
     }
 
     fun tick() {

@@ -9,14 +9,16 @@ import cn.coostack.cooparticlesapi.renderer.glow.ScreenGlow
 import cn.coostack.cooparticlesapi.renderer.glow.ScreenGlowContextProvider
 import cn.coostack.cooparticlesapi.renderer.glow.ScreenGlowRenderContext
 import cn.coostack.cooparticlesapi.renderer.runtime.LocalRenderInput
+import cn.coostack.cooparticlesapi.renderer.runtime.RenderContributionCollector
+import cn.coostack.cooparticlesapi.renderer.runtime.RenderContributionInput
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityInstance
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityRenderer
-import cn.coostack.cooparticlesapi.renderer.shader.ShaderProgramBuilder
+import cn.coostack.cooparticlesapi.renderer.runtime.WorldPassRenderEntityRenderer
+import cn.coostack.cooparticlesapi.renderer.shader.AdvancedShaderProgramBuilder
 import cn.coostack.cooparticlesapi.renderer.shader.data.CooVertexFormat
-import cn.coostack.cooparticlesapi.renderer.shader.texture.IdentifierTexture
-import cn.coostack.cooparticlesapi.renderer.shader.texture.SimpleTextures
 import cn.coostack.cooparticlesapi.renderer.shader.utils.ShaderUtil
 import cn.coostack.cooparticlesapi.renderer.shader.vertex.SimpleVertexBuffer
+import com.mojang.blaze3d.platform.GlStateManager
 import com.mojang.blaze3d.systems.RenderSystem
 import net.minecraft.client.Minecraft
 import net.minecraft.resources.ResourceLocation
@@ -24,18 +26,26 @@ import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
 import org.joml.Matrix3f
 import org.joml.Matrix4f
+import org.joml.Quaternionf
 import org.joml.Vector2f
 import org.joml.Vector3f
 import org.joml.Vector4f
-import org.lwjgl.opengl.GL33.GL_ONE
-import org.lwjgl.opengl.GL33.GL_SRC_ALPHA
 import kotlin.math.max
 import kotlin.math.sqrt
 
+/**
+ * 老的激光测试实体。
+ *
+ * 过去这里使用 `IdentifierTexture` 上传本地 png，再在客户端初始化时做 beam 纹理绘制。
+ * 该链路在部分驱动上会在 `glTexImage2D` 直接 native crash，所以这里改成纯程序化 beam。
+ *
+ * 保留原类名和测试入口，是为了不影响现有 `APITestGroupBuilder` 顺序与老测试编号。
+ */
 @CooAutoRegister
 class TestTexturedBeamEntity(world: Level? = null, pos: Vec3 = Vec3.ZERO) : AutoRenderEntity(world, pos),
     ScreenGlowContextProvider,
-    RenderEntityRenderer<TestTexturedBeamEntity> {
+    WorldPassRenderEntityRenderer<TestTexturedBeamEntity> {
+
     constructor() : this(null, Vec3.ZERO)
 
     companion object {
@@ -46,60 +56,42 @@ class TestTexturedBeamEntity(world: Level? = null, pos: Vec3 = Vec3.ZERO) : Auto
             "test_textured_beam"
         )
 
-        private val quadBuffer = SimpleVertexBuffer().apply {
+        private val beamBuffer = SimpleVertexBuffer().apply {
             setVertexes(
-                ShaderUtil.genSquareUV(
-                    Vector3f(-0.5f, -0.5f, 0f),
-                    Vector3f(0.5f, -0.5f, 0f),
-                    Vector3f(0.5f, 0.5f, 0f),
-                    Vector3f(-0.5f, 0.5f, 0f)
-                ),
-                CooVertexFormat.POINT_TEXTURE_UV_FORMAT
+                ShaderUtil.genCylinder(1.0f, 18f, 1.0f),
+                CooVertexFormat.POINT_FORMAT
             )
         }
 
-        private val beamShader = ShaderProgramBuilder()
-            .vertex("test/vtx/billboard.vsh")
-            .fragment("test/frag/beam.fsh")
+        private val beamShader = AdvancedShaderProgramBuilder()
+            .vertex("test/vtx/world_beam.vsh")
+            .fragment("test/frag/procedural_beam_volume.fsh")
             .build()
-
-        private val beamTextures = SimpleTextures().apply {
-            addTexture(
-                IdentifierTexture(
-                    ResourceLocation.fromNamespaceAndPath(
-                        CooParticlesConstants.MOD_ID,
-                        "item/test_style.png"
-                    )
-                )
-            )
-        }
 
         private var initialized = false
 
         private fun initStatic() {
             if (initialized) return
             initialized = true
-            quadBuffer.init()
+            beamBuffer.init()
             beamShader.init()
-            beamTextures.init()
         }
     }
 
     @field:CodecField
-    var width: Float = 0.6f
+    var width: Float = 0.18f
 
     @field:CodecField
-    var height: Float = 3.0f
+    var height: Float = 6.0f
 
     @field:CodecField
-    var beamColor: Vector4f = Vector4f(0.5f, 0.9f, 1.0f, 1.0f)
+    var beamColor: Vector4f = Vector4f(0.38f, 0.92f, 1.18f, 0.92f)
 
-    private val size = Vector2f()
-    private val renderColor = Vector4f()
-    private val glowColor = Vector3f()
-    private val glowSamplePos = Vector3f()
-    private val glowOffset = Vector3f()
-    private val glowAxis = Vector3f()
+    @field:CodecField
+    var beamDirection: Vector3f = Vector3f(0.0f, 1.0f, 0.0f)
+
+    @field:CodecField
+    var pulseSpeed: Float = 1.35f
 
     override fun getRenderID(): ResourceLocation = ID
 
@@ -118,24 +110,38 @@ class TestTexturedBeamEntity(world: Level? = null, pos: Vec3 = Vec3.ZERO) : Auto
             return
         }
 
+        val direction = Vector3f(beamDirection)
+        if (direction.lengthSquared() < 1.0e-4f) {
+            direction.set(0.0f, 1.0f, 0.0f)
+        }
+        direction.normalize()
+        val rotation = Quaternionf().rotateTo(Vector3f(0.0f, 1.0f, 0.0f), direction)
+
         RenderSystem.disableCull()
         RenderSystem.enableDepthTest()
         RenderSystem.enableBlend()
-        RenderSystem.blendFunc(GL_SRC_ALPHA, GL_ONE)
+        RenderSystem.blendFunc(
+            GlStateManager.SourceFactor.SRC_ALPHA,
+            GlStateManager.DestFactor.ONE
+        )
         RenderSystem.depthMask(false)
         try {
             beamShader.useOnContext {
+                input.modelMatrix.pushMatrix()
+                input.modelMatrix.rotate(rotation)
+                input.modelMatrix.scale(width, height, width)
                 setMatrix4("projMat", input.projMatrix)
                 setMatrix4("viewMat", input.viewMatrix)
                 setMatrix4("transMat", input.modelMatrix)
-                size.set(width, height)
-                setFloat2("size", size)
-                setFloat4("color", renderColor.set(beamColor).mul(blend.directWeight))
+                setFloat3(
+                    "beamColor",
+                    Vector3f(beamColor.x, beamColor.y, beamColor.z).mul(blend.directWeight)
+                )
                 setFloat("time", getTime(input.tickDelta))
-                setInt("beamTex", 0)
-                beamTextures.drawWith {
-                    quadBuffer.draw()
-                }
+                setFloat("pulseSpeed", pulseSpeed)
+                setFloat("alpha", beamColor.w * blend.directWeight)
+                beamBuffer.draw()
+                input.modelMatrix.popMatrix()
             }
         } finally {
             RenderSystem.depthMask(true)
@@ -156,18 +162,21 @@ class TestTexturedBeamEntity(world: Level? = null, pos: Vec3 = Vec3.ZERO) : Auto
             return
         }
 
-        glowAxis.set(0.0f, 1.0f, 0.0f)
-        context.inverseViewRotationMatrix.transform(glowAxis).normalize()
-        glowColor.set(beamColor.x, beamColor.y, beamColor.z)
+        val beamAxis = Vector3f(beamDirection)
+        if (beamAxis.lengthSquared() < 1.0e-4f) {
+            beamAxis.set(0.0f, 1.0f, 0.0f)
+        }
+        beamAxis.normalize()
+        val glowColor = Vector3f(beamColor.x, beamColor.y, beamColor.z)
         val sampleIntensity = beamColor.w * (1.6f * blend.screenGlowWeight) / GLOW_SAMPLE_OFFSETS.size
-        val sampleRadius = max(width * 0.95f, height * 0.12f)
+        val sampleRadius = max(width * 1.4f, height * 0.10f)
 
         for (offset in GLOW_SAMPLE_OFFSETS) {
-            glowOffset.set(glowAxis).mul(height * offset)
-            glowSamplePos.set(pos.x.toFloat(), pos.y.toFloat(), pos.z.toFloat()).add(glowOffset)
+            val samplePos = Vector3f(pos.x.toFloat(), pos.y.toFloat(), pos.z.toFloat())
+                .add(Vector3f(beamAxis).mul(height * (offset + 0.5f)))
             output.add(
                 ScreenGlow(
-                    position = Vector3f(glowSamplePos),
+                    position = samplePos,
                     color = Vector3f(glowColor),
                     radius = sampleRadius,
                     intensity = sampleIntensity,
@@ -176,7 +185,6 @@ class TestTexturedBeamEntity(world: Level? = null, pos: Vec3 = Vec3.ZERO) : Auto
             )
         }
     }
-
     private fun effectRadius(): Float {
         return sqrt(width * width + height * height) * 0.5f
     }
