@@ -51,7 +51,7 @@ object ClientMaskBloomManager {
     private var screenSize = Vector2f(1.0f, 1.0f)
     private var frozenSceneColorTextureId = 0
     private var debugDumpPending = false
-    private var debugDumpArmed = true
+    private var debugDumpArmed = false
     private var debugForceSourceWhite = false
     private lateinit var sourceMaskPipe: SimpleShaderPipe
     private lateinit var prefilterPipe: SimpleShaderPipe
@@ -213,7 +213,7 @@ object ClientMaskBloomManager {
         cameraWorldPos = Vector3f()
         screenSize = Vector2f(1.0f, 1.0f)
         frozenSceneColorTextureId = 0
-        debugDumpArmed = true
+        debugDumpArmed = false
         if (!sourceHelperReady) {
             return
         }
@@ -263,7 +263,7 @@ object ClientMaskBloomManager {
                 if (debugForceSourceWhite) {
                     GL33.glClearColor(1.0f, 1.0f, 1.0f, 1.0f)
                     GL33.glClear(GL33.GL_COLOR_BUFFER_BIT)
-                    CooParticlesConstants.logger.info("Injected persistent white source fill for mask bloom debug")
+                    CooParticlesConstants.logger.debug("Injected persistent white source fill for mask bloom debug")
                 }
                 requests.forEach { request ->
                     val context = MaskBloomMaskRenderContext(
@@ -330,7 +330,7 @@ object ClientMaskBloomManager {
             ClientRenderPipelineManager.currentRenderWidth().toFloat(),
             ClientRenderPipelineManager.currentRenderHeight().toFloat()
         )
-        CooParticlesConstants.logger.info(
+        CooParticlesConstants.logger.debug(
             "MaskBloom frame freeze sceneColorTex={} renderSize={}x{} targetLabel={}",
             frozenSceneColorTextureId,
             screenSize.x.toInt(),
@@ -340,7 +340,7 @@ object ClientMaskBloomManager {
     }
 
     private fun logPipelineSnapshot(stage: String) {
-        CooParticlesConstants.logger.info(
+        CooParticlesConstants.logger.debug(
             "MaskBloom {} sceneColorTex={} sceneCopyOut={} sourceOut={} prefilterOut={} tentOut={} accumulateOut={} compositeOut={}",
             stage,
             frozenSceneColorTextureId,
@@ -396,6 +396,6 @@ object ClientMaskBloomManager {
             height,
             "mask-bloom-composite.png"
         )
-        CooParticlesConstants.logger.info("Dumped mask bloom debug images to cooparticlesapi-debug/")
+        CooParticlesConstants.logger.debug("Dumped mask bloom debug images to cooparticlesapi-debug/")
     }
 }

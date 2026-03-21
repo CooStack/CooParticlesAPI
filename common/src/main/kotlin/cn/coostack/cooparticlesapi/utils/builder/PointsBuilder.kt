@@ -81,6 +81,11 @@ class PointsBuilder {
 
     private val points = ArrayList<RelativeLocation>()
 
+    private fun addGeneratedWithOffset(
+        offset: RelativeLocation,
+        generatedPoints: Collection<RelativeLocation>
+    ): PointsBuilder = addPoints(generatedPoints.onEach { it.add(offset) })
+
     /**
      * 修改当前对称轴。
      *
@@ -97,6 +102,9 @@ class PointsBuilder {
      * @param image 图像点生成器（通常把图片像素映射为点）
      */
     fun addImage(image: ImagePointBuilder): PointsBuilder = addPoints(image.build())
+
+    fun addImage(offset: RelativeLocation, image: ImagePointBuilder): PointsBuilder =
+        addGeneratedWithOffset(offset, image.build())
 
     /**
      * 修改builder内所有的点，进行偏移
@@ -207,6 +215,9 @@ class PointsBuilder {
      */
     fun addFourierSeries(builder: FourierSeriesBuilder): PointsBuilder = addPoints(builder.build())
 
+    fun addFourierSeries(offset: RelativeLocation, builder: FourierSeriesBuilder): PointsBuilder =
+        addGeneratedWithOffset(offset, builder.build())
+
     /**
      * 对当前 builder 已加入的每个点执行一次操作（原地修改点坐标）。
      *
@@ -229,6 +240,9 @@ class PointsBuilder {
      */
     fun withPreset(handler: MathPresets.() -> Collection<RelativeLocation>): PointsBuilder =
         addPoints(handler(MathPresets))
+
+    fun withPreset(offset: RelativeLocation, handler: MathPresets.() -> Collection<RelativeLocation>): PointsBuilder =
+        addGeneratedWithOffset(offset, handler(MathPresets))
 
     /**
      * 填充三角形
@@ -272,6 +286,9 @@ class PointsBuilder {
      */
     fun addWith(handler: Math3DUtil.() -> Collection<RelativeLocation>): PointsBuilder =
         addPoints(handler(Math3DUtil))
+
+    fun addWith(offset: RelativeLocation, handler: Math3DUtil.() -> Collection<RelativeLocation>): PointsBuilder =
+        addGeneratedWithOffset(offset, handler(Math3DUtil))
 
     /**
      * 添加单个点到 builder。
@@ -376,6 +393,9 @@ class PointsBuilder {
     fun addDiscreteCircleXZ(r: Double, count: Int, discrete: Double): PointsBuilder =
         addWith { getDiscreteCircleXZ(r, count, discrete) }
 
+    fun addDiscreteCircleXZ(offset: RelativeLocation, r: Double, count: Int, discrete: Double): PointsBuilder =
+        addWith(offset) { getDiscreteCircleXZ(r, count, discrete) }
+
     /**
      * 添加一个标准圆（XZ 平面）。
      *
@@ -384,6 +404,9 @@ class PointsBuilder {
      */
     fun addCircle(r: Double, count: Int): PointsBuilder = addPoints(Math3DUtil.getCircleXZ(r, count))
 
+    fun addCircle(offset: RelativeLocation, r: Double, count: Int): PointsBuilder =
+        addWith(offset) { getCircleXZ(r, count) }
+
     /**
      * 添加一个半圆（XZ 平面）。
      *
@@ -391,6 +414,9 @@ class PointsBuilder {
      * @param count 点数量
      */
     fun addHalfCircle(r: Double, count: Int): PointsBuilder = addWith { getHalfCircleXZ(r, count) }
+
+    fun addHalfCircle(offset: RelativeLocation, r: Double, count: Int): PointsBuilder =
+        addWith(offset) { getHalfCircleXZ(r, count) }
 
     /**
      * 添加一个弧线 从-radian/2 到 radian/2
@@ -401,6 +427,16 @@ class PointsBuilder {
      * @param radian 弧度
      */
     fun addRadianCenter(r: Double, count: Int, radian: Double, rotate: Double = 0.0) = addWith {
+        getRadianXZCenter(r, count, radian, rotate)
+    }
+
+    fun addRadianCenter(
+        offset: RelativeLocation,
+        r: Double,
+        count: Int,
+        radian: Double,
+        rotate: Double = 0.0
+    ) = addWith(offset) {
         getRadianXZCenter(r, count, radian, rotate)
     }
 
@@ -416,6 +452,17 @@ class PointsBuilder {
         getRadianXZ(r, count, startRadian, endRadian, rotate)
     }
 
+    fun addRadian(
+        offset: RelativeLocation,
+        r: Double,
+        count: Int,
+        startRadian: Double,
+        endRadian: Double,
+        rotate: Double = 0.0
+    ) = addWith(offset) {
+        getRadianXZ(r, count, startRadian, endRadian, rotate)
+    }
+
 
     /**
      * 添加一个半圆（XZ 平面），并对其整体旋转。
@@ -427,6 +474,9 @@ class PointsBuilder {
     fun addHalfCircle(r: Double, count: Int, rotate: Double): PointsBuilder =
         addWith { getHalfCircleXZ(r, count, rotate) }
 
+    fun addHalfCircle(offset: RelativeLocation, r: Double, count: Int, rotate: Double): PointsBuilder =
+        addWith(offset) { getHalfCircleXZ(r, count, rotate) }
+
     /**
      * 添加一个球面点集。
      *
@@ -434,6 +484,9 @@ class PointsBuilder {
      * @param countPow 分辨率参数（越大点越密）
      */
     fun addBall(r: Double, countPow: Int): PointsBuilder = addPoints(Math3DUtil.getBallLocations(r, countPow))
+
+    fun addBall(offset: RelativeLocation, r: Double, countPow: Int): PointsBuilder =
+        addWith(offset) { getBallLocations(r, countPow) }
 
     /**
      * 添加摆线/旋轮线图形（Cycloid / Hypotrochoid / Epitrochoid 风格）。
@@ -448,6 +501,18 @@ class PointsBuilder {
     fun addCycloidGraphic(
         r1: Double, r2: Double, w1: Int, w2: Int, count: Int, scale: Double
     ): PointsBuilder = addPoints(Math3DUtil.getCycloidGraphic(r1, r2, w1, w2, count, scale))
+
+    fun addCycloidGraphic(
+        offset: RelativeLocation,
+        r1: Double,
+        r2: Double,
+        w1: Int,
+        w2: Int,
+        count: Int,
+        scale: Double
+    ): PointsBuilder = addWith(offset) {
+        getCycloidGraphic(r1, r2, w1, w2, count, scale)
+    }
 
     /**
      * 将另一个 builder 的点集加上一个平移 [origin] 后加入当前 builder。
@@ -470,6 +535,9 @@ class PointsBuilder {
     fun addPolygonInCircle(n: Int, edgeCount: Int, r: Double): PointsBuilder =
         addPoints(Math3DUtil.getPolygonInCircleLocations(n, edgeCount, r))
 
+    fun addPolygonInCircle(offset: RelativeLocation, n: Int, edgeCount: Int, r: Double): PointsBuilder =
+        addWith(offset) { getPolygonInCircleLocations(n, edgeCount, r) }
+
     /**
      * 添加圆内接正 n 边形的顶点点集。
      *
@@ -478,6 +546,9 @@ class PointsBuilder {
      */
     fun addPolygonInCircleVertices(n: Int, r: Double): PointsBuilder =
         addPoints(Math3DUtil.getPolygonInCircleVertices(n, r))
+
+    fun addPolygonInCircleVertices(offset: RelativeLocation, n: Int, r: Double): PointsBuilder =
+        addWith(offset) { getPolygonInCircleVertices(n, r) }
 
     /**
      * 添加圆面点集（XZ 平面的一圈圈圆环）。
@@ -489,6 +560,9 @@ class PointsBuilder {
     fun addRoundShape(r: Double, step: Double, preCircleCount: Int): PointsBuilder =
         addPoints(Math3DUtil.getRoundScapeLocations(r, step, preCircleCount))
 
+    fun addRoundShape(offset: RelativeLocation, r: Double, step: Double, preCircleCount: Int): PointsBuilder =
+        addWith(offset) { getRoundScapeLocations(r, step, preCircleCount) }
+
     /**
      * 添加圆面点集（XZ 平面），并允许不同半径的圆环点数在区间内变化。
      *
@@ -499,6 +573,16 @@ class PointsBuilder {
      */
     fun addRoundShape(r: Double, step: Double, minCircleCount: Int, maxCircleCount: Int): PointsBuilder =
         addWith { getRoundScapeLocations(r, step, minCircleCount, maxCircleCount) }
+
+    fun addRoundShape(
+        offset: RelativeLocation,
+        r: Double,
+        step: Double,
+        minCircleCount: Int,
+        maxCircleCount: Int
+    ): PointsBuilder = addWith(offset) {
+        getRoundScapeLocations(r, step, minCircleCount, maxCircleCount)
+    }
 
     /**
      * 添加线段点集（start -> end）。
@@ -583,6 +667,16 @@ class PointsBuilder {
     fun addDottedLine(target: RelativeLocation, totalCount: Int, dottedCount: Int, emptyStep: Double): PointsBuilder =
         addWith { Math3DUtil.generateDottedLine(target, totalCount, dottedCount, emptyStep) }
 
+    fun addDottedLine(
+        offset: RelativeLocation,
+        target: RelativeLocation,
+        totalCount: Int,
+        dottedCount: Int,
+        emptyStep: Double
+    ): PointsBuilder = addWith(offset) {
+        generateDottedLine(target, totalCount, dottedCount, emptyStep)
+    }
+
     /**
      * 添加虚线圆环（XZ 平面）。
      *
@@ -593,6 +687,16 @@ class PointsBuilder {
      */
     fun addDottedCircle(r: Double, totalCount: Int, dottedCount: Int, emptyStep: Double): PointsBuilder =
         addWith { Math3DUtil.generateDottedCircle(r, totalCount, dottedCount, emptyStep) }
+
+    fun addDottedCircle(
+        offset: RelativeLocation,
+        r: Double,
+        totalCount: Int,
+        dottedCount: Int,
+        emptyStep: Double
+    ): PointsBuilder = addWith(offset) {
+        generateDottedCircle(r, totalCount, dottedCount, emptyStep)
+    }
 
     /**
      * 添加带衰减的闪电折线点（节点 + 每段连线采样）。
@@ -737,6 +841,19 @@ class PointsBuilder {
         generateSpiralCircleXZ(startRadius, endRadius, height, step, rotateSpeed, radiusBias, heightBias)
     }
 
+    fun addSpiral(
+        offset: RelativeLocation,
+        startRadius: Double,
+        endRadius: Double,
+        height: Double,
+        step: Double,
+        rotateSpeed: Double,
+        radiusBias: Double = 1.0,
+        heightBias: Double = 1.0
+    ): PointsBuilder = addWith(offset) {
+        generateSpiralCircleXZ(startRadius, endRadius, height, step, rotateSpeed, radiusBias, heightBias)
+    }
+
     /**
      * 添加螺旋上升点集（显式指定点数）。
      *
@@ -751,6 +868,19 @@ class PointsBuilder {
         radiusBias: Double = 1.0,
         heightBias: Double = 1.0
     ): PointsBuilder = addWith {
+        generateSpiralCircleXZ(startRadius, endRadius, height, count, rotateSpeed, radiusBias, heightBias)
+    }
+
+    fun addSpiral(
+        offset: RelativeLocation,
+        startRadius: Double,
+        endRadius: Double,
+        height: Double,
+        count: Int,
+        rotateSpeed: Double,
+        radiusBias: Double = 1.0,
+        heightBias: Double = 1.0
+    ): PointsBuilder = addWith(offset) {
         generateSpiralCircleXZ(startRadius, endRadius, height, count, rotateSpeed, radiusBias, heightBias)
     }
 

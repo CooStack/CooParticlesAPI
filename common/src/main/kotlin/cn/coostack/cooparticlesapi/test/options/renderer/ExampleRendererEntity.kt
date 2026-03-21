@@ -158,7 +158,6 @@ class ExampleRendererEntity(world: Level?, pos: Vec3 = Vec3.ZERO) : AutoRenderEn
             )
         )
     }
-
     override fun release(instance: RenderEntityInstance<ExampleRendererEntity>) {
         releaseVisualResources()
     }
