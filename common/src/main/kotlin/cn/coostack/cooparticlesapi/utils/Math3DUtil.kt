@@ -1,8 +1,12 @@
 package cn.coostack.cooparticlesapi.utils
 
+import cn.coostack.cooparticlesapi.barrages.HitBox
 import cn.coostack.cooparticlesapi.extend.asRelative
 import cn.coostack.cooparticlesapi.extend.minus
+import cn.coostack.cooparticlesapi.extend.plus
 import cn.coostack.cooparticlesapi.extend.randomVec3
+import cn.coostack.cooparticlesapi.extend.times
+import cn.coostack.cooparticlesapi.extend.unaryMinus
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -1565,26 +1569,18 @@ object Math3DUtil {
         if (to.length() < 1e-6) return
         to.normalize()
 
-        // 你希望的世界 Up（永远用 +Y，不要用 -Y）
         val worldUp = Vector3f(0f, 1f, 0f)
 
-        // 1) 先把“局部 forward”对齐到目标方向
-        // 你画的是 +Z(蓝) 当 forward，所以 from = +Z
         val localForward = Vector3f(0f, 0f, 1f)
 
         val qAlign = Quaternionf().rotateTo(localForward, to)
 
-        // 2) 再修正 twist：让“局部 up”尽量贴近 worldUp（消除滚动）
         val localUp = Vector3f(0f, 1f, 0f)
         val curUp = localUp.rotate(qAlign, Vector3f()) // 当前 up（世界空间）
-
-        // 把 up 投影到与 forward 垂直的平面，避免 forward//up 时数值退化
         val upProj = projectOnPlane(worldUp, to)
         val curUpProj = projectOnPlane(curUp, to)
 
-        // 若投影退化（t≈worldUp），选择一个备用 up 参考，避免跳变
         if (upProj.lengthSquared() < 1e-8f || curUpProj.lengthSquared() < 1e-8f) {
-            // 备用参考：世界 Z（也可以换 X）
             val altUp = Vector3f(0f, 0f, 1f)
             val upProj2 = projectOnPlane(altUp, to)
             val curUpProj2 = projectOnPlane(curUp, to)
@@ -1596,7 +1592,6 @@ object Math3DUtil {
                 rotation.set(qTwist.mul(qAlign))
                 return
             }
-            // 实在退化就只用对齐
             rotation.set(qAlign)
             return
         }
@@ -1607,8 +1602,88 @@ object Math3DUtil {
         val twist = signedAngleAroundAxis(curUpProj, upProj, to)
         val qTwist = Quaternionf().rotateAxis(twist, to.x, to.y, to.z)
 
-        // 组合：先对齐 forward，再绕 forward 修正 up
         rotation.set(qTwist.mul(qAlign))
+    }
+
+    /**
+     * # 判断点是否被包含在球囊中
+     * - 一般用于判断碰撞是否穿过目标点
+     * @param current 球心当前位置
+     * @param tickVelocity 球心高度和高度方向
+     * @param checkRadius 球的半径
+     * @param targetPos 目标检测点
+     * @return
+     */
+    fun isPointCrossBySphere(current: Vec3, tickVelocity: Vec3, checkRadius: Number, targetPos: Vec3): Boolean {
+        if (tickVelocity.lengthSqr() <= 1e-12) return targetPos.distanceToSqr(current) <= checkRadius.toDouble()
+
+        val deltaTarget = targetPos - current
+        val radius = checkRadius.toDouble()
+
+        if (tickVelocity.x == 0.0 && tickVelocity.y == 0.0 && tickVelocity.z == 0.0) {
+            val delta = targetPos - current
+            return delta.lengthSqr() <= radius * radius
+        }
+
+
+        // 线段最近点
+        val t = (deltaTarget.dot(tickVelocity) / tickVelocity.lengthSqr()).coerceIn(0.0, 1.0)
+
+        val closest = current + tickVelocity * t
+
+        val len = closest.distanceToSqr(targetPos)
+
+        return (radius * radius) >= len
+    }
+
+    /**
+     * # 判断点是否被包含在 Box 射线中
+     * - 一般用于判断碰撞盒是否穿过目标点
+     * @param current Box 中心当前位置
+     * @param tickVelocity Box 中心本 tick 位移
+     * @param checkBox 检测 Box
+     * @param targetPos 目标检测点
+     * @return
+     */
+    fun isPointCrossByBox(current: Vec3, tickVelocity: Vec3, checkBox: HitBox, targetPos: Vec3): Boolean {
+        val minX = targetPos.x - checkBox.x2
+        val minY = targetPos.y - checkBox.y2
+        val minZ = targetPos.z - checkBox.z2
+        val maxX = targetPos.x - checkBox.x1
+        val maxY = targetPos.y - checkBox.y1
+        val maxZ = targetPos.z - checkBox.z1
+
+        if (tickVelocity.lengthSqr() <= 1e-12) {
+            return current.x in minX..maxX
+                    && current.y in minY..maxY
+                    && current.z in minZ..maxZ
+        }
+
+        var minTime = 0.0
+        var maxTime = 1.0
+
+        fun updateAxisRange(start: Double, velocity: Double, min: Double, max: Double): Boolean {
+            if (abs(velocity) <= 1e-12) {
+                return start in min..max
+            }
+
+            var startTime = (min - start) / velocity
+            var endTime = (max - start) / velocity
+
+            if (startTime > endTime) {
+                val cache = startTime
+                startTime = endTime
+                endTime = cache
+            }
+
+            minTime = max(minTime, startTime)
+            maxTime = min(maxTime, endTime)
+            return minTime <= maxTime
+        }
+
+        return updateAxisRange(current.x, tickVelocity.x, minX, maxX)
+                && updateAxisRange(current.y, tickVelocity.y, minY, maxY)
+                && updateAxisRange(current.z, tickVelocity.z, minZ, maxZ)
     }
 
     private fun projectOnPlane(v: Vector3f, nUnit: Vector3f): Vector3f {

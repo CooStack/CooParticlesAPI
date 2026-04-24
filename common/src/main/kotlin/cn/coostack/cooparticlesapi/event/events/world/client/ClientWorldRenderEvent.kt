@@ -1,13 +1,12 @@
 package cn.coostack.cooparticlesapi.event.events.world.client
 
-import cn.coostack.cooparticlesapi.event.events.world.WorldEvent
+import cn.coostack.cooparticlesapi.event.events.world.ClientWorldEvent
 import cn.coostack.cooparticlesapi.utils.MinecraftRendererUtil
 import com.mojang.blaze3d.vertex.PoseStack
 import net.minecraft.client.Camera
 import net.minecraft.client.DeltaTracker
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.client.renderer.LevelRenderer
-import net.minecraft.client.renderer.LightTexture
 import net.minecraft.client.renderer.MultiBufferSource
 import net.minecraft.world.phys.Vec3
 import org.joml.Matrix4f
@@ -38,7 +37,7 @@ class ClientWorldRenderEvent(
     val worldRenderer: LevelRenderer,
     val camera: Camera,
     val delta: DeltaTracker
-) : WorldEvent(world) {
+) : ClientWorldEvent(world) {
     /**
      * 后面会兼容其他的阶段
      *

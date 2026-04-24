@@ -20,7 +20,10 @@ object ParticleCompositionHelper {
      * @return 这个实例按照注解的参数的编解码器
      */
     fun generateCodec(randomInstance: ParticleComposition): StreamCodec<FriendlyByteBuf, ParticleComposition> {
-        val type = randomInstance::class.java
+        return generateCodec(randomInstance::class.java)
+    }
+
+    fun generateCodec(type: Class<out ParticleComposition>): StreamCodec<FriendlyByteBuf, ParticleComposition> {
         val constructor = type.getConstructor(Vec3::class.java, Level::class.java)
         return StreamCodec.of(
             { buf, composition ->

@@ -8,12 +8,10 @@ import cn.coostack.cooparticlesapi.network.particle.emitters.SimpleRandomParticl
 import cn.coostack.cooparticlesapi.network.particle.emitters.command.ParticleCommandQueue
 import cn.coostack.cooparticlesapi.network.particle.emitters.command.ParticleDragCommand
 import cn.coostack.cooparticlesapi.network.particle.emitters.command.ParticleNoiseCommand
-import cn.coostack.cooparticlesapi.particles.CooParticleTextureSheet
 import cn.coostack.cooparticlesapi.particles.control.ParticleControler
 import cn.coostack.cooparticlesapi.utils.GraphMathHelper
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import cn.coostack.cooparticlesapi.utils.builder.PointsBuilder
-import net.minecraft.client.particle.ParticleRenderType
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
@@ -66,7 +64,7 @@ class TestWaveEmitters : AutoParticleEmitters {
         light = 15
         speedLimit = 12.0
         faceToCamera = true
-        setTextureSheet(CooParticleTextureSheet.ADDITION_BLEND_TRANSLUCENT)
+        setTextureSheet("ADDITION_BLEND_TRANSLUCENT")
     }
 
     /**

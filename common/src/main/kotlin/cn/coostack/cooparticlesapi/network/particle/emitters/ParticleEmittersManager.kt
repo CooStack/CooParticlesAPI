@@ -3,6 +3,7 @@ package cn.coostack.cooparticlesapi.network.particle.emitters
 import cn.coostack.cooparticlesapi.CooParticlesAPI
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
+import cn.coostack.cooparticlesapi.annotations.emitter.handle.ParticleEmittersHelper
 import cn.coostack.cooparticlesapi.event.CooEventBus
 import cn.coostack.cooparticlesapi.event.events.particle.emitter.EmitterRemoveEvent
 import cn.coostack.cooparticlesapi.event.events.particle.emitter.EmitterSpawnEvent
@@ -256,6 +257,22 @@ object ParticleEmittersManager {
     private fun findListenerHandlers(target: SimpleClassInfo) {
         val clazz = target.toClass()
         if (!ParticleEmitters::class.java.isAssignableFrom(clazz)) {
+            return
+        }
+        if (AutoParticleEmitters::class.java.isAssignableFrom(clazz)) {
+            @Suppress("UNCHECKED_CAST")
+            register(
+                clazz.name,
+                ParticleEmittersHelper.generateClassParticleCodec(clazz as Class<out ClassParticleEmitters>)
+            )
+            return
+        }
+        if (AutoEmitters::class.java.isAssignableFrom(clazz)) {
+            @Suppress("UNCHECKED_CAST")
+            register(
+                clazz.name,
+                ParticleEmittersHelper.generateClassEmittersCodec(clazz as Class<out ClassEmitters>)
+            )
             return
         }
         // 获取instance

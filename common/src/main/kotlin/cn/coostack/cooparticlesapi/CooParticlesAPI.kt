@@ -3,6 +3,7 @@ package cn.coostack.cooparticlesapi
 import cn.coostack.cooparticlesapi.animation.AnimateManager
 import cn.coostack.cooparticlesapi.barrages.BarrageManager
 import cn.coostack.cooparticlesapi.display.DisplayEntityManager
+import cn.coostack.cooparticlesapi.enums.DistType
 import cn.coostack.cooparticlesapi.event.CooEventBus
 import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
 import cn.coostack.cooparticlesapi.network.animation.PathMotionManager
@@ -55,9 +56,11 @@ object CooParticlesAPI {
         CooEventBus.initListeners()
         ParticleEventHandlerManager.registerScanner()
         ParticleEmittersManager.registerScanner()
-        DisplayEntityManager.registerScanner()
         ParticleCompositionManager.registerScanner()
-        RenderEntityAutoRegistry.registerScanner()
+        if (CooParticlesServices.PLATFORM.getDistType() == DistType.CLIENT) {
+            DisplayEntityManager.registerScanner()
+            RenderEntityAutoRegistry.registerScanner()
+        }
     }
 
     fun onServerStart(server: MinecraftServer) {

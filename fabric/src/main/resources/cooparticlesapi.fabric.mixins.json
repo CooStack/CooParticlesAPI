@@ -4,7 +4,9 @@
   "package": "cn.coostack.cooparticlesapi.mixin",
   "refmap": "${mod_id}.refmap.json",
   "compatibilityLevel": "JAVA_21",
-  "mixins": [],
+  "mixins": [
+    "event.world.server.ServerWorldMixin"
+  ],
   "client": [
     "DeathScreenOpenListenerMinecraftMixin",
     "event.entity.player.ItemStackMixinFabric"

@@ -1,6 +1,7 @@
 package cn.coostack.cooparticlesapi.network.particle.composition
 
 import cn.coostack.cooparticlesapi.api.controler.Tickable
+import cn.coostack.cooparticlesapi.network.particle.composition.AutoParticleComposition
 import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
 import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
 import cn.coostack.cooparticlesapi.particles.control.ParticleControler
@@ -25,6 +26,10 @@ import kotlin.math.min
  */
 abstract class SequencedParticleComposition(position: Vec3, world: Level? = null) :
     ParticleComposition(position, world) {
+
+    constructor(world: Level) : this(Vec3.ZERO, world)
+    constructor(world: Level, pos: Vec3) : this(pos, world)
+
     companion object {
         @JvmStatic
         fun encodeBase(data: SequencedParticleComposition, buf: FriendlyByteBuf) {

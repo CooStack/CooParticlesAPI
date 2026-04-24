@@ -3,6 +3,7 @@ package cn.coostack.cooparticlesapi.network.particle.composition.manager
 import cn.coostack.cooparticlesapi.CooParticlesAPI
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
+import cn.coostack.cooparticlesapi.annotations.composition.handler.ParticleCompositionHelper
 import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleCompositionS2C
 import cn.coostack.cooparticlesapi.network.particle.composition.ParticleComposition
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
@@ -48,6 +49,10 @@ object ParticleCompositionManager {
         registeredTypes[id] = codec
     }
 
+    fun register(type: Class<out ParticleComposition>) {
+        registeredTypes[type.name] = ParticleCompositionHelper.generateCodec(type)
+    }
+
     fun registerScanner() {
         val start = System.currentTimeMillis()
         CooParticlesConstants.logger.info("正在自动注册 Compositions")
@@ -58,16 +63,8 @@ object ParticleCompositionManager {
                 if (!ParticleComposition::class.java.isAssignableFrom(clazz)) {
                     return@forEach
                 }
-                // 获取instance
-                val instance =
-                    clazz.declaredConstructors.find {
-                        it.parameterCount == 0
-                    }?.newInstance() ?: clazz.getDeclaredConstructor(
-                        Vec3::class.java,
-                        Level::class.java
-                    )
-                        .newInstance(Vec3.ZERO, null)
-                register(instance as ParticleComposition)
+                @Suppress("UNCHECKED_CAST")
+                register(clazz as Class<out ParticleComposition>)
             }
         val end = System.currentTimeMillis()
         CooParticlesConstants.logger.info("Compositions 注册完成 耗时 ${end - start} ms")

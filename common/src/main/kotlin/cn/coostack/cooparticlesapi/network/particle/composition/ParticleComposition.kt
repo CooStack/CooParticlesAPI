@@ -2,19 +2,15 @@ package cn.coostack.cooparticlesapi.network.particle.composition
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.annotations.codec.CodecHelper
-import cn.coostack.cooparticlesapi.display.DisplayEntity
 import cn.coostack.cooparticlesapi.extend.asRelative
-import cn.coostack.cooparticlesapi.extend.plus
 import cn.coostack.cooparticlesapi.api.controler.server.ServerControler
 import cn.coostack.cooparticlesapi.network.particle.composition.manager.ParticleCompositionManager
-import cn.coostack.cooparticlesapi.network.particle.style.ParticleGroupStyle
 import cn.coostack.cooparticlesapi.api.controler.Controlable
 import cn.coostack.cooparticlesapi.api.controler.Tickable
 import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
 import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
 import cn.coostack.cooparticlesapi.particles.control.ParticleControler
 import cn.coostack.cooparticlesapi.particles.control.RemoveReason
-import cn.coostack.cooparticlesapi.particles.control.group.ControlableParticleGroup
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import cn.coostack.cooparticlesapi.utils.helper.impl.composition.CompositionStatusHelper
@@ -38,7 +34,7 @@ import kotlin.math.PI
  * 使用自动注册
  * @see cn.coostack.cooparticlesapi.annotations.composition.ParticleCompositionRegister
  */
-abstract class ParticleComposition(var position: Vec3, var world: Level? = null) : ServerControler<ParticleComposition>,
+abstract class ParticleComposition : ServerControler<ParticleComposition>,
     Controlable<ParticleComposition>, Tickable<ParticleComposition> {
     companion object {
         @JvmStatic
@@ -72,14 +68,35 @@ abstract class ParticleComposition(var position: Vec3, var world: Level? = null)
         }
     }
 
+    constructor(pos: Vec3, world: Level?) {
+        this.position = pos
+        this.world = world
+    }
+
+    constructor(world: Level) {
+        this.world = world
+    }
+
+    constructor(world: Level, pos: Vec3) {
+        this.world = world
+        this.position = pos
+    }
+
+
+    var position: Vec3 = Vec3.ZERO
+        internal set
+    var world: Level? = null
+        internal set
+
     /**
      * 粒子可视范围
      */
-    var visibleRange = 512.0
+    var visibleRange = 256.0
 
     var scale = 1.0
-
+        private set
     var client = false
+        protected set
 
     var displayed = false
         protected set
@@ -174,14 +191,14 @@ abstract class ParticleComposition(var position: Vec3, var world: Level? = null)
         Math3DUtil.rotatePointsToPoint(
             map.values.toList(), to, axis
         )
-        this.axis = to.clone()
+        this.axis.copyFrom(to)
     }
 
     open fun preRotateAsAxis(map: Map<CompositionData, RelativeLocation>, axis: RelativeLocation, angle: Double) {
         Math3DUtil.rotateAsAxis(
             map.values.toList(), axis, angle
         )
-        this.axis = axis.clone()
+        this.axis.copyFrom(axis)
     }
 
     open fun preRotateAsAxis(map: Map<CompositionData, RelativeLocation>, angle: Double) {
@@ -210,7 +227,7 @@ abstract class ParticleComposition(var position: Vec3, var world: Level? = null)
         this.canceled = other.canceled
         this.roll = other.roll
         this.controlUUID = other.controlUUID
-        this.axis = other.axis
+        this.axis.copyFrom(other.axis)
         this.status.setStatus(other.status.displayStatus)
         this.status.closedInternal = other.status.closedInternal
         this.status.updateCurrent(other.status.current)
@@ -308,13 +325,13 @@ abstract class ParticleComposition(var position: Vec3, var world: Level? = null)
 
     override fun rotateToPoint(to: RelativeLocation) {
         if (!client) {
-            axis = to
+            axis.copyFrom(to)
             return
         }
         Math3DUtil.rotatePointsToPoint(
             particleRotatedLocations, to, axis
         )
-        axis = to
+        axis.copyFrom(to)
         toggleRelative()
     }
 
@@ -327,21 +344,14 @@ abstract class ParticleComposition(var position: Vec3, var world: Level? = null)
         }
 
         if (!client) {
-            axis.apply {
-                this.x = to.x
-                this.y = to.y
-                this.z = to.z
-            }
+            axis.copyFrom(to)
             return
         }
         Math3DUtil.rotateToWithRoll(
             particleRotatedLocations, axis, to, radian
         )
-        axis.apply {
-            this.x = to.x
-            this.y = to.y
-            this.z = to.z
-        }
+        axis.copyFrom(to)
+
         toggleRelative()
     }
 
@@ -349,7 +359,7 @@ abstract class ParticleComposition(var position: Vec3, var world: Level? = null)
         this.roll += radian
         if (this.roll >= 2 * PI) {
             this.roll -= 2 * PI
-        } else if (this.roll <= 2 * PI) {
+        } else if (this.roll <= -2 * PI) {
             this.roll += 2 * PI
         }
         if (!client) {

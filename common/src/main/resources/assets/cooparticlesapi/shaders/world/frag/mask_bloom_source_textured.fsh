@@ -12,6 +12,8 @@ uniform float alphaWeight;
 uniform float emissiveWeight;
 uniform bool fullQuadMask;
 uniform float fullQuadMaskSoftness;
+uniform bool useSpriteUv;
+uniform vec4 spriteUvRect;
 
 float luminance(vec3 value) {
     return dot(value, vec3(0.2126, 0.7152, 0.0722));
@@ -27,8 +29,15 @@ float rectangularFeather(vec2 sampleUv, float softness) {
     return smoothstep(0.0, clamp(softness, 1.0e-4, 0.45), edgeDistance);
 }
 
+vec2 resolveUv(vec2 baseUv) {
+    if (!useSpriteUv) {
+        return baseUv;
+    }
+    return spriteUvRect.xy + baseUv * spriteUvRect.zw;
+}
+
 void main() {
-    vec4 rawSample = texture(tex, uv);
+    vec4 rawSample = texture(tex, resolveUv(uv));
     vec3 boostedRgb = rawSample.rgb * tint.rgb * max(sourceBoost, 0.0);
     vec4 sampled = vec4(boostedRgb, rawSample.a * tint.a);
     if (fullQuadMask) {

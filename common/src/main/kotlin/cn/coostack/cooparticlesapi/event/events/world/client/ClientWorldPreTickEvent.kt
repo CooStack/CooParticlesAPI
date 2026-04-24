@@ -1,9 +1,7 @@
 package cn.coostack.cooparticlesapi.event.events.world.client
 
-import cn.coostack.cooparticlesapi.event.events.client.ClientEvent
-import cn.coostack.cooparticlesapi.event.events.world.WorldEvent
-import net.minecraft.client.Minecraft
+import cn.coostack.cooparticlesapi.event.events.world.ClientWorldEvent
 import net.minecraft.client.multiplayer.ClientLevel
 
-class ClientWorldPreTickEvent(world: ClientLevel) : WorldEvent(world) {
+class ClientWorldPreTickEvent(world: ClientLevel) : ClientWorldEvent(world) {
 }

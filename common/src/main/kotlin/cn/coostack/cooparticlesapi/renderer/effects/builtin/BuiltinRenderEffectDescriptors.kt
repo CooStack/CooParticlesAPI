@@ -569,6 +569,14 @@ object BuiltinRenderEffectDescriptors {
      * 再通过更宽的 blur 和更强的 composite 形成类似离屏截图里那种白色泛光。
      */
     fun defaultRenderEntityModelGlowConfig(): MaskBloomConfig {
-        return MaskBloomConfig()
+        return MaskBloomConfig(
+            blurSigma = 15.0f,
+            blurRange = 10.0f,
+            intensity = 2.8f,
+            baseMaskIntensity = 0.24f,
+            threshold = 0.0f,
+            thresholdSoftness = 0.015f,
+            tint = Vector3f(1.0f, 1.0f, 1.0f)
+        )
     }
 }

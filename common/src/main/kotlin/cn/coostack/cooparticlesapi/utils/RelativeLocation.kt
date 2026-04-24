@@ -279,6 +279,7 @@ data class RelativeLocation(var x: Double, var y: Double, var z: Double) {
         return this.normalize() * max
     }
 
+
     fun lengthCoerceAtLeast(min: Double): RelativeLocation {
         val len = length()
         val abs = abs(len)

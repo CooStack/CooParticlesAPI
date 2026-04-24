@@ -7,6 +7,7 @@ import cn.coostack.cooparticlesapi.particles.ControlableParticleEffect
 import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
 import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
 import cn.coostack.cooparticlesapi.particles.impl.ControlableEndRodEffect
+import cn.coostack.cooparticlesapi.supports.TextureSheetsEnum
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import net.minecraft.client.multiplayer.ClientLevel
@@ -266,10 +267,30 @@ open class ControlableParticleData : SerializableData {
         }
     }
 
+    /**
+     * 如果你的参数暴露在外面 可能会被服务器调用
+     * 则使用这个
+     *
+     * 输入的参数是你的目标的RenderType的toString的内容
+     *
+     * @param value
+     */
     fun setTextureSheet(value: String) {
         this.textureSheet = value
     }
 
+    fun setTextureSheet(value: TextureSheetsEnum){
+        this.textureSheet = value.name
+    }
+
+    /**
+     * 如果你的参数暴露在外面 （可能会被服务器环境调用）
+     * 那就不要使用这个方法 使用字符串的
+     * 因为脑残的设计导致服务器无法访问 ParticleRenderType 类
+     * [setTextureSheet(String)]
+     *
+     * @param value
+     */
     fun setTextureSheet(value: ParticleRenderType) {
         this.textureSheet = value.toString()
     }

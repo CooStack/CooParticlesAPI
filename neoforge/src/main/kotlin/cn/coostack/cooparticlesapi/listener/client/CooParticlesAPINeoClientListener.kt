@@ -25,14 +25,6 @@ import net.neoforged.neoforge.event.tick.LevelTickEvent
     value = [Dist.CLIENT]
 )
 object CooParticlesAPINeoClientListener {
-    @SubscribeEvent
-    fun tickClient(event: LevelTickEvent.Post) {
-        if (!event.level.isClientSide) {
-            return
-        }
-        val event = ClientWorldPostTickEvent(event.level as ClientLevel)
-        CooEventBus.call(event)
-    }
 
     @SubscribeEvent
     fun onDisconnect(event: PlayerEvent.PlayerLoggedOutEvent) {
@@ -45,15 +37,6 @@ object CooParticlesAPINeoClientListener {
         CooEventBus.call(ClientWorldChangeEvent(event.entity.level()))
     }
 
-    @SubscribeEvent
-    fun tickClientWorld(event: LevelTickEvent.Pre) {
-        if (!event.level.isClientSide) {
-            return
-        }
-        CooParticlesAPIClient.tickClient(event.level as ClientLevel)
-        val event = ClientWorldPreTickEvent(event.level as ClientLevel)
-        CooEventBus.call(event)
-    }
 
     @SubscribeEvent
     fun tickClientPre(event: ClientTickEvent.Pre) {
@@ -63,7 +46,7 @@ object CooParticlesAPINeoClientListener {
     }
 
     @SubscribeEvent
-    fun tickClientPre(event: ClientTickEvent.Post) {
+    fun tickClientPost(event: ClientTickEvent.Post) {
         val e = ClientPostTickEvent(Minecraft.getInstance())
         CooEventBus.call(e)
     }

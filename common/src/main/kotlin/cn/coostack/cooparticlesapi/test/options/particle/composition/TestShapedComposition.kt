@@ -57,6 +57,7 @@ class TestShapedComposition(position: Vec3, world: Level? = null) : AutoParticle
                             ) {
                                 CompositionData().addParticleInstanceInit {
                                     textureSheet = CooParticleTextureSheet.ADDITION_BLEND_TRANSLUCENT
+
                                 }
                             }
                             .applyDisplayAction {
@@ -84,6 +85,7 @@ class TestShapedComposition(position: Vec3, world: Level? = null) : AutoParticle
                                     this.order = it
                                 }.addParticleInstanceInit {
                                     textureSheet = CooParticleTextureSheet.ADDITION_BLEND_TRANSLUCENT
+
                                 }
                             }
                             .applyDisplayAction {

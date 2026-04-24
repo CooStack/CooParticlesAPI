@@ -37,7 +37,10 @@ object ParticleEmittersHelper {
     }
 
     fun generateCodec(randomInstance: ClassParticleEmitters): StreamCodec<RegistryFriendlyByteBuf, ParticleEmitters> {
-        val type = randomInstance::class.java
+        return generateClassParticleCodec(randomInstance::class.java)
+    }
+
+    fun generateClassParticleCodec(type: Class<out ClassParticleEmitters>): StreamCodec<RegistryFriendlyByteBuf, ParticleEmitters> {
         val constructor = type.getConstructor(Vec3::class.java, Level::class.java)
         return StreamCodec.of(
             { buf, emitter ->
@@ -66,7 +69,10 @@ object ParticleEmittersHelper {
     }
 
     fun generateCodec(randomInstance: ClassEmitters): StreamCodec<RegistryFriendlyByteBuf, ParticleEmitters> {
-        val type = randomInstance::class.java
+        return generateClassEmittersCodec(randomInstance::class.java)
+    }
+
+    fun generateClassEmittersCodec(type: Class<out ClassEmitters>): StreamCodec<RegistryFriendlyByteBuf, ParticleEmitters> {
         val constructor = type.getConstructor(Vec3::class.java, Level::class.java)
         return StreamCodec.of(
             { buf, emitter ->

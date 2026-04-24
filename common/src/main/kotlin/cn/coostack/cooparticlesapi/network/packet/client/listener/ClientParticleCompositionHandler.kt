@@ -14,20 +14,23 @@ object ClientParticleCompositionHandler {
         context: ClientContext
     ) {
         val distanceRemove = payload.distanceRemove
-        val new = decodeData(payload)
-        new.world = context.player().level()
-        val old = ParticleCompositionManager.clientView[payload.uuid] ?: let {
-            // 新建
-            if (!distanceRemove) {
-                ParticleCompositionManager.addClient(new)
-            }
-            return
-        }
-        // 更新
+        // 优化新建
+        var new: ParticleComposition? = null
+        val old = ParticleCompositionManager.clientView[payload.uuid]
         if (!distanceRemove) {
-            old.update(new)
+            // 新建 如果old为null 则直接作为新的添加在里面
+            new = decodeData(payload)
+            new.world = context.player().level()
+        }
+        if (old == null && !distanceRemove) {
+            ParticleCompositionManager.addClient(new!!)
+        }
+        // new == null时 distanceRemove应该为true
+        if (distanceRemove) {
+            old?.remove()
         } else {
-            old.remove()
+            // new 不是null 且 old 不为null 更新old
+            old!!.update(new!!)
         }
     }
 
