@@ -74,6 +74,11 @@ abstract class AbstractBarrage(
         return loc
     }
 
+
+    fun <T> getBindControlerInstance(): T {
+        return bindControl.get() as T
+    }
+
     override fun tick() {
         if (!lunch || !valid) {
             return

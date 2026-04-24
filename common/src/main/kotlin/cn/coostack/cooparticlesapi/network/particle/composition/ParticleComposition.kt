@@ -84,7 +84,7 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
 
 
     var position: Vec3 = Vec3.ZERO
-        internal set
+        protected set
     var world: Level? = null
         internal set
 
@@ -400,6 +400,10 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
 
     override fun isValid(): Boolean {
         return !canceled
+    }
+
+    fun setPositionWithoutToggle(pos: Vec3) {
+        this.position = pos
     }
 
     protected open fun displayEntry(data: CompositionData, pos: RelativeLocation) {

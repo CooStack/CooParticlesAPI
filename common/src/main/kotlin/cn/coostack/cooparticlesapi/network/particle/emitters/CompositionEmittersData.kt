@@ -96,7 +96,7 @@ class CompositionEmittersData(
     ): Controlable<*> {
         val composition = resolveComposition()
         composition.world = world
-        composition.position = pos
+        composition.setPositionWithoutToggle(pos)
         prepared = composition
         return composition
     }
