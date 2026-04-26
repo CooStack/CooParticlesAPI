@@ -4,6 +4,8 @@ import cn.coostack.cooparticlesapi.renderer.RenderEntity
 import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameContext
 import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameStage
 import cn.coostack.cooparticlesapi.renderer.effects.builtin.BuiltinRenderEffectDescriptors
+import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelExecutors
+import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelRenderer
 import cn.coostack.cooparticlesapi.renderer.state.RenderStateGuard
 import org.joml.Matrix4f
 import org.joml.Matrix4fStack
@@ -104,19 +106,26 @@ class RenderEntityInstance<T : RenderEntity>(
         if (!featureSet.localRendererEnabled || RenderFrameStage.WORLD_PASS !in featureSet.stages) {
             return
         }
-        @Suppress("UNCHECKED_CAST")
-        val localRenderer = renderer as? WorldPassRenderEntityRenderer<T> ?: return
         stateGuard.use { renderState ->
-            localRenderer.renderLocal(
-                LocalRenderInput(
-                    instance = this,
-                    tickDelta = tickDelta,
-                    viewMatrix = viewMatrix,
-                    projMatrix = projMatrix,
-                    modelMatrix = modelMatrix,
-                    renderState = renderState
-                )
+            val localInput = LocalRenderInput(
+                instance = this,
+                tickDelta = tickDelta,
+                viewMatrix = viewMatrix,
+                projMatrix = projMatrix,
+                modelMatrix = modelMatrix,
+                renderState = renderState
             )
+            @Suppress("UNCHECKED_CAST")
+            val modelRenderer = renderer as? RenderEntityModelRenderer<T>
+            if (modelRenderer != null) {
+                RenderEntityModelExecutors.active().draw(
+                    modelRenderer.buildModel(entity, tickDelta),
+                    localInput
+                )
+            }
+            @Suppress("UNCHECKED_CAST")
+            val localRenderer = renderer as? WorldPassRenderEntityRenderer<T>
+            localRenderer?.renderLocal(localInput)
             localEffectChain.execute()
         }
     }
@@ -160,7 +169,7 @@ class RenderEntityInstance<T : RenderEntity>(
             return
         }
         released = true
-        localEffectChain.replaceSteps(emptyList())
+        localEffectChain.release()
         @Suppress("UNCHECKED_CAST")
         val releaseHook = renderer as? RenderEntityReleaseHook<T>
         releaseHook?.release(this)

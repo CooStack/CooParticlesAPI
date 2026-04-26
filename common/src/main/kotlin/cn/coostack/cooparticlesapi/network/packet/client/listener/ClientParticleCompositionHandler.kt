@@ -24,6 +24,8 @@ object ClientParticleCompositionHandler {
         }
         if (old == null && !distanceRemove) {
             ParticleCompositionManager.addClient(new!!)
+            // fix 当composition消散的时候 会抛出npe的问题
+            return
         }
         // new == null时 distanceRemove应该为true
         if (distanceRemove) {

@@ -1,6 +1,7 @@
 package cn.coostack.cooparticlesapi.renderer.effects
 
 import cn.coostack.cooparticlesapi.renderer.backend.RenderBackendCapability
+import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameContext
 import net.minecraft.resources.ResourceLocation
 
 /**
@@ -41,5 +42,5 @@ fun interface RenderEffectExecutor {
     /**
      * 批量渲染同一 `effectType` 下的 descriptor 列表。
      */
-    fun render(effects: List<RenderEffectDescriptor>)
+    fun render(context: RenderFrameContext, effects: List<RenderEffectDescriptor>)
 }

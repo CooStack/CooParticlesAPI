@@ -35,7 +35,7 @@ object ClientRenderSceneResourcesResolver {
                 id = RenderSceneTargets.SCENE_DEPTH,
                 label = "${resolvedTargets.targetLabel}:depth",
                 target = resolvedTargets.sceneDepthTarget,
-                colorTextureId = resolvedTargets.sceneDepthTarget.colorTextureId,
+                colorTextureId = resolvedTargets.sceneDepthTarget.colorTextureId.takeIf { !resolvedTargets.externalFramebuffer },
                 depthTextureId = resolvedTargets.sceneDepthTextureId
             )
         )

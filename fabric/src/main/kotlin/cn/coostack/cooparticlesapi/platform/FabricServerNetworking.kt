@@ -1,6 +1,7 @@
 package cn.coostack.cooparticlesapi.platform
 
 import cn.coostack.cooparticlesapi.CooParticlesAPIFabric
+import net.fabricmc.fabric.api.networking.v1.PlayerLookup
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload
 import net.minecraft.server.level.ServerLevel
@@ -26,6 +27,9 @@ class FabricServerNetworking : ServerNetworking {
         chunk: ChunkPos,
         packet: CustomPacketPayload
     ) {
+        PlayerLookup.tracking(world, chunk).forEach { player ->
+            ServerPlayNetworking.send(player, packet)
+        }
     }
 
 }

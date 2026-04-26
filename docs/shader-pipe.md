@@ -21,8 +21,8 @@
    统一帧阶段、backend、scene resource 和 target 解析。
 2. `RenderEffectGraph` + `RenderEffectRegistry`
    统一 frame-post descriptor 收集、排序和执行。
-3. builtin effect executor
-   例如 `ClientScreenGlowManager`、`ClientPersistentBloomManager`、`ClientWorldLightManager`、`PostGlowSphereRenderer`。
+3. post effect / builtin descriptor executor
+   例如 `CooPostEffects` 收集的 `PostEffectType` 链，或 `MASK_BLOOM`、`WORLD_LIGHT`、`COMPUTE_DISPATCH` 这类 descriptor。
 4. `ShaderPipeManager`
    只负责某个具体 executor 内部的多 pass / ping-pong / uniform 注入 / output graph。
 

@@ -13,14 +13,17 @@ import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import cn.coostack.cooparticlesapi.renderer.backend.IrisSafeRenderBackend
 import cn.coostack.cooparticlesapi.renderer.backend.RenderBackend
 import cn.coostack.cooparticlesapi.renderer.backend.VanillaSafeRenderBackend
-import cn.coostack.cooparticlesapi.renderer.client.ClientPersistentBloomManager
 import cn.coostack.cooparticlesapi.renderer.client.ClientRenderEntityManager
 import cn.coostack.cooparticlesapi.renderer.client.ClientRenderPipelineManager
-import cn.coostack.cooparticlesapi.renderer.client.ClientScreenGlowManager
-import cn.coostack.cooparticlesapi.renderer.client.ClientWorldLightManager
-import cn.coostack.cooparticlesapi.renderer.client.ClientMaskBloomManager
-import cn.coostack.cooparticlesapi.renderer.client.ShaderPipeManagers
-import cn.coostack.cooparticlesapi.renderer.effects.builtin.BuiltinRenderEffectRegistry
+import cn.coostack.cooparticlesapi.renderer.effects.RenderEffectRegistry
+import cn.coostack.cooparticlesapi.renderer.effects.builtin.BuiltinRenderEffectTypes
+import cn.coostack.cooparticlesapi.renderer.effects.builtin.OpenGlMaskBloomEffectExecutor
+import cn.coostack.cooparticlesapi.renderer.model.OpenGlRenderEntityModelExecutor
+import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelExecutors
+import cn.coostack.cooparticlesapi.renderer.post.CooPostEffects
+import cn.coostack.cooparticlesapi.renderer.post.OpenGlPostEffectExecutionBackend
+import cn.coostack.cooparticlesapi.renderer.post.PostEffectFrameExecutor
+import cn.coostack.cooparticlesapi.renderer.post.PostEffectRuntimeRegistry
 import cn.coostack.cooparticlesapi.renderer.shader.ShaderProgramRegistry
 import cn.coostack.cooparticlesapi.scheduler.CooScheduler
 import cn.coostack.cooparticlesapi.test.TestControlKeyBindings
@@ -31,7 +34,6 @@ import cn.coostack.cooparticlesapi.test.options.particle.client.ScaleCircleGroup
 import cn.coostack.cooparticlesapi.test.options.particle.client.SequencedMagicCircleClient
 import cn.coostack.cooparticlesapi.test.options.particle.client.TestGroupClient
 import cn.coostack.cooparticlesapi.test.options.particle.style.*
-import cn.coostack.cooparticlesapi.test.options.renderer.RenderEntityExampleEffectRegistry
 import cn.coostack.cooparticlesapi.utils.ClientCameraUtil
 import net.irisshaders.iris.api.v0.IrisApi
 import net.minecraft.client.Minecraft
@@ -135,9 +137,11 @@ object CooParticlesAPIClient {
     fun initShaderPrograms() {
         if (renderInit) return
         renderInit = true
-        ShaderPipeManagers.init()
         ClientRenderPipelineManager.init()
         ClientRenderPipelineManager.setActiveBackend(selectedRenderBackend)
+        RenderEntityModelExecutors.install(OpenGlRenderEntityModelExecutor)
+        PostEffectFrameExecutor.installBackend(OpenGlPostEffectExecutionBackend)
+        RenderEffectRegistry.register(BuiltinRenderEffectTypes.MASK_BLOOM, OpenGlMaskBloomEffectExecutor)
         ClientRenderEntityManager.init()
         ShaderProgramRegistry.reinitializeAll()
         CooParticlesConstants.logger.info("初始化渲染管线")
@@ -146,20 +150,19 @@ object CooParticlesAPIClient {
     @JvmStatic
     fun reloadShaderPrograms() {
         renderInit = false
+        OpenGlRenderEntityModelExecutor.release()
+        OpenGlMaskBloomEffectExecutor.release()
+        RenderEntityModelExecutors.reset()
+        PostEffectFrameExecutor.releaseBackendResources()
+        PostEffectFrameExecutor.resetBackend()
         ClientRenderPipelineManager.release()
-        ClientMaskBloomManager.clear()
         ClientRenderEntityManager.onShaderReload()
         initShaderPrograms()
     }
 
     private fun initRender() {
         CooRenderTypeResourceRegistry.reloadFromClasspath()
-        BuiltinRenderEffectRegistry.initOnClient()
-        RenderEntityExampleEffectRegistry.initOnClient()
-        ClientWorldLightManager.initOnClient()
-        ClientPersistentBloomManager.initOnClient()
-        ClientMaskBloomManager.initOnClient()
-        ClientScreenGlowManager.initOnClient()
+        PostEffectRuntimeRegistry.initOnClient()
         CooParticleTextureSheet.init()
     }
 
@@ -173,8 +176,7 @@ object CooParticlesAPIClient {
         ParticleEmittersManager.clientEmitters.clear()
         ParticleStyleManager.clearAllVisible()
         ClientRenderEntityManager.clear()
-        ClientWorldLightManager.clear()
-        ClientMaskBloomManager.clear()
+        CooPostEffects.client.clear()
         ClientParticleGroupManager.clearAllVisible()
         ParticleCompositionManager.clearClient()
         TestManager.clearClient()
@@ -191,8 +193,7 @@ object CooParticlesAPIClient {
         ParticleStyleManager.clearAllVisible()
         ClientParticleGroupManager.clearAllVisible()
         ClientRenderEntityManager.clear()
-        ClientWorldLightManager.clear()
-        ClientMaskBloomManager.clear()
+        CooPostEffects.client.clear()
         ParticleCompositionManager.clearClient()
         TestManager.clearClient()
 

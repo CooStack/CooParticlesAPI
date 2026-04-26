@@ -4,8 +4,10 @@ import cn.coostack.cooparticlesapi.renderer.RenderEntity
 import cn.coostack.cooparticlesapi.renderer.backend.RenderBackendCapability
 import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameContext
 import cn.coostack.cooparticlesapi.renderer.effects.RenderEffectGraph
+import cn.coostack.cooparticlesapi.renderer.post.CooPostEffects
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityInstance
 import cn.coostack.cooparticlesapi.renderer.state.RenderStateGuard
+import cn.coostack.cooparticlesapi.test.options.renderer.world.DemoWorldRenderEffectClientRegistry
 import net.minecraft.client.Minecraft
 import net.minecraft.client.Minecraft.getInstance
 import org.joml.Matrix4f
@@ -23,6 +25,7 @@ object ClientRenderEntityManager {
     private val renderStateGuard = RenderStateGuard()
 
     fun init() {
+        DemoWorldRenderEffectClientRegistry.register()
     }
 
     fun getFrom(uuid: UUID): RenderEntityInstance<RenderEntity>? {
@@ -36,9 +39,7 @@ object ClientRenderEntityManager {
         cachedTickDelta = 0f
         cachedViewMatrix.identity()
         cachedProjMatrix.identity()
-        ClientPersistentBloomManager.clear()
-        ClientScreenGlowManager.clear()
-        ClientWorldLightManager.clear()
+        CooPostEffects.client.clear()
     }
 
     fun onShaderReload() {
@@ -46,8 +47,6 @@ object ClientRenderEntityManager {
         cachedTickDelta = 0f
         cachedViewMatrix.identity()
         cachedProjMatrix.identity()
-        ClientPersistentBloomManager.clear()
-        ClientScreenGlowManager.clear()
         entities.values.forEach { instance ->
             instance.reinitialize()
         }
@@ -98,10 +97,11 @@ object ClientRenderEntityManager {
         if (!context.backend.supports(RenderBackendCapability.FINAL_FRAME_POST)) {
             return
         }
-        val graph = RenderEffectGraph(context.backend.capabilities)
+        val graph = RenderEffectGraph(context.backend.capabilities, context)
         entities.values.forEach { instance ->
             instance.collectRenderContributions(context, graph)
         }
+        CooPostEffects.client.collectFramePost(context, graph)
         graph.execute()
     }
 
@@ -117,5 +117,6 @@ object ClientRenderEntityManager {
                 iterator.remove()
             }
         }
+        CooPostEffects.client.tick()
     }
 }

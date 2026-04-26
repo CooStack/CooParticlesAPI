@@ -22,14 +22,9 @@ class TestTickItem : Item(Item.Properties().stacksTo(1)) {
         )
 
         if (world.isClientSide) return super.use(world, user, hand)
-//        Legacy V1 renderer demo spawn is disabled during the RenderEntity V2 migration.
 
         return super.use(world, user, hand)
     }
-
-//    fun testShader(world: ServerLevel, user: ServerPlayer) {
-//        Legacy V1 renderer demo spawn is disabled during the RenderEntity V2 migration.
-//    }
 
     fun tickFrozen(world: ServerLevel, user: ServerPlayer) {
         val server = world.server!!

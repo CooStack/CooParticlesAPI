@@ -2,6 +2,7 @@ package cn.coostack.cooparticlesapi.renderer.effects
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.renderer.backend.RenderBackendCapability
+import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameContext
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderContributionCollector
 
 /**
@@ -14,7 +15,8 @@ import cn.coostack.cooparticlesapi.renderer.runtime.RenderContributionCollector
  * - 按 effectType 分发给 `RenderEffectRegistry`
  */
 class RenderEffectGraph(
-    private val backendCapabilities: Set<RenderBackendCapability>
+    private val backendCapabilities: Set<RenderBackendCapability>,
+    private val frameContext: RenderFrameContext
 ) : RenderEffectCollector, RenderContributionCollector {
     private val descriptors = mutableListOf<IndexedDescriptor>()
     private var nextSequence = 0L
@@ -52,7 +54,7 @@ class RenderEffectGraph(
                     )
                     return@forEach
                 }
-                executor.render(grouped.map { it.descriptor })
+                executor.render(frameContext, grouped.map { it.descriptor })
             }
     }
 

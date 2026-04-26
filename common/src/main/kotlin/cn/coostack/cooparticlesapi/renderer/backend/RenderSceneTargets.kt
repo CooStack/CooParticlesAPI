@@ -20,6 +20,10 @@ object RenderSceneTargets {
     val SCENE_DEPTH: ResourceLocation = id("scene_depth")
     /** bloom 相关的中间目标。 */
     val BLOOM: ResourceLocation = id("bloom")
+    /** mask 相关的中间目标。 */
+    val MASK: ResourceLocation = id("mask")
+    /** 普通后处理 pass 使用的临时目标。 */
+    val TEMPORARY: ResourceLocation = id("temporary")
     /** world light 合成相关目标。 */
     val LIGHT: ResourceLocation = id("light")
     /** 原版半透明层目标。 */

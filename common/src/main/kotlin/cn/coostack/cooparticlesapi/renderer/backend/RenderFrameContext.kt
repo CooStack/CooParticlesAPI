@@ -23,10 +23,18 @@ data class RenderFrameContext(
     val sceneResources: RenderSceneResources = RenderSceneResources.empty(),
     /** 当前可直接使用的场景颜色纹理 id；为空表示本阶段未解析到。 */
     val sceneColorTextureId: Int? = null,
+    /** 当前场景颜色来源 framebuffer；用于 Iris 等没有 RenderTarget 包装的外部 FBO。 */
+    val sceneColorFramebufferId: Int? = null,
     /** 当前可直接使用的场景深度纹理 id；为空表示本阶段未解析到。 */
     val sceneDepthTextureId: Int? = null,
+    /** 当前场景深度来源 framebuffer；为空表示只能按纹理或降级路径处理。 */
+    val sceneDepthFramebufferId: Int? = null,
     /** 当前帧最终合成输出目标；为空时通常表示仍然回写主目标。 */
     val finalCompositeTarget: RenderTarget? = null,
+    /** 当前帧最终合成输出 framebuffer；可指向 Iris 当前绑定的外部 FBO。 */
+    val finalCompositeFramebufferId: Int? = null,
+    /** 当前帧是否使用了非 vanilla RenderTarget 管理的外部 framebuffer。 */
+    val externalFramebuffer: Boolean = false,
     /** 当前解析出的主要目标标签，便于调试或 shader 侧日志追踪。 */
     val resolvedTargetLabel: String = "main",
     /** 当前绑定的 framebuffer id；主要用于底层 OpenGL 交互场景。 */

@@ -21,6 +21,7 @@ import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleGroupS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleStyleS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketRenderEntityS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketRendererPostEffectS2C
 import cn.coostack.cooparticlesapi.particles.CooModParticles
 import cn.coostack.cooparticlesapi.particles.impl.particles.ControlableCloudParticle
 import cn.coostack.cooparticlesapi.particles.impl.particles.ControlableEnchantmentParticle
@@ -153,6 +154,9 @@ object CooParticlesAPIFabricClient : ClientModInitializer {
     private fun registerNetworkFabric() {
         ClientPlayNetworking.registerGlobalReceiver(PacketRenderEntityS2C.payloadID) { payload, context ->
             ClientRenderEntityPacketHandler.receive(payload, FabricClientContext(context))
+        }
+        ClientPlayNetworking.registerGlobalReceiver(PacketRendererPostEffectS2C.payloadID) { payload, context ->
+            ClientRendererPostEffectHandler.receive(payload, FabricClientContext(context))
         }
         ClientPlayNetworking.registerGlobalReceiver(PacketParticleGroupS2C.payloadID) { payload, context ->
             ClientParticleGroupPacketHandler.receive(payload, FabricClientContext(context))

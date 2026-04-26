@@ -11,12 +11,16 @@ data class ResolvedRenderTargets(
     val sceneDepthTarget: RenderTarget,
     val finalCompositeTarget: RenderTarget,
     val boundFramebufferId: Int,
-    val targetLabel: String
+    val targetLabel: String,
+    val sceneColorFramebufferId: Int = sceneColorTarget.frameBufferId,
+    val sceneDepthFramebufferId: Int = sceneDepthTarget.frameBufferId,
+    val finalCompositeFramebufferId: Int = finalCompositeTarget.frameBufferId,
+    val externalFramebuffer: Boolean = false
 ) {
-    val sceneColorTextureId: Int
-        get() = sceneColorTarget.colorTextureId
-    val sceneDepthTextureId: Int
-        get() = sceneDepthTarget.depthTextureId
+    val sceneColorTextureId: Int?
+        get() = if (externalFramebuffer) null else sceneColorTarget.colorTextureId.takeIf { it > 0 }
+    val sceneDepthTextureId: Int?
+        get() = if (externalFramebuffer) null else sceneDepthTarget.depthTextureId.takeIf { it > 0 }
     val width: Int
         get() = finalCompositeTarget.width
     val height: Int
@@ -31,6 +35,7 @@ object ClientRenderTargetResolver {
 
     private var lastFallbackSignature: String? = null
     private var lastSceneSourceSignature: String? = null
+    private var lastExternalFramebufferSignature: String? = null
 
     fun resolveCurrentTargets(): ResolvedRenderTargets {
         val minecraft = Minecraft.getInstance()
@@ -56,12 +61,22 @@ object ClientRenderTargetResolver {
         }
 
         val matchedTarget = candidates[boundFramebufferId]
-            ?: chooseFallback(mainTarget, accessor, boundFramebufferId, candidates.values.toList())
-        val sceneSourceTarget = chooseSceneSource(mainTarget, accessor, matchedTarget)
+        val usesExternalFramebuffer = matchedTarget == null && boundFramebufferId > 0
+        val finalTarget = if (usesExternalFramebuffer) {
+            logExternalFramebuffer(boundFramebufferId, candidates.values.toList())
+            NamedTarget("external-bound", mainTarget)
+        } else {
+            matchedTarget ?: chooseFallback(mainTarget, accessor, boundFramebufferId, candidates.values.toList())
+        }
+        val sceneSourceTarget = if (usesExternalFramebuffer) {
+            NamedTarget("external-bound-scene", mainTarget)
+        } else {
+            chooseSceneSource(mainTarget, accessor, finalTarget)
+        }
         val sceneDepthTarget = if (sceneSourceTarget.target.depthTextureId > 0) {
             sceneSourceTarget.target
-        } else if (matchedTarget.target.depthTextureId > 0) {
-            matchedTarget.target
+        } else if (finalTarget.target.depthTextureId > 0) {
+            finalTarget.target
         } else {
             mainTarget
         }
@@ -69,9 +84,13 @@ object ClientRenderTargetResolver {
         return ResolvedRenderTargets(
             sceneColorTarget = sceneSourceTarget.target,
             sceneDepthTarget = sceneDepthTarget,
-            finalCompositeTarget = matchedTarget.target,
+            finalCompositeTarget = finalTarget.target,
             boundFramebufferId = boundFramebufferId,
-            targetLabel = matchedTarget.label
+            targetLabel = finalTarget.label,
+            sceneColorFramebufferId = if (usesExternalFramebuffer) boundFramebufferId else sceneSourceTarget.target.frameBufferId,
+            sceneDepthFramebufferId = if (usesExternalFramebuffer) 0 else sceneDepthTarget.frameBufferId,
+            finalCompositeFramebufferId = if (usesExternalFramebuffer) boundFramebufferId else finalTarget.target.frameBufferId,
+            externalFramebuffer = usesExternalFramebuffer
         )
     }
 
@@ -148,6 +167,20 @@ object ClientRenderTargetResolver {
                 candidateSummary
             )
         }
+    }
+
+    private fun logExternalFramebuffer(boundFramebufferId: Int, candidates: List<NamedTarget>) {
+        val candidateSummary = candidates.joinToString { "${it.label}:${it.target.frameBufferId}" }
+        val signature = "$boundFramebufferId|$candidateSummary"
+        if (signature == lastExternalFramebufferSignature) {
+            return
+        }
+        lastExternalFramebufferSignature = signature
+        cn.coostack.cooparticlesapi.CooParticlesConstants.logger.info(
+            "Using externally bound post framebuffer boundFbo={} candidates={}",
+            boundFramebufferId,
+            candidateSummary
+        )
     }
 
     private fun logSceneSource(finalTarget: NamedTarget, sceneSource: NamedTarget) {

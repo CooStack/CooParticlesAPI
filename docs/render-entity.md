@@ -90,15 +90,15 @@
 
 ## 5. Builtin Effect 如何挂接
 
-当前内建 glow / bloom / world light 的 provider 判断已经收敛到 `BuiltinRenderEffectDescriptors`，而不是散落在 runtime core 里。
+当前 `RenderEntity` 侧只保留内容驱动的 mask bloom 与 world light descriptor；屏幕 glow、persistent bloom 和球体直绘 glow 已从 `renderer/glow` 旧包迁出，不再作为 provider 入口存在。屏幕滤镜、Bloom、Halo 统一走 `renderer/post` 的 `PostEffectType` / `PostEffectChain`。
 
 它负责三件事：
 
 - `describeEntity(entity)`：把实体扩展成 `RenderEntityFeatureSet`
-- `collectEntity(...)`：把 provider 扩展成统一的 `RenderEffectDescriptor`
-- `screenGlow(...) / persistentBloom(...) / worldLight(...) / sharedModelMaskBloom(...) / customGlowMaskBloom(...) / computeDispatch(...)`：构造 typed descriptor
+- `collectEntity(...)`：把仍保留的 builtin provider 扩展成统一的 `RenderEffectDescriptor`
+- `worldLight(...) / sharedModelMaskBloom(...) / customGlowMaskBloom(...) / computeDispatch(...)`：构造 typed descriptor
 
-这意味着 `RenderEntityInstance` 不再直接认识 `ScreenGlowProvider`、`PersistentBloomContextProvider`、`WorldLightProvider` 的细节分支。
+这意味着 `RenderEntityInstance` 不再直接认识 glow/bloom 的旧 provider 分支；glow 应通过 mask bloom 或 post effect instance 绑定到实体、世界坐标、屏幕位置等目标。
 
 RenderEntity glow 目前推荐的 builtin 路径已经切到 `MASK_BLOOM`，并分成两类明确语义：
 
@@ -107,11 +107,11 @@ RenderEntity glow 目前推荐的 builtin 路径已经切到 `MASK_BLOOM`，并�
 - `DedicatedGlowMaskRenderEntityRenderer`
   适用于“没有现成 world-pass 模型路径，但仍需要局部 glow”的实体。它只实现 `renderGlowMask(...)`，专门把局部模型内容绘制到 mask target。
 
-`postGlowSphere(...)` 现在只保留兼容残留，不再是 RenderEntity glow 的默认或推荐实现。
+`postGlowSphere(...)` 和 `renderer/glow` 旧包已移除；不要再新增依赖这些旧入口的示例或 API。
 
 ## 6. 最小示例
 
-`TestRendererEntity` 是当前新 API 下的 smoke example。它展示的是：
+`PostEffectDemoOptions` 是当前新 post API 下的 smoke example。RenderEntity 需要局部发光时，应把模型/贴图内容写入 mask bloom；需要屏幕空间 halo/bloom 时，应创建 `CooPostEffects.builtin.halo()` 或 `CooPostEffects.builtin.bloom()` 实例并绑定目标。
 
 - `RenderEntity` 仍然只是同步对象
 - renderer 通过 `SharedModelMaskBloomRenderEntityRenderer` 复用同一套模型绘制

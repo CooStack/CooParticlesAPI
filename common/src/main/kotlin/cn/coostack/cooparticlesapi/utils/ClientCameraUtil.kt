@@ -300,25 +300,15 @@ object ClientCameraUtil {
     }
 
     internal fun shakePhaseStep(frequency: Double): Double {
-        return frequency / LEGACY_SHAKE_RETARGET_TICKS
+        return ClientCameraShakeMath.shakePhaseStep(frequency)
     }
 
     internal fun shakeFollowFactor(frequency: Double): Double {
-        if (frequency <= HIGH_FREQUENCY_FOLLOW_START) {
-            return SHAKE_FOLLOW
-        }
-        val extraFrequency = frequency - HIGH_FREQUENCY_FOLLOW_START
-        val normalized = extraFrequency / (extraFrequency + HIGH_FREQUENCY_FOLLOW_RANGE)
-        return SHAKE_FOLLOW + (MAX_SHAKE_FOLLOW - SHAKE_FOLLOW) * normalized.coerceIn(0.0, 1.0)
+        return ClientCameraShakeMath.shakeFollowFactor(frequency)
     }
 
     internal fun sampleShakeNoise(phase: Double, seed: Double): Double {
-        val shiftedPhase = phase + seed
-        val index = floor(shiftedPhase)
-        val progress = smoothstep(shiftedPhase - index)
-        val from = hashNoise(index, seed)
-        val to = hashNoise(index + 1.0, seed)
-        return lerpDouble(progress, from, to)
+        return ClientCameraShakeMath.sampleShakeNoise(phase, seed)
     }
 
     private fun sampleShakePos(phase: Double, envelope: Double): Vec3 {

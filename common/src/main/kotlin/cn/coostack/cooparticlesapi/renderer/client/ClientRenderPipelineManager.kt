@@ -8,16 +8,12 @@ import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameContext
 import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameStage
 import cn.coostack.cooparticlesapi.renderer.backend.RenderSceneTargets
 import cn.coostack.cooparticlesapi.renderer.backend.VanillaSafeRenderBackend
-import cn.coostack.cooparticlesapi.renderer.shader.pipe.manager.ShaderPipeManager
+import cn.coostack.cooparticlesapi.renderer.post.PostEffectFrameExecutor
 import com.mojang.blaze3d.pipeline.RenderTarget
 import net.minecraft.client.Minecraft
-import net.minecraft.resources.ResourceLocation
 import org.joml.Matrix4f
-import java.util.function.Supplier
 
 object ClientRenderPipelineManager {
-    val registerPipeLines = HashMap<ResourceLocation, ShaderPipeManager>()
-    fun getPipeManager(id: ResourceLocation): ShaderPipeManager? = registerPipeLines[id]
     val minecraft: Minecraft get() = Minecraft.getInstance()
     var width = 1920
     var height = 1080
@@ -37,6 +33,7 @@ object ClientRenderPipelineManager {
 
         override fun preparePostProcess(context: RenderFrameContext) {
             ClientRenderEntityManager.preparePostProcess(context.tickDelta, context.viewMatrix, context.projMatrix)
+            PostEffectFrameExecutor.prepareFrame(context)
         }
 
         override fun flushFrameComposites(context: RenderFrameContext) {
@@ -48,33 +45,13 @@ object ClientRenderPipelineManager {
         }
     }
 
-    fun register(pipe: ShaderPipeManager) {
-        registerPipeLines[pipe.pipeID] = pipe
-        if (initialized) {
-            pipe.depthSupplier = Supplier {
-                currentSceneDepthTextureId()
-            }
-            pipe.init()
-        }
-    }
-
     fun init() {
         initialized = true
-        for (manager in registerPipeLines.values) {
-            manager.depthSupplier = Supplier {
-                currentSceneDepthTextureId()
-            }
-            manager.resize(width, height)
-            manager.init()
-        }
     }
 
     fun release() {
         initialized = false
         currentFrameContext = null
-        registerPipeLines.forEach {
-            it.value.release()
-        }
     }
 
     fun setActiveBackend(backend: RenderBackend) {
@@ -143,8 +120,20 @@ object ClientRenderPipelineManager {
             stage = stage,
             sceneResources = sceneResources,
             sceneColorTextureId = sceneColorTextureId,
+            sceneColorFramebufferId = if (activeBackend.supports(RenderBackendCapability.SCENE_COLOR_COPY)) {
+                resolvedTargets.sceneColorFramebufferId
+            } else {
+                null
+            },
             sceneDepthTextureId = sceneDepthTextureId,
+            sceneDepthFramebufferId = if (activeBackend.supports(RenderBackendCapability.SCENE_DEPTH_READ)) {
+                resolvedTargets.sceneDepthFramebufferId
+            } else {
+                null
+            },
             finalCompositeTarget = resolvedTargets.finalCompositeTarget,
+            finalCompositeFramebufferId = resolvedTargets.finalCompositeFramebufferId,
+            externalFramebuffer = resolvedTargets.externalFramebuffer,
             resolvedTargetLabel = resolvedTargets.targetLabel,
             boundFramebufferId = resolvedTargets.boundFramebufferId,
             targetWidth = resolvedTargets.width,
@@ -205,26 +194,29 @@ object ClientRenderPipelineManager {
             append(targets.sceneColorTextureId)
             append(':')
             append(targets.sceneDepthTextureId)
+            append(':')
+            append(targets.finalCompositeFramebufferId)
+            append(':')
+            append(targets.externalFramebuffer)
         }
         if (signature == lastLoggedTargetSignature) {
             return
         }
         lastLoggedTargetSignature = signature
         CooParticlesConstants.logger.info(
-            "Resolved post target label={} boundFbo={} targetFbo={} sceneColor={} sceneDepth={}",
+            "Resolved post target label={} boundFbo={} targetFbo={} finalFbo={} sceneColor={} sceneDepth={} external={}",
             targets.targetLabel,
             targets.boundFramebufferId,
             targets.finalCompositeTarget.frameBufferId,
+            targets.finalCompositeFramebufferId,
             targets.sceneColorTextureId,
-            targets.sceneDepthTextureId
+            targets.sceneDepthTextureId,
+            targets.externalFramebuffer
         )
     }
 
     fun resizeTo(width: Int, height: Int) {
         this.width = width
         this.height = height
-        registerPipeLines.onEach {
-            it.value.resize(width, height)
-        }
     }
 }

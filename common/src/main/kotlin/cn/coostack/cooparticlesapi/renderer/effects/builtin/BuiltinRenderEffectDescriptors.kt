@@ -8,13 +8,6 @@ import cn.coostack.cooparticlesapi.renderer.backend.RenderSceneTargets
 import cn.coostack.cooparticlesapi.renderer.effects.RenderEffectDescriptor
 import cn.coostack.cooparticlesapi.renderer.shader.texture.SimpleTextures
 import cn.coostack.cooparticlesapi.renderer.shader.api.CooComputeShaderProgram
-import cn.coostack.cooparticlesapi.renderer.glow.PersistentBloom
-import cn.coostack.cooparticlesapi.renderer.glow.PersistentBloomContextProvider
-import cn.coostack.cooparticlesapi.renderer.glow.PostGlowSphereConfig
-import cn.coostack.cooparticlesapi.renderer.glow.ScreenGlow
-import cn.coostack.cooparticlesapi.renderer.glow.ScreenGlowContextProvider
-import cn.coostack.cooparticlesapi.renderer.glow.ScreenGlowProvider
-import cn.coostack.cooparticlesapi.renderer.glow.ScreenGlowRenderContext
 import cn.coostack.cooparticlesapi.renderer.light.WorldLight
 import cn.coostack.cooparticlesapi.renderer.light.WorldLightProvider
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderContributionCollector
@@ -25,35 +18,19 @@ import org.joml.Vector3f
 import org.joml.Vector4f
 
 /**
- * screen glow 请求的 descriptor payload。
- */
-data class ScreenGlowRenderRequest(
-    val frameContext: RenderFrameContext,
-    val collect: (ScreenGlowRenderContext, MutableList<ScreenGlow>) -> Unit
-)
-
-/**
- * persistent bloom 请求的 descriptor payload。
- */
-data class PersistentBloomRenderRequest(
-    val frameContext: RenderFrameContext,
-    val collect: (ScreenGlowRenderContext, MutableList<PersistentBloom>) -> Unit
-)
-
-/**
  * 基于内容 mask 的 bloom 参数。
  *
  * - `threshold/thresholdSoftness` 控制进入 bloom mask 的门限
  * - `blurSigma/blurRange` 控制高斯模糊范围
  * - `intensity` 控制最终 bloom 亮度
- * - `baseMaskIntensity` 控制未模糊部分保留比例
+ * - `baseMaskIntensity` 控制未模糊 source 保留比例，默认为 0，只输出真正 bloom
  * - `tint` 控制最终 bloom 色调
  */
 data class MaskBloomConfig(
     val blurSigma: Float = 14.0f,
     val blurRange: Float = 10.0f,
     val intensity: Float = 3.0f,
-    val baseMaskIntensity: Float = 0.24f,
+    val baseMaskIntensity: Float = 0.0f,
     val threshold: Float = 0.0f,
     val thresholdSoftness: Float = 0.015f,
     val tint: Vector3f = Vector3f(1.0f, 1.0f, 1.0f)
@@ -117,15 +94,6 @@ data class WorldLightRenderRequest(
 )
 
 /**
- * glow sphere 请求的 descriptor payload。
- */
-data class PostGlowSphereRenderRequest(
-    val entity: RenderEntity,
-    val frameContext: RenderFrameContext,
-    val config: PostGlowSphereConfig
-)
-
-/**
  * compute dispatch 请求的 descriptor payload。
  */
 data class ComputeDispatchRenderRequest(
@@ -150,6 +118,10 @@ object BuiltinRenderEffectDescriptors {
         RenderBackendCapability.SCENE_COLOR_COPY,
         RenderBackendCapability.SCENE_DEPTH_READ
     )
+    private val maskBloomCapabilities = setOf(
+        RenderBackendCapability.FINAL_FRAME_POST,
+        RenderBackendCapability.SAFE_WORLD_COMPOSITE
+    )
     private val scenePostTargets = setOf(
         RenderSceneTargets.POST,
         RenderSceneTargets.SCENE_COLOR,
@@ -170,28 +142,6 @@ object BuiltinRenderEffectDescriptors {
             localRendererEnabled = false,
             effectGraphEnabled = false
         )
-        if (entity is ScreenGlowContextProvider || entity is ScreenGlowProvider) {
-            features = features.merge(
-                RenderEntityFeatureSet(
-                    stages = setOf(RenderFrameStage.FRAME_POST),
-                    requestedSceneTargets = scenePostTargets,
-                    effectTypes = setOf(BuiltinRenderEffectTypes.SCREEN_GLOW),
-                    localRendererEnabled = false,
-                    effectGraphEnabled = true
-                )
-            )
-        }
-        if (entity is PersistentBloomContextProvider) {
-            features = features.merge(
-                RenderEntityFeatureSet(
-                    stages = setOf(RenderFrameStage.FRAME_POST),
-                    requestedSceneTargets = scenePostTargets,
-                    effectTypes = setOf(BuiltinRenderEffectTypes.PERSISTENT_BLOOM),
-                    localRendererEnabled = false,
-                    effectGraphEnabled = true
-                )
-            )
-        }
         if (entity is WorldLightProvider) {
             features = features.merge(
                 RenderEntityFeatureSet(
@@ -221,31 +171,6 @@ object BuiltinRenderEffectDescriptors {
         frameContext: RenderFrameContext,
         collector: RenderContributionCollector
     ) {
-        when (entity) {
-            is ScreenGlowContextProvider -> collector.submit(
-                screenGlow(
-                    sourceInstanceId = entity.uuid.toString(),
-                    provider = entity,
-                    frameContext = frameContext
-                )
-            )
-            is ScreenGlowProvider -> collector.submit(
-                screenGlow(
-                    sourceInstanceId = entity.uuid.toString(),
-                    provider = entity,
-                    frameContext = frameContext
-                )
-            )
-        }
-        if (entity is PersistentBloomContextProvider) {
-            collector.submit(
-                persistentBloom(
-                    sourceInstanceId = entity.uuid.toString(),
-                    provider = entity,
-                    frameContext = frameContext
-                )
-            )
-        }
         if (entity is WorldLightProvider) {
             collector.submit(
                 worldLight(
@@ -254,85 +179,6 @@ object BuiltinRenderEffectDescriptors {
                     frameContext = frameContext
                 )
             )
-        }
-    }
-
-    /**
-     * 直接构造一个 screen glow descriptor。
-     *
-     * `collect` 回调负责在真正执行时向输出列表写入 `ScreenGlow`。
-     */
-    fun screenGlow(
-        sourceInstanceId: String,
-        frameContext: RenderFrameContext,
-        priority: Int = 300,
-        collect: (ScreenGlowRenderContext, MutableList<ScreenGlow>) -> Unit
-    ): RenderEffectDescriptor {
-        return RenderEffectDescriptor(
-            effectType = BuiltinRenderEffectTypes.SCREEN_GLOW,
-            effectId = BuiltinRenderEffectTypes.SCREEN_GLOW.toString(),
-            priority = priority,
-            sourceInstanceId = sourceInstanceId,
-            requiredCapabilities = scenePostCapabilities,
-            payload = ScreenGlowRenderRequest(frameContext, collect)
-        )
-    }
-
-    /**
-     * 使用旧版 `ScreenGlowProvider` 构造 descriptor。
-     */
-    fun screenGlow(
-        sourceInstanceId: String,
-        provider: ScreenGlowProvider,
-        frameContext: RenderFrameContext
-    ): RenderEffectDescriptor {
-        return screenGlow(sourceInstanceId, frameContext) { _, output ->
-            provider.collectScreenGlows(frameContext.tickDelta, output)
-        }
-    }
-
-    /**
-     * 使用上下文感知版 `ScreenGlowContextProvider` 构造 descriptor。
-     */
-    fun screenGlow(
-        sourceInstanceId: String,
-        provider: ScreenGlowContextProvider,
-        frameContext: RenderFrameContext
-    ): RenderEffectDescriptor {
-        return screenGlow(sourceInstanceId, frameContext) { glowContext, output ->
-            provider.collectScreenGlows(glowContext, output)
-        }
-    }
-
-    /**
-     * 直接构造一个 persistent bloom descriptor。
-     */
-    fun persistentBloom(
-        sourceInstanceId: String,
-        frameContext: RenderFrameContext,
-        priority: Int = 200,
-        collect: (ScreenGlowRenderContext, MutableList<PersistentBloom>) -> Unit
-    ): RenderEffectDescriptor {
-        return RenderEffectDescriptor(
-            effectType = BuiltinRenderEffectTypes.PERSISTENT_BLOOM,
-            effectId = BuiltinRenderEffectTypes.PERSISTENT_BLOOM.toString(),
-            priority = priority,
-            sourceInstanceId = sourceInstanceId,
-            requiredCapabilities = scenePostCapabilities,
-            payload = PersistentBloomRenderRequest(frameContext, collect)
-        )
-    }
-
-    /**
-     * 使用 `PersistentBloomContextProvider` 构造 descriptor。
-     */
-    fun persistentBloom(
-        sourceInstanceId: String,
-        provider: PersistentBloomContextProvider,
-        frameContext: RenderFrameContext
-    ): RenderEffectDescriptor {
-        return persistentBloom(sourceInstanceId, frameContext) { glowContext, output ->
-            provider.collectPersistentBlooms(glowContext, output)
         }
     }
 
@@ -349,7 +195,7 @@ object BuiltinRenderEffectDescriptors {
         sourceEntity: RenderEntity? = null,
         config: MaskBloomConfig = MaskBloomConfig(),
         priority: Int = 220,
-        requiredCapabilities: Set<RenderBackendCapability> = scenePostCapabilities,
+        requiredCapabilities: Set<RenderBackendCapability> = maskBloomCapabilities,
         renderMask: (MaskBloomMaskRenderContext) -> Unit
     ): RenderEffectDescriptor {
         return RenderEffectDescriptor(
@@ -388,7 +234,7 @@ object BuiltinRenderEffectDescriptors {
         fullQuadMask: Boolean = false,
         fullQuadMaskSoftness: Float = 0.12f,
         priority: Int = 220,
-        requiredCapabilities: Set<RenderBackendCapability> = scenePostCapabilities
+        requiredCapabilities: Set<RenderBackendCapability> = maskBloomCapabilities
     ): RenderEffectDescriptor {
         return maskBloom(
             effectId = effectId,
@@ -428,7 +274,7 @@ object BuiltinRenderEffectDescriptors {
         sourceEntity: RenderEntity? = null,
         config: MaskBloomConfig = defaultRenderEntityModelGlowConfig(),
         priority: Int = 220,
-        requiredCapabilities: Set<RenderBackendCapability> = scenePostCapabilities,
+        requiredCapabilities: Set<RenderBackendCapability> = maskBloomCapabilities,
         renderMask: (MaskBloomMaskRenderContext) -> Unit
     ): RenderEffectDescriptor {
         return maskBloom(
@@ -453,7 +299,7 @@ object BuiltinRenderEffectDescriptors {
         sourceEntity: RenderEntity? = null,
         config: MaskBloomConfig = defaultRenderEntityModelGlowConfig(),
         priority: Int = 220,
-        requiredCapabilities: Set<RenderBackendCapability> = scenePostCapabilities,
+        requiredCapabilities: Set<RenderBackendCapability> = maskBloomCapabilities,
         renderMask: (MaskBloomMaskRenderContext) -> Unit
     ): RenderEffectDescriptor {
         return maskBloom(
@@ -501,36 +347,6 @@ object BuiltinRenderEffectDescriptors {
     }
 
     /**
-     * 构造一个帧尾 glow 球体 descriptor。
-     */
-    @Deprecated(
-        message = "RenderEntity glow should use content-driven MASK_BLOOM. POST_GLOW_SPHERE is legacy compatibility only.",
-        replaceWith = ReplaceWith("sharedModelMaskBloom(effectId, sourceInstanceId, frameContext, entity, defaultRenderEntityModelGlowConfig(), priority, requiredCapabilities, renderMask)")
-    )
-    fun postGlowSphere(
-        effectId: String,
-        sourceInstanceId: String,
-        entity: RenderEntity,
-        frameContext: RenderFrameContext,
-        config: PostGlowSphereConfig,
-        priority: Int = 0,
-        requiredCapabilities: Set<RenderBackendCapability> = setOf(RenderBackendCapability.FINAL_FRAME_POST)
-    ): RenderEffectDescriptor {
-        return RenderEffectDescriptor(
-            effectType = BuiltinRenderEffectTypes.POST_GLOW_SPHERE,
-            effectId = effectId,
-            priority = priority,
-            sourceInstanceId = sourceInstanceId,
-            requiredCapabilities = requiredCapabilities,
-            payload = PostGlowSphereRenderRequest(
-                entity = entity,
-                frameContext = frameContext,
-                config = config
-            )
-        )
-    }
-
-    /**
      * 构造一个 compute dispatch descriptor。
      */
     fun computeDispatch(
@@ -573,7 +389,7 @@ object BuiltinRenderEffectDescriptors {
             blurSigma = 15.0f,
             blurRange = 10.0f,
             intensity = 2.8f,
-            baseMaskIntensity = 0.24f,
+            baseMaskIntensity = 0.0f,
             threshold = 0.0f,
             thresholdSoftness = 0.015f,
             tint = Vector3f(1.0f, 1.0f, 1.0f)

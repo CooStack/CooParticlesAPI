@@ -14,6 +14,16 @@ open class SimpleFrameBuffer(
     val colorChannelCount: Int,
     override var depthSupplier: Supplier<Int>
 ) : GlFrameBuffer {
+    constructor(
+        colorChannelCount: Int,
+        depthSupplier: Supplier<Int>,
+        fixedWidth: Int,
+        fixedHeight: Int
+    ) : this(colorChannelCount, depthSupplier) {
+        this.fixedWidth = fixedWidth.coerceAtLeast(1)
+        this.fixedHeight = fixedHeight.coerceAtLeast(1)
+    }
+
     private var warnedZeroRead = false
     override val colorAttachments: IntArray = IntArray(colorChannelCount)
 
@@ -28,6 +38,8 @@ open class SimpleFrameBuffer(
     private var initialized = false
     private var newDepth = false
     private var textureFilterMod = GL_LINEAR
+    private var fixedWidth: Int? = null
+    private var fixedHeight: Int? = null
     private lateinit var output: PipeChannels
 
 
@@ -36,11 +48,11 @@ open class SimpleFrameBuffer(
     }
 
     override fun width(): Int {
-        return ClientRenderPipelineManager.currentRenderWidth()
+        return fixedWidth ?: ClientRenderPipelineManager.currentRenderWidth()
     }
 
     override fun height(): Int {
-        return ClientRenderPipelineManager.currentRenderHeight()
+        return fixedHeight ?: ClientRenderPipelineManager.currentRenderHeight()
     }
 
     override fun useMipmap() {
@@ -184,6 +196,7 @@ open class SimpleFrameBuffer(
             glDeleteTextures(depthAttachment)
             depthAttachment = -1
         }
+        initialized = false
     }
 
     private fun initColorChannel() {
@@ -226,7 +239,7 @@ open class SimpleFrameBuffer(
             if (new) {
                 glTexImage2D(
                     GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT,
-                    width(), height(), 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE, null as ByteBuffer?
+                    width(), height(), 0, GL_DEPTH_COMPONENT, GL_FLOAT, null as ByteBuffer?
                 )
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
@@ -257,11 +270,17 @@ open class SimpleFrameBuffer(
     }
 
     override fun resize(width: Int, height: Int) {
+        val requestedWidth = width.coerceAtLeast(1)
+        val requestedHeight = height.coerceAtLeast(1)
+        if (fixedWidth == requestedWidth && fixedHeight == requestedHeight && initialized) {
+            return
+        }
+        fixedWidth = requestedWidth
+        fixedHeight = requestedHeight
         if (!initialized) {
             return
         }
         release()
-        initialized = false
         prevFBO = 0
         init()
     }
@@ -269,22 +288,22 @@ open class SimpleFrameBuffer(
     override fun copyDepthBuffer(srcFBO: Int) {
         val lastReadReader = glGetInteger(GL_READ_FRAMEBUFFER_BINDING)
         val lastDrawReader = glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING)
-        val width = Minecraft.getInstance().window.width
-        val height = Minecraft.getInstance().window.height
+        val sourceWidth = ClientRenderPipelineManager.currentRenderWidth()
+        val sourceHeight = ClientRenderPipelineManager.currentRenderHeight()
+        val targetWidth = width()
+        val targetHeight = height()
 
         // 绑定读和写的FBO
         glBindFramebuffer(GL_READ_FRAMEBUFFER, srcFBO)
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fbo)
         glBlitFramebuffer(
-            0, 0, width, height,  // 源区域
-            0, 0, width, height,  // 目标区域
+            0, 0, sourceWidth, sourceHeight,  // 源区域
+            0, 0, targetWidth, targetHeight,  // 目标区域
             GL_DEPTH_BUFFER_BIT,
             GL_NEAREST
         )
-        glBindFramebuffer(GL_FRAMEBUFFER, 0)
-//        // 解绑，恢复默认
-//        glBindFramebuffer(GL_READ_FRAMEBUFFER, lastReadReader)
-//        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, lastDrawReader)
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, lastReadReader)
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, lastDrawReader)
     }
 
 }

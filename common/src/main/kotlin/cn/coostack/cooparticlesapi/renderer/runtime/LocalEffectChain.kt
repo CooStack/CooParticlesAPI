@@ -27,6 +27,15 @@ class LocalEffectChain(
         localSteps.toList().forEach(LocalEffectStep::execute)
     }
 
+    fun resizeTargets(width: Int, height: Int) {
+        renderTargetPool.resize(width, height)
+    }
+
+    fun release() {
+        localSteps.clear()
+        renderTargetPool.releaseAll()
+    }
+
     companion object {
         private val CHAIN_COUNTER = AtomicInteger()
     }
