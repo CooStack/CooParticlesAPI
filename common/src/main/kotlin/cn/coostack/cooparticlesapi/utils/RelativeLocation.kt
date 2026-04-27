@@ -2,12 +2,19 @@ package cn.coostack.cooparticlesapi.utils
 
 
 import io.netty.buffer.Unpooled
+import net.minecraft.core.Vec3i
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3d
 import org.joml.Vector3f
+import cn.coostack.cooparticlesapi.extend.asRelative
+import cn.coostack.cooparticlesapi.extend.randomVec3
+import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.pow
+import kotlin.math.sin
 import kotlin.math.sqrt
+import kotlin.random.Random
 
 
 /** 描述粒子之间相对位置的类 相对位置 又名向量 草 */
@@ -25,6 +32,11 @@ data class RelativeLocation(var x: Double, var y: Double, var z: Double) {
 
         @JvmStatic
         fun of(vector: Vector3f): RelativeLocation {
+            return RelativeLocation(vector.x, vector.y, vector.z)
+        }
+
+        @JvmStatic
+        fun of(vector: Vector3d): RelativeLocation {
             return RelativeLocation(vector.x, vector.y, vector.z)
         }
 
@@ -92,6 +104,11 @@ data class RelativeLocation(var x: Double, var y: Double, var z: Double) {
         return x * other.x + y * other.y + z * other.z
     }
 
+    fun dot(other: Vec3): Double = x * other.x + y * other.y + z * other.z
+    fun dot(other: Vector3f): Double = x * other.x + y * other.y + z * other.z
+    fun dot(other: Vector3d): Double = x * other.x + y * other.y + z * other.z
+    fun dot(other: Vec3i): Double = x * other.x + y * other.y + z * other.z
+
     fun add(other: RelativeLocation): RelativeLocation {
         x += other.x
         y += other.y
@@ -120,6 +137,32 @@ data class RelativeLocation(var x: Double, var y: Double, var z: Double) {
         return this
     }
 
+    fun remove(other: Vector3f): RelativeLocation {
+        x -= other.x
+        y -= other.y
+        z -= other.z
+        return this
+    }
+
+    fun remove(other: Vector3d): RelativeLocation {
+        x -= other.x
+        y -= other.y
+        z -= other.z
+        return this
+    }
+
+    fun remove(other: Vec3i): RelativeLocation {
+        x -= other.x
+        y -= other.y
+        z -= other.z
+        return this
+    }
+
+
+    operator fun minus(other: Vec3): RelativeLocation = RelativeLocation(x - other.x, y - other.y, z - other.z)
+    operator fun minus(other: Vector3f): RelativeLocation = RelativeLocation(x - other.x, y - other.y, z - other.z)
+    operator fun minus(other: Vector3d): RelativeLocation = RelativeLocation(x - other.x, y - other.y, z - other.z)
+    operator fun minus(other: Vec3i): RelativeLocation = RelativeLocation(x - other.x, y - other.y, z - other.z)
 
     operator fun unaryMinus(): RelativeLocation {
         return this * -1.0
@@ -145,10 +188,26 @@ data class RelativeLocation(var x: Double, var y: Double, var z: Double) {
         return RelativeLocation(x * scalar.x, y * scalar.y, z * scalar.z)
     }
 
+    operator fun times(scalar: Vector3f): RelativeLocation = RelativeLocation(x * scalar.x, y * scalar.y, z * scalar.z)
+    operator fun times(scalar: Vector3d): RelativeLocation = RelativeLocation(x * scalar.x, y * scalar.y, z * scalar.z)
+    operator fun times(scalar: Vec3i): RelativeLocation = RelativeLocation(x * scalar.x, y * scalar.y, z * scalar.z)
+
+    operator fun div(scalar: RelativeLocation): RelativeLocation = RelativeLocation(x / scalar.x, y / scalar.y, z / scalar.z)
+    operator fun div(scalar: Vec3): RelativeLocation = RelativeLocation(x / scalar.x, y / scalar.y, z / scalar.z)
+    operator fun div(scalar: Vector3f): RelativeLocation =
+        RelativeLocation(x / scalar.x, y / scalar.y, z / scalar.z)
+    operator fun div(scalar: Vector3d): RelativeLocation = RelativeLocation(x / scalar.x, y / scalar.y, z / scalar.z)
+    operator fun div(scalar: Vec3i): RelativeLocation = RelativeLocation(x / scalar.x, y / scalar.y, z / scalar.z)
+    operator fun div(scalar: Number): RelativeLocation = RelativeLocation(x / scalar.toDouble(), y / scalar.toDouble(), z / scalar.toDouble())
 
     operator fun plus(other: RelativeLocation): RelativeLocation {
         return RelativeLocation(x + other.x, y + other.y, z + other.z)
     }
+
+    operator fun plus(other: Vec3): RelativeLocation = RelativeLocation(x + other.x, y + other.y, z + other.z)
+    operator fun plus(other: Vector3f): RelativeLocation = RelativeLocation(x + other.x, y + other.y, z + other.z)
+    operator fun plus(other: Vector3d): RelativeLocation = RelativeLocation(x + other.x, y + other.y, z + other.z)
+    operator fun plus(other: Vec3i): RelativeLocation = RelativeLocation(x + other.x, y + other.y, z + other.z)
 
     fun multiply(m: Number): RelativeLocation {
         val s = m.toDouble()
@@ -199,6 +258,27 @@ data class RelativeLocation(var x: Double, var y: Double, var z: Double) {
             x * vector.y - y * vector.x
         )
     }
+
+    fun cross(other: Vec3): RelativeLocation = RelativeLocation(
+        y * other.z - z * other.y,
+        z * other.x - x * other.z,
+        x * other.y - y * other.x
+    )
+    fun cross(other: Vector3f): RelativeLocation = RelativeLocation(
+        y * other.z - z * other.y,
+        z * other.x - x * other.z,
+        x * other.y - y * other.x
+    )
+    fun cross(other: Vector3d): RelativeLocation = RelativeLocation(
+        y * other.z - z * other.y,
+        z * other.x - x * other.z,
+        x * other.y - y * other.x
+    )
+    fun cross(other: Vec3i): RelativeLocation = RelativeLocation(
+        y * other.z - z * other.y,
+        z * other.x - x * other.z,
+        x * other.y - y * other.x
+    )
 
     fun length() = sqrt(x.pow(2) + y.pow(2) + z.pow(2))
     fun distance(relativeLocation: RelativeLocation) =
@@ -261,6 +341,21 @@ data class RelativeLocation(var x: Double, var y: Double, var z: Double) {
         return this
     }
 
+    fun randomHorizontal(): RelativeLocation {
+        val angle = Random.nextDouble(0.0, 2 * PI)
+        return RelativeLocation(cos(angle), 0.0, sin(angle))
+    }
+
+    fun offsetRandomly(offset: Double): RelativeLocation {
+        val r = randomVec3().asRelative()
+        return RelativeLocation(x + r.x * offset, y + r.y * offset, z + r.z * offset)
+    }
+
+    fun offsetRandomlyHorizontal(offset: Double): RelativeLocation {
+        val dir = randomHorizontal()
+        return RelativeLocation(x + dir.x * offset, y, z + dir.z * offset)
+    }
+
     fun lengthCoerceIn(min: Double, max: Double): RelativeLocation {
         require(min < max) {
             "最小值必须小于最大值"
@@ -304,3 +399,7 @@ data class RelativeLocation(var x: Double, var y: Double, var z: Double) {
         return this
     }
 }
+
+operator fun Double.times(other: RelativeLocation): RelativeLocation = other * this
+operator fun Float.times(other: RelativeLocation): RelativeLocation = other * this
+operator fun Int.times(other: RelativeLocation): RelativeLocation = other * this

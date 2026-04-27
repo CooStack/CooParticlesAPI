@@ -3,7 +3,14 @@ package cn.coostack.cooparticlesapi.renderer.client
 import cn.coostack.cooparticlesapi.accessor.LevelRendererAccessor
 import com.mojang.blaze3d.pipeline.RenderTarget
 import net.minecraft.client.Minecraft
-import org.lwjgl.opengl.GL33
+import org.lwjgl.opengl.GL33.GL_DEPTH_ATTACHMENT
+import org.lwjgl.opengl.GL33.GL_FRAMEBUFFER
+import org.lwjgl.opengl.GL33.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE
+import org.lwjgl.opengl.GL33.GL_FRAMEBUFFER_BINDING
+import org.lwjgl.opengl.GL33.GL_NONE
+import org.lwjgl.opengl.GL33.glBindFramebuffer
+import org.lwjgl.opengl.GL33.glGetFramebufferAttachmentParameteri
+import org.lwjgl.opengl.GL33.glGetInteger
 import java.util.LinkedHashMap
 
 data class ResolvedRenderTargets(
@@ -20,7 +27,7 @@ data class ResolvedRenderTargets(
     val sceneColorTextureId: Int?
         get() = if (externalFramebuffer) null else sceneColorTarget.colorTextureId.takeIf { it > 0 }
     val sceneDepthTextureId: Int?
-        get() = if (externalFramebuffer) null else sceneDepthTarget.depthTextureId.takeIf { it > 0 }
+        get() = sceneDepthTarget.depthTextureId.takeIf { it > 0 }
     val width: Int
         get() = finalCompositeTarget.width
     val height: Int
@@ -41,7 +48,7 @@ object ClientRenderTargetResolver {
         val minecraft = Minecraft.getInstance()
         val mainTarget = minecraft.mainRenderTarget
         val accessor = minecraft.levelRenderer as? LevelRendererAccessor
-        val boundFramebufferId = GL33.glGetInteger(GL33.GL_FRAMEBUFFER_BINDING)
+        val boundFramebufferId = glGetInteger(GL_FRAMEBUFFER_BINDING)
         val candidates = LinkedHashMap<Int, NamedTarget>()
 
         fun addCandidate(label: String, target: RenderTarget?) {
@@ -80,6 +87,7 @@ object ClientRenderTargetResolver {
         } else {
             mainTarget
         }
+        val externalDepthFramebufferId = selectExternalDepthFramebufferId(boundFramebufferId, sceneDepthTarget)
 
         return ResolvedRenderTargets(
             sceneColorTarget = sceneSourceTarget.target,
@@ -88,10 +96,38 @@ object ClientRenderTargetResolver {
             boundFramebufferId = boundFramebufferId,
             targetLabel = finalTarget.label,
             sceneColorFramebufferId = if (usesExternalFramebuffer) boundFramebufferId else sceneSourceTarget.target.frameBufferId,
-            sceneDepthFramebufferId = if (usesExternalFramebuffer) 0 else sceneDepthTarget.frameBufferId,
+            sceneDepthFramebufferId = if (usesExternalFramebuffer) externalDepthFramebufferId else sceneDepthTarget.frameBufferId,
             finalCompositeFramebufferId = if (usesExternalFramebuffer) boundFramebufferId else finalTarget.target.frameBufferId,
             externalFramebuffer = usesExternalFramebuffer
         )
+    }
+
+    private fun selectExternalDepthFramebufferId(boundFramebufferId: Int, sceneDepthTarget: RenderTarget): Int {
+        if (hasDepthAttachment(boundFramebufferId)) {
+            return boundFramebufferId
+        }
+        return if (sceneDepthTarget.depthTextureId > 0) {
+            sceneDepthTarget.frameBufferId
+        } else {
+            0
+        }
+    }
+
+    private fun hasDepthAttachment(framebufferId: Int): Boolean {
+        if (framebufferId <= 0) {
+            return false
+        }
+        val previousFramebuffer = glGetInteger(GL_FRAMEBUFFER_BINDING)
+        return try {
+            glBindFramebuffer(GL_FRAMEBUFFER, framebufferId)
+            glGetFramebufferAttachmentParameteri(
+                GL_FRAMEBUFFER,
+                GL_DEPTH_ATTACHMENT,
+                GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE
+            ) != GL_NONE
+        } finally {
+            glBindFramebuffer(GL_FRAMEBUFFER, previousFramebuffer)
+        }
     }
 
     private fun chooseSceneSource(

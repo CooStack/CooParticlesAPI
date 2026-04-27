@@ -196,7 +196,7 @@ class MyGlowMaskOnlyEntity(...) :
 例如：
 
 - `VanillaSafeRenderBackend` 具备 `SCENE_COLOR_COPY` 和 `SCENE_DEPTH_READ`
-- `IrisSafeRenderBackend` 当前只有 `FINAL_FRAME_POST` 和 `SAFE_WORLD_COMPOSITE`
+- `IrisSafeRenderBackend` 具备 `SCENE_COLOR_COPY`、`SCENE_DEPTH_READ`、`FINAL_FRAME_POST` 和 `SAFE_WORLD_COMPOSITE`；Iris 外部 framebuffer 会优先使用当前 FBO 的 depth attachment，没有时回落到 Minecraft `RenderTarget.depthTextureId` 及其 framebuffer
 
 所以依赖 scene color / depth 的 glow/bloom 效果，不能假设在所有 backend 上都一定可用。
 
