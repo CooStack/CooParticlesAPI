@@ -31,6 +31,55 @@ class CooScheduler {
         return tick
     }
 
+
+    /**
+     * 循环执行， 假设一共需要执行15次 （count = 15） 然后在totalTick=5 内执行完， 那么每tick就会执行3次
+     *
+     * @param count 一共需要执行的次数
+     * @param totalTick 总tick数
+     * @param runnable
+     * @return
+     */
+    fun repeatTasks(count: Int, totalTick: Int, runnable: Runnable) {
+        val fixedCount = count.coerceAtLeast(1)
+        val fixedTotalTick = totalTick.coerceAtLeast(1)
+
+
+        if (fixedTotalTick > fixedCount) {
+            // Bresenham: 将 fixedCount 次执行均匀分布到 fixedTotalTick 个tick中
+            var error = 0
+            runTaskTimerMaxTick(1, fixedTotalTick) {
+                error += fixedCount
+                if (error >= fixedTotalTick) {
+                    runnable.run()
+                    error -= fixedTotalTick
+                }
+            }
+            return
+        }
+
+        val preTickCount = fixedCount / fixedTotalTick
+        val remainder = fixedCount % fixedTotalTick
+
+        if (remainder > 0) {
+            runTaskTimerMaxTick(totalTick - 1) {
+                repeat(preTickCount) {
+                    runnable.run()
+                }
+            }.setFinishCallback {
+                repeat(preTickCount + remainder) {
+                    runnable.run()
+                }
+            }
+        } else {
+            runTaskTimerMaxTick(totalTick) {
+                repeat(preTickCount) {
+                    runnable.run()
+                }
+            }
+        }
+    }
+
     /**
      * delay个tick后运行
      */
