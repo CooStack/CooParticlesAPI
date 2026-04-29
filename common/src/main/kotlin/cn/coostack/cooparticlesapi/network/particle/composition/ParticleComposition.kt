@@ -45,7 +45,6 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
             buf.writeVec3(data.position)
             buf.writeVec3(data.axis.toVector())
             buf.writeDouble(data.scale)
-            buf.writeDouble(data.roll)
             buf.writeInt(data.status.displayStatus)
             buf.writeInt(data.status.closedInternal)
             buf.writeInt(data.status.current)
@@ -60,7 +59,6 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
                 position = buf.readVec3()
                 axis = buf.readVec3().asRelative()
                 scale = buf.readDouble()
-                roll = buf.readDouble()
                 status.setStatus(buf.readInt())
                 status.closedInternal = buf.readInt()
                 status.updateCurrent(buf.readInt())
@@ -222,12 +220,16 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
     }
 
     open fun update(other: ParticleComposition) {
+        val newAxis = other.axis.clone()
+
         this.visibleRange = other.visibleRange
         this.position = other.position
         this.canceled = other.canceled
-        this.roll = other.roll
+
         this.controlUUID = other.controlUUID
-        this.axis.copyFrom(other.axis)
+        if (!client || !displayed) {
+            this.axis.copyFrom(newAxis)
+        }
         this.status.setStatus(other.status.displayStatus)
         this.status.closedInternal = other.status.closedInternal
         this.status.updateCurrent(other.status.current)
@@ -326,6 +328,7 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
     override fun rotateToPoint(to: RelativeLocation) {
         if (!client) {
             axis.copyFrom(to)
+            ParticleCompositionManager.sendRotate(this, to, 0.0)
             return
         }
         Math3DUtil.rotatePointsToPoint(
@@ -345,6 +348,7 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
 
         if (!client) {
             axis.copyFrom(to)
+            ParticleCompositionManager.sendRotate(this, to, radian)
             return
         }
         Math3DUtil.rotateToWithRoll(
@@ -363,6 +367,7 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
             this.roll += 2 * PI
         }
         if (!client) {
+            ParticleCompositionManager.sendRotate(this, null, radian)
             return
         }
         Math3DUtil.rotateAsAxis(
@@ -406,6 +411,20 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
         this.position = pos
     }
 
+    fun applyRemoteRotation(to: RelativeLocation?, radian: Double) {
+        if (!client || !displayed || particleRotatedLocations.isEmpty()) {
+            to?.let { axis.copyFrom(it) }
+            return
+        }
+        if (to == null) {
+            Math3DUtil.rotateAsAxis(particleRotatedLocations, axis, radian)
+        } else {
+            Math3DUtil.rotateToWithRoll(particleRotatedLocations, axis, to, radian)
+            axis.copyFrom(to)
+        }
+        toggleRelative()
+    }
+
     protected open fun displayEntry(data: CompositionData, pos: RelativeLocation) {
         val uuid = data.uuid
         val displayer = data.displayerBuilder(uuid)
@@ -440,6 +459,7 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
         val locations = getParticles()
         beforeDisplay(locations)
         toggleScale(locations)
+        Math3DUtil.rotatePointsToPoint(locations.values.toList(), axis, RelativeLocation.yAxis())
         Math3DUtil.rotateAsAxis(locations.values.toList(), axis, roll)
         locations.forEach {
             displayEntry(it.key, it.value)

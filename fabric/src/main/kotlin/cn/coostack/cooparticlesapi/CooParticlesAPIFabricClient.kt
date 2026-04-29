@@ -15,6 +15,7 @@ import cn.coostack.cooparticlesapi.network.packet.client.listener.*
 import cn.coostack.cooparticlesapi.network.packet.server.PacketCameraShakeS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketDisplayEntityS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketKeyBindingCountdownS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleCompositionRotateS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleCompositionS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleEmittersS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleGroupS2C
@@ -22,6 +23,8 @@ import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleStyleS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketRenderEntityS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketRendererPostEffectS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketSoundInstanceS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketSoundLoopS2C
 import cn.coostack.cooparticlesapi.particles.CooModParticles
 import cn.coostack.cooparticlesapi.particles.impl.particles.ControlableCloudParticle
 import cn.coostack.cooparticlesapi.particles.impl.particles.ControlableEnchantmentParticle
@@ -167,6 +170,9 @@ object CooParticlesAPIFabricClient : ClientModInitializer {
         ClientPlayNetworking.registerGlobalReceiver(PacketParticleCompositionS2C.payloadID) { payload, context ->
             ClientParticleCompositionHandler.receive(payload, FabricClientContext(context))
         }
+        ClientPlayNetworking.registerGlobalReceiver(PacketParticleCompositionRotateS2C.payloadID) { payload, context ->
+            ClientParticleCompositionRotateHandler.receive(payload, FabricClientContext(context))
+        }
         ClientPlayNetworking.registerGlobalReceiver(PacketParticleStyleS2C.payloadID) { payload, context ->
             ClientParticleStylePacketHandler.receive(payload, FabricClientContext(context))
         }
@@ -181,6 +187,12 @@ object CooParticlesAPIFabricClient : ClientModInitializer {
         }
         ClientPlayNetworking.registerGlobalReceiver(PacketKeyBindingCountdownS2C.payloadID) { payload, context ->
             ClientKeyBindingCountdownHandler.receive(payload, FabricClientContext(context))
+        }
+        ClientPlayNetworking.registerGlobalReceiver(PacketSoundInstanceS2C.payloadID) { payload, context ->
+            ClientSoundInstanceHandler.receive(payload, FabricClientContext(context))
+        }
+        ClientPlayNetworking.registerGlobalReceiver(PacketSoundLoopS2C.payloadID) { payload, context ->
+            ClientSoundLoopHandler.receive(payload, FabricClientContext(context))
         }
     }
 }

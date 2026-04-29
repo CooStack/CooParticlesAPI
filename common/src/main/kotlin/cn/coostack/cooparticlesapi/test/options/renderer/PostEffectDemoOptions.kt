@@ -157,17 +157,18 @@ object PostEffectDemoOptions {
         )
     }
 
-    private fun customChainType() = CooPostEffectTypes.get(CUSTOM_CHAIN_ID) ?: CooPostEffectTypes.register(CUSTOM_CHAIN_ID) {
-        maskedScreen()
-        require(RenderBackendCapability.FINAL_FRAME_POST)
-        pass("demo_color_shift", shader("demo_color_shift")) {
-            inputSceneColor("scene")
+    private fun customChainType() =
+        CooPostEffectTypes.get(CUSTOM_CHAIN_ID) ?: CooPostEffectTypes.register(CUSTOM_CHAIN_ID) {
+            maskedScreen()
+            require(RenderBackendCapability.FINAL_FRAME_POST)
+            pass("demo_color_shift", shader("demo_color_shift")) {
+                inputSceneColor("scene")
+                outputToFinalScreen()
+                uniform("amount") { it.params["amount"] ?: PostEffectParamValue.FloatValue(0.25f) }
+                uniform("progress") { PostEffectParamValue.FloatValue(it.progress) }
+            }
             outputToFinalScreen()
-            uniform("amount") { it.params["amount"] ?: PostEffectParamValue.FloatValue(0.25f) }
-            uniform("progress") { PostEffectParamValue.FloatValue(it.progress) }
         }
-        outputToFinalScreen()
-    }
 
     private fun id(path: String): ResourceLocation {
         return ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, path)

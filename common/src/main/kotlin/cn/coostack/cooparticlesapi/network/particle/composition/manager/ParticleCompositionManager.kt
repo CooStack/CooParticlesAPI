@@ -4,16 +4,16 @@ import cn.coostack.cooparticlesapi.CooParticlesAPI
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
 import cn.coostack.cooparticlesapi.annotations.composition.handler.ParticleCompositionHelper
+import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleCompositionRotateS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleCompositionS2C
 import cn.coostack.cooparticlesapi.network.particle.composition.ParticleComposition
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
+import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import io.netty.buffer.Unpooled
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
-import net.minecraft.world.level.Level
-import net.minecraft.world.phys.Vec3
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.collections.set
@@ -129,6 +129,27 @@ object ParticleCompositionManager {
                 // join
                 compositions.add(composition)
                 // 发包
+                CooParticlesServices.SERVER_NETWORK.send(packet, it)
+            }
+        }
+    }
+
+    fun sendRotate(composition: ParticleComposition, direction: RelativeLocation?, rollDelta: Double) {
+        if (!composition.displayed || composition.canceled) {
+            return
+        }
+        val server = CooParticlesAPI.server
+        val packet = PacketParticleCompositionRotateS2C(
+            composition.controlUUID,
+            direction?.toVector(),
+            rollDelta
+        )
+        server.playerList.players.forEach {
+            if (it.level() != composition.world) {
+                return@forEach
+            }
+            val compositions = playerPlayerVisibleSet[it.uuid] ?: return@forEach
+            if (composition in compositions) {
                 CooParticlesServices.SERVER_NETWORK.send(packet, it)
             }
         }

@@ -25,23 +25,23 @@ import kotlin.collections.map
  * 复杂 fan-in 示例：
  *
  * ```kotlin
- * chain {
- *     val a = post("A", shader("extract_a")) {
+ * val GRAPH_POST = CooPostEffectTypes.register(id("graph_post")) {
+ *     val a = pass("A", shader("extract_a")) {
  *         inputSceneColor("scene", textureSlot = 0)
  *         outputToTemporary()
  *     }
- *     val c = post("C", shader("extract_c")) {
+ *     val c = pass("C", shader("extract_c")) {
  *         inputCustomTexture("noise", textureSlot = 0)
  *         outputToTemporary()
  *     }
- *     val b = post("B", shader("merge_b")) {
+ *     val b = pass("B", shader("merge_b")) {
  *         outputToTemporary()
  *     }
- *     val e = post("E", shader("mask_e")) {
+ *     val e = pass("E", shader("mask_e")) {
  *         inputSceneDepth("depth", optional = true, textureSlot = 0)
  *         outputToMaskTarget()
  *     }
- *     val d = post("D", shader("final_d")) {
+ *     val d = pass("D", shader("final_d")) {
  *         inputSceneColor("scene", textureSlot = 0)
  *         outputToFinalScreen()
  *     }
@@ -226,7 +226,7 @@ enum class PostEffectModel {
 /**
  * 构建 [PostEffectChain] 的 DSL。
  *
- * 简单线性效果可以继续使用 [pass]：
+ * 用户声明 post pass 时只有一个主入口：[pass]。
  *
  * ```kotlin
  * pass("grayscale", shader("grayscale")) {
@@ -235,11 +235,11 @@ enum class PostEffectModel {
  * }
  * ```
  *
- * 需要图连接时使用 [post] 或 [passRef] 拿到 [PostEffectPassRef]：
+ * 需要图连接时保存 [pass] 返回的 [PostEffectPassRef]：
  *
  * ```kotlin
- * val blur = post("blur", shader("blur")) { outputToTemporary() }
- * val composite = post("composite", shader("composite")) { outputToFinalScreen() }
+ * val blur = pass("blur", shader("blur")) { outputToTemporary() }
+ * val composite = pass("composite", shader("composite")) { outputToFinalScreen() }
  * blur.asInputTo(composite, "blurTex", textureSlot = 1)
  * ```
  *
@@ -251,31 +251,38 @@ class PostEffectChainBuilder {
     private var output = PostEffectOutput.FINAL_SCREEN
 
     /**
-     * 声明一个 pass，并保持旧的链式 DSL 返回值。
+     * 声明一个 pass，并返回可用于图连接的引用。
      *
-     * 如果不需要引用该 pass 输出，使用这个函数最简洁。需要图连接时优先用 [post]。
+     * 即使不需要连接上游/下游，也可以把返回值忽略，保持普通线性 DSL 写法。
      */
-    fun pass(name: String, fragment: ResourceLocation, block: PostEffectPassBuilder.() -> Unit = {}) = apply {
-        post(name, fragment, block)
-    }
-
-    /**
-     * 声明一个可被图连接引用的 pass。
-     *
-     * 返回的 [PostEffectPassRef] 只用于建立 pass output 依赖，不持有 texture id。
-     * 真正的 texture id 会在每帧执行时由 backend 写入 `lastPassOutputTextures[passName]`。
-     */
-    fun post(name: String, fragment: ResourceLocation, block: PostEffectPassBuilder.() -> Unit = {}): PostEffectPassRef {
+    fun pass(name: String, fragment: ResourceLocation, block: PostEffectPassBuilder.() -> Unit = {}): PostEffectPassRef {
         require(name !in passes) { "Post effect pass already declared: $name" }
         passes[name] = PostEffectPassBuilder(name, fragment).apply(block)
         return PostEffectPassRef(this, name)
     }
 
     /**
-     * [post] 的语义别名，用于强调“我要拿一个引用，稍后连接输入”。
+     * 兼容旧草案的别名。新代码使用 [pass]。
      */
+    @Deprecated(
+        message = "Use pass(...) as the single post pass declaration API.",
+        replaceWith = ReplaceWith("pass(name, fragment, block)"),
+        level = DeprecationLevel.HIDDEN
+    )
+    fun post(name: String, fragment: ResourceLocation, block: PostEffectPassBuilder.() -> Unit = {}): PostEffectPassRef {
+        return pass(name, fragment, block)
+    }
+
+    /**
+     * 兼容旧草案的别名。新代码使用 [pass]。
+     */
+    @Deprecated(
+        message = "Use pass(...) as the single post pass declaration API.",
+        replaceWith = ReplaceWith("pass(name, fragment, block)"),
+        level = DeprecationLevel.HIDDEN
+    )
     fun passRef(name: String, fragment: ResourceLocation, block: PostEffectPassBuilder.() -> Unit = {}): PostEffectPassRef {
-        return post(name, fragment, block)
+        return pass(name, fragment, block)
     }
 
     internal fun linkPassOutput(

@@ -6,6 +6,7 @@ import cn.coostack.cooparticlesapi.datagen.LangProvider
 import cn.coostack.cooparticlesapi.network.packet.server.PacketCameraShakeS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketDisplayEntityS2C
 import cn.coostack.cooparticlesapi.network.packet.client.PacketKeyActionC2S
+import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleCompositionRotateS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleCompositionS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleEmittersS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleGroupS2C
@@ -13,16 +14,21 @@ import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleStyleS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketRenderEntityS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketRendererPostEffectS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketSoundInstanceS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketSoundLoopS2C
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientCameraShakeHandler
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientDisplayEntityPacketHandler
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientKeyBindingCountdownHandler
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientParticleCompositionHandler
+import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientParticleCompositionRotateHandler
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientParticleEmittersPacketHandler
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientParticleGroupPacketHandler
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientParticlePacketHandler
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientParticleStylePacketHandler
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientRenderEntityPacketHandler
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientRendererPostEffectHandler
+import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientSoundInstanceHandler
+import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientSoundLoopHandler
 import cn.coostack.cooparticlesapi.network.packet.server.PacketKeyBindingCountdownS2C
 import cn.coostack.cooparticlesapi.network.packet.server.listener.ServerKeyActionHandler
 import cn.coostack.cooparticlesapi.platform.network.NeoForgeClientContext
@@ -83,6 +89,12 @@ object CooParticlesAPINeoModInitListener {
             ClientParticleCompositionHandler.receive(payload, NeoForgeClientContext(context))
         }
         registrar.playToClient(
+            PacketParticleCompositionRotateS2C.payloadID,
+            PacketParticleCompositionRotateS2C.CODEC
+        ) { payload, context ->
+            ClientParticleCompositionRotateHandler.receive(payload, NeoForgeClientContext(context))
+        }
+        registrar.playToClient(
             PacketParticleStyleS2C.payloadID,
             PacketParticleStyleS2C.CODEC
         ) { payload, context ->
@@ -112,6 +124,20 @@ object CooParticlesAPINeoModInitListener {
             PacketKeyBindingCountdownS2C.CODEC
         ) { payload, context ->
             ClientKeyBindingCountdownHandler.receive(payload, NeoForgeClientContext(context))
+        }
+
+        registrar.playToClient(
+            PacketSoundLoopS2C.payloadID,
+            PacketSoundLoopS2C.CODEC
+        ) { payload, context ->
+            ClientSoundLoopHandler.receive(payload, NeoForgeClientContext(context))
+        }
+
+        registrar.playToClient(
+            PacketSoundInstanceS2C.payloadID,
+            PacketSoundInstanceS2C.CODEC
+        ) { payload, context ->
+            ClientSoundInstanceHandler.receive(payload, NeoForgeClientContext(context))
         }
 
         registrar.playToServer(

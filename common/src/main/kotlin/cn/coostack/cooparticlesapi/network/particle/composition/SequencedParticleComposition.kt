@@ -15,7 +15,6 @@ import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
 import java.util.SortedMap
 import java.util.UUID
-import kotlin.math.PI
 import kotlin.math.max
 import kotlin.math.min
 
@@ -147,6 +146,7 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
 
         beforeDisplaySequenced(locations)
         toggleScale(locations)
+        Math3DUtil.rotatePointsToPoint(locations.values.toList(), axis, RelativeLocation.yAxis())
         Math3DUtil.rotateAsAxis(locations.values.toList(), axis, roll)
 
         sequencedParticlesData.clear()
@@ -364,65 +364,15 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
     }
 
     override fun rotateToPoint(to: RelativeLocation) {
-        if (!client) {
-            axis.apply {
-                this.x = to.x
-                this.y = to.y
-                this.z = to.z
-            }
-            return
-        }
-        Math3DUtil.rotatePointsToPoint(
-            particleRotatedLocations, to, axis
-        )
-        axis.apply {
-            this.x = to.x
-            this.y = to.y
-            this.z = to.z
-        }
-        toggleRelative()
+        super.rotateToPoint(to)
     }
 
     override fun rotateToWithAngle(to: RelativeLocation, radian: Double) {
-        this.roll += radian
-        if (this.roll >= 2 * PI) {
-            this.roll -= 2 * PI
-        } else if (this.roll <= -2 * PI) {
-            this.roll += 2 * PI
-        }
-        if (!client) {
-            axis.apply {
-                this.x = to.x
-                this.y = to.y
-                this.z = to.z
-            }
-            return
-        }
-        Math3DUtil.rotateToWithRoll(
-            particleRotatedLocations, axis, to, radian
-        )
-        axis.apply {
-            this.x = to.x
-            this.y = to.y
-            this.z = to.z
-        }
-        toggleRelative()
+        super.rotateToWithAngle(to, radian)
     }
 
     override fun rotateAsAxis(radian: Double) {
-        this.roll += radian
-        if (this.roll >= 2 * PI) {
-            this.roll -= 2 * PI
-        } else if (this.roll <= 2 * PI) {
-            this.roll += 2 * PI
-        }
-        if (!client) {
-            return
-        }
-        Math3DUtil.rotateAsAxis(
-            particleRotatedLocations, axis, radian
-        )
-        toggleRelative()
+        super.rotateAsAxis(radian)
     }
 
     fun setParticleStatus(index: Int, generated: Boolean) {

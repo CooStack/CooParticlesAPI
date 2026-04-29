@@ -135,10 +135,11 @@ object CooPostEffectTypes {
  *
  * - `screenQuad/maskedScreen/worldProjected/customModel`：效果语义
  * - `require/optional`：backend 能力
- * - `chain/pass`：shader pass 图
+ * - `pass`：shader pass 图
  * - `priority`：和其他 frame-post descriptor 的相对顺序
  *
- * `pass(...)` 是简单写法；如果需要图连接，用 `chain { val a = post(...); a.asInputTo(...) }`。
+ * `pass(...)` 是唯一推荐的 pass 声明入口。线性效果可以忽略返回值；
+ * 图连接效果保存返回值后调用 `asInputTo/asInputFrom`。
  */
 class PostEffectTypeBuilder(private val id: ResourceLocation) {
     private var model = PostEffectModel.SCREEN_QUAD
@@ -164,14 +165,58 @@ class PostEffectTypeBuilder(private val id: ResourceLocation) {
     /** 声明整个 effect 可选的 backend 能力。 */
     fun optional(capability: RenderBackendCapability) = apply { optionalCapabilities += capability }
 
-    /** 使用完整 [PostEffectChainBuilder] DSL 声明 pass 图。 */
+    /** 兼容旧草案的分组入口。新代码直接在 type builder 顶层调用 [pass]。 */
+    @Deprecated(
+        message = "Declare passes directly with pass(...). chain { ... } duplicates the top-level DSL and resets previous passes.",
+        level = DeprecationLevel.HIDDEN
+    )
     fun chain(block: PostEffectChainBuilder.() -> Unit) = apply {
         chainBuilder = PostEffectChainBuilder().apply(block)
     }
 
-    /** 声明单个 pass 的快捷入口，适合一两个 pass 的线性效果。 */
-    fun pass(name: String, fragment: ResourceLocation, block: PostEffectPassBuilder.() -> Unit = {}) = apply {
-        chainBuilder.pass(name, fragment, block)
+    /**
+     * 声明单个 pass，并返回可连接引用。
+     *
+     * 线性效果可以忽略返回值：
+     *
+     * ```kotlin
+     * pass("shockwave", shader("shockwave")) { outputToFinalScreen() }
+     * ```
+     *
+     * 图式效果保存返回值：
+     *
+     * ```kotlin
+     * val a = pass("A", shader("a")) { outputToTemporary() }
+     * val b = pass("B", shader("b")) { outputToFinalScreen() }
+     * a.asInputTo(b, samplerName = "aTex", textureSlot = 1)
+     * ```
+     */
+    fun pass(name: String, fragment: ResourceLocation, block: PostEffectPassBuilder.() -> Unit = {}): PostEffectPassRef {
+        return chainBuilder.pass(name, fragment, block)
+    }
+
+    /**
+     * 兼容旧草案的别名。新代码使用 [pass]。
+     */
+    @Deprecated(
+        message = "Use pass(...) as the single post pass declaration API.",
+        replaceWith = ReplaceWith("pass(name, fragment, block)"),
+        level = DeprecationLevel.HIDDEN
+    )
+    fun post(name: String, fragment: ResourceLocation, block: PostEffectPassBuilder.() -> Unit = {}): PostEffectPassRef {
+        return pass(name, fragment, block)
+    }
+
+    /**
+     * 兼容旧草案的别名。新代码使用 [pass]。
+     */
+    @Deprecated(
+        message = "Use pass(...) as the single post pass declaration API.",
+        replaceWith = ReplaceWith("pass(name, fragment, block)"),
+        level = DeprecationLevel.HIDDEN
+    )
+    fun passRef(name: String, fragment: ResourceLocation, block: PostEffectPassBuilder.() -> Unit = {}): PostEffectPassRef {
+        return pass(name, fragment, block)
     }
 
     /** 设置 chain 默认输出为最终屏幕。 */

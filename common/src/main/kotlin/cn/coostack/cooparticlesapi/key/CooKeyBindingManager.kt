@@ -13,6 +13,7 @@ import net.minecraft.client.KeyMapping
 import net.minecraft.client.Minecraft
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerPlayer
+import org.lwjgl.glfw.GLFW
 
 /**
  * keyName 默认使用 keyId
@@ -85,7 +86,10 @@ object CooKeyBindingManager {
         val doubleInterval = doubleClickWindowTicks.coerceAtLeast(0).toLong()
         val states = keyStates.values.toList()
         val pendingActions = ArrayList<KeyActionData<ResourceLocation>>()
+        val client = Minecraft.getInstance()
         states.forEach { state ->
+            val down = isPhysicallyDown(state.mapping, client)
+            syncMappingsWithSameKey(state.mapping, client, down)
             if (keyCountDowns.containsKey(state.id)) {
                 val current = keyCountDowns[state.id]!!
                 if (current > 0) {
@@ -98,7 +102,6 @@ object CooKeyBindingManager {
                     keyCountDowns.remove(state.id)
                 }
             }
-            val down = state.mapping.isDown
             if (down) {
                 if (!state.wasDown) {
                     state.pressTick = 0
@@ -125,6 +128,30 @@ object CooKeyBindingManager {
         }
         if (pendingActions.isNotEmpty()) {
             sendActions(KeyActionBatch(pendingActions))
+        }
+    }
+
+    private fun isPhysicallyDown(mapping: KeyMapping, client: Minecraft): Boolean {
+        val window = client.window.window
+        for (button in 0..GLFW.GLFW_MOUSE_BUTTON_LAST) {
+            if (mapping.matchesMouse(button)) {
+                return GLFW.glfwGetMouseButton(window, button) == GLFW.GLFW_PRESS
+            }
+        }
+        for (keyCode in 0..GLFW.GLFW_KEY_LAST) {
+            if (mapping.matches(keyCode, 0)) {
+                return InputConstants.isKeyDown(window, keyCode)
+            }
+        }
+        return mapping.isDown
+    }
+
+    private fun syncMappingsWithSameKey(source: KeyMapping, client: Minecraft, down: Boolean) {
+        source.setDown(down)
+        client.options.keyMappings.forEach { mapping ->
+            if (mapping !== source && mapping.same(source)) {
+                mapping.setDown(down)
+            }
         }
     }
 

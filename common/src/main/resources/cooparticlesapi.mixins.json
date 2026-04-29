@@ -18,6 +18,7 @@
     "MainTargetMixin",
     "ParticleEngineAccessor",
     "ParticleEngineMixin",
+    "SoundEngineMixin",
     "events.world.client.ItemRendererInvoker",
     "events.world.client.LevelRendererMixin"
   ]

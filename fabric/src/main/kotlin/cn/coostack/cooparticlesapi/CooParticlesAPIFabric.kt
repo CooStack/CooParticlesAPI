@@ -13,6 +13,7 @@ import cn.coostack.cooparticlesapi.network.packet.server.PacketCameraShakeS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketDisplayEntityS2C
 import cn.coostack.cooparticlesapi.network.packet.client.PacketKeyActionC2S
 import cn.coostack.cooparticlesapi.network.packet.server.PacketKeyBindingCountdownS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleCompositionRotateS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleCompositionS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleEmittersS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleGroupS2C
@@ -20,6 +21,8 @@ import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleStyleS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketRenderEntityS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketRendererPostEffectS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketSoundInstanceS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketSoundLoopS2C
 import cn.coostack.cooparticlesapi.network.packet.server.listener.ServerKeyActionHandler
 import cn.coostack.cooparticlesapi.platform.network.FabricServerContext
 import cn.coostack.cooparticlesapi.particles.CooModParticles
@@ -62,7 +65,11 @@ object CooParticlesAPIFabric : ModInitializer {
         PayloadTypeRegistry.playS2C()
             .register(PacketParticleCompositionS2C.payloadID, PacketParticleCompositionS2C.CODEC)
         PayloadTypeRegistry.playS2C()
+            .register(PacketParticleCompositionRotateS2C.payloadID, PacketParticleCompositionRotateS2C.CODEC)
+        PayloadTypeRegistry.playS2C()
             .register(PacketKeyBindingCountdownS2C.payloadID, PacketKeyBindingCountdownS2C.CODEC)
+        PayloadTypeRegistry.playS2C().register(PacketSoundInstanceS2C.payloadID, PacketSoundInstanceS2C.CODEC)
+        PayloadTypeRegistry.playS2C().register(PacketSoundLoopS2C.payloadID, PacketSoundLoopS2C.CODEC)
         PayloadTypeRegistry.playC2S().register(PacketKeyActionC2S.payloadID, PacketKeyActionC2S.CODEC)
 
         ServerPlayNetworking.registerGlobalReceiver(PacketKeyActionC2S.payloadID) { payload, context ->

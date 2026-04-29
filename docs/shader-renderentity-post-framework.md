@@ -568,42 +568,40 @@ val ARC_BLOOM: PostEffectType = CooPostEffectTypes.register(
     require(RenderBackendCapability.SCENE_DEPTH_READ)
     require(RenderBackendCapability.FINAL_FRAME_POST)
 
-    chain {
-        val extract = post("extract", ResourceLocation.fromNamespaceAndPath(MOD_ID, "post/arc_extract.fsh")) {
-            inputSceneColor("scene", textureSlot = 0)
-            outputToTemporary()
-            uniform("threshold") { it.params["threshold"] ?: PostEffectParamValue.FloatValue(0.65f) }
-        }
-
-        val noiseMask = post("noise_mask", ResourceLocation.fromNamespaceAndPath(MOD_ID, "post/arc_noise_mask.fsh")) {
-            inputCustomTexture("noiseTex", textureSlot = 0)
-            outputToTemporary()
-            uniform("noiseScale") { it.params["noiseScale"] ?: PostEffectParamValue.FloatValue(2.5f) }
-        }
-
-        val blur = post("blur", ResourceLocation.fromNamespaceAndPath(MOD_ID, "post/arc_blur.fsh")) {
-            outputToTemporary()
-            uniform("radius") { instance ->
-                val base = (instance.params["blurRadius"] as? PostEffectParamValue.FloatValue)?.value ?: 6.0f
-                PostEffectParamValue.FloatValue(base * (1.0f - instance.progress * 0.25f))
-            }
-        }
-
-        val compose = post("compose", ResourceLocation.fromNamespaceAndPath(MOD_ID, "post/arc_compose.fsh")) {
-            inputSceneColor("scene", textureSlot = 0)
-            inputSceneDepth("depthTex", optional = true, textureSlot = 3)
-            outputToFinalScreen()
-            uniform("intensity") { instance ->
-                val base = (instance.params["intensity"] as? PostEffectParamValue.FloatValue)?.value ?: 1.0f
-                PostEffectParamValue.FloatValue(base * (1.0f - instance.progress))
-            }
-        }
-
-        extract.asInputTo(blur, "sourceTex", textureSlot = 0)
-        noiseMask.asInputTo(blur, "maskTex", textureSlot = 1)
-        blur.asInputTo(compose, "bloomTex", textureSlot = 1)
-        noiseMask.asInputTo(compose, "maskTex", textureSlot = 2)
+    val extract = pass("extract", ResourceLocation.fromNamespaceAndPath(MOD_ID, "post/arc_extract.fsh")) {
+        inputSceneColor("scene", textureSlot = 0)
+        outputToTemporary()
+        uniform("threshold") { it.params["threshold"] ?: PostEffectParamValue.FloatValue(0.65f) }
     }
+
+    val noiseMask = pass("noise_mask", ResourceLocation.fromNamespaceAndPath(MOD_ID, "post/arc_noise_mask.fsh")) {
+        inputCustomTexture("noiseTex", textureSlot = 0)
+        outputToTemporary()
+        uniform("noiseScale") { it.params["noiseScale"] ?: PostEffectParamValue.FloatValue(2.5f) }
+    }
+
+    val blur = pass("blur", ResourceLocation.fromNamespaceAndPath(MOD_ID, "post/arc_blur.fsh")) {
+        outputToTemporary()
+        uniform("radius") { instance ->
+            val base = (instance.params["blurRadius"] as? PostEffectParamValue.FloatValue)?.value ?: 6.0f
+            PostEffectParamValue.FloatValue(base * (1.0f - instance.progress * 0.25f))
+        }
+    }
+
+    val compose = pass("compose", ResourceLocation.fromNamespaceAndPath(MOD_ID, "post/arc_compose.fsh")) {
+        inputSceneColor("scene", textureSlot = 0)
+        inputSceneDepth("depthTex", optional = true, textureSlot = 3)
+        outputToFinalScreen()
+        uniform("intensity") { instance ->
+            val base = (instance.params["intensity"] as? PostEffectParamValue.FloatValue)?.value ?: 1.0f
+            PostEffectParamValue.FloatValue(base * (1.0f - instance.progress))
+        }
+    }
+
+    extract.asInputTo(blur, "sourceTex", textureSlot = 0)
+    noiseMask.asInputTo(blur, "maskTex", textureSlot = 1)
+    blur.asInputTo(compose, "bloomTex", textureSlot = 1)
+    noiseMask.asInputTo(compose, "maskTex", textureSlot = 2)
 }
 ```
 
