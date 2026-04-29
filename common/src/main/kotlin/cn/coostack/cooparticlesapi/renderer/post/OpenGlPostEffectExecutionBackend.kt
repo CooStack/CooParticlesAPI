@@ -49,6 +49,23 @@ import org.lwjgl.opengl.GL33.glViewport
 import java.util.function.Supplier
 import kotlin.math.max
 
+/**
+ * Minecraft 客户端 OpenGL 后处理执行后端。
+ *
+ * 普通自定义 post 效果不应该直接调用这个对象；调用方声明 [PostEffectType] 和 [PostEffectChain] 后，
+ * [PostEffectFrameExecutor] 会把可执行 step 交给这里。
+ *
+ * 它负责的底层工作包括：
+ *
+ * - 缓存 shader program 和屏幕 quad vertex buffer
+ * - 为 pass 输出创建、复用、缩放临时 FBO
+ * - 复制 scene color，避免直接读写同一个 framebuffer
+ * - 绑定 sampler 到显式或自动分配的 texture slot
+ * - 维护同一 instance 内的上游 pass 输出，支持 `A/C/E -> B/D -> Final` 图连接
+ * - 上传生命周期、binding、用户参数等 uniform
+ *
+ * 这层实现替代了每个 post 效果各自手写 GL 状态保存、FBO 生命周期、纹理绑定和 shader uniform 上传。
+ */
 object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
     PostEffectFramePreparationBackend,
     PostEffectResourceBackend {
@@ -77,6 +94,7 @@ object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         if (state.frameKey != frameKey || step.passIndex == 0) {
             state.frameKey = frameKey
             state.lastOutputTextures.clear()
+            state.lastPassOutputTextures.clear()
         }
 
         if (step.output.output == PostEffectOutput.FINAL_SCREEN) {
@@ -88,7 +106,9 @@ object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         target.buffer.writeFrameBufferWith {
             drawStep(step, state)
         }
-        state.lastOutputTextures[step.output.output] = target.buffer.colorAttachments.firstOrNull() ?: 0
+        val colorTexture = target.buffer.colorAttachments.firstOrNull() ?: 0
+        state.lastOutputTextures[step.output.output] = colorTexture
+        state.lastPassOutputTextures[step.pass.name] = colorTexture
     }
 
     override fun release() {
@@ -166,7 +186,9 @@ object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
             }
         }
         if (step.output.output == PostEffectOutput.FINAL_SCREEN) {
-            state.lastOutputTextures[step.output.output] = step.context.finalCompositeTarget?.colorTextureId ?: 0
+            val colorTexture = step.context.finalCompositeTarget?.colorTextureId ?: 0
+            state.lastOutputTextures[step.output.output] = colorTexture
+            state.lastPassOutputTextures[step.pass.name] = colorTexture
         }
     }
 
@@ -177,6 +199,9 @@ object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         draw: () -> Unit
     ) {
         val missingRequiredInputs = mutableListOf<String>()
+        val explicitSlots = step.inputs.mapNotNull { it.textureSlot }.toSet()
+        val usedSlots = linkedSetOf<Int>()
+        var nextAutoSlot = 0
         val availableInputs = step.inputs.mapNotNull { input ->
             if (!input.available) {
                 if (!input.optional) {
@@ -191,7 +216,14 @@ object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
                 }
                 return@mapNotNull null
             }
-            input.samplerName to texture
+            val slot = input.textureSlot ?: run {
+                while (nextAutoSlot in explicitSlots || nextAutoSlot in usedSlots) {
+                    nextAutoSlot++
+                }
+                nextAutoSlot
+            }
+            usedSlots += slot
+            BoundInput(input.samplerName, texture, slot)
         }
         if (missingRequiredInputs.isNotEmpty()) {
             CooParticlesConstants.logger.debug(
@@ -204,19 +236,19 @@ object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
             return
         }
         val previousActive = glGetInteger(org.lwjgl.opengl.GL33.GL_ACTIVE_TEXTURE)
-        val previousBindings = IntArray(availableInputs.size)
+        val previousBindings = linkedMapOf<Int, Int>()
         try {
-            availableInputs.forEachIndexed { index, (samplerName, textureId) ->
-                glActiveTexture(GL_TEXTURE0 + index)
-                previousBindings[index] = glGetInteger(GL_TEXTURE_BINDING_2D)
-                glBindTexture(GL_TEXTURE_2D, textureId)
-                program.setInt(samplerName, index)
+            availableInputs.forEach { input ->
+                glActiveTexture(GL_TEXTURE0 + input.textureSlot)
+                previousBindings[input.textureSlot] = glGetInteger(GL_TEXTURE_BINDING_2D)
+                glBindTexture(GL_TEXTURE_2D, input.textureId)
+                program.setInt(input.samplerName, input.textureSlot)
             }
             draw()
         } finally {
-            availableInputs.indices.reversed().forEach { index ->
-                glActiveTexture(GL_TEXTURE0 + index)
-                glBindTexture(GL_TEXTURE_2D, previousBindings[index])
+            previousBindings.entries.reversed().forEach { (textureSlot, previousBinding) ->
+                glActiveTexture(GL_TEXTURE0 + textureSlot)
+                glBindTexture(GL_TEXTURE_2D, previousBinding)
             }
             glActiveTexture(previousActive)
         }
@@ -236,11 +268,20 @@ object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
             PostEffectInputSource.BRIGHT_COLOR -> state.lastOutputTextures[PostEffectOutput.BLOOM]
                 ?: input.textureId
             PostEffectInputSource.CUSTOM_TEXTURE -> customTexture(input, step.instance)
+            PostEffectInputSource.PASS_OUTPUT -> input.producedByPassName?.let { state.lastPassOutputTextures[it] }
+            PostEffectInputSource.SCENE_RESOURCE -> input.textureId
         }?.takeIf { it > 0 }
     }
 
     private fun customTexture(input: PostEffectResolvedInput, instance: PostEffectInstance): Int? {
-        val id = (instance.params[input.samplerName] as? PostEffectParamValue.Resource)?.value ?: return null
+        val value = instance.params[input.samplerName] ?: return null
+        if (value is PostEffectParamValue.IntValue) {
+            return value.value
+        }
+        if (value is PostEffectParamValue.LongValue) {
+            return value.value.toInt()
+        }
+        val id = (value as? PostEffectParamValue.ResourceValue)?.value ?: return null
         val texture = customTextures.getOrPut(id) {
             IdentifierTexture(id).also { it.init() }
         }
@@ -275,7 +316,11 @@ object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         val height = max(1, step.context.targetHeight ?: ClientRenderPipelineManager.currentRenderHeight())
         val center = resolveBindingCenter(step.context, step.instance.binding) ?: Vector2f(0.5f, 0.5f)
         val sourceDepth = resolveBindingDepth(step.context, step.instance.binding) ?: 1f
-        val hasDepth = step.inputs.any { it.source == PostEffectInputSource.SCENE_DEPTH && it.available }
+        val hasDepth = step.inputs.any {
+            it.available && (it.source == PostEffectInputSource.SCENE_DEPTH ||
+                (it.source == PostEffectInputSource.SCENE_RESOURCE &&
+                    it.sourceResourceChannel == PostEffectResourceChannel.DEPTH))
+        }
         program.setFloat("progress", step.instance.progress)
         program.setFloat2("center", center)
         program.setFloat("sourceDepth", sourceDepth)
@@ -287,16 +332,16 @@ object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
     private fun uploadUniforms(program: CooShaderProgram, uniforms: Map<String, PostEffectParamValue>) {
         uniforms.forEach { (name, value) ->
             when (value) {
-                is PostEffectParamValue.Bool -> program.setBoolean(name, value.value)
+                is PostEffectParamValue.BoolValue -> program.setBoolean(name, value.value)
                 is PostEffectParamValue.IntValue -> program.setInt(name, value.value)
                 is PostEffectParamValue.LongValue -> program.setFloat(name, value.value.toFloat())
                 is PostEffectParamValue.FloatValue -> program.setFloat(name, value.value)
                 is PostEffectParamValue.DoubleValue -> program.setFloat(name, value.value.toFloat())
                 is PostEffectParamValue.StringValue -> Unit
-                is PostEffectParamValue.Resource -> Unit
-                is PostEffectParamValue.Vec2 -> program.setFloat2(name, Vector2f(value.x, value.y))
-                is PostEffectParamValue.Vec3 -> program.setFloat3(name, Vector3f(value.x.toFloat(), value.y.toFloat(), value.z.toFloat()))
-                is PostEffectParamValue.Color -> program.setFloat4(name, Vector4f(value.red, value.green, value.blue, value.alpha))
+                is PostEffectParamValue.ResourceValue -> Unit
+                is PostEffectParamValue.Vec2Value -> program.setFloat2(name, Vector2f(value.x, value.y))
+                is PostEffectParamValue.Vec3Value -> program.setFloat3(name, Vector3f(value.x.toFloat(), value.y.toFloat(), value.z.toFloat()))
+                is PostEffectParamValue.ColorValue -> program.setFloat4(name, Vector4f(value.red, value.green, value.blue, value.alpha))
             }
         }
     }
@@ -307,7 +352,7 @@ object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
             is PostEffectBinding.ScreenPoint -> Vector2f(binding.x, binding.y)
             is PostEffectBinding.WorldPos -> projectWorld(context, binding.x, binding.y, binding.z)
             is PostEffectBinding.Block -> {
-                val offset = binding.offset ?: PostEffectParamValue.Vec3(0.5, 0.5, 0.5)
+                val offset = binding.offset ?: PostEffectParamValue.Vec3Value(0.5, 0.5, 0.5)
                 projectWorld(
                     context,
                     binding.pos.x + offset.x,
@@ -338,7 +383,7 @@ object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
             is PostEffectBinding.ScreenPoint -> 1f
             is PostEffectBinding.WorldPos -> projectWorldClip(context, binding.x, binding.y, binding.z)?.z
             is PostEffectBinding.Block -> {
-                val offset = binding.offset ?: PostEffectParamValue.Vec3(0.5, 0.5, 0.5)
+                val offset = binding.offset ?: PostEffectParamValue.Vec3Value(0.5, 0.5, 0.5)
                 projectWorldClip(
                     context,
                     binding.pos.x + offset.x,
@@ -565,9 +610,16 @@ object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         var height: Int
     )
 
+    private data class BoundInput(
+        val samplerName: String,
+        val textureId: Int,
+        val textureSlot: Int
+    )
+
     private data class InstanceFrameState(
         var frameKey: FrameKey? = null,
-        val lastOutputTextures: MutableMap<PostEffectOutput, Int> = linkedMapOf()
+        val lastOutputTextures: MutableMap<PostEffectOutput, Int> = linkedMapOf(),
+        val lastPassOutputTextures: MutableMap<String, Int> = linkedMapOf()
     )
 
     private data class FrameKey(

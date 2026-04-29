@@ -111,7 +111,7 @@ object PostEffectDemoOptions {
                     .bindBlock(
                         viewer.blockPosition(),
                         viewer.level().dimension().location(),
-                        PostEffectParamValue.Vec3(0.5, 0.5, 0.5)
+                        PostEffectParamValue.Vec3Value(0.5, 0.5, 0.5)
                     )
                     .params {
                         color("color", 0.0f, 1.0f, 0.25f, 0.55f)

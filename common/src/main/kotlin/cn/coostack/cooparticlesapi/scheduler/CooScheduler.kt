@@ -23,7 +23,7 @@ class CooScheduler {
     /**
      * 每 delay 个tick运行一次
      */
-    fun runTaskTimer(delay: Int, runnable: Runnable): TickRunnable {
+    fun runTaskTimer(delay: Int, runnable: TickRunnable.() -> Unit): TickRunnable {
         val tick = TickRunnable(runnable)
         tick.singleDelay = delay
         tick.loop()
@@ -40,7 +40,7 @@ class CooScheduler {
      * @param runnable
      * @return
      */
-    fun repeatTasks(count: Int, totalTick: Int, runnable: Runnable) {
+    fun repeatTasks(count: Int, totalTick: Int, runnable: TickRunnable.() -> Unit) {
         val fixedCount = count.coerceAtLeast(1)
         val fixedTotalTick = totalTick.coerceAtLeast(1)
 
@@ -51,7 +51,7 @@ class CooScheduler {
             runTaskTimerMaxTick(1, fixedTotalTick) {
                 error += fixedCount
                 if (error >= fixedTotalTick) {
-                    runnable.run()
+                    runnable()
                     error -= fixedTotalTick
                 }
             }
@@ -62,19 +62,20 @@ class CooScheduler {
         val remainder = fixedCount % fixedTotalTick
 
         if (remainder > 0) {
-            runTaskTimerMaxTick(totalTick - 1) {
+            lateinit var tick: TickRunnable
+            tick = runTaskTimerMaxTick(totalTick - 1) {
                 repeat(preTickCount) {
-                    runnable.run()
+                    runnable()
                 }
             }.setFinishCallback {
                 repeat(preTickCount + remainder) {
-                    runnable.run()
+                    runnable(tick)
                 }
             }
         } else {
             runTaskTimerMaxTick(totalTick) {
                 repeat(preTickCount) {
-                    runnable.run()
+                    runnable()
                 }
             }
         }
@@ -83,7 +84,7 @@ class CooScheduler {
     /**
      * delay个tick后运行
      */
-    fun runTask(delay: Int, runnable: Runnable): TickRunnable {
+    fun runTask(delay: Int, runnable: TickRunnable.() -> Unit): TickRunnable {
         val tick = TickRunnable(runnable)
         tick.singleDelay = delay
         taskQueue.add(tick)
@@ -94,7 +95,7 @@ class CooScheduler {
      * 每tick运行一次
      * 一共运行maxLoopTick次
      */
-    fun runTaskTimerMaxTick(maxLoopTick: Int, runnable: Runnable): TickRunnable {
+    fun runTaskTimerMaxTick(maxLoopTick: Int, runnable: TickRunnable.() -> Unit): TickRunnable {
         val tick = TickRunnable(runnable)
         tick.maxTick = maxLoopTick
         tick.loopTimer()
@@ -108,7 +109,7 @@ class CooScheduler {
      * 每preDelay运行一次
      * 一共运行maxLoopTick次
      */
-    fun runTaskTimerMaxTick(preDelay: Int, maxLoopTick: Int, runnable: Runnable): TickRunnable {
+    fun runTaskTimerMaxTick(preDelay: Int, maxLoopTick: Int, runnable: TickRunnable.() -> Unit): TickRunnable {
         val tick = TickRunnable(runnable)
         tick.maxTick = maxLoopTick
         tick.singleDelay = preDelay
@@ -118,8 +119,6 @@ class CooScheduler {
     }
 
     class TickRunnable(val runnable: TickRunnable.() -> Unit) {
-        constructor(task: Runnable) : this({ task.run() })
-
         /**
          * loopTimer为true时 启用
          * 代表执行的最大Tick (singleDelay + currentTick > maxTick && currentTick < maxTick 时也会执行)

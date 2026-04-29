@@ -51,6 +51,7 @@ CooAPIScanner.registerPacket("your.mod.package")
 - CooEventBus：[`docs/event-bus.md`](docs/event-bus.md)
 - DisplayEntity：[`docs/display-entity.md`](docs/display-entity.md)
 - RenderEntity：[`docs/render-entity.md`](docs/render-entity.md)（`RenderEntity` 只负责模型与效果输入；屏幕后处理交给 pipeline）
+- Shader / RenderEntity / Post 开发框架：[`docs/shader-renderentity-post-framework.md`](docs/shader-renderentity-post-framework.md)
 - ShaderPipe：[`docs/shader-pipe.md`](docs/shader-pipe.md)
 - Utils：[`docs/utils.md`](docs/utils.md)
 
