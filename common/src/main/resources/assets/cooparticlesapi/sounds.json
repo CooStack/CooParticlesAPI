@@ -1,0 +1,25 @@
+{
+  "test.laser_charge_up": {
+    "sounds": [
+      "cooparticlesapi:test/laser_charge_up"
+    ]
+  },
+  "test.laser_loop": {
+    "sounds": [
+      {
+        "name": "cooparticlesapi:test/laser_loop",
+        "stream": true
+      }
+    ]
+  },
+  "test.laser_obliteration": {
+    "sounds": [
+      "cooparticlesapi:test/laser_obliteration"
+    ]
+  },
+  "test.laser_start": {
+    "sounds": [
+      "cooparticlesapi:test/laser_start"
+    ]
+  }
+}

@@ -13,6 +13,18 @@ import kotlin.random.Random
 
 private val random = Random(System.currentTimeMillis())
 
+fun Vec3i.withX(handler: Vec3i.() -> Int): Vec3i {
+    return Vec3i(handler(), y, z)
+}
+
+fun Vec3i.withY(handler: Vec3i.() -> Int): Vec3i {
+    return Vec3i(x, handler(), z)
+}
+
+fun Vec3i.withZ(handler: Vec3i.() -> Int): Vec3i {
+    return Vec3i(x, y, handler())
+}
+
 fun Vec3i.asVec3(): Vec3 = Vec3(x.toDouble(), y.toDouble(), z.toDouble())
 fun Vec3i.asRelative() = RelativeLocation.of(asVec3())
 

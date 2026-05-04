@@ -341,6 +341,33 @@ data class RelativeLocation(var x: Double, var y: Double, var z: Double) {
         return this
     }
 
+    fun withX(handler: RelativeLocation.() -> Double): RelativeLocation {
+        x = handler()
+        return this
+    }
+
+    fun withY(handler: RelativeLocation.() -> Double): RelativeLocation {
+        y = handler()
+        return this
+    }
+
+    fun withZ(handler: RelativeLocation.() -> Double): RelativeLocation {
+        z = handler()
+        return this
+    }
+
+    fun withCloneX(handler: RelativeLocation.() -> Double): RelativeLocation {
+        return RelativeLocation(handler(), y, z)
+    }
+
+    fun withCloneY(handler: RelativeLocation.() -> Double): RelativeLocation {
+        return RelativeLocation(x, handler(), z)
+    }
+
+    fun withCloneZ(handler: RelativeLocation.() -> Double): RelativeLocation {
+        return RelativeLocation(x, y, handler())
+    }
+
     fun randomHorizontal(): RelativeLocation {
         val angle = Random.nextDouble(0.0, 2 * PI)
         return RelativeLocation(cos(angle), 0.0, sin(angle))

@@ -1,7 +1,7 @@
 package cn.coostack.cooparticlesapi.renderer.shader.vertex
 
 import cn.coostack.cooparticlesapi.renderer.shader.data.CooVertexFormat
-import cn.coostack.cooparticlesapi.renderer.shader.utils.ShaderUtil
+import cn.coostack.cooparticlesapi.renderer.utils.ShaderUtil
 import org.joml.Vector3f
 
 object VertexBuffers {

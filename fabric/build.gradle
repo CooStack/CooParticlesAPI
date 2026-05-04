@@ -105,8 +105,8 @@ publishing {
 
             url = uri(
                     isSnapshot
-                            ? "https://nexus.jsdu.cn/repository/maven-snapshots/"
-                            : "https://nexus.jsdu.cn/repository/maven-releases/"
+                            ? "https://nexus.jsdu.cn/snapshots"
+                            : "https://nexus.jsdu.cn/repository"
             )
 
             credentials {

@@ -14,18 +14,51 @@ import net.minecraft.world.phys.Vec3
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
-object ServerSoundInstanceManager {
+object ServerSoundManager {
     private val sounds = ConcurrentHashMap<String, ServerManagedSoundInstance>()
     private val duckingEffects = ConcurrentHashMap<String, ServerDuckingSoundEffect>()
     private val soundViewers = ConcurrentHashMap<String, MutableSet<UUID>>()
     private val duckingViewers = ConcurrentHashMap<String, MutableSet<UUID>>()
 
+    /**
+     * 创建稳定的实体级实例 key。复用同一个 key 表示控制/替换同一个逻辑声音；
+     * 如果多个声音需要重叠播放，就使用不同 name 或 layer。
+     */
+    @JvmStatic
     fun key(entity: Entity, name: String): String {
-        return "${entity.uuid}:$name"
+        return SoundInstanceKeys.entity(entity, name)
     }
 
+    /**
+     * 创建带额外 layer 的实体级实例 key，适合需要多个声音重叠播放的场景。
+     */
+    @JvmStatic
     fun key(entity: Entity, name: String, layer: String): String {
-        return "${entity.uuid}:$name:$layer"
+        return SoundInstanceKeys.entity(entity, name, layer)
+    }
+
+    @JvmStatic
+    @JvmOverloads
+    fun builder(sound: SoundEvent, source: SoundSource = SoundSource.MASTER): SoundInstanceBuilder {
+        return SoundInstanceBuilder(sound, source)
+    }
+
+    @JvmStatic
+    @JvmOverloads
+    fun builder(sound: ResourceLocation, source: SoundSource = SoundSource.MASTER): SoundInstanceBuilder {
+        return SoundInstanceBuilder(sound, source)
+    }
+
+    @JvmStatic
+    @JvmOverloads
+    fun instance(sound: SoundEvent, source: SoundSource = SoundSource.MASTER): SoundInstanceBuilder {
+        return builder(sound, source)
+    }
+
+    @JvmStatic
+    @JvmOverloads
+    fun instance(sound: ResourceLocation, source: SoundSource = SoundSource.MASTER): SoundInstanceBuilder {
+        return builder(sound, source)
     }
 
     @JvmStatic
@@ -58,6 +91,9 @@ object ServerSoundInstanceManager {
         return duckingEffects[key]?.isStopped == false
     }
 
+    /**
+     * 将声音淡变到目标音量百分比/倍率。0f 为静音，1f 为正常资源音量。
+     */
     @JvmStatic
     @JvmOverloads
     fun fadeTo(
@@ -82,11 +118,19 @@ object ServerSoundInstanceManager {
     }
 
     @JvmStatic
+    fun fadeIn(key: String, ticks: Int): CooScheduler.TickRunnable? {
+        return sounds[key]?.fadeIn(ticks)
+    }
+
+    /**
+     * 从 [fromVolume] 淡入到 [targetVolume]。两个参数都是音量百分比/倍率。
+     */
+    @JvmStatic
     @JvmOverloads
     fun fadeIn(
         key: String,
         ticks: Int,
-        targetVolume: Float = 1f,
+        targetVolume: Float,
         fromVolume: Float = 0f
     ): CooScheduler.TickRunnable? {
         return sounds[key]?.fadeIn(ticks, targetVolume, fromVolume)
@@ -110,11 +154,16 @@ object ServerSoundInstanceManager {
     }
 
     @JvmStatic
+    fun fadeDuckingIn(key: String, ticks: Int): CooScheduler.TickRunnable? {
+        return duckingEffects[key]?.fadeIn(ticks)
+    }
+
+    @JvmStatic
     @JvmOverloads
     fun fadeDuckingIn(
         key: String,
         ticks: Int,
-        targetVolumeMultiplier: Float = 0f,
+        targetVolumeMultiplier: Float,
         fromVolumeMultiplier: Float = 1f
     ): CooScheduler.TickRunnable? {
         return duckingEffects[key]?.fadeIn(ticks, targetVolumeMultiplier, fromVolumeMultiplier)
@@ -126,6 +175,11 @@ object ServerSoundInstanceManager {
         instance.markRestart()
         syncSound(instance)
         return instance
+    }
+
+    @JvmStatic
+    fun spawn(spec: SoundInstanceSpec, world: ServerLevel): ServerManagedSoundInstance {
+        return spawn(ServerManagedSoundInstance(spec, world))
     }
 
     @JvmStatic
@@ -427,6 +481,14 @@ object ServerSoundInstanceManager {
     }
 
     @JvmStatic
+    fun stop(instance: ServerManagedSoundInstance, interrupt: Boolean = true) {
+        instance.stopNow(interrupt)
+        if (sounds[instance.key] === instance) {
+            syncSound(instance)
+        }
+    }
+
+    @JvmStatic
     fun stop(player: ServerPlayer, key: String, interrupt: Boolean = true) {
         val instance = sounds[key]
         if (instance != null && instance.targetPlayer?.uuid == player.uuid) {
@@ -692,6 +754,14 @@ object ServerSoundInstanceManager {
                 whitelistKeys
             )
         )
+    }
+
+    @JvmStatic
+    fun stopDucking(effect: ServerDuckingSoundEffect) {
+        effect.stopNow()
+        if (duckingEffects[effect.key] === effect) {
+            syncDucking(effect, forceStart = false)
+        }
     }
 
     @JvmStatic

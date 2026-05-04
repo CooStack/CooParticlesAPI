@@ -14,6 +14,19 @@ import kotlin.random.Random
 
 private val random = Random(System.currentTimeMillis())
 
+fun Vec3.withX(handler: Vec3.() -> Double): Vec3 {
+    return Vec3(handler(), y, z)
+}
+
+fun Vec3.withY(handler: Vec3.() -> Double): Vec3 {
+    return Vec3(x, handler(), z)
+}
+
+fun Vec3.withZ(handler: Vec3.() -> Double): Vec3 {
+    return Vec3(x, y, handler())
+}
+
+
 fun Vec3.asRelative() = RelativeLocation.of(this)
 
 fun Vec3.asAbs(): Vec3 {
@@ -90,7 +103,8 @@ operator fun Vec3.div(other: Vector3f): Vec3 = Vec3(this.x / other.x, this.y / o
 operator fun Vec3.div(other: Vector3d): Vec3 = Vec3(this.x / other.x, this.y / other.y, this.z / other.z)
 operator fun Vec3.div(other: RelativeLocation): Vec3 = Vec3(this.x / other.x, this.y / other.y, this.z / other.z)
 operator fun Vec3.div(other: Vec3i): Vec3 = Vec3(this.x / other.x, this.y / other.y, this.z / other.z)
-operator fun Vec3.div(other: Number): Vec3 = Vec3(this.x / other.toDouble(), this.y / other.toDouble(), this.z / other.toDouble())
+operator fun Vec3.div(other: Number): Vec3 =
+    Vec3(this.x / other.toDouble(), this.y / other.toDouble(), this.z / other.toDouble())
 
 // Vec3 dot/cross with Vector3f / Vector3d / RelativeLocation / Vec3i
 fun Vec3.dot(other: Vector3f): Double = this.x * other.x + this.y * other.y + this.z * other.z
@@ -103,11 +117,13 @@ fun Vec3.cross(other: Vector3f): Vec3 = Vec3(
     this.z * other.x - this.x * other.z,
     this.x * other.y - this.y * other.x
 )
+
 fun Vec3.cross(other: Vector3d): Vec3 = Vec3(
     this.y * other.z - this.z * other.y,
     this.z * other.x - this.x * other.z,
     this.x * other.y - this.y * other.x
 )
+
 fun Vec3.cross(other: RelativeLocation): Vec3 = this.cross(other.toVector())
 fun Vec3.cross(other: Vec3i): Vec3 = Vec3(
     this.y * other.z - this.z * other.y,

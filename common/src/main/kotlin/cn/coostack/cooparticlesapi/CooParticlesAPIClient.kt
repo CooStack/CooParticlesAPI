@@ -26,7 +26,7 @@ import cn.coostack.cooparticlesapi.renderer.post.PostEffectFrameExecutor
 import cn.coostack.cooparticlesapi.renderer.post.PostEffectRuntimeRegistry
 import cn.coostack.cooparticlesapi.renderer.shader.ShaderProgramRegistry
 import cn.coostack.cooparticlesapi.scheduler.CooScheduler
-import cn.coostack.cooparticlesapi.sound.ClientSoundInstanceManager
+import cn.coostack.cooparticlesapi.sound.ClientSoundManager
 import cn.coostack.cooparticlesapi.sound.ClientSoundLoopManager
 import cn.coostack.cooparticlesapi.test.TestControlKeyBindings
 import cn.coostack.cooparticlesapi.test.TestManager
@@ -182,7 +182,7 @@ object CooParticlesAPIClient {
         ClientParticleGroupManager.clearAllVisible()
         ParticleCompositionManager.clearClient()
         TestManager.clearClient()
-        ClientSoundInstanceManager.clear()
+        ClientSoundManager.clear()
         ClientSoundLoopManager.clear()
     }
 
@@ -200,7 +200,7 @@ object CooParticlesAPIClient {
         CooPostEffects.client.clear()
         ParticleCompositionManager.clearClient()
         TestManager.clearClient()
-        ClientSoundInstanceManager.clear()
+        ClientSoundManager.clear()
         ClientSoundLoopManager.clear()
 
         DisplayEntityManager.clearClient()
@@ -231,7 +231,7 @@ object CooParticlesAPIClient {
                 ClientRenderEntityManager.tick()
                 DisplayEntityManager.tickClient()
                 ClientCameraUtil.tick()
-                ClientSoundInstanceManager.tick()
+                ClientSoundManager.tick()
                 ClientSoundLoopManager.tick()
                 ParticleCompositionManager.tickClient()
                 TestManager.doTickClient()

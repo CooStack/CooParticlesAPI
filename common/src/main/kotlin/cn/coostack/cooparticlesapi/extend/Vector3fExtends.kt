@@ -14,6 +14,18 @@ import kotlin.random.Random
 
 private val random = Random(System.currentTimeMillis())
 
+fun Vector3f.withX(handler: Vector3f.() -> Float): Vector3f {
+    return Vector3f(handler(), y, z)
+}
+
+fun Vector3f.withY(handler: Vector3f.() -> Float): Vector3f {
+    return Vector3f(x, handler(), z)
+}
+
+fun Vector3f.withZ(handler: Vector3f.() -> Float): Vector3f {
+    return Vector3f(x, y, handler())
+}
+
 fun Vector3f.asRelative() = RelativeLocation.of(this)
 fun Vector3f.asVec3() = Vec3(this)
 

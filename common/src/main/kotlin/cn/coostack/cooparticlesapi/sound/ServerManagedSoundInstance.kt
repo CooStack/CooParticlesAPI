@@ -12,6 +12,20 @@ import net.minecraft.world.entity.Entity
 import net.minecraft.world.phys.Vec3
 import kotlin.math.max
 
+/**
+ * 服务端权威的音频实例，由 [ServerSoundManager] 同步到客户端播放。
+ *
+ * [key] 是实例身份，不只是调试名称。两个存活音频使用同一个 key 时，会被当成同一个
+ * 可控实例；后来的 PLAY 包会替换客户端上更早的声音。需要多个声音重叠播放时，使用
+ * [SoundInstanceBuilder] 自动生成 key，或使用 [ServerSoundManager.key] 加入 layer。
+ *
+ * 音量使用客户端 SoundInstance 的百分比/倍率语义：0f 表示静音，1f 表示资源正常音量。
+ * 大于 1f 不应作为更大响度依赖；实际输出可能被原版声音引擎、声源分类音量或系统音量限制。
+ *
+ * [relative] 是原版 SoundInstance 的“相对监听者”模式：声音会按玩家耳朵/监听者来播放，
+ * 不作为普通世界坐标声音处理。UI 声、耳鸣、玩家耳边提示音可以用 true。实体或方块发出的
+ * 世界声音需要距离衰减和方向感时应保持 false；需要跟随实体时用 [bindToEntity]。
+ */
 class ServerManagedSoundInstance(
     val key: String,
     soundId: ResourceLocation,
@@ -34,6 +48,27 @@ class ServerManagedSoundInstance(
         looping: Boolean = false,
         relative: Boolean = false
     ) : this(key, sound.location, source, world, initialPos, initialVolume, initialPitch, looping, relative)
+
+    constructor(
+        spec: SoundInstanceSpec,
+        world: ServerLevel
+    ) : this(
+        key = spec.key,
+        soundId = spec.soundId,
+        source = spec.source,
+        world = world,
+        initialPos = spec.position,
+        initialVolume = spec.volume,
+        initialPitch = spec.pitch,
+        looping = spec.looping,
+        relative = spec.relative
+    ) {
+        entityId = spec.entityId
+        self = spec.self
+        visibleRange = spec.visibleRange
+        syncEveryTick = spec.syncEveryTick
+        stopWhenBoundEntityMissing = spec.stopWhenBoundEntityMissing
+    }
 
     var soundId: ResourceLocation = soundId
         set(value) {
@@ -130,7 +165,15 @@ class ServerManagedSoundInstance(
             position = Vec3(position.x, position.y, value)
         }
 
-    var volumeMultiplier: Float = initialVolume
+    /**
+     * 初始音量百分比/倍率。0f 为静音，1f 为正常资源音量。
+     */
+    val initialVolumeMultiplier: Float = initialVolume.coerceAtLeast(0f)
+
+    /**
+     * 当前音量百分比/倍率。该值会同步到客户端 SoundInstance#getVolume。
+     */
+    var volumeMultiplier: Float = initialVolumeMultiplier
         set(value) {
             val next = value.coerceAtLeast(0f)
             if (field == next) {
@@ -158,6 +201,9 @@ class ServerManagedSoundInstance(
             markDirty()
         }
 
+    /**
+     * 原版“相对监听者”模式。它不负责绑定实体；实体跟随由 [entity] / [bindToEntity] 控制。
+     */
     var relativeSound: Boolean = relative
         set(value) {
             if (field == value) {
@@ -207,6 +253,11 @@ class ServerManagedSoundInstance(
         stopNow(false)
     }
 
+    /**
+     * 通过服务端 scheduler 每 tick 修改 [volumeMultiplier] 来实现音量渐变。
+     * [targetVolume] 使用百分比/倍率语义：0f 为静音，1f 为正常资源音量。
+     * 返回的任务可以由调用方 cancel。
+     */
     @JvmOverloads
     fun fadeTo(
         targetVolume: Float,
@@ -248,7 +299,11 @@ class ServerManagedSoundInstance(
     }
 
     @JvmOverloads
-    fun fadeIn(ticks: Int, targetVolume: Float = 1f, fromVolume: Float = volumeMultiplier): CooScheduler.TickRunnable? {
+    fun fadeIn(
+        ticks: Int,
+        targetVolume: Float = initialVolumeMultiplier,
+        fromVolume: Float = 0f
+    ): CooScheduler.TickRunnable? {
         volumeMultiplier = fromVolume
         return fadeTo(targetVolume, ticks, false)
     }
@@ -330,6 +385,24 @@ class ServerManagedSoundInstance(
 
     fun toStopPacket(): PacketSoundInstanceS2C {
         return PacketSoundInstanceS2C.stop(key, stopImmediately)
+    }
+
+    fun toSpec(): SoundInstanceSpec {
+        return SoundInstanceSpec(
+            key = key,
+            soundId = soundId,
+            source = source,
+            entityId = currentEntityId(),
+            position = position,
+            volume = volumeMultiplier,
+            pitch = pitchMultiplier,
+            looping = loopingSound,
+            relative = relativeSound,
+            self = self,
+            visibleRange = visibleRange,
+            syncEveryTick = syncEveryTick,
+            stopWhenBoundEntityMissing = stopWhenBoundEntityMissing
+        )
     }
 
     internal fun needsUpdatePacket(): Boolean {

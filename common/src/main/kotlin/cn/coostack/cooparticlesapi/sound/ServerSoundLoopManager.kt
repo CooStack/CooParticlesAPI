@@ -13,6 +13,9 @@ import net.minecraft.world.phys.Vec3
 
 object ServerSoundLoopManager {
     private val trackingKeys = HashSet<String>()
+    private val trackedEntityLoops = HashMap<String, TrackedEntityLoop>()
+
+    private data class TrackedEntityLoop(val entity: Entity, val self: Boolean)
 
     fun key(entity: Entity, name: String): String {
         return "${entity.uuid}:$name"
@@ -53,9 +56,7 @@ object ServerSoundLoopManager {
         pitch: Float = 1f,
         self: Boolean = true
     ): Boolean {
-        if (!markTracking(key)) {
-            return false
-        }
+        val newlyTracked = markTracking(key)
         val packet = PacketSoundLoopS2C.start(
             key = key,
             sound = sound,
@@ -66,9 +67,12 @@ object ServerSoundLoopManager {
             pitch = pitch
         )
         if (!sendToEntityWatchers(entity, packet, self)) {
-            unmarkTracking(key)
+            if (newlyTracked) {
+                unmarkTracking(key)
+            }
             return false
         }
+        trackEntityLoop(key, entity, self)
         return true
     }
 
@@ -95,9 +99,8 @@ object ServerSoundLoopManager {
         volume: Float = 1f,
         pitch: Float = 1f
     ): Boolean {
-        if (!markTracking(key)) {
-            return false
-        }
+        markTracking(key)
+        untrackEntityLoop(key)
         val packet = PacketSoundLoopS2C.start(
             key = key,
             sound = sound,
@@ -113,6 +116,18 @@ object ServerSoundLoopManager {
             packet
         )
         return true
+    }
+
+    @JvmStatic
+    fun tick() {
+        val staleLoops = synchronized(trackingKeys) {
+            trackedEntityLoops
+                .filterValues { !isEntityTrackingActive(it.entity) }
+                .map { it.key to it.value }
+        }
+        staleLoops.forEach { (key, loop) ->
+            stopTrackingEntity(loop.entity, key, loop.self, true)
+        }
     }
 
     @JvmStatic
@@ -154,6 +169,23 @@ object ServerSoundLoopManager {
     private fun unmarkTracking(key: String) {
         synchronized(trackingKeys) {
             trackingKeys.remove(key)
+            trackedEntityLoops.remove(key)
         }
+    }
+
+    private fun trackEntityLoop(key: String, entity: Entity, self: Boolean) {
+        synchronized(trackingKeys) {
+            trackedEntityLoops[key] = TrackedEntityLoop(entity, self)
+        }
+    }
+
+    private fun untrackEntityLoop(key: String) {
+        synchronized(trackingKeys) {
+            trackedEntityLoops.remove(key)
+        }
+    }
+
+    private fun isEntityTrackingActive(entity: Entity): Boolean {
+        return entity.isAlive && entity.level() is ServerLevel
     }
 }

@@ -17,7 +17,8 @@ import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import cn.coostack.cooparticlesapi.renderer.server.ServerRenderEntityManager
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityAutoRegistry
 import cn.coostack.cooparticlesapi.scheduler.CooScheduler
-import cn.coostack.cooparticlesapi.sound.ServerSoundInstanceManager
+import cn.coostack.cooparticlesapi.sound.ServerSoundLoopManager
+import cn.coostack.cooparticlesapi.sound.ServerSoundManager
 import cn.coostack.cooparticlesapi.test.APITestGroupBuilder
 import cn.coostack.cooparticlesapi.test.TestManager
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.event.TestCollideEventHandler
@@ -89,7 +90,8 @@ object CooParticlesAPI {
         AnimateManager.tickServer()
         ServerRenderEntityManager.tick()
         scheduler.doTick()
-        ServerSoundInstanceManager.tick()
+        ServerSoundLoopManager.tick()
+        ServerSoundManager.tick()
         DisplayEntityManager.tickServer()
         ParticleCompositionManager.tickServer()
         TestManager.doTickServer()

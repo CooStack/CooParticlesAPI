@@ -8,7 +8,7 @@ import net.minecraft.sounds.SoundSource
 import net.minecraft.world.phys.Vec3
 import kotlin.math.min
 
-object ClientSoundInstanceManager {
+object ClientSoundManager {
     private val sounds = HashMap<String, ManagedSoundInstance>()
     private val ducks = HashMap<String, DuckingSoundEffect>()
     private var volumeRefreshRequested = false
@@ -55,19 +55,26 @@ object ClientSoundInstanceManager {
         looping: Boolean = false,
         relative: Boolean = false
     ): ManagedSoundInstance {
-        stop(key, true)
-        val sound = ManagedSoundInstance(
-            key = key,
-            soundId = soundId,
-            source = source,
-            entityId = entityId,
-            initialPos = pos,
-            initialVolume = volume,
-            initialPitch = pitch,
-            looping = looping,
-            relative = relative
+        return play(
+            SoundInstanceSpec(
+                key = key,
+                soundId = soundId,
+                source = source,
+                entityId = entityId,
+                position = pos,
+                volume = volume,
+                pitch = pitch,
+                looping = looping,
+                relative = relative
+            )
         )
-        sounds[key] = sound
+    }
+
+    @JvmStatic
+    fun play(spec: SoundInstanceSpec): ManagedSoundInstance {
+        stop(spec.key, true)
+        val sound = ManagedSoundInstance(spec)
+        sounds[spec.key] = sound
         Minecraft.getInstance().soundManager.play(sound)
         return sound
     }

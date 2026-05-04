@@ -125,6 +125,12 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
             }.appendOption {
                 ShakeOption(100, player)
             }.appendOption {
+                ServerSoundStartLoopTestOption(player)
+            }.appendOption {
+                ServerSoundStartDuckLoopTestOption(player)
+            }.appendOption {
+                ServerSoundFadeTestOption(player)
+            }.appendOption {
                 PostEffectDemoOptions.grayscale(player)
             }.appendOption {
                 PostEffectDemoOptions.serverShockwave(player)

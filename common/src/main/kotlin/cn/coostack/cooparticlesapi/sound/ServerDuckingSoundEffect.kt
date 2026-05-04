@@ -11,6 +11,15 @@ import net.minecraft.util.Mth
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.phys.Vec3
 
+/**
+ * 服务端权威的音频压低/屏蔽实例，用来降低客户端上非白名单声音的音量。
+ *
+ * [key] 是实例身份。再次启动同 key 的 ducking 会更新/替换同一个效果；需要多个 ducking
+ * 同时存在时必须使用不同 key。
+ *
+ * [volumeMultiplier] 会作用到非白名单声音上。0f 表示完全静音，1f 表示不压低。
+ * [range] < 0 表示对已同步玩家全局生效；否则按监听者距离 [position] 的远近逐渐减弱。
+ */
 class ServerDuckingSoundEffect(
     val key: String,
     world: ServerLevel,
@@ -98,7 +107,9 @@ class ServerDuckingSoundEffect(
             position = Vec3(position.x, position.y, value)
         }
 
-    var volumeMultiplier: Float = Mth.clamp(volumeMultiplier, 0f, 1f)
+    val initialVolumeMultiplier: Float = Mth.clamp(volumeMultiplier, 0f, 1f)
+
+    var volumeMultiplier: Float = initialVolumeMultiplier
         set(value) {
             val next = Mth.clamp(value, 0f, 1f)
             if (field == next) {
@@ -153,6 +164,10 @@ class ServerDuckingSoundEffect(
         markDirty()
     }
 
+    /**
+     * 通过服务端 scheduler 每 tick 修改 ducking 倍率来实现渐变。
+     * 注意：数值越低压低越强，1f 表示不压低。
+     */
     @JvmOverloads
     fun fadeTo(targetVolumeMultiplier: Float, ticks: Int, stopWhenFinished: Boolean = false): CooScheduler.TickRunnable? {
         val fixedTicks = ticks.coerceAtLeast(0)
@@ -191,8 +206,8 @@ class ServerDuckingSoundEffect(
     @JvmOverloads
     fun fadeIn(
         ticks: Int,
-        targetVolumeMultiplier: Float = 0f,
-        fromVolumeMultiplier: Float = volumeMultiplier
+        targetVolumeMultiplier: Float = initialVolumeMultiplier,
+        fromVolumeMultiplier: Float = 1f
     ): CooScheduler.TickRunnable? {
         volumeMultiplier = fromVolumeMultiplier
         return fadeTo(targetVolumeMultiplier, ticks, false)
