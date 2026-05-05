@@ -192,13 +192,17 @@ data class RelativeLocation(var x: Double, var y: Double, var z: Double) {
     operator fun times(scalar: Vector3d): RelativeLocation = RelativeLocation(x * scalar.x, y * scalar.y, z * scalar.z)
     operator fun times(scalar: Vec3i): RelativeLocation = RelativeLocation(x * scalar.x, y * scalar.y, z * scalar.z)
 
-    operator fun div(scalar: RelativeLocation): RelativeLocation = RelativeLocation(x / scalar.x, y / scalar.y, z / scalar.z)
+    operator fun div(scalar: RelativeLocation): RelativeLocation =
+        RelativeLocation(x / scalar.x, y / scalar.y, z / scalar.z)
+
     operator fun div(scalar: Vec3): RelativeLocation = RelativeLocation(x / scalar.x, y / scalar.y, z / scalar.z)
     operator fun div(scalar: Vector3f): RelativeLocation =
         RelativeLocation(x / scalar.x, y / scalar.y, z / scalar.z)
+
     operator fun div(scalar: Vector3d): RelativeLocation = RelativeLocation(x / scalar.x, y / scalar.y, z / scalar.z)
     operator fun div(scalar: Vec3i): RelativeLocation = RelativeLocation(x / scalar.x, y / scalar.y, z / scalar.z)
-    operator fun div(scalar: Number): RelativeLocation = RelativeLocation(x / scalar.toDouble(), y / scalar.toDouble(), z / scalar.toDouble())
+    operator fun div(scalar: Number): RelativeLocation =
+        RelativeLocation(x / scalar.toDouble(), y / scalar.toDouble(), z / scalar.toDouble())
 
     operator fun plus(other: RelativeLocation): RelativeLocation {
         return RelativeLocation(x + other.x, y + other.y, z + other.z)
@@ -264,16 +268,19 @@ data class RelativeLocation(var x: Double, var y: Double, var z: Double) {
         z * other.x - x * other.z,
         x * other.y - y * other.x
     )
+
     fun cross(other: Vector3f): RelativeLocation = RelativeLocation(
         y * other.z - z * other.y,
         z * other.x - x * other.z,
         x * other.y - y * other.x
     )
+
     fun cross(other: Vector3d): RelativeLocation = RelativeLocation(
         y * other.z - z * other.y,
         z * other.x - x * other.z,
         x * other.y - y * other.x
     )
+
     fun cross(other: Vec3i): RelativeLocation = RelativeLocation(
         y * other.z - z * other.y,
         z * other.x - x * other.z,
@@ -281,8 +288,15 @@ data class RelativeLocation(var x: Double, var y: Double, var z: Double) {
     )
 
     fun length() = sqrt(x.pow(2) + y.pow(2) + z.pow(2))
+    fun lengthHorizontal() = sqrt(x.pow(2) + z.pow(2))
+    fun lengthVerticalXY() = sqrt(x.pow(2) + y.pow(2))
+    fun lengthVerticalZY() = sqrt(z.pow(2) + y.pow(2))
     fun distance(relativeLocation: RelativeLocation) =
         sqrt((x - relativeLocation.x).pow(2) + (y - relativeLocation.y).pow(2) + (z - relativeLocation.z).pow(2))
+
+    fun distanceHorizontal(other: RelativeLocation): Double {
+        return (other - this).lengthHorizontal()
+    }
 
     fun distance(pos: Vec3) = distance(
         of(

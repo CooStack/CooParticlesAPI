@@ -12,8 +12,12 @@ import cn.coostack.cooparticlesapi.utils.NoiseMode
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import net.minecraft.core.BlockPos
 import net.minecraft.world.phys.Vec3
+import cn.coostack.cooparticlesapi.extend.asRelative
+import java.util.HashMap
+import java.util.HashSet
 import java.util.SortedMap
 import java.util.TreeMap
+import kotlin.math.floor
 
 /**
  * 点集构建器：用于组合、变换并导出一组 {@link RelativeLocation}。
@@ -35,6 +39,7 @@ import java.util.TreeMap
  */
 class PointsBuilder {
     companion object {
+        private data class MaskGridKey(val x: Long, val y: Long, val z: Long)
 
         /**
          * 创建一个 PointsBuilder，并设置其对称轴为 [axis]。
@@ -66,6 +71,121 @@ class PointsBuilder {
         @JvmStatic
         fun of(axis: RelativeLocation, points: Collection<RelativeLocation>): PointsBuilder {
             return PointsBuilder().also { it.axis = axis; it.addPoints(points) }
+        }
+
+        private fun maskGridKey(point: RelativeLocation, inverseCellSize: Double): MaskGridKey {
+            return MaskGridKey(
+                floor(point.x * inverseCellSize).toLong(),
+                floor(point.y * inverseCellSize).toLong(),
+                floor(point.z * inverseCellSize).toLong()
+            )
+        }
+
+        /**
+         * 按输入顺序执行点遮罩：后来的点保留，删除所有距离它小于 [maskRange] 的旧点。
+         *
+         * 采用三维空间分桶，只扫描当前点所在桶及周围 26 个邻桶，避免全量 O(n^2) 扫描。
+         */
+        private fun applyMaskInPlace(points: MutableList<RelativeLocation>, maskRange: Double) {
+            if (points.isEmpty() || maskRange <= 0.0 || maskRange.isNaN()) {
+                return
+            }
+
+            val originalSize = points.size
+            val inverseCellSize = 1.0 / maskRange
+            val rangeSq = maskRange * maskRange
+            val alive = BooleanArray(originalSize)
+            val buckets = HashMap<MaskGridKey, MutableSet<Int>>(originalSize * 2)
+
+            for (index in 0 until originalSize) {
+                val point = points[index]
+                val cell = maskGridKey(point, inverseCellSize)
+
+                for (dx in -1..1) {
+                    for (dy in -1..1) {
+                        for (dz in -1..1) {
+                            val bucket = buckets[MaskGridKey(
+                                cell.x + dx.toLong(),
+                                cell.y + dy.toLong(),
+                                cell.z + dz.toLong()
+                            )] ?: continue
+
+                            val iterator = bucket.iterator()
+                            while (iterator.hasNext()) {
+                                val candidateIndex = iterator.next()
+                                if (!alive[candidateIndex]) {
+                                    iterator.remove()
+                                    continue
+                                }
+
+                                val candidate = points[candidateIndex]
+                                val offsetX = candidate.x - point.x
+                                val offsetY = candidate.y - point.y
+                                val offsetZ = candidate.z - point.z
+                                if (offsetX * offsetX + offsetY * offsetY + offsetZ * offsetZ < rangeSq) {
+                                    alive[candidateIndex] = false
+                                    iterator.remove()
+                                }
+                            }
+                        }
+                    }
+                }
+
+                alive[index] = true
+                buckets.getOrPut(cell) { HashSet() }.add(index)
+            }
+
+            var write = 0
+            for (read in 0 until originalSize) {
+                if (alive[read]) {
+                    points[write++] = points[read]
+                }
+            }
+            if (write < originalSize) {
+                points.subList(write, originalSize).clear()
+            }
+        }
+
+        /**
+         * 对 PointsBuilder 直接执行点遮罩，结果会回写到 builder 内部。
+         */
+        @JvmStatic
+        fun clearAsMask(builder: PointsBuilder, maskRange: Double): PointsBuilder {
+            applyMaskInPlace(builder.points, maskRange)
+            return builder
+        }
+
+        /**
+         * 对 PointsBuilder 执行点遮罩后，再把额外点集合并入 builder。
+         *
+         * @param points 支持直接传入点集合
+         */
+        @JvmStatic
+        fun clearAsMaskAndJoin(
+            builder: PointsBuilder,
+            points: Collection<RelativeLocation>,
+            maskRange: Double
+        ): PointsBuilder {
+            clearAsMask(builder, maskRange)
+            builder.points.addAll(points)
+            return builder
+        }
+
+        /**
+         * 对 PointsBuilder 执行点遮罩后，再把另一个 PointsBuilder 的点并入 builder。
+         */
+        @JvmStatic
+        fun clearAsMaskAndJoin(
+            builder: PointsBuilder,
+            points: PointsBuilder,
+            maskRange: Double
+        ): PointsBuilder {
+            if (builder === points) {
+                return clearAsMask(builder, maskRange)
+            }
+            clearAsMask(builder, maskRange)
+            builder.points.addAll(points.createWithoutClone())
+            return builder
         }
     }
 
@@ -956,6 +1076,65 @@ class PointsBuilder {
     }
 
     /**
+     * 执行点遮罩：
+     * - 按当前点的输入顺序处理
+     * - 新点会清理掉所有与它距离小于 [maskRange] 的旧点
+     * - 使用空间分桶优化查询范围
+     */
+    fun clearAsMask(maskRange: Double): PointsBuilder = apply {
+        clearAsMask(this, maskRange)
+    }
+
+    /**
+     * 执行点遮罩后，再把外部点集合并入当前 builder。
+     *
+     * @param points 支持 Collection / List / Set 等集合输入
+     */
+    fun clearAsMaskAndJoin(points: Collection<RelativeLocation>, maskRange: Double): PointsBuilder = apply {
+        clearAsMaskAndJoin(this, points, maskRange)
+    }
+
+    /**
+     * 执行点遮罩后，再把另一个 PointsBuilder 的点并入当前 builder。
+     */
+    fun clearAsMaskAndJoin(points: PointsBuilder, maskRange: Double): PointsBuilder = apply {
+        clearAsMaskAndJoin(this, points, maskRange)
+    }
+
+    fun clearAsBallMask(origin: RelativeLocation, radius: Double) = apply {
+        points.removeIf { origin.distance(it) <= radius }
+    }
+
+    fun clearAsBallMask(origin: Vec3, radius: Double) = clearAsBallMask(origin.asRelative(), radius)
+
+    /**
+     * 清空 水平面的
+     *
+     * @param origin
+     * @param radius
+     */
+    fun clearAsRoundXZMask(origin: RelativeLocation, radius: Double, yAxisRange: Double = -1.0) = apply {
+        val limitY = yAxisRange <= .0
+        points.removeIf {
+            val hor = it.distanceHorizontal(origin)
+            if (!limitY) {
+                hor < radius
+            } else {
+                hor < radius && it.y in -yAxisRange..yAxisRange
+            }
+        }
+    }
+
+    /**
+     * 清空 水平面的
+     *
+     * @param origin
+     * @param radius
+     */
+    fun clearAsRoundXZMask(origin: Vec3, radius: Double, yAxisRange: Double = -1.0) =
+        clearAsRoundXZMask(origin.asRelative(), radius, yAxisRange)
+
+    /**
      * 导出点集副本（每个点 clone 一份），避免外部修改影响 builder。
      */
     fun create(): List<RelativeLocation> = points.asSequence().map { it.clone() }.toList()
@@ -1047,6 +1226,7 @@ class PointsBuilder {
         TreeMap<CompositionData, RelativeLocation>().apply {
             putAll(createWithoutClone().associateBy { builder(it) })
         }
+
 
     /**
      * 导出点集并生成 SequencedParticleStyle 的排序数据（不 clone 点对象）。

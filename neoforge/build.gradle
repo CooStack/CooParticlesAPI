@@ -69,8 +69,16 @@ repositories {
         setUrl("https://thedarkcolour.github.io/KotlinForForge/")
     }
     maven {
-        name = "repo"
-        url = "https://nexus.jsdu.cn/repository/maven-releases/"
+        name = "jsdu-snapshot"
+        url = "https://nexus.jsdu.cn/snapshots"
+        mavenContent {
+            snapshotsOnly()
+        }
+    }
+
+    maven {
+        name = "jsdu"
+        url = "https://nexus.jsdu.cn/repository"
     }
     flatDir {
         dirs "../depend"
@@ -98,8 +106,8 @@ publishing {
 
             url = uri(
                     isSnapshot
-                            ? "https://nexus.jsdu.cn/repository/maven-snapshots/"
-                            : "https://nexus.jsdu.cn/repository/maven-releases/"
+                            ? "https://nexus.jsdu.cn/snapshots"
+                            : "https://nexus.jsdu.cn/repository"
             )
 
             credentials {
