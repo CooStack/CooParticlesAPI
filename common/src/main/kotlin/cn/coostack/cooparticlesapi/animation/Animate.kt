@@ -3,6 +3,28 @@ package cn.coostack.cooparticlesapi.animation
 import cn.coostack.cooparticlesapi.api.controler.Tickable
 import java.util.function.Predicate
 
+/**
+ * # 动画系统， 基本示例如下
+ * ## 并行执行
+ * ```kotlin
+ *   val animate = Animate()
+ *   // 这两个node下面的所有Action会在1个tick内同时执行
+ *   animate.addNode(AnimateNode().addAction(xxxAction))
+ *   animate.addNode(AnimateNode().addAction(xxxAction))
+ * ```
+ * ## 顺序执行
+ * ```kotlin
+ *   val animate = Animate()
+ *   // 父节点下的Action执行完成后，才会执行子节点的Action
+ *   val parent = AnimateNode()
+ *      .addAction(firstAction)
+ *      .addNode(AnimateNode()
+ *          .addAction(secondAction),
+ *       delayTick)
+ *   animate.addNode(parent)
+ * ```
+ * @constructor Create empty Animate
+ */
 class Animate : Tickable<Animate> {
     private data class PendingNode(
         val node: AnimateNode,
