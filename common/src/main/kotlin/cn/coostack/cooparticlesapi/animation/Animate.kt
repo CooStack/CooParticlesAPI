@@ -31,7 +31,7 @@ class Animate : Tickable<Animate> {
         var waitTick: Int,
     )
 
-    var timestarp = 0
+    var timestamp = 0
     val nodes = ArrayList<Pair<AnimateNode, Int>>()
 
     /**
@@ -132,7 +132,7 @@ class Animate : Tickable<Animate> {
 
         updateLegacyPointers()
         checkDoneState()
-        timestarp++
+        timestamp++
     }
 
     fun start() {
@@ -220,6 +220,6 @@ class Animate : Tickable<Animate> {
         currentNode = null
         currentInterval = 0
         currentIndex = 0
-        timestarp = 0
+        timestamp = 0
     }
 }
