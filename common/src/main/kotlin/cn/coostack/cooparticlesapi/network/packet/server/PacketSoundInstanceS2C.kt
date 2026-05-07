@@ -169,10 +169,10 @@ class PacketSoundInstanceS2C(
             entityId: Int,
             pos: Vec3,
             volumeMultiplier: Float,
-            range: Double,
-            whitelistSounds: Set<ResourceLocation>,
-            whitelistSources: Set<SoundSource>,
-            whitelistKeys: Set<String>
+            range: Double = -1.0,
+            whitelistSounds: Set<ResourceLocation> = HashSet(),
+            whitelistSources: Set<SoundSource> = HashSet(),
+            whitelistKeys: Set<String> = HashSet()
         ): PacketSoundInstanceS2C {
             require(action == Action.DUCK_START || action == Action.DUCK_UPDATE || action == Action.DUCK_STOP) {
                 "Ducking packet action must be a ducking action."

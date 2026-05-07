@@ -477,7 +477,12 @@ object ServerSoundManager {
             syncSound(instance)
             return
         }
-        sendToPlayersNear(world, pos, volume.toDouble() * 16.0, PacketSoundInstanceS2C.update(key, -1, pos, volume, pitch))
+        sendToPlayersNear(
+            world,
+            pos,
+            volume.toDouble() * 16.0,
+            PacketSoundInstanceS2C.update(key, -1, pos, volume, pitch)
+        )
     }
 
     @JvmStatic
@@ -610,7 +615,16 @@ object ServerSoundManager {
         whitelistSources: Set<SoundSource> = emptySet(),
         whitelistKeys: Set<String> = emptySet()
     ): ServerDuckingSoundEffect {
-        return createDucking(player, key, volumeMultiplier, range, origin, whitelistSounds, whitelistSources, whitelistKeys)
+        return createDucking(
+            player,
+            key,
+            volumeMultiplier,
+            range,
+            origin,
+            whitelistSounds,
+            whitelistSources,
+            whitelistKeys
+        )
     }
 
     @JvmStatic
@@ -828,11 +842,7 @@ object ServerSoundManager {
                 key,
                 -1,
                 pos,
-                1f,
-                -1.0,
-                emptySet(),
-                emptySet(),
-                emptySet()
+                1f
             )
         )
     }
@@ -843,7 +853,7 @@ object ServerSoundManager {
         pruneOfflineViewers(viewers)
         val needsPlay = instance.needsPlayPacket()
         val needsUpdate = instance.needsUpdatePacket()
-        val playPacket = if (needsPlay || viewers.isEmpty()) instance.toPlayPacket() else null
+        val playPacket = if (needsPlay) instance.toPlayPacket() else null
         val updatePacket = if (needsUpdate && !needsPlay) instance.toUpdatePacket() else null
         val stopPacket = if (instance.isStopped) instance.toStopPacket() else null
 
@@ -854,10 +864,6 @@ object ServerSoundManager {
                 shouldBeVisible && !wasVisible -> {
                     CooParticlesServices.SERVER_NETWORK.send(playPacket ?: instance.toPlayPacket(), player)
                     viewers.add(player.uuid)
-                }
-
-                shouldBeVisible && needsPlay -> {
-                    CooParticlesServices.SERVER_NETWORK.send(playPacket ?: instance.toPlayPacket(), player)
                 }
 
                 shouldBeVisible && needsUpdate -> {
@@ -883,7 +889,7 @@ object ServerSoundManager {
         val viewers = duckingViewerSet(effect.key)
         pruneOfflineViewers(viewers)
         val needsUpdate = effect.needsUpdatePacket()
-        val startPacket = if (forceStart || viewers.isEmpty()) effect.toStartPacket() else null
+        val startPacket = if (forceStart) effect.toStartPacket() else null
         val updatePacket = if (needsUpdate) effect.toUpdatePacket() else null
         val stopPacket = if (effect.isStopped) effect.toStopPacket() else null
 
@@ -894,10 +900,6 @@ object ServerSoundManager {
                 shouldBeVisible && !wasVisible -> {
                     CooParticlesServices.SERVER_NETWORK.send(startPacket ?: effect.toStartPacket(), player)
                     viewers.add(player.uuid)
-                }
-
-                shouldBeVisible && forceStart -> {
-                    CooParticlesServices.SERVER_NETWORK.send(startPacket ?: effect.toStartPacket(), player)
                 }
 
                 shouldBeVisible && needsUpdate -> {
