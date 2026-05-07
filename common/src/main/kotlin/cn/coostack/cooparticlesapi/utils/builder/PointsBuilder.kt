@@ -1106,6 +1106,7 @@ class PointsBuilder {
     }
 
     fun clearAsBallMask(origin: Vec3, radius: Double) = clearAsBallMask(origin.asRelative(), radius)
+    fun clearAsBallMask(radius: Double) = clearAsBallMask(RelativeLocation(), radius)
 
     /**
      * 清空 水平面的
@@ -1114,13 +1115,13 @@ class PointsBuilder {
      * @param radius
      */
     fun clearAsRoundXZMask(origin: RelativeLocation, radius: Double, yAxisRange: Double = -1.0) = apply {
-        val limitY = yAxisRange <= .0
+        val limitY = yAxisRange > .0
         points.removeIf {
             val hor = it.distanceHorizontal(origin)
             if (!limitY) {
                 hor < radius
             } else {
-                hor < radius && it.y in -yAxisRange..yAxisRange
+                hor < radius && it.y in origin.y - yAxisRange..origin.y + yAxisRange
             }
         }
     }

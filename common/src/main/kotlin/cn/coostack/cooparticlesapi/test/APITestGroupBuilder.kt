@@ -51,6 +51,11 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
     override fun build(): TestGroup {
         return GamingTestGroup(player, groupID())
             .appendOption {
+                SimpleCompositionOption(TestComposition(player.eyePosition, player.level()).apply {
+                    movement = player.forward.asRelative()
+                }, -1)
+            }
+            .appendOption {
                 SimpleEmitterOption(
                     TestAlphaShaderEmitter(player.eyePosition, player.level()).apply {
                         maxTick = -1
@@ -156,10 +161,6 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
                 DemoWorldRenderEffectOptions.lightOrb(player)
             }.appendOption {
                 DemoWorldRenderEffectOptions.waterBall(player)
-            }.appendOption {
-                SimpleCompositionOption(TestComposition(player.eyePosition, player.level()).apply {
-                    movement = player.forward.asRelative()
-                }, 1000)
             }
             .appendOption {
                 SimpleCompositionOption(TestSeqComposition(player.eyePosition, player.level()), 1000)
