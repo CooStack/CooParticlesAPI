@@ -251,6 +251,14 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
         particleRotatedLocations.clear()
         particleDefaultLength.clear()
         this.canceled = cancel
+        if (cancel) {
+            displayed = false
+        }
+    }
+
+    internal fun resetLifecycleForSpawn() {
+        canceled = false
+        displayed = false
     }
 
     open fun display() {

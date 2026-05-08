@@ -1,15 +1,19 @@
 package cn.coostack.cooparticlesapi.listener.client
 
+import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.accessor.LevelRendererAccessor
 import cn.coostack.cooparticlesapi.event.CooEventBus
 import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldRenderEvent
 import net.minecraft.client.Minecraft
+import net.neoforged.api.distmarker.Dist
 import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.fml.common.EventBusSubscriber
-import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent
 
-@EventBusSubscriber
+@EventBusSubscriber(
+    modid = CooParticlesConstants.MOD_ID,
+    value = [Dist.CLIENT]
+)
 object ClientEventsListener {
     @SubscribeEvent
     fun onClientWorldRender(e: RenderLevelStageEvent) {

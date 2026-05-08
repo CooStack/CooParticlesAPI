@@ -4,6 +4,7 @@ import cn.coostack.cooparticlesapi.CooParticlesAPIClient
 import cn.coostack.cooparticlesapi.event.CooEventBus
 import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldPostTickEvent
 import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldPreTickEvent
+import cn.coostack.cooparticlesapi.event.events.world.server.ServerWorldPostTickEvent
 import cn.coostack.cooparticlesapi.event.events.world.server.ServerWorldPreTickEvent
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.server.level.ServerLevel
@@ -20,7 +21,9 @@ object WorldListener {
             CooEventBus.call(event)
             return
         }
-
+        val level = event.level as ServerLevel
+        val event = ServerWorldPostTickEvent(level, level.server)
+        CooEventBus.call(event)
     }
 
     @SubscribeEvent

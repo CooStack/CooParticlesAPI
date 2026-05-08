@@ -78,10 +78,6 @@ object CooParticlesAPIFabricClient : ClientModInitializer {
             CooEventBus.call(event)
         }
 
-        ClientLifecycleEvents.CLIENT_STARTED.register {
-            CooEventBus.call(ClientStartEvent())
-        }
-
         /**
          * 兼容 sodium
          */
@@ -114,7 +110,7 @@ object CooParticlesAPIFabricClient : ClientModInitializer {
             CooParticlesConstants.logger.info("Client Started")
             CooAPIScanner.scan()
             CooParticlesAPI.loadScannerPackages()
-            // call event
+            CooEventBus.call(ClientStartEvent(client))
         }
     }
 

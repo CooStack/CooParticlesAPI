@@ -842,7 +842,11 @@ object ServerSoundManager {
                 key,
                 -1,
                 pos,
-                1f
+                1f,
+                -1.0,
+                emptySet(),
+                emptySet(),
+                emptySet()
             )
         )
     }
@@ -853,21 +857,19 @@ object ServerSoundManager {
         pruneOfflineViewers(viewers)
         val needsPlay = instance.needsPlayPacket()
         val needsUpdate = instance.needsUpdatePacket()
-        val playPacket = if (needsPlay) instance.toPlayPacket() else null
-        val updatePacket = if (needsUpdate && !needsPlay) instance.toUpdatePacket() else null
         val stopPacket = if (instance.isStopped) instance.toStopPacket() else null
 
         CooParticlesAPI.server.playerList.players.forEach { player ->
             val wasVisible = player.uuid in viewers
             val shouldBeVisible = !instance.isStopped && instance.shouldSyncTo(player)
             when {
-                shouldBeVisible && !wasVisible -> {
-                    CooParticlesServices.SERVER_NETWORK.send(playPacket ?: instance.toPlayPacket(), player)
+                shouldBeVisible && needsPlay -> {
+                    CooParticlesServices.SERVER_NETWORK.send(instance.toPlayPacket(instance.volumeFor(player)), player)
                     viewers.add(player.uuid)
                 }
 
-                shouldBeVisible && needsUpdate -> {
-                    CooParticlesServices.SERVER_NETWORK.send(updatePacket ?: instance.toUpdatePacket(), player)
+                shouldBeVisible && wasVisible && needsUpdate -> {
+                    CooParticlesServices.SERVER_NETWORK.send(instance.toUpdatePacket(instance.volumeFor(player)), player)
                 }
 
                 !shouldBeVisible && wasVisible -> {

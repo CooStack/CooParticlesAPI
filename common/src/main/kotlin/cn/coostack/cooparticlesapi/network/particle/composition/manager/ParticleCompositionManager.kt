@@ -14,6 +14,7 @@ import io.netty.buffer.Unpooled
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
+import net.minecraft.world.entity.player.Player
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.collections.set
@@ -37,6 +38,8 @@ object ParticleCompositionManager {
     }
 
     fun spawn(composition: ParticleComposition) {
+        composition.resetLifecycleForSpawn()
+        removeVisibleComposition(composition)
         serverView[composition.controlUUID] = composition
         sendCreateOrUpdate(composition)
         composition.display()
@@ -90,12 +93,22 @@ object ParticleCompositionManager {
             val entry = iterator.next()
             if (entry.value.canceled) {
                 iterator.remove()
-                sendCreateOrUpdate(entry.value)
+                sendRemove(entry.value)
                 continue
             }
             sendCreateOrUpdate(entry.value)
             entry.value.tick()
         }
+    }
+
+    fun removeVisibleComposition(composition: ParticleComposition) {
+        playerPlayerVisibleSet.values.forEach { compositions ->
+            compositions.remove(composition)
+        }
+    }
+
+    fun clearVisibleFor(player: Player) {
+        playerPlayerVisibleSet.remove(player.uuid)
     }
 
     fun sendCreateOrUpdate(composition: ParticleComposition) {
@@ -134,6 +147,21 @@ object ParticleCompositionManager {
         }
     }
 
+    fun sendRemove(composition: ParticleComposition) {
+        val server = CooParticlesAPI.server
+        val uuid = composition.controlUUID
+        val type = composition::class.java.name
+        val packet = PacketParticleCompositionS2C(uuid, type, ByteArray(0)).apply {
+            distanceRemove = true
+        }
+        server.playerList.players.forEach { player ->
+            val compositions = playerPlayerVisibleSet[player.uuid] ?: return@forEach
+            if (compositions.remove(composition)) {
+                CooParticlesServices.SERVER_NETWORK.send(packet, player)
+            }
+        }
+    }
+
     fun sendRotate(composition: ParticleComposition, direction: RelativeLocation?, rollDelta: Double) {
         if (!composition.displayed || composition.canceled) {
             return
@@ -164,6 +192,7 @@ object ParticleCompositionManager {
         serverView.onEach {
             it.value.remove()
         }.clear()
+        playerPlayerVisibleSet.clear()
     }
 
 }

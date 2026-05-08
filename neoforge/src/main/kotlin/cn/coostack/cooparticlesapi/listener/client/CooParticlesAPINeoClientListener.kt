@@ -8,17 +8,15 @@ import cn.coostack.cooparticlesapi.event.events.client.ClientPostTickEvent
 import cn.coostack.cooparticlesapi.event.events.client.ClientPreTickEvent
 import cn.coostack.cooparticlesapi.event.events.client.ClientStartEvent
 import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldChangeEvent
-import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldPostTickEvent
-import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldPreTickEvent
 import net.minecraft.client.Minecraft
 import net.minecraft.client.multiplayer.ClientLevel
 import net.neoforged.api.distmarker.Dist
 import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.fml.common.EventBusSubscriber
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent
+import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent
 import net.neoforged.neoforge.client.event.ClientTickEvent
-import net.neoforged.neoforge.event.entity.player.PlayerEvent
-import net.neoforged.neoforge.event.tick.LevelTickEvent
+import net.neoforged.neoforge.event.level.LevelEvent
 
 @EventBusSubscriber(
     modid = CooParticlesConstants.MOD_ID,
@@ -27,14 +25,17 @@ import net.neoforged.neoforge.event.tick.LevelTickEvent
 object CooParticlesAPINeoClientListener {
 
     @SubscribeEvent
-    fun onDisconnect(event: PlayerEvent.PlayerLoggedOutEvent) {
+    fun onDisconnect(event: ClientPlayerNetworkEvent.LoggingOut) {
         CooParticlesAPIClient.onDisconnect()
     }
 
     @SubscribeEvent
-    fun onWorldChange(event: PlayerEvent.PlayerChangedDimensionEvent) {
+    fun onWorldChange(event: LevelEvent.Load) {
+        if (event.level !is ClientLevel) {
+            return
+        }
         CooParticlesAPIClient.afterClientWorldChange()
-        CooEventBus.call(ClientWorldChangeEvent(event.entity.level()))
+        CooEventBus.call(ClientWorldChangeEvent(event.level as ClientLevel))
     }
 
 
@@ -53,6 +54,6 @@ object CooParticlesAPINeoClientListener {
 
     @SubscribeEvent
     fun onClientStart(event: FMLClientSetupEvent) {
-        CooEventBus.call(ClientStartEvent())
+        CooEventBus.call(ClientStartEvent(Minecraft.getInstance()))
     }
 }

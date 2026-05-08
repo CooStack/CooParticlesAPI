@@ -66,6 +66,7 @@ class ServerManagedSoundInstance(
         entityId = spec.entityId
         self = spec.self
         visibleRange = spec.visibleRange
+        volumeFalloff = spec.volumeFalloff
         syncEveryTick = spec.syncEveryTick
         stopWhenBoundEntityMissing = spec.stopWhenBoundEntityMissing
     }
@@ -222,6 +223,15 @@ class ServerManagedSoundInstance(
             markDirty()
         }
 
+    var volumeFalloff: SoundVolumeFalloff = SoundVolumeFalloff.NONE
+        set(value) {
+            if (field == value) {
+                return
+            }
+            field = value
+            markDirty()
+        }
+
     var syncEveryTick: Boolean = true
     var stopWhenBoundEntityMissing: Boolean = true
     var stopImmediately: Boolean = true
@@ -294,7 +304,11 @@ class ServerManagedSoundInstance(
     }
 
     @JvmOverloads
-    fun fadeOut(ticks: Int, stopWhenFinished: Boolean = true, interruptWhenStopped: Boolean = true): CooScheduler.TickRunnable? {
+    fun fadeOut(
+        ticks: Int,
+        stopWhenFinished: Boolean = true,
+        interruptWhenStopped: Boolean = true
+    ): CooScheduler.TickRunnable? {
         return fadeTo(0f, ticks, stopWhenFinished, interruptWhenStopped)
     }
 
@@ -357,26 +371,34 @@ class ServerManagedSoundInstance(
         return max(16.0, volumeMultiplier.toDouble() * 16.0)
     }
 
-    fun toPlayPacket(): PacketSoundInstanceS2C {
+    fun volumeFor(player: ServerPlayer): Float {
+        val distance = player.position().distanceTo(position)
+        val range = effectiveVisibleRange()
+        return volumeMultiplier * volumeFalloff.factor(distance, range)
+    }
+
+    @JvmOverloads
+    fun toPlayPacket(volume: Float = volumeMultiplier): PacketSoundInstanceS2C {
         return PacketSoundInstanceS2C.play(
             key = key,
             sound = soundId,
             source = source,
             entityId = currentEntityId(),
             pos = position,
-            volume = volumeMultiplier,
+            volume = volume,
             pitch = pitchMultiplier,
             looping = loopingSound,
             relative = relativeSound
         )
     }
 
-    fun toUpdatePacket(): PacketSoundInstanceS2C {
+    @JvmOverloads
+    fun toUpdatePacket(volume: Float = volumeMultiplier): PacketSoundInstanceS2C {
         return PacketSoundInstanceS2C.update(
             key = key,
             entityId = currentEntityId(),
             pos = position,
-            volume = volumeMultiplier,
+            volume = volume,
             pitch = pitchMultiplier,
             looping = loopingSound,
             relative = relativeSound
@@ -400,6 +422,7 @@ class ServerManagedSoundInstance(
             relative = relativeSound,
             self = self,
             visibleRange = visibleRange,
+            volumeFalloff = volumeFalloff,
             syncEveryTick = syncEveryTick,
             stopWhenBoundEntityMissing = stopWhenBoundEntityMissing
         )
