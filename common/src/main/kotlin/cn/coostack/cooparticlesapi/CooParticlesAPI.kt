@@ -1,12 +1,11 @@
 package cn.coostack.cooparticlesapi
 
-import cn.coostack.cooparticlesapi.animation.AnimateManager
 import cn.coostack.cooparticlesapi.barrages.BarrageManager
+import cn.coostack.cooparticlesapi.data.cache.ServerEntityCacheManager
+import cn.coostack.cooparticlesapi.data.holder.DataHolderManager
 import cn.coostack.cooparticlesapi.display.DisplayEntityManager
 import cn.coostack.cooparticlesapi.enums.DistType
 import cn.coostack.cooparticlesapi.event.CooEventBus
-import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
-import cn.coostack.cooparticlesapi.network.animation.PathMotionManager
 import cn.coostack.cooparticlesapi.network.particle.ServerParticleGroupManager
 import cn.coostack.cooparticlesapi.network.particle.composition.manager.ParticleCompositionManager
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersManager
@@ -14,6 +13,7 @@ import cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind.Wi
 import cn.coostack.cooparticlesapi.network.particle.emitters.event.ParticleEventHandlerManager
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleStyleManager
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
+import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
 import cn.coostack.cooparticlesapi.renderer.server.ServerRenderEntityManager
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityAutoRegistry
 import cn.coostack.cooparticlesapi.scheduler.CooScheduler
@@ -59,6 +59,7 @@ object CooParticlesAPI {
         ParticleEventHandlerManager.registerScanner()
         ParticleEmittersManager.registerScanner()
         ParticleCompositionManager.registerScanner()
+        DataHolderManager.registerScanner()
         if (CooParticlesServices.PLATFORM.getDistType() == DistType.CLIENT) {
             DisplayEntityManager.registerScanner()
             RenderEntityAutoRegistry.registerScanner()
@@ -86,8 +87,7 @@ object CooParticlesAPI {
         ParticleStyleManager.doTickServer()
         ParticleEmittersManager.doTickServer()
         BarrageManager.doTick()
-        PathMotionManager.tick()
-        AnimateManager.tickServer()
+        DataHolderManager.tick()
         ServerRenderEntityManager.tick()
         scheduler.doTick()
         ServerSoundLoopManager.tick()

@@ -10,6 +10,7 @@ import cn.coostack.cooparticlesapi.event.events.server.ServerPreTickEvent
 import cn.coostack.cooparticlesapi.items.CooItemFabric
 import cn.coostack.cooparticlesapi.items.group.CooItemGroup
 import cn.coostack.cooparticlesapi.network.packet.server.PacketCameraShakeS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketDataHolderS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketDisplayEntityS2C
 import cn.coostack.cooparticlesapi.network.packet.client.PacketKeyActionC2S
 import cn.coostack.cooparticlesapi.network.packet.server.PacketKeyBindingCountdownS2C
@@ -62,8 +63,8 @@ object CooParticlesAPIFabric : ModInitializer {
         PayloadTypeRegistry.playS2C().register(PacketRenderEntityS2C.payloadID, PacketRenderEntityS2C.CODEC)
         PayloadTypeRegistry.playS2C().register(PacketRendererPostEffectS2C.payloadID, PacketRendererPostEffectS2C.CODEC)
         PayloadTypeRegistry.playS2C().register(PacketDisplayEntityS2C.payloadID, PacketDisplayEntityS2C.CODEC)
-        PayloadTypeRegistry.playS2C()
-            .register(PacketParticleCompositionS2C.payloadID, PacketParticleCompositionS2C.CODEC)
+        PayloadTypeRegistry.playS2C().register(PacketDataHolderS2C.payloadID, PacketDataHolderS2C.CODEC)
+        PayloadTypeRegistry.playS2C().register(PacketParticleCompositionS2C.payloadID, PacketParticleCompositionS2C.CODEC)
         PayloadTypeRegistry.playS2C()
             .register(PacketParticleCompositionRotateS2C.payloadID, PacketParticleCompositionRotateS2C.CODEC)
         PayloadTypeRegistry.playS2C()

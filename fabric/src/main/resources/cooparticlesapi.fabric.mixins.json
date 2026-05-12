@@ -5,7 +5,9 @@
   "refmap": "${mod_id}.refmap.json",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
-    "event.world.server.ServerWorldMixin"
+    "event.world.server.ServerWorldMixin",
+    "events.entity.EntityMixinFabric",
+    "events.entity.player.PlayerListMixinFabric"
   ],
   "client": [
     "DeathScreenOpenListenerMinecraftMixin",
@@ -16,4 +18,3 @@
     "defaultRequire": 1
   }
 }
-  

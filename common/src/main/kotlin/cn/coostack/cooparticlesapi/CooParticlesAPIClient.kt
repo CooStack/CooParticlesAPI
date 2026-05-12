@@ -1,6 +1,8 @@
 package cn.coostack.cooparticlesapi
 
 import cn.coostack.cooparticlesapi.animation.AnimateManager
+import cn.coostack.cooparticlesapi.data.cache.ClientEntityCacheManager
+import cn.coostack.cooparticlesapi.data.holder.DataHolderManager
 import cn.coostack.cooparticlesapi.display.DisplayEntityManager
 import cn.coostack.cooparticlesapi.display.CooRenderTypeResourceRegistry
 import cn.coostack.cooparticlesapi.network.particle.composition.manager.ParticleCompositionManager
@@ -181,6 +183,7 @@ object CooParticlesAPIClient {
         CooPostEffects.client.clear()
         ClientParticleGroupManager.clearAllVisible()
         ParticleCompositionManager.clearClient()
+        DataHolderManager.clearClient()
         TestManager.clearClient()
         ClientSoundManager.clear()
         ClientSoundLoopManager.clear()
@@ -199,6 +202,7 @@ object CooParticlesAPIClient {
         ClientRenderEntityManager.clear()
         CooPostEffects.client.clear()
         ParticleCompositionManager.clearClient()
+        DataHolderManager.clearClient()
         TestManager.clearClient()
         ClientSoundManager.clear()
         ClientSoundLoopManager.clear()
@@ -230,9 +234,8 @@ object CooParticlesAPIClient {
                 ParticleEmittersManager.doTickClient()
                 ClientRenderEntityManager.tick()
                 DisplayEntityManager.tickClient()
+                DataHolderManager.tick()
                 ClientCameraUtil.tick()
-                ClientSoundManager.tick()
-                ClientSoundLoopManager.tick()
                 ParticleCompositionManager.tickClient()
                 TestManager.doTickClient()
                 AnimateManager.tickClient()

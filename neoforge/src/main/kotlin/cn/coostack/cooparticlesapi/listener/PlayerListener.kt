@@ -1,6 +1,7 @@
 package cn.coostack.cooparticlesapi.listener
 
 import cn.coostack.cooparticlesapi.event.CooEventBus
+import cn.coostack.cooparticlesapi.event.events.entity.EntityUnloadType
 import cn.coostack.cooparticlesapi.event.events.entity.EntityPrePlaceBlockEvent
 import cn.coostack.cooparticlesapi.event.events.entity.player.ServerPlayerDeathEvent
 import cn.coostack.cooparticlesapi.event.events.entity.player.ServerPlayerRespawnEvent
@@ -50,4 +51,11 @@ object PlayerListener {
         }
     }
 
+    @SubscribeEvent
+    fun playerLoggedOut(event: PlayerEvent.PlayerLoggedOutEvent) {
+        val entity = event.entity
+        CooEventBus.call(
+            cn.coostack.cooparticlesapi.event.events.entity.player.PlayerDisconnectEvent(entity, EntityUnloadType.QUIT)
+        )
+    }
 }

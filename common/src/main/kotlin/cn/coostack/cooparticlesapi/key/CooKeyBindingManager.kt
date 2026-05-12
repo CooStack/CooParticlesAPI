@@ -105,11 +105,15 @@ object CooKeyBindingManager {
             if (down) {
                 if (!state.wasDown) {
                     state.pressTick = 0
+                    pendingActions.add(
+                        KeyActionData(state.id, listOf(KeyActionType.SINGLE_CLICK), 1, false)
+                    )
+                } else {
+                    pendingActions.add(
+                        KeyActionData(state.id, listOf(KeyActionType.LONG_PRESS), state.pressTick + 1, false)
+                    )
                 }
                 state.pressTick++
-                pendingActions.add(
-                    KeyActionData(state.id, listOf(KeyActionType.LONG_PRESS), state.pressTick, false)
-                )
             } else if (state.wasDown) {
                 val capturedPressTick = state.pressTick.coerceAtLeast(1)
                 pendingActions.add(

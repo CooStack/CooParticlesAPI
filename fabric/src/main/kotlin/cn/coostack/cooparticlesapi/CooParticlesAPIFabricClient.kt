@@ -11,8 +11,22 @@ import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldChangeEv
 import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldPostTickEvent
 import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldPreTickEvent
 import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldRenderEvent
-import cn.coostack.cooparticlesapi.network.packet.client.listener.*
+import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientCameraShakeHandler
+import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientDataHolderPacketHandler
+import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientDisplayEntityPacketHandler
+import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientKeyBindingCountdownHandler
+import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientParticleCompositionHandler
+import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientParticleCompositionRotateHandler
+import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientParticleEmittersPacketHandler
+import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientParticleGroupPacketHandler
+import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientParticlePacketHandler
+import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientParticleStylePacketHandler
+import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientRenderEntityPacketHandler
+import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientRendererPostEffectHandler
+import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientSoundInstanceHandler
+import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientSoundLoopHandler
 import cn.coostack.cooparticlesapi.network.packet.server.PacketCameraShakeS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketDataHolderS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketDisplayEntityS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketKeyBindingCountdownS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleCompositionRotateS2C
@@ -59,7 +73,7 @@ object CooParticlesAPIFabricClient : ClientModInitializer {
     }
 
     private fun initEvents() {
-        ClientPlayConnectionEvents.DISCONNECT.register { _, event ->
+        ClientPlayConnectionEvents.DISCONNECT.register { _, _ ->
             CooParticlesAPIClient.onDisconnect()
         }
         ClientTickEvents.START_WORLD_TICK.register {
@@ -180,6 +194,9 @@ object CooParticlesAPIFabricClient : ClientModInitializer {
         }
         ClientPlayNetworking.registerGlobalReceiver(PacketDisplayEntityS2C.payloadID) { payload, context ->
             ClientDisplayEntityPacketHandler.receive(payload, FabricClientContext(context))
+        }
+        ClientPlayNetworking.registerGlobalReceiver(PacketDataHolderS2C.payloadID) { payload, context ->
+            ClientDataHolderPacketHandler.receive(payload, FabricClientContext(context))
         }
         ClientPlayNetworking.registerGlobalReceiver(PacketKeyBindingCountdownS2C.payloadID) { payload, context ->
             ClientKeyBindingCountdownHandler.receive(payload, FabricClientContext(context))

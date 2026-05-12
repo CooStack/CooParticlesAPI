@@ -1,5 +1,10 @@
 package cn.coostack.cooparticlesapi.extend
 
+import cn.coostack.cooparticlesapi.data.cache.ClientEntityCacheManager
+import cn.coostack.cooparticlesapi.data.cache.EntityCacher
+import cn.coostack.cooparticlesapi.data.cache.ServerEntityCacheManager
+import cn.coostack.cooparticlesapi.data.holder.DataHolder
+import cn.coostack.cooparticlesapi.data.holder.DataHolderManager
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.level.ClipContext
 import net.minecraft.world.phys.HitResult
@@ -39,3 +44,11 @@ fun Entity.canSee(to: Vec3): Boolean {
         else -> false
     }
 }
+
+val Entity.dataHolder: DataHolder
+    get() = DataHolderManager.getOrCreate(this)
+
+val Entity.cacher: EntityCacher
+    get() = if (level().isClientSide) ClientEntityCacheManager.getOrCreate(this) else ServerEntityCacheManager.getOrCreate(
+        this
+    )
