@@ -45,9 +45,17 @@ fun Entity.canSee(to: Vec3): Boolean {
     }
 }
 
+/**
+ * 数据持有器， 客服互通
+ *
+ * @see cn.coostack.cooparticlesapi.annotations.codec.CodecHelper
+ */
 val Entity.dataHolder: DataHolder
     get() = DataHolderManager.getOrCreate(this)
 
+/**
+ * 临时缓存， 客服不互通
+ */
 val Entity.cacher: EntityCacher
     get() = if (level().isClientSide) ClientEntityCacheManager.getOrCreate(this) else ServerEntityCacheManager.getOrCreate(
         this

@@ -344,13 +344,17 @@ object CodecHelper {
         val fields = current::class.java.declaredFields
         fields.filter {
             it.isAnnotationPresent(CodecField::class.java) &&
-                !Modifier.isFinal(it.modifiers) &&
-                !Modifier.isStatic(it.modifiers)
+                    !Modifier.isFinal(it.modifiers) &&
+                    !Modifier.isStatic(it.modifiers)
         }.forEach { field ->
             field.isAccessible = true
             field.set(current, field.get(other))
         }
     }
 
+
+    fun isSupposedType(type: Class<*>) = supposedTypes[type.name] != null
+
+    fun isSupposedType(type: String) = supposedTypes[type] != null
 
 }
