@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi
 
+import cn.coostack.cooparticlesapi.animation.AnimateManager
 import cn.coostack.cooparticlesapi.barrages.BarrageManager
 import cn.coostack.cooparticlesapi.data.cache.ServerEntityCacheManager
 import cn.coostack.cooparticlesapi.data.holder.DataHolderManager
@@ -94,6 +95,7 @@ object CooParticlesAPI {
         ServerSoundManager.tick()
         DisplayEntityManager.tickServer()
         ParticleCompositionManager.tickServer()
+        AnimateManager.tickServer()
         TestManager.doTickServer()
     }
 }
