@@ -18,6 +18,16 @@ enum class CompositeMode {
  * RenderEntity 的视觉画像配置。
  *
  * 这个对象不是实体状态本身，而是 renderer 根据实体状态推导出的“视觉需求快照”。
+ *
+ * 与 [RenderEntityFeatureSet] 的关系：
+ * - `RenderEntityFeatureSet` 是“管线层声明”：它直接决定 `RenderEntityInstance.renderLocal`
+ *   是否进入 world pass、`collectRenderContributions` 是否被调用，
+ *   以及当前实例希望管线提前解析哪些 scene target。这是真正会被 runtime 读取的开关。
+ * - `RenderEntityVisualProfile` 是“视觉合成快照”：用于描述外部合成希望使用的
+ *   混合模式 / 优先级 / scene 颜色或深度依赖等元信息，
+ *   主要面向 debug overlay、profile 工具以及未来的本地合成扩展。
+ *
+ * 因此 renderer 通常会同时声明两者：FeatureSet 决定要不要执行，VisualProfile 提供执行时的视觉提示。
  */
 data class RenderEntityVisualProfile(
     /** 当前实例希望使用的最终合成模式。 */

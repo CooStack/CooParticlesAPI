@@ -187,6 +187,11 @@ object BuiltinRenderEffectDescriptors {
      *
      * 调用方需要在 `renderMask` 回调里把“应当发光的内容”绘制到 mask 目标。
      * executor 会统一负责 prefilter -> blur -> composite。
+     *
+     * 这是 mask bloom 的唯一行为入口；下面的
+     * `sharedModelMaskBloom` / `customGlowMaskBloom` 只是带语义命名的便利别名，
+     * 用来在 renderer 接口上区分“复用 world-pass 模型”和“专用 glow mask”两种调用场景，
+     * 它们与本方法的执行路径完全一致。
      */
     fun maskBloom(
         effectId: String,

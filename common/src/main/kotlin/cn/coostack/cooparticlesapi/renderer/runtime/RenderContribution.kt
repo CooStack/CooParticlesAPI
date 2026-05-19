@@ -14,6 +14,12 @@ import net.minecraft.resources.ResourceLocation
  * - 需要哪些场景资源
  * - 可能提交哪些 effect type
  * - 是否启用 world pass / effect graph
+ *
+ * FeatureSet 是 runtime 真正读取的“pipeline 开关”：
+ * `RenderEntityInstance` 会用 `localRendererEnabled / effectGraphEnabled` 与 `stages`
+ * 来决定 world pass 与 frame-post 收集是否进入；
+ * 视觉合成相关的元信息（混合模式、优先级、scene 拷贝/深度依赖）请放在
+ * [RenderEntityVisualProfile] 里，二者职责正交。
  */
 data class RenderEntityFeatureSet(
     /** 当前实体愿意参与的渲染阶段。 */

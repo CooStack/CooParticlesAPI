@@ -28,6 +28,9 @@ import kotlin.reflect.KProperty
  * - 用 `createCodec(...)` 为自定义字段建立编解码。
  * - 覆盖 `getRenderID()`，并在客户端完成注册。
  * - 如果实体有额外同步字段，需要覆盖 `loadProfileFromEntity(...)` 把这些字段回写到客户端镜像。
+ *
+ * 一般业务请优先继承 [AutoRenderEntity]：它能基于 `@CodecField` 注解自动生成 codec
+ * 并自动回写字段。直接继承 `RenderEntity` 适用于需要完全自定义同步格式的少数场景。
  */
 abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) : ServerControler<RenderEntity>,
     Tickable<RenderEntity> {

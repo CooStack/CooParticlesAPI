@@ -20,9 +20,17 @@ import org.joml.Vector2f
 import org.joml.Vector3f
 import org.joml.Vector4f
 import org.lwjgl.opengl.GL33.GL_BLEND
+import org.lwjgl.opengl.GL33.GL_BLEND_DST_ALPHA
+import org.lwjgl.opengl.GL33.GL_BLEND_DST_RGB
+import org.lwjgl.opengl.GL33.GL_BLEND_EQUATION_ALPHA
+import org.lwjgl.opengl.GL33.GL_BLEND_EQUATION_RGB
+import org.lwjgl.opengl.GL33.GL_BLEND_SRC_ALPHA
+import org.lwjgl.opengl.GL33.GL_BLEND_SRC_RGB
 import org.lwjgl.opengl.GL33.GL_COLOR_BUFFER_BIT
 import org.lwjgl.opengl.GL33.GL_CULL_FACE
+import org.lwjgl.opengl.GL33.GL_CURRENT_PROGRAM
 import org.lwjgl.opengl.GL33.GL_DEPTH_TEST
+import org.lwjgl.opengl.GL33.GL_DEPTH_WRITEMASK
 import org.lwjgl.opengl.GL33.GL_DRAW_FRAMEBUFFER
 import org.lwjgl.opengl.GL33.GL_DRAW_FRAMEBUFFER_BINDING
 import org.lwjgl.opengl.GL33.GL_FRAMEBUFFER
@@ -39,12 +47,17 @@ import org.lwjgl.opengl.GL33.GL_VIEWPORT
 import org.lwjgl.opengl.GL33.glActiveTexture
 import org.lwjgl.opengl.GL33.glBindFramebuffer
 import org.lwjgl.opengl.GL33.glBindTexture
+import org.lwjgl.opengl.GL33.glBlendEquationSeparate
+import org.lwjgl.opengl.GL33.glBlendFuncSeparate
 import org.lwjgl.opengl.GL33.glBlitFramebuffer
+import org.lwjgl.opengl.GL33.glDepthMask
 import org.lwjgl.opengl.GL33.glDisable
 import org.lwjgl.opengl.GL33.glEnable
+import org.lwjgl.opengl.GL33.glGetBoolean
 import org.lwjgl.opengl.GL33.glGetInteger
 import org.lwjgl.opengl.GL33.glGetIntegerv
 import org.lwjgl.opengl.GL33.glIsEnabled
+import org.lwjgl.opengl.GL33.glUseProgram
 import org.lwjgl.opengl.GL33.glViewport
 import java.util.function.Supplier
 import kotlin.math.max
@@ -78,6 +91,9 @@ object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
     private val customTextures = LinkedHashMap<ResourceLocation, IdentifierTexture>()
     private val targets = LinkedHashMap<String, ManagedTarget>()
     private val instanceStates = LinkedHashMap<String, InstanceFrameState>()
+    private val instanceLastSeenFrame = LinkedHashMap<String, Long>()
+    private var frameCounter: Long = 0
+    private const val TARGET_EVICTION_GRACE_FRAMES: Long = 60
     private var screenBuffer: SimpleVertexBuffer? = null
     private var sceneCopy: ManagedTarget? = null
     private var preparedSceneFrame: FrameKey? = null
@@ -86,10 +102,13 @@ object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
     override fun prepareFrame(context: RenderFrameContext) {
         preparedSceneFrame = null
         instanceStates.clear()
+        frameCounter++
+        evictStaleTargets()
     }
 
     override fun execute(step: PostEffectExecutionStep) {
         val state = instanceStates.getOrPut(step.instance.instanceId) { InstanceFrameState() }
+        instanceLastSeenFrame[step.instance.instanceId] = frameCounter
         val frameKey = frameKey(step.context)
         if (state.frameKey != frameKey || step.passIndex == 0) {
             state.frameKey = frameKey
@@ -123,8 +142,37 @@ object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         screenBuffer?.release()
         screenBuffer = null
         instanceStates.clear()
+        instanceLastSeenFrame.clear()
+        frameCounter = 0
         preparedSceneFrame = null
         warnedSceneCopyFailure = false
+    }
+
+    private fun evictStaleTargets() {
+        if (instanceLastSeenFrame.isEmpty()) {
+            return
+        }
+        val staleInstances = mutableSetOf<String>()
+        instanceLastSeenFrame.entries.removeAll { (instanceId, lastSeen) ->
+            val drop = frameCounter - lastSeen > TARGET_EVICTION_GRACE_FRAMES
+            if (drop) {
+                staleInstances += instanceId
+            }
+            drop
+        }
+        if (staleInstances.isEmpty()) {
+            return
+        }
+        val toRelease = mutableListOf<ManagedTarget>()
+        targets.entries.removeAll { entry ->
+            val owner = entry.key.substringBefore(':')
+            val drop = owner in staleInstances
+            if (drop) {
+                toRelease += entry.value
+            }
+            drop
+        }
+        toRelease.forEach { it.buffer.release() }
     }
 
     private fun ensureSceneCopy(context: RenderFrameContext): ManagedTarget? {
@@ -529,10 +577,27 @@ object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
     }
 
     private fun withFlatPostState(block: () -> Unit) {
+        // We are about to draw a screen quad with our own program/blend state. Iris (and even
+        // vanilla under some pipelines) leaves blend equation/func, depth mask, viewport, FBO and
+        // active texture in whatever state the previous shader pack expected. Snapshot enough of
+        // it so the surrounding pipeline does not see surprise changes when we are done.
         val depthEnabled = glIsEnabled(GL_DEPTH_TEST)
         val cullEnabled = glIsEnabled(GL_CULL_FACE)
         val scissorEnabled = glIsEnabled(GL_SCISSOR_TEST)
         val blendEnabled = glIsEnabled(GL_BLEND)
+        val depthMask = glGetBoolean(GL_DEPTH_WRITEMASK)
+        val blendSrcRgb = glGetInteger(GL_BLEND_SRC_RGB)
+        val blendDstRgb = glGetInteger(GL_BLEND_DST_RGB)
+        val blendSrcAlpha = glGetInteger(GL_BLEND_SRC_ALPHA)
+        val blendDstAlpha = glGetInteger(GL_BLEND_DST_ALPHA)
+        val blendEqRgb = glGetInteger(GL_BLEND_EQUATION_RGB)
+        val blendEqAlpha = glGetInteger(GL_BLEND_EQUATION_ALPHA)
+        val previousProgram = glGetInteger(GL_CURRENT_PROGRAM)
+        val previousActive = glGetInteger(org.lwjgl.opengl.GL33.GL_ACTIVE_TEXTURE)
+        val previousReadFbo = glGetInteger(GL_READ_FRAMEBUFFER_BINDING)
+        val previousDrawFbo = glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING)
+        val previousViewport = IntArray(4)
+        glGetIntegerv(GL_VIEWPORT, previousViewport)
         RenderSystem.disableBlend()
         RenderSystem.disableDepthTest()
         RenderSystem.disableCull()
@@ -542,17 +607,35 @@ object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         try {
             block()
         } finally {
+            // Order matters: restore GL state before higher level RenderSystem flags so the cached
+            // RenderSystem state and the actual driver state line up after we leave.
+            glBlendFuncSeparate(blendSrcRgb, blendDstRgb, blendSrcAlpha, blendDstAlpha)
+            glBlendEquationSeparate(blendEqRgb, blendEqAlpha)
+            glDepthMask(depthMask)
+            glUseProgram(previousProgram)
+            glActiveTexture(previousActive)
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, previousReadFbo)
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, previousDrawFbo)
+            glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3])
             if (blendEnabled) {
                 RenderSystem.enableBlend()
+            } else {
+                RenderSystem.disableBlend()
             }
             if (depthEnabled) {
                 RenderSystem.enableDepthTest()
+            } else {
+                RenderSystem.disableDepthTest()
             }
             if (cullEnabled) {
                 RenderSystem.enableCull()
+            } else {
+                RenderSystem.disableCull()
             }
             if (scissorEnabled) {
                 glEnable(GL_SCISSOR_TEST)
+            } else {
+                glDisable(GL_SCISSOR_TEST)
             }
         }
     }

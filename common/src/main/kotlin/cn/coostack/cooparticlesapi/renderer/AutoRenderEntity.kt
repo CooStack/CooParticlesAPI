@@ -10,8 +10,14 @@ import net.minecraft.world.phys.Vec3
 /**
  * 自动生成 codec 的 RenderEntity 基类。
  *
- * - 使用 @CodecField 标注字段后会自动参与编码与解码。
- * - loadProfileFromEntity 会自动回写 @CodecField 字段。
+ * 这是 RenderEntity 的推荐默认基类。除非你需要完全自定义编解码，
+ * 否则新写的 RenderEntity 都建议直接继承 `AutoRenderEntity`：
+ *
+ * - 在字段上加 `@CodecField`，编码与解码会自动生成；
+ * - `loadProfileFromEntity` 也会自动把 `@CodecField` 字段写回客户端镜像。
+ *
+ * 直接继承 `RenderEntity` 仍然有效，适用于需要手写 `createCodec(...)`
+ * 的特殊场景（例如要单独控制字段顺序、引入额外校验、或与历史 codec 对齐）。
  */
 abstract class AutoRenderEntity(world: Level?, pos: Vec3 = Vec3.ZERO) : RenderEntity(world, pos) {
     /**

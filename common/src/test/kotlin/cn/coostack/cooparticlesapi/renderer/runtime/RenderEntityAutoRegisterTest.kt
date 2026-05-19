@@ -12,7 +12,7 @@ class RenderEntityAutoRegisterTest {
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/AutoRenderEntity.kt"
         )
 
-        assertTrue("RenderEntityHelper.generateCodec(this)" in autoRenderEntitySource)
+        assertTrue("RenderEntityRegistryHelper.generateCodec(this)" in autoRenderEntitySource)
         assertTrue("CodecHelper.updateFields(this, another)" in autoRenderEntitySource)
     }
 

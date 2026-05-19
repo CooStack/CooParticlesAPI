@@ -20,11 +20,22 @@ class RenderEntityV1RemovalTest {
 
     @Test
     fun `v2 docs no longer instruct users to bind render entities to global pipes`() {
-        val renderEntityDoc = readProjectFile("docs/render-entity.md")
-        val shaderPipeDoc = readProjectFile("docs/shader-pipe.md")
-
-        assertFalse("bindEntityRenderPipe(" in renderEntityDoc)
-        assertFalse("bindEntityRenderPipe(" in shaderPipeDoc)
+        val docsDir = findRepoRoot().resolve("docs")
+        if (!Files.isDirectory(docsDir)) {
+            return
+        }
+        Files.walk(docsDir).use { stream ->
+            stream
+                .filter { Files.isRegularFile(it) }
+                .filter { it.fileName.toString().endsWith(".md") }
+                .forEach { docPath ->
+                    val text = Files.readString(docPath)
+                    assertFalse(
+                        "bindEntityRenderPipe(" in text,
+                        "doc still references v1 bindEntityRenderPipe: $docPath"
+                    )
+                }
+        }
     }
 
     @Test

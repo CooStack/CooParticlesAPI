@@ -280,18 +280,27 @@ object PostEffectFrameExecutor {
             scaleDivisor = 1
         )
 
+        var previousPassName = brightExtract.name
+        val perLevelFinalPass = mutableMapOf<Int, String>()
+
         for (level in 1..levels) {
             val scaleDivisor = 1 shl level
+            val downsampleName = "downsample_$level"
             expanded += ExpandedPostEffectPass(
-                pass = bloomGeneratedPass("downsample_$level", bloomDownsampleFragment),
+                pass = bloomDownsamplePass(downsampleName, sourcePassName = previousPassName),
                 targetKey = "bloom/downsample/$level",
                 scaleDivisor = scaleDivisor
             )
+            previousPassName = downsampleName
+
             repeat(iterations) { iteration ->
+                val blurHName = "blur_horizontal_l${level}_i${iteration + 1}"
+                val blurVName = "blur_vertical_l${level}_i${iteration + 1}"
                 expanded += ExpandedPostEffectPass(
                     pass = bloomSingleIterationBlurPass(
                         blurHorizontal,
-                        "blur_horizontal_l${level}_i${iteration + 1}"
+                        blurHName,
+                        sourcePassName = previousPassName
                     ),
                     targetKey = "bloom/blur_h/$level/${iteration + 1}",
                     scaleDivisor = scaleDivisor
@@ -299,40 +308,107 @@ object PostEffectFrameExecutor {
                 expanded += ExpandedPostEffectPass(
                     pass = bloomSingleIterationBlurPass(
                         blurVertical,
-                        "blur_vertical_l${level}_i${iteration + 1}"
+                        blurVName,
+                        sourcePassName = blurHName
                     ),
                     targetKey = "bloom/blur_v/$level/${iteration + 1}",
                     scaleDivisor = scaleDivisor
                 )
+                previousPassName = blurVName
             }
+            perLevelFinalPass[level] = previousPassName
         }
 
         for (level in levels downTo 1) {
             val targetScale = if (level == 1) 1 else 1 shl (level - 1)
+            val upsampleName = "upsample_$level"
+            // Read the lower (coarser) mip just produced. For the deepest level we read the
+            // last blur of that level; for higher levels we read the previous upsample (one mip
+            // smaller) so the chain telescopes back up to full resolution.
+            val sourcePass = if (level == levels) {
+                perLevelFinalPass.getValue(level)
+            } else {
+                "upsample_${level + 1}"
+            }
             expanded += ExpandedPostEffectPass(
-                pass = bloomGeneratedPass("upsample_$level", bloomUpsampleFragment),
+                pass = bloomUpsamplePass(upsampleName, sourcePassName = sourcePass),
                 targetKey = "bloom/upsample/$level",
                 scaleDivisor = targetScale
             )
+            previousPassName = upsampleName
         }
 
-        expanded += ExpandedPostEffectPass(composite)
+        // Composite reads the full-size upsample explicitly so the resolution does not depend on
+        // "last write to BLOOM target" semantics. The OpenGL backend regenerates mipmaps on the
+        // upsample_1 texture so bloom_composite's textureLod chain is real.
+        expanded += ExpandedPostEffectPass(
+            pass = withBrightSourcePass(composite, sourcePassName = previousPassName)
+        )
         return expanded
     }
 
-    private fun bloomGeneratedPass(name: String, fragment: ResourceLocation): PostEffectPass {
+    private fun bloomDownsamplePass(name: String, sourcePassName: String): PostEffectPass {
         return PostEffectPass(
             name = name,
-            fragment = fragment,
-            inputs = listOf(PostEffectInput("bright", PostEffectInputSource.BRIGHT_COLOR)),
+            fragment = bloomDownsampleFragment,
+            inputs = listOf(
+                PostEffectInput(
+                    samplerName = "bright",
+                    source = PostEffectInputSource.PASS_OUTPUT,
+                    sourcePassName = sourcePassName
+                )
+            ),
             output = PostEffectOutput.BLOOM
         )
     }
 
-    private fun bloomSingleIterationBlurPass(pass: PostEffectPass, name: String): PostEffectPass {
+    private fun bloomUpsamplePass(name: String, sourcePassName: String): PostEffectPass {
+        return PostEffectPass(
+            name = name,
+            fragment = bloomUpsampleFragment,
+            inputs = listOf(
+                PostEffectInput(
+                    samplerName = "bright",
+                    source = PostEffectInputSource.PASS_OUTPUT,
+                    sourcePassName = sourcePassName
+                )
+            ),
+            output = PostEffectOutput.BLOOM
+        )
+    }
+
+    private fun bloomSingleIterationBlurPass(
+        pass: PostEffectPass,
+        name: String,
+        sourcePassName: String
+    ): PostEffectPass {
+        val rewiredInputs = pass.inputs.map { input ->
+            if (input.source == PostEffectInputSource.BRIGHT_COLOR) {
+                input.copy(
+                    source = PostEffectInputSource.PASS_OUTPUT,
+                    sourcePassName = sourcePassName
+                )
+            } else {
+                input
+            }
+        }
         val uniforms = pass.uniforms.filterNot { it.name == "iterations" } +
             PostEffectUniform("iterations") { PostEffectParamValue.IntValue(1) }
-        return pass.copy(name = name, uniforms = uniforms)
+        return pass.copy(name = name, inputs = rewiredInputs, uniforms = uniforms)
+    }
+
+    private fun withBrightSourcePass(pass: PostEffectPass, sourcePassName: String): PostEffectPass {
+        val rewiredInputs = pass.inputs.map { input ->
+            if (input.source == PostEffectInputSource.BRIGHT_COLOR) {
+                input.copy(
+                    source = PostEffectInputSource.PASS_OUTPUT,
+                    sourcePassName = sourcePassName
+                )
+            } else {
+                input
+            }
+        }
+        return pass.copy(inputs = rewiredInputs)
     }
 
     private fun resolveInput(
