@@ -183,7 +183,10 @@ object CooClientPacketManager {
             try {
                 pendingEntry.callback(packet)
             } catch (e: Throwable) {
-                CooParticlesConstants.logger.error("CooPacket request 回调异常 (correlationId=${envelope.correlationId})", e)
+                CooParticlesConstants.logger.error(
+                    "CooPacket request 回调异常 (correlationId=${envelope.correlationId})",
+                    e
+                )
             }
         }
     }
