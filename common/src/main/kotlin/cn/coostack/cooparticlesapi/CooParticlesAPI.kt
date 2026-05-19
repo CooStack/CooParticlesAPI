@@ -1,6 +1,7 @@
 package cn.coostack.cooparticlesapi
 
 import cn.coostack.cooparticlesapi.animation.AnimateManager
+import cn.coostack.cooparticlesapi.annotations.packet.CooPacketRegistry
 import cn.coostack.cooparticlesapi.barrages.BarrageManager
 import cn.coostack.cooparticlesapi.data.cache.ServerEntityCacheManager
 import cn.coostack.cooparticlesapi.data.holder.DataHolderManager
@@ -8,6 +9,7 @@ import cn.coostack.cooparticlesapi.display.DisplayEntityManager
 import cn.coostack.cooparticlesapi.enums.DistType
 import cn.coostack.cooparticlesapi.event.CooEventBus
 import cn.coostack.cooparticlesapi.network.particle.ServerParticleGroupManager
+import cn.coostack.cooparticlesapi.network.packet.api.CooServerPacketManager
 import cn.coostack.cooparticlesapi.network.particle.composition.manager.ParticleCompositionManager
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersManager
 import cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind.WindDirections
@@ -61,6 +63,7 @@ object CooParticlesAPI {
         ParticleEmittersManager.registerScanner()
         ParticleCompositionManager.registerScanner()
         DataHolderManager.registerScanner()
+        CooPacketRegistry.registerScanner()
         if (CooParticlesServices.PLATFORM.getDistType() == DistType.CLIENT) {
             DisplayEntityManager.registerScanner()
             RenderEntityAutoRegistry.registerScanner()
@@ -97,5 +100,6 @@ object CooParticlesAPI {
         ParticleCompositionManager.tickServer()
         AnimateManager.tickServer()
         TestManager.doTickServer()
+        CooServerPacketManager.tick()
     }
 }

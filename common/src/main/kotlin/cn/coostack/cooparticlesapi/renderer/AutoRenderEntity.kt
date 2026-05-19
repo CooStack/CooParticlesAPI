@@ -1,7 +1,7 @@
 package cn.coostack.cooparticlesapi.renderer
 
 import cn.coostack.cooparticlesapi.annotations.codec.CodecHelper
-import cn.coostack.cooparticlesapi.annotations.renderer.handle.RenderEntityHelper
+import cn.coostack.cooparticlesapi.annotations.renderer.handle.RenderEntityRegistryHelper
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.level.Level
@@ -21,7 +21,7 @@ abstract class AutoRenderEntity(world: Level?, pos: Vec3 = Vec3.ZERO) : RenderEn
      * 只要字段已经通过 `@CodecField` 声明，就会自动进入同步流。
      */
     override fun getCodec(): StreamCodec<FriendlyByteBuf, RenderEntity> {
-        return RenderEntityHelper.generateCodec(this)
+        return RenderEntityRegistryHelper.generateCodec(this)
     }
 
     /**

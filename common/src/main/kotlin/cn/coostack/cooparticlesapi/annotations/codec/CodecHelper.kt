@@ -43,7 +43,10 @@ import net.minecraft.world.phys.Vec3
 import org.joml.Quaternionf
 import org.joml.Vector3f
 import org.joml.Vector4f
+import java.lang.reflect.Field
 import java.lang.reflect.Modifier
+import java.lang.reflect.ParameterizedType
+import java.lang.reflect.Type
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -338,6 +341,122 @@ object CodecHelper {
     fun <T> register(type: Class<T>, codec: StreamCodec<out FriendlyByteBuf, T>) {
         supposedTypes[type.name] = codec
     }
+
+    /**
+     * 转换为该list 基于该泛型的codec
+     *
+     * @param type
+     */
+
+    fun codecOf(type: Type): StreamCodec<out FriendlyByteBuf, *> {
+        if (type is Class<*>) {
+            return supposedTypes[type.name]
+                ?: throw IllegalArgumentException("不支持的类型: ${type.name}")
+        }
+
+        if (type is ParameterizedType) {
+            val raw = type.rawType as Class<*>
+
+            if (List::class.java.isAssignableFrom(raw)) {
+                return codecList(type)
+            }
+
+            if (Set::class.java.isAssignableFrom(raw)) {
+                return codecSet(type)
+            }
+
+            if (Map::class.java.isAssignableFrom(raw)) {
+                return codecMap(type)
+            }
+        }
+
+        throw IllegalArgumentException("不支持的字段类型: $type")
+    }
+
+    fun codecList(type: Type): StreamCodec<out FriendlyByteBuf, *> {
+        if (type !is ParameterizedType) {
+            throw IllegalArgumentException("List字段必须声明具体泛型: $type")
+        }
+
+        val elementType = type.actualTypeArguments[0]
+        val elementCodec = codecOf(elementType) as StreamCodec<FriendlyByteBuf, Any?>
+
+        return StreamCodec.of(
+            { buf, value ->
+                val list = value as List<*>
+                buf.writeVarInt(list.size)
+                list.forEach { element ->
+                    elementCodec.encode(buf, element)
+                }
+            },
+            { buf ->
+                val size = buf.readVarInt()
+                val list = ArrayList<Any?>(size)
+                repeat(size) {
+                    list.add(elementCodec.decode(buf))
+                }
+                list
+            }
+        )
+    }
+
+    fun codecSet(type: Type): StreamCodec<out FriendlyByteBuf, *> {
+        if (type !is ParameterizedType) {
+            throw IllegalArgumentException("Set字段必须声明具体泛型: $type")
+        }
+
+        val elementType = type.actualTypeArguments[0]
+        val elementCodec = codecOf(elementType) as StreamCodec<FriendlyByteBuf, Any?>
+
+        return StreamCodec.of(
+            { buf, value ->
+                val set = value as Set<*>
+                buf.writeVarInt(set.size)
+                set.forEach { element ->
+                    elementCodec.encode(buf, element)
+                }
+            },
+            { buf ->
+                val size = buf.readVarInt()
+                val set = LinkedHashSet<Any?>(size)
+                repeat(size) {
+                    set.add(elementCodec.decode(buf))
+                }
+                set
+            }
+        )
+    }
+
+    fun codecMap(type: Type): StreamCodec<out FriendlyByteBuf, *> {
+        if (type !is ParameterizedType) {
+            throw IllegalArgumentException("Map字段必须声明具体泛型: $type")
+        }
+
+        val keyType = type.actualTypeArguments[0]
+        val valueType = type.actualTypeArguments[1]
+        val keyCodec = codecOf(keyType) as StreamCodec<FriendlyByteBuf, Any?>
+        val valueCodec = codecOf(valueType) as StreamCodec<FriendlyByteBuf, Any?>
+
+        return StreamCodec.of(
+            { buf, value ->
+                val map = value as Map<*, *>
+                buf.writeVarInt(map.size)
+                map.forEach { (key, mapValue) ->
+                    keyCodec.encode(buf, key)
+                    valueCodec.encode(buf, mapValue)
+                }
+            },
+            { buf ->
+                val size = buf.readVarInt()
+                val map = LinkedHashMap<Any?, Any?>(size)
+                repeat(size) {
+                    map[keyCodec.decode(buf)] = valueCodec.decode(buf)
+                }
+                map
+            }
+        )
+    }
+
 
     fun updateFields(current: Any, other: Any) {
         if (current::class.java != other::class.java) return

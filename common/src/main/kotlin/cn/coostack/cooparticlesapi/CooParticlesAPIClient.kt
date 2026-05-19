@@ -5,6 +5,7 @@ import cn.coostack.cooparticlesapi.data.cache.ClientEntityCacheManager
 import cn.coostack.cooparticlesapi.data.holder.DataHolderManager
 import cn.coostack.cooparticlesapi.display.DisplayEntityManager
 import cn.coostack.cooparticlesapi.display.CooRenderTypeResourceRegistry
+import cn.coostack.cooparticlesapi.network.packet.api.CooClientPacketManager
 import cn.coostack.cooparticlesapi.network.particle.composition.manager.ParticleCompositionManager
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersManager
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleStyleManager
@@ -183,6 +184,7 @@ object CooParticlesAPIClient {
         CooPostEffects.client.clear()
         ClientParticleGroupManager.clearAllVisible()
         ParticleCompositionManager.clearClient()
+        DisplayEntityManager.clearClient()
         DataHolderManager.clearClient()
         TestManager.clearClient()
         ClientSoundManager.clear()
@@ -239,6 +241,7 @@ object CooParticlesAPIClient {
                 ParticleCompositionManager.tickClient()
                 TestManager.doTickClient()
                 AnimateManager.tickClient()
+                CooClientPacketManager.tick()
             }
         }
     }

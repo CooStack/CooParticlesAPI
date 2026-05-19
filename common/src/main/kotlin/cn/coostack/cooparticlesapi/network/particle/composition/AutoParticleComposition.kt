@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi.network.particle.composition
 
-import cn.coostack.cooparticlesapi.annotations.composition.handler.ParticleCompositionHelper
+import cn.coostack.cooparticlesapi.annotations.composition.handler.ParticleCompositionRegistryHelper
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.level.Level
@@ -13,6 +13,6 @@ abstract class AutoParticleComposition(position: Vec3, world: Level? = null) : P
     constructor(world: Level, pos: Vec3) : this(pos, world)
 
     override fun getCodec(): StreamCodec<FriendlyByteBuf, ParticleComposition> {
-        return ParticleCompositionHelper.generateCodec(this)
+        return ParticleCompositionRegistryHelper.generateCodec(this)
     }
 }

@@ -9,6 +9,9 @@ import cn.coostack.cooparticlesapi.event.events.server.ServerPostTickEvent
 import cn.coostack.cooparticlesapi.event.events.server.ServerPreTickEvent
 import cn.coostack.cooparticlesapi.items.CooItemFabric
 import cn.coostack.cooparticlesapi.items.group.CooItemGroup
+import cn.coostack.cooparticlesapi.network.packet.api.CooServerPacketManager
+import cn.coostack.cooparticlesapi.network.packet.api.envelope.CooPacketEnvelopeC2S
+import cn.coostack.cooparticlesapi.network.packet.api.envelope.CooPacketEnvelopeS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketCameraShakeS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketDataHolderS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketDisplayEntityS2C
@@ -73,8 +76,15 @@ object CooParticlesAPIFabric : ModInitializer {
         PayloadTypeRegistry.playS2C().register(PacketSoundLoopS2C.payloadID, PacketSoundLoopS2C.CODEC)
         PayloadTypeRegistry.playC2S().register(PacketKeyActionC2S.payloadID, PacketKeyActionC2S.CODEC)
 
+        PayloadTypeRegistry.playS2C().register(CooPacketEnvelopeS2C.payloadID, CooPacketEnvelopeS2C.CODEC)
+        PayloadTypeRegistry.playC2S().register(CooPacketEnvelopeC2S.payloadID, CooPacketEnvelopeC2S.CODEC)
+
         ServerPlayNetworking.registerGlobalReceiver(PacketKeyActionC2S.payloadID) { payload, context ->
             ServerKeyActionHandler.receive(payload, FabricServerContext(context))
+        }
+
+        ServerPlayNetworking.registerGlobalReceiver(CooPacketEnvelopeC2S.payloadID) { payload, context ->
+            CooServerPacketManager.handleC2S(payload, context.player())
         }
     }
 

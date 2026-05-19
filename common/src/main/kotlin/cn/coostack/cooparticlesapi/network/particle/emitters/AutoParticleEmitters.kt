@@ -1,7 +1,6 @@
 package cn.coostack.cooparticlesapi.network.particle.emitters
 
-import cn.coostack.cooparticlesapi.annotations.emitter.handle.ParticleEmittersHelper
-import net.minecraft.network.FriendlyByteBuf
+import cn.coostack.cooparticlesapi.annotations.emitter.handle.ParticleEmittersRegistryHelper
 import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.level.Level
@@ -17,7 +16,7 @@ import net.minecraft.world.phys.Vec3
  * @see cn.coostack.cooparticlesapi.annotations.emitter.EmitterAutoRegister
  * @see cn.coostack.cooparticlesapi.annotations.emitter.CodecField
  * @see ClassParticleEmitters
- * @see ParticleEmittersHelper
+ * @see ParticleEmittersRegistryHelper
  * @constructor 你的实现必须提供空构造方法 或者 (Vec3,Level?) 构造方法
  *
  * @param pos 发射器生成位置
@@ -29,6 +28,6 @@ abstract class AutoParticleEmitters(pos: Vec3, world: Level?) : ClassParticleEmi
     }
 
     override fun getCodec(): StreamCodec<RegistryFriendlyByteBuf, ParticleEmitters> {
-        return ParticleEmittersHelper.generateCodec(this)
+        return ParticleEmittersRegistryHelper.generateCodec(this)
     }
 }

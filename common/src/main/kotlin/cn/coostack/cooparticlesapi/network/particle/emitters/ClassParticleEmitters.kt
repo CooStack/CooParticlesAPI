@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi.network.particle.emitters
 
-import cn.coostack.cooparticlesapi.annotations.emitter.handle.ParticleEmittersHelper
+import cn.coostack.cooparticlesapi.annotations.emitter.handle.ParticleEmittersRegistryHelper
 import cn.coostack.cooparticlesapi.extend.asVec3
 import cn.coostack.cooparticlesapi.extend.lengthCoerceAtMost
 import cn.coostack.cooparticlesapi.extend.ofFloored
@@ -528,7 +528,7 @@ abstract class ClassParticleEmitters(
         this.playing = emitters.playing
         this.handlerList.putAll(emitters.handlerList)
         this.emittersInterpolator.setRefiner(emitters.emittersInterpolator.refinerCount)
-        ParticleEmittersHelper.updateEmitter(this, emitters)
+        ParticleEmittersRegistryHelper.updateEmitter(this, emitters)
     }
 
 }

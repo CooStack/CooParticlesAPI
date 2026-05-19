@@ -3,7 +3,7 @@ package cn.coostack.cooparticlesapi.network.particle.emitters
 import cn.coostack.cooparticlesapi.CooParticlesAPI
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
-import cn.coostack.cooparticlesapi.annotations.emitter.handle.ParticleEmittersHelper
+import cn.coostack.cooparticlesapi.annotations.emitter.handle.ParticleEmittersRegistryHelper
 import cn.coostack.cooparticlesapi.event.CooEventBus
 import cn.coostack.cooparticlesapi.event.events.particle.emitter.EmitterRemoveEvent
 import cn.coostack.cooparticlesapi.event.events.particle.emitter.EmitterSpawnEvent
@@ -13,7 +13,6 @@ import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import cn.coostack.cooparticlesapi.reflect.SimpleClassInfo
 import io.netty.buffer.Unpooled
 import net.minecraft.client.Minecraft
-import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.server.level.ServerPlayer
@@ -263,7 +262,7 @@ object ParticleEmittersManager {
             @Suppress("UNCHECKED_CAST")
             register(
                 clazz.name,
-                ParticleEmittersHelper.generateClassParticleCodec(clazz as Class<out ClassParticleEmitters>)
+                ParticleEmittersRegistryHelper.generateClassParticleCodec(clazz as Class<out ClassParticleEmitters>)
             )
             return
         }
@@ -271,7 +270,7 @@ object ParticleEmittersManager {
             @Suppress("UNCHECKED_CAST")
             register(
                 clazz.name,
-                ParticleEmittersHelper.generateClassEmittersCodec(clazz as Class<out ClassEmitters>)
+                ParticleEmittersRegistryHelper.generateClassEmittersCodec(clazz as Class<out ClassEmitters>)
             )
             return
         }

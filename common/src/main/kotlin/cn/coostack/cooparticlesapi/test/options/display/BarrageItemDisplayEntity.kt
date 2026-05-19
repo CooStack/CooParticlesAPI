@@ -2,9 +2,8 @@ package cn.coostack.cooparticlesapi.test.options.display
 
 import cn.coostack.cooparticlesapi.annotations.CodecField
 import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
-import cn.coostack.cooparticlesapi.annotations.display.handle.DisplayEntityHelper
+import cn.coostack.cooparticlesapi.annotations.display.handle.DisplayEntityRegistryHelper
 import cn.coostack.cooparticlesapi.display.DisplayEntity
-import cn.coostack.cooparticlesapi.extend.PIF
 import cn.coostack.cooparticlesapi.extend.asRelative
 import cn.coostack.cooparticlesapi.extend.minus
 import cn.coostack.cooparticlesapi.particles.control.RemoveReason
@@ -28,9 +27,6 @@ import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import org.joml.Matrix4f
 import org.joml.Quaternionf
-import org.joml.Vector3f
-import kotlin.math.PI
-import kotlin.math.atan2
 
 @CooAutoRegister
 class BarrageItemDisplayEntity(pos: Vec3, world: Level?) : DisplayEntity(pos, world) {
@@ -114,7 +110,7 @@ class BarrageItemDisplayEntity(pos: Vec3, world: Level?) : DisplayEntity(pos, wo
 
 
     override fun getCodec(): StreamCodec<FriendlyByteBuf, DisplayEntity> {
-        return DisplayEntityHelper.generateCodec(this)
+        return DisplayEntityRegistryHelper.generateCodec(this)
     }
 
     private fun lerp(delta: Float, min: Float, max: Float): Float {

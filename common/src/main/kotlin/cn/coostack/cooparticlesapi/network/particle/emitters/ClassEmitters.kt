@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi.network.particle.emitters
 
-import cn.coostack.cooparticlesapi.annotations.emitter.handle.ParticleEmittersHelper
+import cn.coostack.cooparticlesapi.annotations.emitter.handle.ParticleEmittersRegistryHelper
 import cn.coostack.cooparticlesapi.api.controler.Controlable
 import cn.coostack.cooparticlesapi.api.controler.SerializableData
 import cn.coostack.cooparticlesapi.api.controler.Tickable
@@ -23,7 +23,6 @@ import net.minecraft.core.Direction
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.BlockHitResult
-import net.minecraft.world.phys.HitResult
 import net.minecraft.world.phys.Vec3
 import java.util.ArrayList
 import java.util.HashMap
@@ -390,7 +389,7 @@ abstract class ClassEmitters(
         this.playing = emitters.playing
         this.handlerList.putAll(emitters.handlerList)
         this.emittersInterpolator.setRefiner(emitters.emittersInterpolator.refinerCount)
-        ParticleEmittersHelper.updateEmitter(this, emitters)
+        ParticleEmittersRegistryHelper.updateEmitter(this, emitters)
     }
 
 }

@@ -9,7 +9,7 @@ import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
 import java.lang.reflect.Modifier
 
-object RenderEntityHelper {
+object RenderEntityRegistryHelper {
     /**
      * 生成编解码器
      *
@@ -47,12 +47,9 @@ object RenderEntityHelper {
 
                 fields.forEach { field ->
                     field.isAccessible = true
-                    val codecKey = field.type
+                    @Suppress("UNCHECKED_CAST")
                     val codec: StreamCodec<FriendlyByteBuf, Any> =
-                        CodecHelper.supposedTypes[codecKey.name] as? StreamCodec<FriendlyByteBuf, Any>
-                            ?: throw IllegalArgumentException(
-                                "存在不支持的类型 :${codecKey.name} 需要使用CodecHelper.register()进行注册类型"
-                            )
+                        CodecHelper.codecOf(field.genericType) as StreamCodec<FriendlyByteBuf, Any>
                     codec.encode(buf, field.get(entity))
                 }
             },
@@ -67,12 +64,9 @@ object RenderEntityHelper {
 
                     fields.forEach { field ->
                         field.isAccessible = true
-                        val codecKey = field.type
+                        @Suppress("UNCHECKED_CAST")
                         val codec: StreamCodec<FriendlyByteBuf, Any> =
-                            CodecHelper.supposedTypes[codecKey.name] as? StreamCodec<FriendlyByteBuf, Any>
-                                ?: throw IllegalArgumentException(
-                                    "存在不支持的类型 :${codecKey.name} 需要使用CodecHelper.register()进行注册类型"
-                                )
+                            CodecHelper.codecOf(field.genericType) as StreamCodec<FriendlyByteBuf, Any>
                         val value = codec.decode(buf)
                         field.set(this, value)
                     }

@@ -96,13 +96,16 @@ object DisplayEntityManager {
     ) {
         val lerp = delta.getGameTimeDeltaPartialTick(true)
         clientView.entries.forEach {
+            val entity = it.value
+            if (!entity.isValid()) {
+                return@forEach
+            }
             modelMatrixStack.pushPose()
             MinecraftRendererUtil.transformTo(
                 camera,
-                it.value.position(lerp) + it.value.transformOffset(),
+                entity.position(lerp) + entity.transformOffset(),
                 modelMatrixStack
             ) {
-                val entity = it.value
                 val offset = entity.renderCenterOffset()
                 if (entity.manageRotation) {
                     MinecraftRendererUtil.applyAtPoint(

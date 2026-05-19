@@ -10,7 +10,7 @@ import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
 import java.lang.reflect.Modifier
 
-object ParticleCompositionHelper {
+object ParticleCompositionRegistryHelper {
     /**
      * 生成编解码器
      *
@@ -43,10 +43,9 @@ object ParticleCompositionHelper {
                 fields.forEach {
                     it.isAccessible = true
                     // 获取对应的参数
-                    val codecKey = it.type
+                    @Suppress("UNCHECKED_CAST")
                     val codec: StreamCodec<FriendlyByteBuf, Any> =
-                        CodecHelper.supposedTypes[codecKey.name] as? StreamCodec<FriendlyByteBuf, Any>
-                            ?: throw IllegalArgumentException("存在不支持的类型 :${codecKey.name} 需要使用CodecHelper.register()进行注册类型")
+                        CodecHelper.codecOf(it.genericType) as StreamCodec<FriendlyByteBuf, Any>
                     codec.encode(buf, it.get(composition))
                 }
             }, { buf ->
@@ -66,10 +65,9 @@ object ParticleCompositionHelper {
 
                     fields.forEach {
                         it.isAccessible = true
-                        val codecKey = it.type
+                        @Suppress("UNCHECKED_CAST")
                         val codec: StreamCodec<FriendlyByteBuf, Any> =
-                            CodecHelper.supposedTypes[codecKey.name] as? StreamCodec<FriendlyByteBuf, Any>
-                                ?: throw IllegalArgumentException("存在不支持的类型 :${codecKey.name} 需要使用CodecHelper.register()进行注册类型")
+                            CodecHelper.codecOf(it.genericType) as StreamCodec<FriendlyByteBuf, Any>
 
                         val value = codec.decode(buf)
                         it.set(this, value)

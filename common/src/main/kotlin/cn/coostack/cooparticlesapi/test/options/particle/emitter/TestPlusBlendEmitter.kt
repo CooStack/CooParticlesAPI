@@ -2,7 +2,7 @@ package cn.coostack.cooparticlesapi.test.options.particle.emitter
 
 import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
 import cn.coostack.cooparticlesapi.annotations.CodecField
-import cn.coostack.cooparticlesapi.annotations.emitter.handle.ParticleEmittersHelper
+import cn.coostack.cooparticlesapi.annotations.emitter.handle.ParticleEmittersRegistryHelper
 import cn.coostack.cooparticlesapi.extend.PIF
 import cn.coostack.cooparticlesapi.extend.plus
 import cn.coostack.cooparticlesapi.extend.times
@@ -12,7 +12,6 @@ import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmitters
 import cn.coostack.cooparticlesapi.particles.control.ParticleControler
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import cn.coostack.cooparticlesapi.utils.builder.PointsBuilder
-import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.level.Level
@@ -86,7 +85,7 @@ class TestPlusBlendEmitter(pos: Vec3, world: Level?) : ClassParticleEmitters(pos
     }
 
     override fun getCodec(): StreamCodec<RegistryFriendlyByteBuf, ParticleEmitters> {
-        return ParticleEmittersHelper.generateCodec(this)
+        return ParticleEmittersRegistryHelper.generateCodec(this)
     }
 
 }

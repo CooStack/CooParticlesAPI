@@ -32,4 +32,10 @@ class FabricServerNetworking : ServerNetworking {
         }
     }
 
+    override fun sendToWorld(world: ServerLevel, packet: CustomPacketPayload) {
+        PlayerLookup.world(world).forEach { player ->
+            ServerPlayNetworking.send(player, packet)
+        }
+    }
+
 }

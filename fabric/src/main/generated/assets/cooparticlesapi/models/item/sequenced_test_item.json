@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/handheld",
+  "textures": {
+    "layer0": "cooparticlesapi:item/sequenced_test_item"
+  }
+}

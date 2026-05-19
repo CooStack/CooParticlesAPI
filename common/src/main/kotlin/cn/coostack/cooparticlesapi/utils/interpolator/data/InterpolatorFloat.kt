@@ -5,7 +5,8 @@ import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 
 class InterpolatorFloat(private var value: Float) : InterpolatorData<Float> {
-    var last = 0.0f
+    var last = value
+
 
     companion object {
         @JvmStatic

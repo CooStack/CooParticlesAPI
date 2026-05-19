@@ -17,7 +17,7 @@ import kotlin.math.sin
 import cn.coostack.cooparticlesapi.extend.*
 import cn.coostack.cooparticlesapi.utils.interpolator.data.InterpolatorDouble
 
-/**
+    /**
  * 测试一下粒子插值
  *
  * （假设粒子会有一些其他的变化参数）

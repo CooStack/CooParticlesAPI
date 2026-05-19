@@ -10,6 +10,7 @@ import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
+import java.lang.reflect.Field
 import java.lang.reflect.Modifier
 
 /**
@@ -25,7 +26,7 @@ import java.lang.reflect.Modifier
  *
  * @author CooStack
  */
-object ParticleEmittersHelper {
+object ParticleEmittersRegistryHelper {
     fun updateEmitter(current: ClassParticleEmitters, other: ClassParticleEmitters) {
         if (current.getEmittersID() != other.getEmittersID()) return
         CodecHelper.updateFields(current, other)
@@ -49,7 +50,7 @@ object ParticleEmittersHelper {
                 val fields = codecFields(type)
                 fields.forEach { field ->
                     field.isAccessible = true
-                    val codec = codecByType(field.type)
+                    val codec = codecByField(field)
                     codec.encode(buf, field.get(emitter))
                 }
             },
@@ -59,7 +60,7 @@ object ParticleEmittersHelper {
                     val fields = codecFields(type)
                     fields.forEach { field ->
                         field.isAccessible = true
-                        val codec = codecByType(field.type)
+                        val codec = codecByField(field)
                         val value = codec.decode(buf)
                         field.set(this, value)
                     }
@@ -81,7 +82,7 @@ object ParticleEmittersHelper {
                 val fields = codecFields(type)
                 fields.forEach { field ->
                     field.isAccessible = true
-                    val codec = codecByType(field.type)
+                    val codec = codecByField(field)
                     codec.encode(buf, field.get(emitter))
                 }
             },
@@ -91,7 +92,7 @@ object ParticleEmittersHelper {
                     val fields = codecFields(type)
                     fields.forEach { field ->
                         field.isAccessible = true
-                        val codec = codecByType(field.type)
+                        val codec = codecByField(field)
                         val value = codec.decode(buf)
                         field.set(this, value)
                     }
@@ -100,17 +101,14 @@ object ParticleEmittersHelper {
         )
     }
 
-    private fun codecFields(type: Class<*>): List<java.lang.reflect.Field> {
+    private fun codecFields(type: Class<*>): List<Field> {
         return type.declaredFields
             .filter { it.isAnnotationPresent(CodecField::class.java) && !Modifier.isFinal(it.modifiers) }
             .sortedBy { it.name }
     }
 
     @Suppress("UNCHECKED_CAST")
-    private fun codecByType(type: Class<*>): StreamCodec<FriendlyByteBuf, Any> {
-        return CodecHelper.supposedTypes[type.name] as? StreamCodec<FriendlyByteBuf, Any>
-            ?: throw IllegalArgumentException(
-                "Unsupported codec type: ${type.name}, please register it in CodecHelper"
-            )
+    private fun codecByField(field: Field): StreamCodec<FriendlyByteBuf, Any> {
+        return CodecHelper.codecOf(field.genericType) as StreamCodec<FriendlyByteBuf, Any>
     }
 }

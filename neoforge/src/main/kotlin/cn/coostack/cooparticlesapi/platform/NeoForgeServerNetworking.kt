@@ -26,4 +26,8 @@ class NeoForgeServerNetworking : ServerNetworking {
         PacketDistributor.sendToPlayersTrackingChunk(world, chunk, packet)
     }
 
+    override fun sendToWorld(world: ServerLevel, packet: CustomPacketPayload) {
+        PacketDistributor.sendToPlayersInDimension(world, packet)
+    }
+
 }

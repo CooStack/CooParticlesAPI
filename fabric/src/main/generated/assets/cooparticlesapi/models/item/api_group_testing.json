@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "cooparticlesapi:item/api_group_testing"
+  }
+}

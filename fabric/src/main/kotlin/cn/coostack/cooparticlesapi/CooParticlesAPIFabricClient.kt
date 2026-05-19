@@ -11,6 +11,8 @@ import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldChangeEv
 import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldPostTickEvent
 import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldPreTickEvent
 import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldRenderEvent
+import cn.coostack.cooparticlesapi.network.packet.api.CooClientPacketManager
+import cn.coostack.cooparticlesapi.network.packet.api.envelope.CooPacketEnvelopeS2C
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientCameraShakeHandler
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientDataHolderPacketHandler
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientDisplayEntityPacketHandler
@@ -206,6 +208,9 @@ object CooParticlesAPIFabricClient : ClientModInitializer {
         }
         ClientPlayNetworking.registerGlobalReceiver(PacketSoundLoopS2C.payloadID) { payload, context ->
             ClientSoundLoopHandler.receive(payload, FabricClientContext(context))
+        }
+        ClientPlayNetworking.registerGlobalReceiver(CooPacketEnvelopeS2C.payloadID) { payload, _ ->
+            CooClientPacketManager.handleS2C(payload)
         }
     }
 }

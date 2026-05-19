@@ -17,6 +17,10 @@ import cn.coostack.cooparticlesapi.network.packet.server.PacketRenderEntityS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketRendererPostEffectS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketSoundInstanceS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketSoundLoopS2C
+import cn.coostack.cooparticlesapi.network.packet.api.CooClientPacketManager
+import cn.coostack.cooparticlesapi.network.packet.api.CooServerPacketManager
+import cn.coostack.cooparticlesapi.network.packet.api.envelope.CooPacketEnvelopeC2S
+import cn.coostack.cooparticlesapi.network.packet.api.envelope.CooPacketEnvelopeS2C
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientCameraShakeHandler
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientDataHolderPacketHandler
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientDisplayEntityPacketHandler
@@ -153,6 +157,23 @@ object CooParticlesAPINeoModInitListener {
             PacketKeyActionC2S.CODEC
         ) { payload, context ->
             ServerKeyActionHandler.receive(payload, NeoForgeServerContext(context))
+        }
+
+        registrar.playToClient(
+            CooPacketEnvelopeS2C.payloadID,
+            CooPacketEnvelopeS2C.CODEC
+        ) { payload, _ ->
+            CooClientPacketManager.handleS2C(payload)
+        }
+
+        registrar.playToServer(
+            CooPacketEnvelopeC2S.payloadID,
+            CooPacketEnvelopeC2S.CODEC
+        ) { payload, context ->
+            val player = context.player()
+            if (player is net.minecraft.server.level.ServerPlayer) {
+                CooServerPacketManager.handleC2S(payload, player)
+            }
         }
 
     }

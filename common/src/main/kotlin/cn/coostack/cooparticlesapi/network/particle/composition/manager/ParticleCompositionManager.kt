@@ -3,7 +3,7 @@ package cn.coostack.cooparticlesapi.network.particle.composition.manager
 import cn.coostack.cooparticlesapi.CooParticlesAPI
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
-import cn.coostack.cooparticlesapi.annotations.composition.handler.ParticleCompositionHelper
+import cn.coostack.cooparticlesapi.annotations.composition.handler.ParticleCompositionRegistryHelper
 import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleCompositionRotateS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleCompositionS2C
 import cn.coostack.cooparticlesapi.network.particle.composition.ParticleComposition
@@ -53,7 +53,7 @@ object ParticleCompositionManager {
     }
 
     fun register(type: Class<out ParticleComposition>) {
-        registeredTypes[type.name] = ParticleCompositionHelper.generateCodec(type)
+        registeredTypes[type.name] = ParticleCompositionRegistryHelper.generateCodec(type)
     }
 
     fun registerScanner() {
@@ -184,13 +184,20 @@ object ParticleCompositionManager {
     }
 
     fun clearClient() {
+        // 这里必须走 clear(true) 强制销毁
+        // remove() 可能被使用者重写成延迟消散的语义 (例如先 status.disable() 等渐隐结束再真正销毁)
+        // 客户端断连/换世界要求立刻干净 否则 composition 会脱离 clientView 变成孤儿粒子
+        clientView.values.forEach {
+            it.clear(true)
+        }
         clientView.clear()
     }
 
 
     fun clearServer() {
+        // 同 clearClient 不能依赖使用者重写的 remove()
         serverView.onEach {
-            it.value.remove()
+            it.value.clear(true)
         }.clear()
         playerPlayerVisibleSet.clear()
     }

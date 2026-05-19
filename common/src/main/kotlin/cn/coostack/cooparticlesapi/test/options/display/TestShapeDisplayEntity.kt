@@ -3,7 +3,7 @@ package cn.coostack.cooparticlesapi.test.options.display
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
 import cn.coostack.cooparticlesapi.annotations.CodecField
-import cn.coostack.cooparticlesapi.annotations.display.handle.DisplayEntityHelper
+import cn.coostack.cooparticlesapi.annotations.display.handle.DisplayEntityRegistryHelper
 import cn.coostack.cooparticlesapi.display.DisplayEntity
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import com.mojang.blaze3d.systems.RenderSystem
@@ -175,7 +175,7 @@ class TestShapeDisplayEntity(pos: Vec3, world: Level?) : DisplayEntity(pos, worl
     }
 
     override fun getCodec(): StreamCodec<FriendlyByteBuf, DisplayEntity> {
-        return DisplayEntityHelper.generateCodec(this)
+        return DisplayEntityRegistryHelper.generateCodec(this)
     }
 
 }
