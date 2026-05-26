@@ -154,6 +154,7 @@ object CooRenderTypeResourceRegistry {
     private fun shaderPreset(name: String): CooRenderTypeShaderPreset {
         return when (name.lowercase()) {
             "position_color" -> CooRenderTypeShaderPreset.POSITION_COLOR
+            "coo_glow" -> CooRenderTypeShaderPreset.COO_GLOW
             else -> error("Unsupported shader preset: $name")
         }
     }

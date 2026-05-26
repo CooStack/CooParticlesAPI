@@ -3,6 +3,7 @@ package cn.coostack.cooparticlesapi.test.options.display
 import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
 import cn.coostack.cooparticlesapi.annotations.CodecField
 import cn.coostack.cooparticlesapi.annotations.display.handle.DisplayEntityRegistryHelper
+import cn.coostack.cooparticlesapi.display.CooParticlesRenderTypes
 import cn.coostack.cooparticlesapi.display.DisplayEntity
 import cn.coostack.cooparticlesapi.extend.minus
 import cn.coostack.cooparticlesapi.mixin.events.world.client.ItemRendererInvoker
@@ -52,10 +53,7 @@ class TestBlockDisplayEntity(pos: Vec3, world: Level?) : DisplayEntity(pos, worl
         val seaLantern = renderer.getModel(item, world, null, 1)
         val invoker = renderer as ItemRendererInvoker
         val consumer = buffer.getBuffer(
-            RenderType.entityTranslucentEmissive(InventoryMenu.BLOCK_ATLAS)
-        )
-        val solid = buffer.getBuffer(
-            RenderType.entitySolid(InventoryMenu.BLOCK_ATLAS)
+            CooParticlesRenderTypes.entityCutoutEmissive(InventoryMenu.BLOCK_ATLAS, 25f)
         )
         // 左下角 到 右上角
         MinecraftRendererUtil.applyAtPoint(renderCenterOffset(), modelMatrixStack) {
@@ -68,14 +66,6 @@ class TestBlockDisplayEntity(pos: Vec3, world: Level?) : DisplayEntity(pos, worl
             OverlayTexture.NO_OVERLAY,
             modelMatrixStack,
             consumer
-        )
-        invoker.renderModel(
-            seaLantern,
-            item,
-            LightTexture.FULL_BRIGHT,
-            OverlayTexture.NO_OVERLAY,
-            modelMatrixStack,
-            solid
         )
         // 左下角
         modelMatrixStack.popPose()

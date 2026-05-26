@@ -7,7 +7,7 @@ import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersMan
 class TestEmitterAction(val textEmitter: ParticleEmitters, val tickAction: TestEmitterAction.() -> Unit) :
     AnimateAction() {
     override fun checkDone(): Boolean {
-        return textEmitter.cancelled
+        return textEmitter.canceled
     }
 
     override fun tick() {
@@ -19,6 +19,6 @@ class TestEmitterAction(val textEmitter: ParticleEmitters, val tickAction: TestE
     }
 
     override fun onDone() {
-        textEmitter.cancelled = true
+        textEmitter.canceled = true
     }
 }

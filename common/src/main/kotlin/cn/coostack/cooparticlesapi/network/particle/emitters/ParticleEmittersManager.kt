@@ -81,7 +81,7 @@ object ParticleEmittersManager {
     }
 
     fun createOrChangeClient(emitters: ParticleEmitters, viewWorld: Level) {
-        if (emitters.cancelled) {
+        if (emitters.canceled) {
             clientEmitters.remove(emitters.uuid)
             return
         }
@@ -104,7 +104,7 @@ object ParticleEmittersManager {
             val emitters = emitter.value
             updateClientVisible(emitter.value)
             emitters.tick()
-            if (emitter.value.cancelled) {
+            if (emitter.value.canceled) {
                 filterVisiblePlayer(emitters).forEach {
                     val player = emitters.world!!.getPlayerByUUID(it) ?: return@forEach
                     removeView(player as ServerPlayer, emitters)
@@ -125,7 +125,7 @@ object ParticleEmittersManager {
         while (iterator.hasNext()) {
             val emitters = iterator.next().value
             emitters.tick()
-            if (emitters.cancelled) {
+            if (emitters.canceled) {
                 iterator.remove()
                 CooEventBus.call(EmitterRemoveEvent(emitters, true))
             }
@@ -204,7 +204,7 @@ object ParticleEmittersManager {
     }
 
     fun clearAllVisible() {
-        clientEmitters.onEach { it.value.cancelled = true }
+        clientEmitters.onEach { it.value.canceled = true }
             .clear()
     }
 

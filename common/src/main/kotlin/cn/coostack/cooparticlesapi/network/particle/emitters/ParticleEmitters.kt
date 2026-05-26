@@ -3,7 +3,6 @@ package cn.coostack.cooparticlesapi.network.particle.emitters
 import cn.coostack.cooparticlesapi.api.controler.server.ServerControler
 import cn.coostack.cooparticlesapi.network.particle.emitters.event.ParticleEventHandler
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
-import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.server.level.ServerLevel
@@ -32,7 +31,7 @@ interface ParticleEmitters : ServerControler<ParticleEmitters> {
     var maxTick: Int
     var delay: Int
     var uuid: UUID
-    var cancelled: Boolean
+    var canceled: Boolean
     var playing: Boolean
 
     /**
@@ -76,7 +75,7 @@ interface ParticleEmitters : ServerControler<ParticleEmitters> {
     }
 
     override fun remove() {
-        cancelled = true
+        canceled = true
     }
 
     override fun spawn(world: Level, pos: Vec3) {
@@ -87,7 +86,7 @@ interface ParticleEmitters : ServerControler<ParticleEmitters> {
     }
 
     override fun isValid(): Boolean {
-        return !cancelled
+        return !canceled
     }
 
     override fun rotateAsAxis(radian: Double) {

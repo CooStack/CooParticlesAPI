@@ -46,7 +46,7 @@ abstract class ClassEmitters(
     override var maxTick: Int = 120
     override var delay: Int = 0
     override var uuid: UUID = UUID.randomUUID()
-    override var cancelled: Boolean = false
+    override var canceled: Boolean = false
     override var playing: Boolean = false
     var airDensity = 0.0
     var gravity: Double = 0.0
@@ -111,7 +111,7 @@ abstract class ClassEmitters(
             buf.writeInt(data.maxTick)
             buf.writeInt(data.delay)
             buf.writeUUID(data.uuid)
-            buf.writeBoolean(data.cancelled)
+            buf.writeBoolean(data.canceled)
             buf.writeBoolean(data.playing)
             buf.writeDouble(data.gravity)
             buf.writeDouble(data.airDensity)
@@ -153,7 +153,7 @@ abstract class ClassEmitters(
                 this.maxTick = maxTick
                 this.delay = delay
                 this.uuid = uuid
-                this.cancelled = canceled
+                this.canceled = canceled
                 this.playing = playing
                 this.gravity = gravity
                 this.airDensity = airDensity
@@ -185,14 +185,14 @@ abstract class ClassEmitters(
     }
 
     override fun stop() {
-        cancelled = true
+        canceled = true
         if (world?.isClientSide == false) {
             ParticleEmittersManager.updateEmitters(this)
         }
     }
 
     override fun tick() {
-        if (cancelled || !playing) return
+        if (canceled || !playing) return
         world ?: return
         doTick()
         if (!world!!.isClientSide) {
@@ -385,7 +385,7 @@ abstract class ClassEmitters(
         this.maxTick = emitters.maxTick
         this.delay = emitters.delay
         this.uuid = emitters.uuid
-        this.cancelled = emitters.cancelled
+        this.canceled = emitters.canceled
         this.playing = emitters.playing
         this.handlerList.putAll(emitters.handlerList)
         this.emittersInterpolator.setRefiner(emitters.emittersInterpolator.refinerCount)

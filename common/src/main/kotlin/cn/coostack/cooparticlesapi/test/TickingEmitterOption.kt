@@ -14,11 +14,11 @@ class TickingEmitterOption(
     }
 
     override fun stop() {
-        testEmitters.cancelled = true
+        testEmitters.canceled = true
     }
 
     override fun isValid(): Boolean {
-        return !testEmitters.cancelled && (testingTick > 0 || testingTick == -1)
+        return !testEmitters.canceled && (testingTick > 0 || testingTick == -1)
     }
 
     override fun onFailed() {

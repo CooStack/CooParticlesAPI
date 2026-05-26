@@ -51,6 +51,11 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
     override fun build(): TestGroup {
         return GamingTestGroup(player, groupID())
             .appendOption {
+                SimpleDisplayEntityOption(
+                    TestBlockDisplayEntity(player.eyePosition, player.level()), 200
+                )
+            }
+            .appendOption {
                 SimpleCompositionOption(TestComposition(player.eyePosition, player.level()).apply {
                     movement = player.forward.asRelative()
                 }, -1)
@@ -85,10 +90,6 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
                 )
             }.appendOption {
                 SimpleStyleOption(RomaMagicTestStyle(), player.level(), player.eyePosition, 100)
-            }.appendOption {
-                SimpleDisplayEntityOption(
-                    TestBlockDisplayEntity(player.eyePosition, player.level()), 200
-                )
             }.appendOption {
                 var styleTick = 0
                 SimpleAnimateOption(

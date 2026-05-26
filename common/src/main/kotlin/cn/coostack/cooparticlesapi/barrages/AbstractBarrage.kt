@@ -93,9 +93,10 @@ abstract class AbstractBarrage(
         if (options.enableSpeed) {
             loc = loc.add(direction.normalize() * options.speed)
             options.speed += options.acceleration
-            // 判定加速度最大值设定
+            // 判定加速度最大值设定 (按绝对值封顶)
             if (options.accelerationMaxSpeedEnabled) {
-                options.speed = max(options.accelerationMaxSpeed, options.speed)
+                val cap = options.accelerationMaxSpeed
+                options.speed = options.speed.coerceIn(-cap, cap)
             }
         } else {
             loc = loc.add(direction)
@@ -206,8 +207,9 @@ abstract class AbstractBarrage(
     fun hitBoxEntities(from: Vec3, to: Vec3, filter: Predicate<LivingEntity>): Set<LivingEntity> {
         val res = HashSet<LivingEntity>()
         val hitBox = hitBox.get()
-        val fromBox = hitBox.ofBox(from)
-        val toBox = hitBox.ofBox(to)
+        val rotated = hitBox.rotatedLocalBox()
+        val fromBox = rotated.move(from.x, from.y, from.z)
+        val toBox = rotated.move(to.x, to.y, to.z)
         val sweepBox = AABB(
             min(fromBox.minX, toBox.minX),
             min(fromBox.minY, toBox.minY),
@@ -218,12 +220,12 @@ abstract class AbstractBarrage(
         )
         world.getEntitiesOfClass(LivingEntity::class.java, sweepBox, filter).forEach { entity ->
             val expandedEntityBox = AABB(
-                entity.boundingBox.minX - hitBox.x2,
-                entity.boundingBox.minY - hitBox.y2,
-                entity.boundingBox.minZ - hitBox.z2,
-                entity.boundingBox.maxX - hitBox.x1,
-                entity.boundingBox.maxY - hitBox.y1,
-                entity.boundingBox.maxZ - hitBox.z1,
+                entity.boundingBox.minX - rotated.maxX,
+                entity.boundingBox.minY - rotated.maxY,
+                entity.boundingBox.minZ - rotated.maxZ,
+                entity.boundingBox.maxX - rotated.minX,
+                entity.boundingBox.maxY - rotated.minY,
+                entity.boundingBox.maxZ - rotated.minZ,
             )
             if (expandedEntityBox.contains(from) || expandedEntityBox.clip(from, to).isPresent) {
                 res.add(entity)

@@ -5,7 +5,6 @@ import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersMan
 import cn.coostack.cooparticlesapi.platform.network.ClientContext
 import io.netty.buffer.Unpooled
 import net.minecraft.client.Minecraft
-import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.RegistryFriendlyByteBuf
 
 object ClientParticleEmittersPacketHandler {
@@ -42,6 +41,6 @@ object ClientParticleEmittersPacketHandler {
                 Minecraft.getInstance().player!!.registryAccess()
             )
         )
-        ParticleEmittersManager.clientEmitters[emitter.uuid]?.cancelled = true
+        ParticleEmittersManager.clientEmitters[emitter.uuid]?.canceled = true
     }
 }

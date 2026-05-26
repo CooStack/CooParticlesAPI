@@ -41,14 +41,10 @@ import cn.coostack.cooparticlesapi.network.packet.server.PacketRenderEntityS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketRendererPostEffectS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketSoundInstanceS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketSoundLoopS2C
+import cn.coostack.cooparticlesapi.particles.ControlableParticleEffect
 import cn.coostack.cooparticlesapi.particles.CooModParticles
-import cn.coostack.cooparticlesapi.particles.impl.particles.ControlableCloudParticle
-import cn.coostack.cooparticlesapi.particles.impl.particles.ControlableEnchantmentParticle
-import cn.coostack.cooparticlesapi.particles.impl.particles.ControlableEndRodParticle
-import cn.coostack.cooparticlesapi.particles.impl.particles.ControlableFallingDustParticle
-import cn.coostack.cooparticlesapi.particles.impl.particles.ControlableFireworkParticle
-import cn.coostack.cooparticlesapi.particles.impl.particles.ControlableSplashParticle
-import cn.coostack.cooparticlesapi.particles.impl.particles.ControlableFlashParticle
+import cn.coostack.cooparticlesapi.particles.impl.particles.*
+import cn.coostack.cooparticlesapi.platform.registry.CommonDeferredRegistry
 import cn.coostack.cooparticlesapi.platform.network.FabricClientContext
 import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
 import net.fabricmc.api.ClientModInitializer
@@ -61,6 +57,7 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
 import net.fabricmc.fabric.api.client.particle.v1.ParticleFactoryRegistry
 import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents
+import net.minecraft.core.particles.ParticleType
 
 
 object CooParticlesAPIFabricClient : ClientModInitializer {
@@ -163,6 +160,98 @@ object CooParticlesAPIFabricClient : ClientModInitializer {
         ParticleFactoryRegistry.getInstance()
             .register(CooModParticles.controlableSplash.get(), ParticleFactoryRegistry.PendingParticleFactory {
                 return@PendingParticleFactory ControlableSplashParticle.Factory(it)
+            })
+        registerSimpleParticle(CooModParticles.controlableAngryVillager)
+        registerSimpleParticle(CooModParticles.controlableBubble)
+        registerSimpleParticle(CooModParticles.controlableBubbleColumnUp)
+        registerSimpleParticle(CooModParticles.controlableBubblePop)
+        registerSimpleParticle(CooModParticles.controlableCampfireCosySmoke)
+        registerSimpleParticle(CooModParticles.controlableCampfireSignalSmoke)
+        registerSimpleParticle(CooModParticles.controlableComposter)
+        registerSimpleParticle(CooModParticles.controlableCrit)
+        registerSimpleParticle(CooModParticles.controlableCurrentDown)
+        registerSimpleParticle(CooModParticles.controlableDamageIndicator)
+        registerSimpleParticle(CooModParticles.controlableDragonBreath)
+        registerSimpleParticle(CooModParticles.controlableDolphin)
+        registerSimpleParticle(CooModParticles.controlableDrippingLava)
+        registerSimpleParticle(CooModParticles.controlableFallingLava)
+        registerSimpleParticle(CooModParticles.controlableLandingLava)
+        registerSimpleParticle(CooModParticles.controlableDrippingWater)
+        registerSimpleParticle(CooModParticles.controlableFallingWater)
+        registerSimpleParticle(CooModParticles.controlableEffect)
+        registerSimpleParticle(CooModParticles.controlableEnchantedHit)
+        registerSimpleParticle(CooModParticles.controlableExplosion)
+        registerSimpleParticle(CooModParticles.controlableSonicBoom)
+        registerSimpleParticle(CooModParticles.controlableGust)
+        registerSimpleParticle(CooModParticles.controlableSmallGust)
+        registerSimpleParticle(CooModParticles.controlableFishing)
+        registerSimpleParticle(CooModParticles.controlableFlame)
+        registerSimpleParticle(CooModParticles.controlableInfested)
+        registerSimpleParticle(CooModParticles.controlableCherryLeaves)
+        registerSimpleParticle(CooModParticles.controlableSculkSoul)
+        registerSimpleParticle(CooModParticles.controlableSculkChargePop)
+        registerSimpleParticle(CooModParticles.controlableSoul)
+        registerSimpleParticle(CooModParticles.controlableSoulFireFlame)
+        registerSimpleParticle(CooModParticles.controlableHappyVillager)
+        registerSimpleParticle(CooModParticles.controlableHeart)
+        registerSimpleParticle(CooModParticles.controlableInstantEffect)
+        registerSimpleParticle(CooModParticles.controlableLargeSmoke)
+        registerSimpleParticle(CooModParticles.controlableLava)
+        registerSimpleParticle(CooModParticles.controlableMycelium)
+        registerSimpleParticle(CooModParticles.controlableNautilus)
+        registerSimpleParticle(CooModParticles.controlableNote)
+        registerSimpleParticle(CooModParticles.controlablePoof)
+        registerSimpleParticle(CooModParticles.controlablePortal)
+        registerSimpleParticle(CooModParticles.controlableRain)
+        registerSimpleParticle(CooModParticles.controlableSmoke)
+        registerSimpleParticle(CooModParticles.controlableWhiteSmoke)
+        registerSimpleParticle(CooModParticles.controlableSneeze)
+        registerSimpleParticle(CooModParticles.controlableSnowflake)
+        registerSimpleParticle(CooModParticles.controlableSpit)
+        registerSimpleParticle(CooModParticles.controlableSweepAttack)
+        registerSimpleParticle(CooModParticles.controlableTotemOfUndying)
+        registerSimpleParticle(CooModParticles.controlableSquidInk)
+        registerSimpleParticle(CooModParticles.controlableUnderwater)
+        registerSimpleParticle(CooModParticles.controlableWitch)
+        registerSimpleParticle(CooModParticles.controlableDrippingHoney)
+        registerSimpleParticle(CooModParticles.controlableFallingHoney)
+        registerSimpleParticle(CooModParticles.controlableLandingHoney)
+        registerSimpleParticle(CooModParticles.controlableFallingNectar)
+        registerSimpleParticle(CooModParticles.controlableFallingSporeBlossom)
+        registerSimpleParticle(CooModParticles.controlableSporeBlossomAir)
+        registerSimpleParticle(CooModParticles.controlableAsh)
+        registerSimpleParticle(CooModParticles.controlableCrimsonSpore)
+        registerSimpleParticle(CooModParticles.controlableWarpedSpore)
+        registerSimpleParticle(CooModParticles.controlableDrippingObsidianTear)
+        registerSimpleParticle(CooModParticles.controlableFallingObsidianTear)
+        registerSimpleParticle(CooModParticles.controlableLandingObsidianTear)
+        registerSimpleParticle(CooModParticles.controlableReversePortal)
+        registerSimpleParticle(CooModParticles.controlableWhiteAsh)
+        registerSimpleParticle(CooModParticles.controlableSmallFlame)
+        registerSimpleParticle(CooModParticles.controlableDrippingDripstoneWater)
+        registerSimpleParticle(CooModParticles.controlableFallingDripstoneWater)
+        registerSimpleParticle(CooModParticles.controlableDrippingDripstoneLava)
+        registerSimpleParticle(CooModParticles.controlableFallingDripstoneLava)
+        registerSimpleParticle(CooModParticles.controlableGlowSquidInk)
+        registerSimpleParticle(CooModParticles.controlableGlow)
+        registerSimpleParticle(CooModParticles.controlableWaxOn)
+        registerSimpleParticle(CooModParticles.controlableWaxOff)
+        registerSimpleParticle(CooModParticles.controlableElectricSpark)
+        registerSimpleParticle(CooModParticles.controlableScrape)
+        registerSimpleParticle(CooModParticles.controlableEggCrack)
+        registerSimpleParticle(CooModParticles.controlableDustPlume)
+        registerSimpleParticle(CooModParticles.controlableTrialSpawnerDetection)
+        registerSimpleParticle(CooModParticles.controlableTrialSpawnerDetectionOminous)
+        registerSimpleParticle(CooModParticles.controlableVaultConnection)
+        registerSimpleParticle(CooModParticles.controlableRaidOmen)
+        registerSimpleParticle(CooModParticles.controlableTrialOmen)
+        registerSimpleParticle(CooModParticles.controlableOminousSpawning)
+    }
+
+    private fun <T : ControlableParticleEffect> registerSimpleParticle(type: CommonDeferredRegistry<ParticleType<T>>) {
+        ParticleFactoryRegistry.getInstance()
+            .register(type.get(), ParticleFactoryRegistry.PendingParticleFactory {
+                return@PendingParticleFactory SimpleControlableSpriteParticle.Factory<T>(it)
             })
     }
 

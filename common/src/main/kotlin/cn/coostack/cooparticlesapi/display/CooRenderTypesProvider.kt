@@ -6,6 +6,12 @@ import net.minecraft.resources.ResourceLocation
 interface CooRenderTypesProvider {
     fun glow(): RenderType
 
+    fun entityCutoutEmissive(texture: ResourceLocation): RenderType {
+        return entityCutoutEmissive(texture, 1f)
+    }
+
+    fun entityCutoutEmissive(texture: ResourceLocation, brightness: Float): RenderType
+
     fun create(descriptor: CooRenderTypeDescriptor): RenderType
 
     fun named(id: ResourceLocation): RenderType? {

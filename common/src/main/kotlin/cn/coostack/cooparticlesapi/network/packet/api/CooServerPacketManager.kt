@@ -45,8 +45,9 @@ object CooServerPacketManager {
 
     private val pending = ConcurrentHashMap<Long, Pending>()
 
-    // ---------------- 普通发送 ----------------
-
+    /**
+     * 普通发送
+     */
     @JvmStatic
     fun sendTo(player: ServerPlayer, packet: CooPacket): Boolean {
         return sendInternal(player, packet, CooPacketKind.NORMAL, 0L, 0)
@@ -279,7 +280,10 @@ object CooServerPacketManager {
             try {
                 pendingEntry.callback(sender, packet)
             } catch (e: Throwable) {
-                CooParticlesConstants.logger.error("CooPacket request 回调异常 (correlationId=${envelope.correlationId})", e)
+                CooParticlesConstants.logger.error(
+                    "CooPacket request 回调异常 (correlationId=${envelope.correlationId})",
+                    e
+                )
             }
         }
     }

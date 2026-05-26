@@ -1,4 +1,4 @@
-package cn.coostack.cooparticlesapi.display
+ package cn.coostack.cooparticlesapi.display
 
 import com.mojang.blaze3d.vertex.VertexConsumer
 import net.minecraft.client.renderer.MultiBufferSource

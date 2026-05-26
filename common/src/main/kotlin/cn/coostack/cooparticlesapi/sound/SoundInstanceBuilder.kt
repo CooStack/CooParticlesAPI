@@ -6,7 +6,9 @@ import net.minecraft.server.level.ServerPlayer
 import net.minecraft.sounds.SoundEvent
 import net.minecraft.sounds.SoundSource
 import net.minecraft.world.entity.Entity
+import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
+import java.util.UUID
 
 /**
  * 服务端可控音频实例的构建器。

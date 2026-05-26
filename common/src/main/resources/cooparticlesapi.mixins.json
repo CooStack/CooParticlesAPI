@@ -18,6 +18,7 @@
     "MainTargetMixin",
     "ParticleEngineAccessor",
     "ParticleEngineMixin",
+    "compat.iris.ShaderInstanceIrisCompatMixin",
     "SoundEngineMixin",
     "events.world.client.ItemRendererInvoker",
     "events.world.client.LevelRendererMixin"

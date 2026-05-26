@@ -78,13 +78,13 @@ class BarrageOption {
 
     /**
      * 在加速度不为0的情况下 是否启用加速度速度上限
-     * 判定方法 max(accelerationMaxSpeed, abs(speed))
+     * 启用后会按绝对值封顶: speed.coerceIn(-accelerationMaxSpeed, accelerationMaxSpeed)
      * @see accelerationMaxSpeed
      */
     var accelerationMaxSpeedEnabled = false
 
     /**
-     * 在加速度不为0的情况下，自然添加速度的上限
+     * 在加速度不为0的情况下，自然添加速度的上限 (按绝对值)
      * 如果你设定的速度大于这个值 则也会受到这个值的影响
      * @see accelerationMaxSpeedEnabled
      */
@@ -181,7 +181,7 @@ class BarrageOption {
 
     /**
      * 在加速度不为0的情况下 是否启用加速度速度上限
-     * 判定方法 max(accelerationMaxSpeed, abs(speed))
+     * 启用后会按绝对值封顶: speed.coerceIn(-accelerationMaxSpeed, accelerationMaxSpeed)
      * @see accelerationMaxSpeed
      */
     fun accelerationMaxSpeedEnabled(value: Boolean = true) = apply {
@@ -189,7 +189,7 @@ class BarrageOption {
     }
 
     /**
-     * 在加速度不为0的情况下，自然添加速度的上限
+     * 在加速度不为0的情况下，自然添加速度的上限 (按绝对值)
      * 如果你设定的速度大于这个值 则也会受到这个值的影响
      * @see accelerationMaxSpeedEnabled
      */

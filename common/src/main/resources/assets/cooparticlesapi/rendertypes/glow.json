@@ -6,7 +6,7 @@
   "buffer_size": 512,
   "affects_crumbling": false,
   "sort_on_upload": false,
-  "shader_preset": "position_color",
+  "shader_preset": "coo_glow",
   "transparency_mode": "additive",
   "cull_mode": "disabled",
   "lightmap_mode": "disabled",
