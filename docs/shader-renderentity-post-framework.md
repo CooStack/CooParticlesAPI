@@ -160,6 +160,7 @@ entity.spawn(serverLevel, center)
 | 接口 | 用途 |
 | --- | --- |
 | `WorldPassRenderEntityRenderer<T>` | 在世界渲染阶段直接绘制实体 |
+| `RenderTypeBackedRenderEntityRenderer<T>` | 使用 vanilla `MultiBufferSource` / `RenderType` 提交几何，适合 Iris entity pass 兼容 |
 | `FramePostRenderEntityRenderer<T>` | 在帧尾提交后处理贡献 |
 | `RenderEntityModelRenderer<T>` | 使用模型 DSL 构建几何体 |
 | `SharedModelMaskBloomRenderEntityRenderer<T>` | 世界模型和 mask bloom 复用同一个模型 |
@@ -199,6 +200,19 @@ class ArcOrbRenderer : WorldPassRenderEntityRenderer<ArcOrbEntity>,
 ```
 
 `requestedSceneTargets` 决定后端是否准备 scene color / depth。效果需要采样屏幕或深度时，应在这里声明，否则某些后端不会提供对应纹理。
+
+### Iris / RenderType 双路径
+
+RenderEntity 现在支持两条渲染路线：
+
+- `RenderTypeBackedRenderEntityRenderer`：早于本地 OpenGL world pass，把顶点写入 Minecraft 的 `MultiBufferSource`。使用 `CooParticlesRenderTypes` 创建的 RenderType 会复用现有 Iris 兼容逻辑，自定义 shader 会尝试标记为不可跳过，entity cutout/emissive 会尝试包进 Iris entity pass。适合贴图面片、简单模型、发光层和希望被 shaderpack 后续 pass 处理的内容。
+- `WorldPassRenderEntityRenderer` / `FramePostRenderEntityRenderer`：保留原本的 OpenGL、FBO、mask bloom、frame-post 路线。适合 compute、自定义缓冲、多 pass 后处理和无法表达成 vanilla 顶点流的效果。
+
+默认 `RenderTypeBackedRenderMode.IRIS_FIRST_OPENGL_FALLBACK` 的行为是：Iris shaderpack 启用时优先提交 RenderType；没有 Iris 时，如果 renderer 也实现了本地 OpenGL world pass，就回到本地 OpenGL；如果没有本地 world pass，则仍然绘制 RenderType，避免实体不可见。需要双层输出时覆盖为 `DUAL`；只想走 vanilla buffer 时覆盖为 `ALWAYS_RENDER_TYPE`；临时关闭时用 `DISABLED`。
+
+材质绑定要按目标路径来写。RenderType 路线只保证几何进入 vanilla / Iris 能识别的阶段，不会自动生成 shaderpack 需要的材质语义。要让 shaderpack 正确处理材质，renderer 需要提供匹配的 `VertexFormat`，并写入 texture、light、overlay、normal 等数据；PBR、法线、阴影、材质 id 仍取决于对应 RenderType、shader 和 shaderpack 约定。OpenGL/FBO 路线则由 CooParticlesAPI 自己合成，能做复杂后处理，但通常不会参与 Iris 的实体材质、阴影和 gbuffer 解释。
+
+Iris 特殊材质、fsh 边界和 renderer 写法写在 `RenderEntity` 类注释里，避免 API 语义散落在多处。
 
 ## 5. 使用 RenderEntityModel 构建基础模型
 

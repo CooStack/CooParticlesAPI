@@ -1,13 +1,17 @@
 package cn.coostack.cooparticlesapi.mixin;
 
 import cn.coostack.cooparticlesapi.CooParticlesAPIClient;
+import cn.coostack.cooparticlesapi.accessor.LevelRendererAccessor;
+import cn.coostack.cooparticlesapi.renderer.client.ClientRenderEntityManager;
 import cn.coostack.cooparticlesapi.renderer.client.ClientRenderPipelineManager;
+import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Camera;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.LightTexture;
+import net.minecraft.client.renderer.MultiBufferSource;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix4f;
 import org.spongepowered.asm.mixin.Mixin;
@@ -43,6 +47,17 @@ public class LevelRendererMixin {
         boolean shouldTick = level.tickRateManager().runsNormally();
         float tickDelta = deltaTracker.getGameTimeDeltaPartialTick(!shouldTick);
         ClientRenderPipelineManager.INSTANCE.beginFrame(tickDelta, frustumMatrix, projectionMatrix);
+        MultiBufferSource.BufferSource bufferSource =
+                ((LevelRendererAccessor) this).renderBuffers().bufferSource();
+        ClientRenderEntityManager.INSTANCE.renderRenderTypePass(
+                tickDelta,
+                frustumMatrix,
+                projectionMatrix,
+                new PoseStack(),
+                bufferSource,
+                camera,
+                CooParticlesAPIClient.checkIrisShaderPackUsed()
+        );
     }
 
     @Inject(method = "renderLevel", at = @At("RETURN"))

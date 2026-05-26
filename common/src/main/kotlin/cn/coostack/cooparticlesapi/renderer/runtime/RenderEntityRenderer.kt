@@ -9,6 +9,13 @@ import cn.coostack.cooparticlesapi.renderer.effects.builtin.BuiltinRenderEffectD
 import cn.coostack.cooparticlesapi.renderer.effects.builtin.BuiltinRenderEffectTypes
 import cn.coostack.cooparticlesapi.renderer.effects.builtin.MaskBloomConfig
 import cn.coostack.cooparticlesapi.renderer.effects.builtin.MaskBloomMaskRenderContext
+import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelPrimitive
+import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelRenderer
+import cn.coostack.cooparticlesapi.renderer.model.RenderTypeRenderEntityModelExecutor
+import com.mojang.blaze3d.vertex.PoseStack
+import net.minecraft.client.Camera
+import net.minecraft.client.renderer.MultiBufferSource
+import net.minecraft.client.renderer.RenderType
 import org.joml.Matrix4f
 
 private val renderEntityGlowSceneTargets = setOf(
@@ -65,6 +72,65 @@ interface WorldPassRenderEntityRenderer<T : RenderEntity> : RenderEntityRenderer
 }
 
 /**
+ * RenderType 路线与本地 OpenGL 路线的组合方式。
+ */
+enum class RenderTypeBackedRenderMode {
+    /**
+     * Iris 光影启用时优先 RenderType；没有 Iris 时，如果 renderer 也有 OpenGL world pass，
+     * 就回到原路径，否则仍然使用 RenderType，避免实体不可见。
+     */
+    IRIS_FIRST_OPENGL_FALLBACK,
+
+    /** 不管有没有 Iris，都只走 RenderType 路线。 */
+    ALWAYS_RENDER_TYPE,
+
+    /** RenderType 与本地 OpenGL world pass 都执行，适合明确需要双层输出的 renderer。 */
+    DUAL,
+
+    /** 暂时关闭 RenderType 路线，只走原有 OpenGL / frame-post 路径。 */
+    DISABLED
+}
+
+/**
+ * RenderEntity 的 vanilla buffer 路线。
+ *
+ * 这条路径把几何提交给 Minecraft 的 `MultiBufferSource` / `RenderType` 批次，
+ * 适合希望被 Iris 当作 entity pass 继续处理的简单模型、贴图面片和发光层。
+ * 复杂 FBO、compute、自定义 frame-post 仍然应该走 [WorldPassRenderEntityRenderer]
+ * 或 [FramePostRenderEntityRenderer]。
+ */
+interface RenderTypeBackedRenderEntityRenderer<T : RenderEntity> : RenderEntityRenderer<T> {
+    fun renderTypeMode(entity: T): RenderTypeBackedRenderMode {
+        return RenderTypeBackedRenderMode.IRIS_FIRST_OPENGL_FALLBACK
+    }
+
+    fun renderRenderType(input: RenderTypeRenderInput<T>)
+}
+
+/**
+ * 复用 [RenderEntityModelRenderer] 的 RenderType 兼容层。
+ *
+ * renderer 仍然只需要构建 `RenderEntityModel`。本接口会把模型顶点转换为
+ * `VertexConsumer` 调用，并提交到每个 primitive 对应的 [RenderType]。
+ */
+interface RenderTypeBackedRenderEntityModelRenderer<T : RenderEntity> :
+    RenderEntityModelRenderer<T>,
+    RenderTypeBackedRenderEntityRenderer<T> {
+    fun renderTypeForPrimitive(
+        input: RenderTypeRenderInput<T>,
+        primitive: RenderEntityModelPrimitive
+    ): RenderType?
+
+    override fun renderRenderType(input: RenderTypeRenderInput<T>) {
+        val entity = input.instance.entity
+        val model = buildModel(entity, input.tickDelta)
+        RenderTypeRenderEntityModelExecutor.draw(model, input) { primitive ->
+            renderTypeForPrimitive(input, primitive)
+        }
+    }
+}
+
+/**
  * 显式声明当前 renderer 会向 frame-post effect graph 提交 descriptor。
  */
 interface FramePostRenderEntityRenderer<T : RenderEntity> : RenderEntityRenderer<T> {
@@ -73,6 +139,23 @@ interface FramePostRenderEntityRenderer<T : RenderEntity> : RenderEntityRenderer
         collector: RenderContributionCollector
     )
 }
+
+/**
+ * vanilla buffer 路线的输入。
+ *
+ * `poseStack` 已经进入实体局部空间；renderer 只需要继续写自己的局部变换和顶点。
+ * 使用 `CooParticlesRenderTypes` 创建的 RenderType 会自动走现有 Iris 兼容包装：
+ * 自定义 shader 会被标记为不可跳过，entity cutout/emissive 会尝试进入 Iris entity pass。
+ */
+data class RenderTypeRenderInput<T : RenderEntity>(
+    val instance: RenderEntityInstance<T>,
+    val tickDelta: Float,
+    val viewMatrix: Matrix4f,
+    val projMatrix: Matrix4f,
+    val poseStack: PoseStack,
+    val bufferSource: MultiBufferSource,
+    val camera: Camera
+)
 
 /**
  * 共享模型绘制路径的 pass 标记。

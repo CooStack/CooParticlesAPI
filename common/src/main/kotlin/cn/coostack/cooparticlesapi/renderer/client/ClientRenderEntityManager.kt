@@ -8,8 +8,14 @@ import cn.coostack.cooparticlesapi.renderer.post.CooPostEffects
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityInstance
 import cn.coostack.cooparticlesapi.renderer.state.RenderStateGuard
 import cn.coostack.cooparticlesapi.test.options.renderer.world.DemoWorldRenderEffectClientRegistry
+import cn.coostack.cooparticlesapi.utils.MinecraftRendererUtil
+import com.mojang.blaze3d.vertex.PoseStack
+import net.minecraft.client.Camera
 import net.minecraft.client.Minecraft
 import net.minecraft.client.Minecraft.getInstance
+import net.minecraft.client.renderer.MultiBufferSource
+import net.minecraft.util.Mth
+import net.minecraft.world.phys.Vec3
 import org.joml.Matrix4f
 import org.joml.Matrix4fStack
 import java.util.UUID
@@ -61,6 +67,32 @@ object ClientRenderEntityManager {
 
     fun renderTick(tickDelta: Float, viewMatrix: Matrix4f, projMatrix: Matrix4f) {
         renderWorldPass(tickDelta, viewMatrix, projMatrix)
+    }
+
+    fun renderRenderTypePass(
+        tickDelta: Float,
+        viewMatrix: Matrix4f,
+        projMatrix: Matrix4f,
+        poseStack: PoseStack,
+        bufferSource: MultiBufferSource,
+        camera: Camera,
+        irisShaderPackInUse: Boolean
+    ) {
+        entities.values.forEach { instance ->
+            val entity = instance.entity
+            instance.beginWorldRenderFrame()
+            MinecraftRendererUtil.transformTo(camera, entity.renderPosition(tickDelta), poseStack) {
+                instance.renderRenderType(
+                    tickDelta,
+                    viewMatrix,
+                    projMatrix,
+                    this,
+                    bufferSource,
+                    camera,
+                    irisShaderPackInUse
+                )
+            }
+        }
     }
 
     fun renderWorldPass(tickDelta: Float, viewMatrix: Matrix4f, projMatrix: Matrix4f) {
@@ -118,5 +150,15 @@ object ClientRenderEntityManager {
             }
         }
         CooPostEffects.client.tick()
+    }
+
+    private fun RenderEntity.renderPosition(tickDelta: Float): Vec3 {
+        val last = lastRenderPos
+        val current = pos
+        return Vec3(
+            Mth.lerp(tickDelta.toDouble(), last.x, current.x),
+            Mth.lerp(tickDelta.toDouble(), last.y, current.y),
+            Mth.lerp(tickDelta.toDouble(), last.z, current.z)
+        )
     }
 }

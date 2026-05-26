@@ -7,6 +7,9 @@ import cn.coostack.cooparticlesapi.renderer.effects.builtin.BuiltinRenderEffectD
 import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelExecutors
 import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelRenderer
 import cn.coostack.cooparticlesapi.renderer.state.RenderStateGuard
+import com.mojang.blaze3d.vertex.PoseStack
+import net.minecraft.client.Camera
+import net.minecraft.client.renderer.MultiBufferSource
 import org.joml.Matrix4f
 import org.joml.Matrix4fStack
 
@@ -16,7 +19,7 @@ import org.joml.Matrix4fStack
  * 它把“同步对象”和“渲染对象”拼接起来，负责：
  * - 初始化 renderer 生命周期
  * - 缓存 visual profile / feature set
- * - 执行 world pass 渲染
+ * - 执行 vanilla RenderType 路线和本地 OpenGL world pass 渲染
  * - 收集 frame-post contribution
  * - 在移除时释放本地资源
  */
@@ -46,6 +49,7 @@ class RenderEntityInstance<T : RenderEntity>(
     var localEffectChain = LocalEffectChain(localRenderTargetPool)
     private var initialized = false
     private var released = false
+    private var renderTypeWorldPassSubmitted = false
 
     /**
      * 初始化 renderer 生命周期。
@@ -103,6 +107,9 @@ class RenderEntityInstance<T : RenderEntity>(
         modelMatrix: Matrix4fStack,
         stateGuard: RenderStateGuard
     ) {
+        if (consumeRenderTypeWorldPass()) {
+            return
+        }
         if (!featureSet.localRendererEnabled || RenderFrameStage.WORLD_PASS !in featureSet.stages) {
             return
         }
@@ -128,6 +135,85 @@ class RenderEntityInstance<T : RenderEntity>(
             localRenderer?.renderLocal(localInput)
             localEffectChain.execute()
         }
+    }
+
+    /**
+     * 执行 vanilla `RenderType` / `MultiBufferSource` 路线。
+     *
+     * 这条路径只会调用实现了 [RenderTypeBackedRenderEntityRenderer] 的 renderer。
+     * 它比本地 OpenGL world pass 更早提交，Iris 光影开启时可以被包装到 entity pass；
+     * 没有 Iris 或 wrapper 不可用时，仍然按普通 Minecraft RenderType 绘制。
+     */
+    fun renderRenderType(
+        tickDelta: Float,
+        viewMatrix: Matrix4f,
+        projMatrix: Matrix4f,
+        poseStack: PoseStack,
+        bufferSource: MultiBufferSource,
+        camera: Camera,
+        irisShaderPackInUse: Boolean
+    ) {
+        if (RenderFrameStage.WORLD_PASS !in featureSet.stages) {
+            return
+        }
+        @Suppress("UNCHECKED_CAST")
+        val renderTypeRenderer = renderer as? RenderTypeBackedRenderEntityRenderer<T> ?: return
+        if (!shouldRenderTypeWorldPass(renderTypeRenderer, irisShaderPackInUse)) {
+            return
+        }
+        renderTypeRenderer.renderRenderType(
+            RenderTypeRenderInput(
+                instance = this,
+                tickDelta = tickDelta,
+                viewMatrix = viewMatrix,
+                projMatrix = projMatrix,
+                poseStack = poseStack,
+                bufferSource = bufferSource,
+                camera = camera
+            )
+        )
+        renderTypeWorldPassSubmitted = true
+    }
+
+    /**
+     * 开始新的 world render frame。由 vanilla buffer pass 调用，用来清理上一帧的路径状态。
+     */
+    fun beginWorldRenderFrame() {
+        renderTypeWorldPassSubmitted = false
+    }
+
+    private fun shouldRenderTypeWorldPass(
+        renderer: RenderTypeBackedRenderEntityRenderer<T>,
+        irisShaderPackInUse: Boolean
+    ): Boolean {
+        return when (renderer.renderTypeMode(entity)) {
+            RenderTypeBackedRenderMode.DISABLED -> false
+            RenderTypeBackedRenderMode.ALWAYS_RENDER_TYPE,
+            RenderTypeBackedRenderMode.DUAL -> true
+            RenderTypeBackedRenderMode.IRIS_FIRST_OPENGL_FALLBACK -> {
+                irisShaderPackInUse || !hasOpenGlWorldPass()
+            }
+        }
+    }
+
+    private fun consumeRenderTypeWorldPass(): Boolean {
+        val submitted = renderTypeWorldPassSubmitted
+        renderTypeWorldPassSubmitted = false
+        if (!submitted) {
+            return false
+        }
+        @Suppress("UNCHECKED_CAST")
+        val renderTypeRenderer = renderer as? RenderTypeBackedRenderEntityRenderer<T> ?: return false
+        return when (renderTypeRenderer.renderTypeMode(entity)) {
+            RenderTypeBackedRenderMode.DUAL,
+            RenderTypeBackedRenderMode.DISABLED -> false
+            RenderTypeBackedRenderMode.ALWAYS_RENDER_TYPE,
+            RenderTypeBackedRenderMode.IRIS_FIRST_OPENGL_FALLBACK -> true
+        }
+    }
+
+    private fun hasOpenGlWorldPass(): Boolean {
+        return renderer is WorldPassRenderEntityRenderer<*> || renderer is RenderEntityModelRenderer<*>
     }
 
     /**
