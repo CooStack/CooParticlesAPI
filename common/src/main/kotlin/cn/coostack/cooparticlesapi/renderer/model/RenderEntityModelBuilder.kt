@@ -57,6 +57,21 @@ class RenderEntityModelBuilder {
         return this
     }
 
+    fun addRenderTypeQuad(
+        pipe: RenderEntityModelPipe,
+        first: RenderEntityModelVertex,
+        second: RenderEntityModelVertex,
+        third: RenderEntityModelVertex,
+        fourth: RenderEntityModelVertex
+    ): RenderEntityModelBuilder {
+        val vertices = primitiveVertices.getOrPut(pipe to RenderEntityModelPrimitiveMode.QUADS) { mutableListOf() }
+        vertices += first
+        vertices += second
+        vertices += third
+        vertices += fourth
+        return this
+    }
+
     fun build(): RenderEntityModel {
         return RenderEntityModel(
             pipes = pipes.values.toList(),

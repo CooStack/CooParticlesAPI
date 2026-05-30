@@ -289,15 +289,14 @@ abstract class ClassEmitters(
      * @param particleLerpProgress 当前对象在本次批量生成中的进度
      * @param posLerpProgress 发射器位移插值进度（未启用插值时恒为 1）
      */
-    open fun singleControlableAction(
+    abstract fun singleControlableAction(
         controler: Controlable<*>,
         data: SerializableData,
         spawnPos: RelativeLocation,
         spawnWorld: Level,
         particleLerpProgress: Float,
         posLerpProgress: Float,
-    ) {
-    }
+    )
 
     /**
      * 处理单个 controler 的移动方案

@@ -190,6 +190,7 @@ class RenderEntityInstance<T : RenderEntity>(
             RenderTypeBackedRenderMode.DISABLED -> false
             RenderTypeBackedRenderMode.ALWAYS_RENDER_TYPE,
             RenderTypeBackedRenderMode.DUAL -> true
+            RenderTypeBackedRenderMode.IRIS_PROXY_WITH_OPENGL -> irisShaderPackInUse
             RenderTypeBackedRenderMode.IRIS_FIRST_OPENGL_FALLBACK -> {
                 irisShaderPackInUse || !hasOpenGlWorldPass()
             }
@@ -206,6 +207,7 @@ class RenderEntityInstance<T : RenderEntity>(
         val renderTypeRenderer = renderer as? RenderTypeBackedRenderEntityRenderer<T> ?: return false
         return when (renderTypeRenderer.renderTypeMode(entity)) {
             RenderTypeBackedRenderMode.DUAL,
+            RenderTypeBackedRenderMode.IRIS_PROXY_WITH_OPENGL,
             RenderTypeBackedRenderMode.DISABLED -> false
             RenderTypeBackedRenderMode.ALWAYS_RENDER_TYPE,
             RenderTypeBackedRenderMode.IRIS_FIRST_OPENGL_FALLBACK -> true

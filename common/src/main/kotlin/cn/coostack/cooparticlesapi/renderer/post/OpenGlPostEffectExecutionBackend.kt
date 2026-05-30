@@ -97,10 +97,12 @@ object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
     private var screenBuffer: SimpleVertexBuffer? = null
     private var sceneCopy: ManagedTarget? = null
     private var preparedSceneFrame: FrameKey? = null
+    private var chainedSceneFramebufferId: Int? = null
     private var warnedSceneCopyFailure = false
 
     override fun prepareFrame(context: RenderFrameContext) {
         preparedSceneFrame = null
+        chainedSceneFramebufferId = null
         instanceStates.clear()
         frameCounter++
         evictStaleTargets()
@@ -145,6 +147,7 @@ object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         instanceLastSeenFrame.clear()
         frameCounter = 0
         preparedSceneFrame = null
+        chainedSceneFramebufferId = null
         warnedSceneCopyFailure = false
     }
 
@@ -184,7 +187,7 @@ object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         val source = context.sceneResources[RenderSceneTargets.SCENE_COLOR]?.target
             ?: context.finalCompositeTarget
             ?: Minecraft.getInstance().mainRenderTarget
-        val sourceFramebufferId = context.sceneColorFramebufferId ?: source.frameBufferId
+        val sourceFramebufferId = chainedSceneFramebufferId ?: context.sceneColorFramebufferId ?: source.frameBufferId
         if (sourceFramebufferId <= 0) {
             warnSceneCopyFailure("invalid source framebuffer=$sourceFramebufferId")
             return null
@@ -219,6 +222,8 @@ object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
             glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3])
             glBindFramebuffer(GL_FRAMEBUFFER, previousFramebuffer)
         }
+        chainedSceneFramebufferId = framebuffer
+        preparedSceneFrame = null
     }
 
     private fun drawStep(step: PostEffectExecutionStep, state: InstanceFrameState) {
@@ -647,7 +652,7 @@ object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         return FrameKey(
             width = width,
             height = height,
-            sourceFbo = context.sceneColorFramebufferId ?: scene?.target?.frameBufferId ?: context.finalCompositeTarget?.frameBufferId ?: -1,
+            sourceFbo = chainedSceneFramebufferId ?: context.sceneColorFramebufferId ?: scene?.target?.frameBufferId ?: context.finalCompositeTarget?.frameBufferId ?: -1,
             sourceTexture = context.sceneColorTextureId ?: scene?.colorTextureId ?: -1,
             finalFbo = context.finalCompositeFramebufferId ?: context.finalCompositeTarget?.frameBufferId ?: -1
         )

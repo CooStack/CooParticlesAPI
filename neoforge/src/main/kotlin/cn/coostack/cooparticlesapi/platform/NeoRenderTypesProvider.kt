@@ -70,7 +70,7 @@ object NeoRenderTypesProvider : CooRenderTypesProvider {
     }
 
     override fun create(descriptor: CooRenderTypeDescriptor): RenderType {
-        return cache.getOrPut(descriptor) {
+        val renderType = cache.getOrPut(descriptor) {
             RenderTypeIrisSupposerRegistry.register(descriptor.name, null)
             RenderType.create(
                 descriptor.name,
@@ -111,6 +111,7 @@ object NeoRenderTypesProvider : CooRenderTypesProvider {
                     .createCompositeState(false)
             )
         }
+        return IrisCompat.wrapEntityRenderType(renderType)
     }
 
     override fun glow(): RenderType = glow

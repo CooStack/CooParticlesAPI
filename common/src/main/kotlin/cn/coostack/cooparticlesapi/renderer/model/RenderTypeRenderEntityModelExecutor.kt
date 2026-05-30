@@ -2,9 +2,8 @@ package cn.coostack.cooparticlesapi.renderer.model
 
 import cn.coostack.cooparticlesapi.renderer.RenderEntity
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderTypeRenderInput
-import net.minecraft.client.renderer.LightTexture
 import net.minecraft.client.renderer.RenderType
-import net.minecraft.client.renderer.texture.OverlayTexture
+import com.mojang.blaze3d.vertex.VertexFormatElement
 import kotlin.math.roundToInt
 
 object RenderTypeRenderEntityModelExecutor {
@@ -18,8 +17,9 @@ object RenderTypeRenderEntityModelExecutor {
             if (primitive.vertices.isEmpty()) return@forEach
             val renderType = renderTypeResolver(primitive) ?: return@forEach
             val consumer = input.bufferSource.getBuffer(renderType)
+            val format = renderType.format()
             primitive.vertices.forEach { vertex ->
-                consumer.addVertex(
+                val entry = consumer.addVertex(
                     pose.pose(),
                     vertex.position.x,
                     vertex.position.y,
@@ -31,15 +31,24 @@ object RenderTypeRenderEntityModelExecutor {
                         vertex.color.z.toColorChannel(),
                         vertex.color.w.toColorChannel()
                     )
-                    .setUv(vertex.uv.x, vertex.uv.y)
-                    .setOverlay(OverlayTexture.NO_OVERLAY)
-                    .setLight(LightTexture.FULL_BRIGHT)
-                    .setNormal(
+
+                if (format.contains(VertexFormatElement.UV0)) {
+                    entry.setUv(vertex.uv.x, vertex.uv.y)
+                }
+                if (format.contains(VertexFormatElement.UV1)) {
+                    entry.setUv1(vertex.uv1.x, vertex.uv1.y)
+                }
+                if (format.contains(VertexFormatElement.UV2)) {
+                    entry.setUv2(vertex.uv2.x, vertex.uv2.y)
+                }
+                if (format.contains(VertexFormatElement.NORMAL)) {
+                    entry.setNormal(
                         pose,
                         vertex.normal.x,
                         vertex.normal.y,
                         vertex.normal.z
                     )
+                }
             }
         }
     }

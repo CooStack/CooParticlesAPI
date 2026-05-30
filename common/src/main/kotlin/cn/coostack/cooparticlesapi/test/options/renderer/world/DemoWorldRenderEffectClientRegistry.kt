@@ -7,6 +7,9 @@ import net.minecraft.resources.ResourceLocation
 
 object DemoWorldRenderEffectClientRegistry {
     fun register() {
+        register(DemoIrisStraightLaserRenderEntity.ID) {
+            DemoIrisStraightLaserRenderEntityRenderer()
+        }
         register(DemoBlackHoleRenderEntity.ID) {
             DemoBlackHoleRenderEntityRenderer()
         }

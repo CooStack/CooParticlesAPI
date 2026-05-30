@@ -12,6 +12,7 @@ import net.minecraft.client.resources.model.BakedModel
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.phys.Vec3
 import org.joml.Quaternionf
+import kotlin.math.abs
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.max
@@ -24,6 +25,12 @@ import kotlin.math.sin
  *
  */
 object MinecraftRendererUtil {
+    data class AxialBillboardBasis(
+        val axis: Vec3,
+        val face: Vec3,
+        val right: Vec3
+    )
+
     /**
      * 变换相对渲染位置到世界坐标位置
      *
@@ -158,6 +165,22 @@ object MinecraftRendererUtil {
         applyRotation(stack, yawFromLocation.toFloat(), pitchFromLocation.toFloat(), roll)
     }
 
+    fun axialBillboardBasis(axisDirection: Vec3, camera: Camera, center: Vec3): AxialBillboardBasis {
+        return axialBillboardBasis(axisDirection, camera.position, center)
+    }
+
+    fun axialBillboardBasis(axisDirection: Vec3, cameraPos: Vec3, center: Vec3): AxialBillboardBasis {
+        val axis = normalizedOr(axisDirection, Vec3(0.0, 1.0, 0.0))
+        val toCamera = cameraPos.subtract(center)
+        val face = if (toCamera.lengthSqr() <= 1.0E-6) {
+            perpendicular(axis)
+        } else {
+            val projected = toCamera.subtract(axis.scale(toCamera.dot(axis)))
+            normalizedOr(projected, perpendicular(axis))
+        }
+        val right = normalizedOr(face.cross(axis), perpendicular(axis))
+        return AxialBillboardBasis(axis, face, right)
+    }
 
     fun applyAtPoint(point: Vec3, stack: PoseStack, invoker: PoseStack.() -> Unit) {
         stack.translate(point.x, point.y, point.z)
@@ -238,5 +261,14 @@ object MinecraftRendererUtil {
         sampleTriangle(v0, v1, v2, density, out)
         sampleTriangle(v0, v2, v3, density, out)
         return out
+    }
+
+    private fun perpendicular(axis: Vec3): Vec3 {
+        val base = if (abs(axis.y) < 0.9) Vec3(0.0, 1.0, 0.0) else Vec3(1.0, 0.0, 0.0)
+        return normalizedOr(axis.cross(base), Vec3(1.0, 0.0, 0.0))
+    }
+
+    private fun normalizedOr(value: Vec3, fallback: Vec3): Vec3 {
+        return if (value.lengthSqr() <= 1.0E-6) fallback.normalize() else value.normalize()
     }
 }

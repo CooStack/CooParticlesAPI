@@ -26,6 +26,12 @@ class RenderTypeResourceRegistryTest {
         val fabricListenerSource = readProjectFile(
             "fabric/src/main/kotlin/cn/coostack/cooparticlesapi/CooShaderReloadListenerFabric.kt"
         )
+        val fabricRenderTypesProvider = readProjectFile(
+            "fabric/src/main/kotlin/cn/coostack/cooparticlesapi/platform/FabricRenderTypesProvider.kt"
+        )
+        val neoRenderTypesProvider = readProjectFile(
+            "neoforge/src/main/kotlin/cn/coostack/cooparticlesapi/platform/NeoRenderTypesProvider.kt"
+        )
 
         assertTrue("object CooRenderTypeResourceRegistry" in registrySource)
         assertTrue("fun reloadFromClasspath()" in registrySource)
@@ -42,6 +48,8 @@ class RenderTypeResourceRegistryTest {
         assertTrue("object CooShaderReloadListenerFabric" in fabricListenerSource)
         assertTrue("ResourceManagerHelper.get(PackType.CLIENT_RESOURCES).registerReloadListener(this)" in fabricListenerSource)
         assertTrue("CooShaderReloadListenerFabric.register()" in fabricClientSource)
+        assertTrue("return IrisCompat.wrapEntityRenderType(renderType)" in fabricRenderTypesProvider)
+        assertTrue("return IrisCompat.wrapEntityRenderType(renderType)" in neoRenderTypesProvider)
 
         assertTrue(projectFile("common/src/main/resources/assets/cooparticlesapi/rendertypes/index.json").toFile().exists())
         assertTrue(projectFile("common/src/main/resources/assets/cooparticlesapi/rendertypes/glow.json").toFile().exists())

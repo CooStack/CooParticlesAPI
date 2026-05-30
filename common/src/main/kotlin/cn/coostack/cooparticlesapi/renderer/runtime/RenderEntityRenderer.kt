@@ -9,6 +9,7 @@ import cn.coostack.cooparticlesapi.renderer.effects.builtin.BuiltinRenderEffectD
 import cn.coostack.cooparticlesapi.renderer.effects.builtin.BuiltinRenderEffectTypes
 import cn.coostack.cooparticlesapi.renderer.effects.builtin.MaskBloomConfig
 import cn.coostack.cooparticlesapi.renderer.effects.builtin.MaskBloomMaskRenderContext
+import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModel
 import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelPrimitive
 import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelRenderer
 import cn.coostack.cooparticlesapi.renderer.model.RenderTypeRenderEntityModelExecutor
@@ -87,6 +88,14 @@ enum class RenderTypeBackedRenderMode {
     /** RenderType 与本地 OpenGL world pass 都执行，适合明确需要双层输出的 renderer。 */
     DUAL,
 
+    /**
+     * Iris 光影启用时额外提交 RenderType，同时保留本地 OpenGL world pass。
+     *
+     * 适合“真实视觉由 Coo shader / FBO 绘制，Iris 只需要一份代理几何参与 entity pass
+     * 或 shaderpack 后处理”的 renderer。
+     */
+    IRIS_PROXY_WITH_OPENGL,
+
     /** 暂时关闭 RenderType 路线，只走原有 OpenGL / frame-post 路径。 */
     DISABLED
 }
@@ -126,6 +135,35 @@ interface RenderTypeBackedRenderEntityModelRenderer<T : RenderEntity> :
         val model = buildModel(entity, input.tickDelta)
         RenderTypeRenderEntityModelExecutor.draw(model, input) { primitive ->
             renderTypeForPrimitive(input, primitive)
+        }
+    }
+}
+
+/**
+ * 为本地 OpenGL RenderEntity 附加一份 Iris / shaderpack 可见的 RenderType 代理模型。
+ *
+ * 使用方式：
+ * - renderer 继续实现 [WorldPassRenderEntityRenderer] 绘制原本的 Coo shader / FBO 效果。
+ * - 再实现本接口，返回一份简化代理模型和对应 RenderType。
+ * - Iris shaderpack 启用时 runtime 会额外提交代理模型；未启用时只走原本本地绘制。
+ */
+interface IrisRenderTypeProxyRenderer<T : RenderEntity> : RenderTypeBackedRenderEntityRenderer<T> {
+    override fun renderTypeMode(entity: T): RenderTypeBackedRenderMode {
+        return RenderTypeBackedRenderMode.IRIS_PROXY_WITH_OPENGL
+    }
+
+    fun buildIrisProxyModel(entity: T, tickDelta: Float): RenderEntityModel
+
+    fun irisProxyRenderType(
+        input: RenderTypeRenderInput<T>,
+        primitive: RenderEntityModelPrimitive
+    ): RenderType?
+
+    override fun renderRenderType(input: RenderTypeRenderInput<T>) {
+        val entity = input.instance.entity
+        val model = buildIrisProxyModel(entity, input.tickDelta)
+        RenderTypeRenderEntityModelExecutor.draw(model, input) { primitive ->
+            irisProxyRenderType(input, primitive)
         }
     }
 }

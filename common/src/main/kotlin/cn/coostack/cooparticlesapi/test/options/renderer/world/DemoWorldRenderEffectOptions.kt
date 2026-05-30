@@ -5,6 +5,19 @@ import cn.coostack.cooparticlesapi.renderer.RenderEntity
 import net.minecraft.world.entity.player.Player
 
 object DemoWorldRenderEffectOptions {
+    fun irisStraightLaser(player: Player): SimpleRendererEntityOption {
+        val start = player.eyePosition.add(player.forward.scale(2.0))
+        val end = player.eyePosition.add(player.forward.scale(48.0))
+        return SimpleRendererEntityOption(
+            testEntity = DemoIrisStraightLaserRenderEntity(player.level(), start, end).apply {
+                brightness = 3f
+                maxRadius = 4f
+            },
+            testingTick = 240,
+            displayName = "render_entity/iris_straight_laser"
+        )
+    }
+
     fun blackHole(player: Player): SimpleRendererEntityOption {
         return option(
             player = player,

@@ -14,6 +14,7 @@ import cn.coostack.cooparticlesapi.test.api.TestGroupBuilder
 import cn.coostack.cooparticlesapi.test.options.animate.TestEmitterAction
 import cn.coostack.cooparticlesapi.test.options.animate.TestStyleAction
 import cn.coostack.cooparticlesapi.test.options.display.BarrageItemDisplayEntity
+import cn.coostack.cooparticlesapi.test.options.display.CylinderBoardDisplayEntity
 import cn.coostack.cooparticlesapi.test.options.particle.composition.TestComposition
 import cn.coostack.cooparticlesapi.test.options.display.TestBlockDisplayEntity
 import cn.coostack.cooparticlesapi.test.options.particle.composition.GenNewComposition
@@ -26,6 +27,7 @@ import cn.coostack.cooparticlesapi.test.options.particle.composition.TestShapedC
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.InterpolatorTestEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestAlphaShaderEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestCommandEmitter
+import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestDisplayEntityAutoEmitters
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestEventEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestRespawnEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestWaveEmitters
@@ -51,8 +53,37 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
     override fun build(): TestGroup {
         return GamingTestGroup(player, groupID())
             .appendOption {
+                SimpleEmitterOption(
+                    TestDisplayEntityAutoEmitters(player.eyePosition, player.level()).apply {
+                        maxTick = -1
+                        delay = 8
+                        ringRadius = 3.0
+                        ringPoints = 16
+                        axisDirection = player.forward
+                        lineWidth = 0.08f
+                        lineLength = 1.35f
+                        inwardSpeed = 0.18
+                        lineLife = 22
+                    }, -1
+                )
+            }
+            .appendOption {
+                DemoWorldRenderEffectOptions.irisStraightLaser(player)
+            }
+            .appendOption {
                 SimpleDisplayEntityOption(
                     TestBlockDisplayEntity(player.eyePosition, player.level()), 200
+                )
+            }
+            .appendOption {
+                SimpleDisplayEntityOption(
+                    CylinderBoardDisplayEntity(player.eyePosition.add(player.forward.scale(4.0)), player.level()).apply {
+                        direction = player.forward
+                        lineWidth = 0.12f
+                        length = 4.0f
+                        maxAge = 200
+                        fadeOut = false
+                    }, 200
                 )
             }
             .appendOption {
@@ -205,6 +236,7 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
                 SimpleEmitterOption(TestWaveEmitters(player.eyePosition, player.level()).apply {
                 }, -1)
             }
+
             .appendOption {
                 SimpleCompositionOption(TestNoiseLightComposition(player.eyePosition, player.level()).apply {
                     end = Vec3.ZERO.random() * Random.nextDouble(10.0, 60.0) + player.eyePosition

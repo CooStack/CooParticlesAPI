@@ -42,14 +42,20 @@ import kotlin.reflect.KProperty
  *   不能凭空生成 PBR、法线、阴影或材质 id。
  *
  * 如果要做 Iris 特殊材质效果，例如法线贴图、金属质感、粗糙度、反射：
- * 1. 优先走 `RenderTypeBackedRenderEntityModelRenderer`，不要把 PBR 材质逻辑写进 Coo 自己的
- *    `assets/minecraft/shaders/core/<name>.fsh`。Coo core fsh 属于 vanilla core shader 路线，
- *    适合发光、颜色偏移、透明裁剪和自定义 uniform，不等于 shaderpack 的 PBR 语义。
- * 2. renderer 应使用 entity 兼容的 `RenderType` / `VertexFormat`，例如能携带 uv、light、
+ * 1. 先区分两类 shader。RenderEntity 模型自己的 OpenGL shader 可以按 Coo 的资源组织来写，
+ *    例如 `assets/<modid>/shaders/core/vertex/foo.vsh` 和
+ *    `assets/<modid>/shaders/core/fragment/foo.fsh`，再通过 `ShaderProgramBuilder` 或
+ *    `IdentifierShader` 加载。它适合写激光流动、颜色覆盖、扭曲、噪声采样等模型自身效果。
+ * 2. 如果目标是让 Iris / shaderpack 进一步理解这个模型的材质，则优先走
+ *    `RenderTypeBackedRenderEntityModelRenderer`。这时关注的是 vanilla / Iris 看到的
+ *    RenderType、VertexFormat、贴图和顶点语义，而不是把模型 fsh 直接塞进 shaderpack 语义里。
+ *    只有明确使用 vanilla `ShaderInstance` / `RenderType` 的 core shader 路线时，才需要按
+ *    vanilla loader 的资源规则放置对应 shader。
+ * 3. renderer 应使用 entity 兼容的 `RenderType` / `VertexFormat`，例如能携带 uv、light、
  *    overlay、normal 的格式。只有 `POSITION_COLOR` 的 glow 类型不够表达法线贴图和大部分材质。
- * 3. renderer 写顶点时必须写清楚 `uv`、`light`、`overlay`、`normal`。Iris/shaderpack 后续
+ * 4. renderer 写顶点时必须写清楚 `uv`、`light`、`overlay`、`normal`。Iris/shaderpack 后续
  *    的 `gbuffers_entities` 等阶段通常依赖这些数据和基础贴图来解释实体材质。
- * 4. 法线、金属、粗糙度等材质数据通常放在资源包贴图里，而不是 per-entity uniform。
+ * 5. 法线、金属、粗糙度等材质数据通常放在资源包贴图里，而不是 per-entity uniform。
  *    常见 LabPBR 组织方式是：
  *    `textures/entity/foo.png` 作为 albedo/alpha，
  *    `textures/entity/foo_n.png` 作为 normal map，
@@ -58,7 +64,7 @@ import kotlin.reflect.KProperty
  *    `_s` 常用 red 表示 smoothness，green 表示 F0/reflectance 或金属编码区间，其他通道
  *    是否用于 emission、porosity、SSS 等也取决于 shaderpack。目标 shaderpack 必须支持
  *    对应 PBR 约定，否则这些贴图只会是普通资源文件。
- * 5. 如果要直接控制 Iris gbuffer 输出，那是 shaderpack 开发：需要在 shaderpack 里写
+ * 6. 如果要直接控制 Iris gbuffer 输出，那是 shaderpack 开发：需要在 shaderpack 里写
  *    `shaders/gbuffers_entities.vsh/.fsh` 或相关 fallback program，并按该 shaderpack 的
  *    buffer layout 输出。普通 `RenderEntityRenderer` 只负责把实体提交到合适的 RenderType 阶段。
  *
@@ -94,11 +100,19 @@ import kotlin.reflect.KProperty
  * 如果要接入只接受 quad 的 vanilla entity RenderType，需要用匹配的模型构建方式或新增对应
  * primitive 支持，不能把任意三角形直接当成 quad 材质提交。
  *
- * 如果写的是 Coo 自己的 fsh，参数通过 shader json 声明，并在平台 `RenderTypesProvider`
- * 的 shader supplier 中设置，例如 `shader.getUniform("Brightness")?.set(value)`。
- * 注意这类 uniform 是共享 `ShaderInstance` 状态；RenderType 会批处理，同一个 RenderType
- * 内不适合随意塞入每个实体都不同的材质参数。动态材质更适合用贴图、顶点色、uv 变体、
- * 不同 RenderType，或者回到本地 OpenGL / frame-post 路线。
+ * 如果写的是 Coo 自己的模型 shader，通常在 renderer 的 `renderLocal(...)` 中绑定 program，
+ * 然后逐次写入 uniform，例如 `setFloat("time", entity.getTime(delta))`、
+ * `setFloat3("color", entity.color)`、`setInt("noiseTex", 0)`，贴图则通过
+ * `RenderSystem.setShaderTexture(...)` 或 Coo texture helper 绑定到对应通道。
+ * 这类参数是当前 draw call 的本地 OpenGL 状态，适合每个实体都有不同时间、颜色、半径、
+ * phase、collapse 的模型效果。
+ *
+ * 如果写的是 vanilla `ShaderInstance` / `RenderType` core shader，参数通常通过 shader json
+ * 声明，并在平台 `RenderTypesProvider` 的 shader supplier 中设置，例如
+ * `shader.getUniform("Brightness")?.set(value)`。注意这类 uniform 是共享 `ShaderInstance`
+ * 状态；RenderType 会批处理，同一个 RenderType 内不适合随意塞入每个实体都不同的材质参数。
+ * 动态材质更适合用贴图、顶点色、uv 变体、不同 RenderType，或者回到本地 OpenGL /
+ * frame-post 路线。
  *
  * 一般业务请优先继承 [AutoRenderEntity]：它能基于 `@CodecField` 注解自动生成 codec
  * 并自动回写字段。直接继承 `RenderEntity` 适用于需要完全自定义同步格式的少数场景。

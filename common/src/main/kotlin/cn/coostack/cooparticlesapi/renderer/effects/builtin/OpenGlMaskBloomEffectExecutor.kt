@@ -7,6 +7,7 @@ import cn.coostack.cooparticlesapi.renderer.effects.RenderEffectDescriptor
 import cn.coostack.cooparticlesapi.renderer.effects.RenderEffectExecutor
 import cn.coostack.cooparticlesapi.renderer.shader.AdvancedShaderProgramBuilder
 import cn.coostack.cooparticlesapi.renderer.shader.api.CooShaderProgram
+import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlFrameBuffer
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlShaderType
 import cn.coostack.cooparticlesapi.renderer.shader.data.CooVertexFormat
 import cn.coostack.cooparticlesapi.renderer.shader.data.VertexData
@@ -24,6 +25,7 @@ import org.lwjgl.opengl.GL33.GL_BLEND_DST_ALPHA
 import org.lwjgl.opengl.GL33.GL_BLEND_DST_RGB
 import org.lwjgl.opengl.GL33.GL_BLEND_SRC_ALPHA
 import org.lwjgl.opengl.GL33.GL_BLEND_SRC_RGB
+import org.lwjgl.opengl.GL33.GL_COLOR_BUFFER_BIT
 import org.lwjgl.opengl.GL33.GL_CULL_FACE
 import org.lwjgl.opengl.GL33.GL_DEPTH_FUNC
 import org.lwjgl.opengl.GL33.GL_DEPTH_TEST
@@ -45,6 +47,8 @@ import org.lwjgl.opengl.GL33.glActiveTexture
 import org.lwjgl.opengl.GL33.glBindFramebuffer
 import org.lwjgl.opengl.GL33.glBindTexture
 import org.lwjgl.opengl.GL33.glBlendFuncSeparate
+import org.lwjgl.opengl.GL33.glClear
+import org.lwjgl.opengl.GL33.glClearColor
 import org.lwjgl.opengl.GL33.glDepthFunc
 import org.lwjgl.opengl.GL33.glDepthMask
 import org.lwjgl.opengl.GL33.glDisable
@@ -110,7 +114,7 @@ object OpenGlMaskBloomEffectExecutor : RenderEffectExecutor {
         val blurA = targetFor(context, "${descriptor.effectId}:blur_h")
         val blurB = targetFor(context, "${descriptor.effectId}:blur_v")
 
-        source.buffer.writeFrameBufferWith {
+        source.writeWithCleanColor {
             sceneDepthFramebuffer?.let { copyDepthBuffer(it) }
             request.renderMask(maskContext(context, request))
         }
@@ -198,7 +202,7 @@ object OpenGlMaskBloomEffectExecutor : RenderEffectExecutor {
         sourceTexture: Int,
         config: MaskBloomConfig
     ) {
-        target.buffer.writeFrameBufferWith {
+        target.writeWithCleanColor {
             val program = programFor(fragment)
             withFlatState {
                 program.useOnContext {
@@ -217,7 +221,7 @@ object OpenGlMaskBloomEffectExecutor : RenderEffectExecutor {
         sourceTexture: Int,
         config: MaskBloomConfig
     ) {
-        target.buffer.writeFrameBufferWith {
+        target.writeWithCleanColor {
             val program = programFor(brightExtractId)
             withFlatState {
                 program.useOnContext {
@@ -476,6 +480,21 @@ object OpenGlMaskBloomEffectExecutor : RenderEffectExecutor {
 
     private fun ManagedTarget.textureId(): Int? {
         return buffer.colorAttachments.firstOrNull()?.takeIf { it > 0 }
+    }
+
+    private fun ManagedTarget.writeWithCleanColor(writeScope: GlFrameBuffer.() -> Unit) {
+        val previousViewport = IntArray(4)
+        glGetIntegerv(GL_VIEWPORT, previousViewport)
+        try {
+            buffer.writeFrameBufferWith {
+                glViewport(0, 0, width, height)
+                glClearColor(0f, 0f, 0f, 0f)
+                glClear(GL_COLOR_BUFFER_BIT)
+                writeScope()
+            }
+        } finally {
+            glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3])
+        }
     }
 
     private data class ManagedTarget(

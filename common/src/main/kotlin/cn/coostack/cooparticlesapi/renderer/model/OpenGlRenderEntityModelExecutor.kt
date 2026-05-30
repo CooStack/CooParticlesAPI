@@ -23,6 +23,7 @@ import org.lwjgl.opengl.GL33.GL_LEQUAL
 import org.lwjgl.opengl.GL33.GL_LINES
 import org.lwjgl.opengl.GL33.GL_LINE_WIDTH
 import org.lwjgl.opengl.GL33.GL_ONE
+import org.lwjgl.opengl.GL33.GL_QUADS
 import org.lwjgl.opengl.GL33.GL_SRC_ALPHA
 import org.lwjgl.opengl.GL33.GL_TRIANGLES
 import org.lwjgl.opengl.GL33.glBlendFuncSeparate
@@ -154,6 +155,7 @@ object OpenGlRenderEntityModelExecutor : RenderEntityModelExecutor {
         return when (this) {
             RenderEntityModelPrimitiveMode.LINES -> GL_LINES
             RenderEntityModelPrimitiveMode.TRIANGLES -> GL_TRIANGLES
+            RenderEntityModelPrimitiveMode.QUADS -> GL_QUADS
         }
     }
 

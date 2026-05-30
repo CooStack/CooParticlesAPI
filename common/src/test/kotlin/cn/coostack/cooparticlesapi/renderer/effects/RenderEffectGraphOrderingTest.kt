@@ -7,15 +7,12 @@ import kotlin.test.assertTrue
 
 class RenderEffectGraphOrderingTest {
     @Test
-    fun `render effect graph sorts by priority effect type effect id source and sequence`() {
+    fun `render effect graph sorts by priority then submission sequence`() {
         val source = readProjectFile(
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/effects/RenderEffectGraph.kt"
         )
 
         assertTrue("compareBy<IndexedDescriptor> { it.descriptor.priority }" in source)
-        assertTrue(".thenBy { it.descriptor.effectType.toString() }" in source)
-        assertTrue(".thenBy { it.descriptor.effectId }" in source)
-        assertTrue(".thenBy { it.descriptor.sourceInstanceId }" in source)
         assertTrue(".thenBy { it.sequence }" in source)
     }
 
@@ -29,14 +26,16 @@ class RenderEffectGraphOrderingTest {
     }
 
     @Test
-    fun `render effect graph groups by effect type and dispatches through registry`() {
+    fun `render effect graph batches consecutive descriptors by executor without sorting by effect type`() {
         val source = readProjectFile(
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/effects/RenderEffectGraph.kt"
         )
 
-        assertTrue(".groupBy { it.descriptor.effectType }" in source)
-        assertTrue("RenderEffectRegistry.get(effectType)" in source)
-        assertTrue("executor.render(frameContext, grouped.map { it.descriptor })" in source)
+        assertTrue("var currentExecutor: RenderEffectExecutor? = null" in source)
+        assertTrue("val currentBatch = mutableListOf<RenderEffectDescriptor>()" in source)
+        assertTrue("RenderEffectRegistry.get(descriptor.effectType)" in source)
+        assertTrue("if (currentExecutor !== executor)" in source)
+        assertTrue("executor.render(frameContext, currentBatch.toList())" in source)
     }
 
     private fun readProjectFile(relativePath: String): String {

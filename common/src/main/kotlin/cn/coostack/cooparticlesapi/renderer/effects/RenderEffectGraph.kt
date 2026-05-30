@@ -11,8 +11,8 @@ import cn.coostack.cooparticlesapi.renderer.runtime.RenderContributionCollector
  * 它负责：
  * - 收集所有实体提交的 `RenderEffectDescriptor`
  * - 依据 backend capability 过滤
- * - 依据优先级和稳定排序规则分组
- * - 按 effectType 分发给 `RenderEffectRegistry`
+ * - 依据优先级和提交顺序稳定排序
+ * - 按连续的 executor 批次分发给 `RenderEffectRegistry`
  */
 class RenderEffectGraph(
     private val backendCapabilities: Set<RenderBackendCapability>,
@@ -39,23 +39,40 @@ class RenderEffectGraph(
     /**
      * 执行当前图中的全部 descriptor。
      *
-     * 执行前会先按能力过滤与排序，再按 `effectType` 分组交给注册表中的 executor。
+     * 执行前会先按能力过滤与排序，再把连续使用同一 executor 的 descriptor 合批执行。
      */
     fun execute() {
-        val ordered = orderedDescriptors()
-        ordered
-            .groupBy { it.descriptor.effectType }
-            .forEach { (effectType, grouped) ->
-                val executor = RenderEffectRegistry.get(effectType)
-                if (executor == null) {
-                    CooParticlesConstants.logger.warn(
-                        "Skipping render effect type={} because no executor is registered",
-                        effectType
-                    )
-                    return@forEach
-                }
-                executor.render(frameContext, grouped.map { it.descriptor })
+        var currentExecutor: RenderEffectExecutor? = null
+        val currentBatch = mutableListOf<RenderEffectDescriptor>()
+
+        fun flushBatch() {
+            val executor = currentExecutor ?: return
+            if (currentBatch.isEmpty()) {
+                return
             }
+            executor.render(frameContext, currentBatch.toList())
+            currentBatch.clear()
+        }
+
+        orderedDescriptors().forEach { indexed ->
+            val descriptor = indexed.descriptor
+            val executor = RenderEffectRegistry.get(descriptor.effectType)
+            if (executor == null) {
+                flushBatch()
+                currentExecutor = null
+                CooParticlesConstants.logger.warn(
+                    "Skipping render effect type={} because no executor is registered",
+                    descriptor.effectType
+                )
+                return@forEach
+            }
+            if (currentExecutor !== executor) {
+                flushBatch()
+                currentExecutor = executor
+            }
+            currentBatch += descriptor
+        }
+        flushBatch()
     }
 
     /**
@@ -69,9 +86,6 @@ class RenderEffectGraph(
             }
             .sortedWith(
                 compareBy<IndexedDescriptor> { it.descriptor.priority }
-                    .thenBy { it.descriptor.effectType.toString() }
-                    .thenBy { it.descriptor.effectId }
-                    .thenBy { it.descriptor.sourceInstanceId }
                     .thenBy { it.sequence }
             )
             .toList()
