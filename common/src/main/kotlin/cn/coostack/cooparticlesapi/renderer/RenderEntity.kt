@@ -218,6 +218,7 @@ abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) : Serv
      * 为 `true` 时，服务端和客户端管理器都会在后续 tick 中移除该实体。
      */
     var canceled = false
+    private val preTickActions = ArrayList<RenderEntity.() -> Unit>()
 
     /**
      * 统一 tick 入口。
@@ -228,6 +229,12 @@ abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) : Serv
     override fun tick() {
         if (canceled) return
         age++
+        val stableSize = preTickActions.size
+        var index = 0
+        while (index < stableSize) {
+            preTickActions[index](this)
+            index++
+        }
         if (client) {
             clientTick()
         } else {
@@ -236,13 +243,8 @@ abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) : Serv
     }
 
 
-    /**
-     * `RenderEntity` 不参与 `Tickable` 的前置 action 链。
-     *
-     * 这里直接返回自身，是为了保持 `Tickable` 接口兼容，
-     * 同时明确这套 API 的 tick 生命周期只受 `tick()` / `clientTick()` / `serverTick()` 控制。
-     */
     final override fun addPreTickAction(action: RenderEntity.() -> Unit): Tickable<RenderEntity> {
+        preTickActions.add(action)
         return this
     }
 

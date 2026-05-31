@@ -37,15 +37,16 @@ object ClientParticleGroupManager {
     }
 
     fun clearAllVisible() {
-        visibleControls.onEach {
-            it.value.canceled = true
-        }.clear()
+        visibleControls.values.forEach {
+            it.remove()
+        }
+        visibleControls.clear()
     }
 
     fun doClientTick() {
         val player = Minecraft.getInstance().player ?: return
         if (player.isDeadOrDying) {
-            visibleControls.clear()
+            clearAllVisible()
             return
         }
         val iterator = visibleControls.iterator()

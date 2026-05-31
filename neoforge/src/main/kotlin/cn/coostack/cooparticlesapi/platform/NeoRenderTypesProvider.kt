@@ -20,7 +20,7 @@ import net.minecraft.resources.ResourceLocation
 
 object NeoRenderTypesProvider : CooRenderTypesProvider {
     private val cache = LinkedHashMap<CooRenderTypeDescriptor, RenderType>()
-    private val entityCutoutEmissiveCache = LinkedHashMap<Pair<ResourceLocation, Float>, RenderType>()
+    private val entityCutoutEmissiveCache = LinkedHashMap<Triple<ResourceLocation, Float, Float>, RenderType>()
     private val glowId = ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "glow")
 
     private val glowDescriptor = CooRenderTypeDescriptor.builder("coo_glow")
@@ -36,23 +36,34 @@ object NeoRenderTypesProvider : CooRenderTypesProvider {
         get() = named(glowId) ?: create(glowDescriptor)
 
     override fun entityCutoutEmissive(texture: ResourceLocation, brightness: Float): RenderType {
+        return entityCutoutEmissive(texture, brightness, 1f)
+    }
+
+    override fun entityCutoutEmissive(texture: ResourceLocation, brightness: Float, alpha: Float): RenderType {
         val resolvedBrightness = brightness.coerceAtLeast(0f)
-        val renderType = entityCutoutEmissiveCache.getOrPut(texture to resolvedBrightness) {
-            val renderTypeName = "coo_entity_cutout_emissive_$resolvedBrightness"
+        val resolvedAlpha = alpha.coerceIn(0f, 1f)
+        val translucent = resolvedAlpha < 1f
+        val renderType = entityCutoutEmissiveCache.getOrPut(Triple(texture, resolvedBrightness, resolvedAlpha)) {
+            val renderTypeName = "coo_entity_cutout_emissive_${resolvedBrightness}_$resolvedAlpha"
             RenderTypeIrisSupposerRegistry.register(renderTypeName, "coo_entity_cutout_emissive")
             val state = RenderType.CompositeState.builder()
                 .setShaderState(
                     RenderStateShard.ShaderStateShard {
                         MCShaders.ENTITY_CUTOUT_EMISSIVE.also { shader ->
                             shader.getUniform("Brightness")?.set(resolvedBrightness)
+                            shader.getUniform("Alpha")?.set(resolvedAlpha)
                             IrisCompat.markUnskippable(shader)
                         }
                     }
                 )
                 .setTextureState(RenderStateShard.TextureStateShard(texture, false, false))
-                .setTransparencyState(RenderStateShard.NO_TRANSPARENCY)
+                .setTransparencyState(
+                    if (translucent) RenderStateShard.TRANSLUCENT_TRANSPARENCY else RenderStateShard.NO_TRANSPARENCY
+                )
                 .setCullState(RenderStateShard.NO_CULL)
-                .setWriteMaskState(RenderStateShard.COLOR_DEPTH_WRITE)
+                .setWriteMaskState(
+                    if (translucent) RenderStateShard.COLOR_WRITE else RenderStateShard.COLOR_DEPTH_WRITE
+                )
                 .setOverlayState(RenderStateShard.OVERLAY)
                 .createCompositeState(true)
 
@@ -62,7 +73,7 @@ object NeoRenderTypesProvider : CooRenderTypesProvider {
                 VertexFormat.Mode.QUADS,
                 1536,
                 true,
-                false,
+                translucent,
                 state
             )
         }

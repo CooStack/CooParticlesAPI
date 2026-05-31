@@ -52,6 +52,7 @@ class Animate : Tickable<Animate> {
     private val activeNodes = LinkedHashSet<AnimateNode>()
     private val queuedNodes = LinkedHashSet<AnimateNode>()
     private val completedNodes = LinkedHashSet<AnimateNode>()
+    private val preTickActions = ArrayList<Animate.() -> Unit>()
 
     fun addNode(node: AnimateNode): Animate {
         return addNode(node, 0)
@@ -102,11 +103,18 @@ class Animate : Tickable<Animate> {
     }
 
     override fun addPreTickAction(action: Animate.() -> Unit): Tickable<Animate> {
+        preTickActions.add(action)
         return this
     }
 
     override fun tick() {
         if (!display || done) return
+        val stableSize = preTickActions.size
+        var index = 0
+        while (index < stableSize) {
+            preTickActions[index](this)
+            index++
+        }
 
         startReadyNodes()
 

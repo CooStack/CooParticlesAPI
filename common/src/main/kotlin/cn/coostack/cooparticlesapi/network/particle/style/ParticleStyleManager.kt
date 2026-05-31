@@ -141,7 +141,7 @@ object ParticleStyleManager {
     private fun upgradeVisible(style: ParticleGroupStyle) {
         CooParticlesAPI.server.playerList.players.forEach { p ->
             val visibleSet = visible.getOrPut(p.uuid) { HashSet() }
-            if (p.level() != style.world) {
+            if (p.level().dimension() != style.world?.dimension()) {
                 // 世界转换
                 if (style in visibleSet) {
                     removeGroupPlayerView(p, style)
@@ -248,5 +248,10 @@ object ParticleStyleManager {
         clientViewStyles.onEach {
             it.value.remove()
         }.clear()
+    }
+
+    fun clearServer() {
+        serverViewStyles.clear()
+        visible.clear()
     }
 }

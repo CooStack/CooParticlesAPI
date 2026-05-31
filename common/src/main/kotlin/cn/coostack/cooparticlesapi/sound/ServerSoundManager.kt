@@ -925,7 +925,7 @@ object ServerSoundManager {
     private fun sendToEntityWatchers(entity: Entity, packet: PacketSoundInstanceS2C, self: Boolean): Boolean {
         val level = entity.level() as? ServerLevel ?: return false
         CooParticlesAPI.server.playerList.players.forEach { player ->
-            if (player.level() != level) {
+            if (player.level().dimension() != level.dimension()) {
                 return@forEach
             }
             if (!self && entity is ServerPlayer && player.uuid == entity.uuid) {
@@ -940,7 +940,7 @@ object ServerSoundManager {
 
     private fun sendToPlayersNear(world: ServerLevel, pos: Vec3, range: Double, packet: PacketSoundInstanceS2C) {
         CooParticlesAPI.server.playerList.players.forEach { player ->
-            if (player.level() != world) {
+            if (player.level().dimension() != world.dimension()) {
                 return@forEach
             }
             if (range >= 0.0 && player.position().distanceTo(pos) > range) {

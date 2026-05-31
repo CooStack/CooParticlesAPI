@@ -241,7 +241,7 @@ class ServerDuckingSoundEffect(
         if (!self && entity is ServerPlayer && player.uuid == entity!!.uuid) {
             return false
         }
-        if (player.level() != world) {
+        if (player.level().dimension() != world.dimension()) {
             return false
         }
         if (target != null) {

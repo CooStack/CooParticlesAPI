@@ -163,7 +163,7 @@ object DisplayEntityManager {
         }
         val packet = PacketDisplayEntityS2C(uuid, type, data)
         server.playerList.players.forEach {
-            if (it.level() != entity.world) {
+            if (it.level().dimension() != entity.world?.dimension()) {
                 return@forEach
             }
             CooParticlesServices.SERVER_NETWORK.send(packet, it)
@@ -172,6 +172,10 @@ object DisplayEntityManager {
 
     fun clearClient() {
         clientView.clear()
+    }
+
+    fun clearServer() {
+        serverView.clear()
     }
 
 }

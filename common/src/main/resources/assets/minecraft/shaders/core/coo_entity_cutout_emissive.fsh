@@ -6,6 +6,7 @@ uniform sampler2D Sampler0;
 
 uniform vec4 ColorModulator;
 uniform float Brightness;
+uniform float Alpha;
 uniform float FogStart;
 uniform float FogEnd;
 
@@ -22,6 +23,7 @@ void main() {
         discard;
     }
     color *= vertexColor * ColorModulator;
+    color.a *= Alpha;
     color.rgb = mix(overlayColor.rgb, color.rgb, overlayColor.a);
     color.rgb *= Brightness;
     fragColor = color;

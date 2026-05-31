@@ -84,6 +84,7 @@ abstract class DisplayEntity(
     var scale = 1f
 
     private var valid = true
+    private val preTickActions = ArrayList<DisplayEntity.() -> Unit>()
 
     /**
      * 由 DisplayEntityManager计算模型旋转
@@ -193,6 +194,12 @@ abstract class DisplayEntity(
 
 
     override fun tick() {
+        val stableSize = preTickActions.size
+        var index = 0
+        while (index < stableSize) {
+            preTickActions[index](this)
+            index++
+        }
         yaw %= 360
         pitch %= 360
         roll %= 360
@@ -203,10 +210,8 @@ abstract class DisplayEntity(
         this.prevScale = scale
     }
 
-    /**
-     * 不做处理
-     */
     final override fun addPreTickAction(action: DisplayEntity.() -> Unit): Tickable<DisplayEntity> {
+        preTickActions.add(action)
         return this
     }
 

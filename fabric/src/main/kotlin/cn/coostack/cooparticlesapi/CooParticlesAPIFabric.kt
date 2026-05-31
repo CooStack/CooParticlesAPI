@@ -121,7 +121,7 @@ object CooParticlesAPIFabric : ModInitializer {
             CooParticlesAPI.loadScannerPackages()
         }
         ServerLifecycleEvents.SERVER_STOPPED.register {
-            TestManager.clearServer()
+            CooParticlesAPI.onServerStop()
         }
         ServerPlayConnectionEvents.DISCONNECT.register { handler, _ ->
             TestManager.clearServerFor(handler.player)

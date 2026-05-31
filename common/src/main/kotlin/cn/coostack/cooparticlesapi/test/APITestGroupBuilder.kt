@@ -24,6 +24,7 @@ import cn.coostack.cooparticlesapi.test.options.particle.composition.TestModelCo
 import cn.coostack.cooparticlesapi.test.options.particle.composition.TestNoiseLightComposition
 import cn.coostack.cooparticlesapi.test.options.particle.composition.TestSeqComposition
 import cn.coostack.cooparticlesapi.test.options.particle.composition.TestShapedComposition
+import cn.coostack.cooparticlesapi.test.options.particle.composition.TestSimpleParticleComposition
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.InterpolatorTestEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestAlphaShaderEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestCommandEmitter
@@ -52,6 +53,12 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
 
     override fun build(): TestGroup {
         return GamingTestGroup(player, groupID())
+            .appendOption {
+                SimpleCompositionOption(
+                    TestSimpleParticleComposition(player.eyePosition.add(player.forward.scale(3.0)), player.level()),
+                    -1
+                )
+            }
             .appendOption {
                 SimpleEmitterOption(
                     TestDisplayEntityAutoEmitters(player.eyePosition, player.level()).apply {

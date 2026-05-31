@@ -5,6 +5,7 @@ import cn.coostack.cooparticlesapi.api.controler.SerializableData
 import cn.coostack.cooparticlesapi.api.controler.Controlable
 import cn.coostack.cooparticlesapi.particles.ControlableParticleEffect
 import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
+import cn.coostack.cooparticlesapi.particles.ParticleCameraOption
 import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
 import cn.coostack.cooparticlesapi.particles.impl.ControlableEndRodEffect
 import cn.coostack.cooparticlesapi.supports.TextureSheetsEnum
@@ -34,7 +35,9 @@ open class ControlableParticleData : SerializableData {
         private fun encode(buf: RegistryFriendlyByteBuf, data: ControlableParticleData) {
             buf.writeUUID(data.uuid)
             buf.writeVec3(data.velocity)
-            buf.writeFloat(data.size)
+            buf.writeFloat(data.weightSize)
+            buf.writeFloat(data.heightSize)
+            buf.writeBoolean(data.uniformSize)
             buf.writeFloat(data.visibleRange)
             buf.writeVector3f(data.color)
             buf.writeFloat(data.alpha)
@@ -48,7 +51,8 @@ open class ControlableParticleData : SerializableData {
             buf.writeDouble(data.speedLimit)
             buf.writeInt(data.sign)
             buf.writeInt(data.light)
-            buf.writeBoolean(data.faceToCamera)
+            ParticleCameraOption.STREAM_CODEC.encode(buf, data.cameraOption)
+            buf.writeVec3(data.axis)
             buf.writeFloat(data.yaw)
             buf.writeFloat(data.pitch)
             buf.writeFloat(data.roll)
@@ -59,7 +63,9 @@ open class ControlableParticleData : SerializableData {
         ): ControlableParticleData {
             val uuid = buf.readUUID()
             val velocity = buf.readVec3()
-            val size = buf.readFloat()
+            val weightSize = buf.readFloat()
+            val heightSize = buf.readFloat()
+            val uniformSize = buf.readBoolean()
             val visibleRange = buf.readFloat()
             val color = buf.readVector3f()
             val alpha = buf.readFloat()
@@ -72,7 +78,8 @@ open class ControlableParticleData : SerializableData {
             val speedLimit = buf.readDouble()
             val sign = buf.readInt()
             val light = buf.readInt()
-            val faceToCamera = buf.readBoolean()
+            val cameraOption = ParticleCameraOption.STREAM_CODEC.decode(buf)
+            val axis = buf.readVec3()
             val yaw = buf.readFloat()
             val pitch = buf.readFloat()
             val roll = buf.readFloat()
@@ -81,7 +88,9 @@ open class ControlableParticleData : SerializableData {
                 this.velocity = velocity
                 this.color = color
                 this.alpha = alpha
-                this.size = size
+                this.uniformSize = uniformSize
+                this.weightSize = weightSize
+                this.heightSize = heightSize
                 this.visibleRange = visibleRange
                 this.age = age
                 this.maxAge = maxAge
@@ -91,7 +100,8 @@ open class ControlableParticleData : SerializableData {
                 this.sign = sign
                 this.speedLimit = speedLimit
                 this.light = light
-                this.faceToCamera = faceToCamera
+                this.cameraOption = cameraOption
+                this.axis = axis
                 this.yaw = yaw
                 this.pitch = pitch
                 this.roll = roll
@@ -119,10 +129,19 @@ open class ControlableParticleData : SerializableData {
     var velocity: Vec3 = Vec3.ZERO
 
     /**
-     * 生成的粒子是否始终面向摄像头
-     *
+     * 生成的粒子相机朝向模式，默认始终面向摄像头。
      */
-    var faceToCamera = true
+    var cameraOption: ParticleCameraOption = ParticleCameraOption.BILLBOARD
+
+    /** 旧布尔 API 的兼容桥接：true = BILLBOARD，false = ROTATION。 */
+    var faceToCamera: Boolean
+        get() = cameraOption == ParticleCameraOption.BILLBOARD
+        set(value) {
+            cameraOption = ParticleCameraOption.fromFaceToCamera(value)
+        }
+
+    /** AXIS_BILLBOARD 使用的固定轴方向。 */
+    var axis: Vec3 = Vec3(0.0, 1.0, 0.0)
 
     /**
      * 如果faceToCamera为false
@@ -149,11 +168,38 @@ open class ControlableParticleData : SerializableData {
      */
     var roll = 0.0f
 
-    /**
-     * 粒子大小
-     *
-     */
-    var size = 0.2f
+    /** 是否保持宽高等比。 */
+    var uniformSize = true
+
+    /** 粒子宽度大小。 */
+    private var currentWeightSize = 0.2f
+    var weightSize: Float
+        get() = currentWeightSize
+        set(value) {
+            currentWeightSize = value
+            if (uniformSize) {
+                currentHeightSize = value
+            }
+        }
+
+    /** 粒子高度大小。 */
+    private var currentHeightSize = 0.2f
+    var heightSize: Float
+        get() = currentHeightSize
+        set(value) {
+            currentHeightSize = value
+            if (uniformSize) {
+                currentWeightSize = value
+            }
+        }
+
+    /** 旧 size 兼容属性：设置时同时修改宽高。 */
+    var size: Float
+        get() = (weightSize + heightSize) / 2f
+        set(value) {
+            currentWeightSize = value
+            currentHeightSize = value
+        }
 
     /**
      * 粒子生成时采用的不透明度
@@ -260,6 +306,10 @@ open class ControlableParticleData : SerializableData {
         setRotationTo(to.toVector3f())
     }
 
+    fun setAxisLocation(axis: RelativeLocation) {
+        this.axis = Vec3(axis.x, axis.y, axis.z)
+    }
+
     fun getTextureSheet(): ParticleRenderType {
         return textureSheetFromString(textureSheet) ?: let {
             CooParticlesConstants.logger.error("can not find textureSheet $textureSheet you need use ControlableParticleData.registerRenderType() to register mapper")
@@ -308,14 +358,20 @@ open class ControlableParticleData : SerializableData {
         val control = ControlParticleManager.createControl(effect.controlUUID)
         val data = this
         control.applyInitializedAction {
-            this.size = data.size
+            this.uniformSize = data.uniformSize
+            this.weightSize = data.weightSize
+            this.heightSize = data.heightSize
             this.color = data.color
             this.currentAge = data.age
             this.lifetime = data.maxAge
             this.light = data.light
             this.textureSheet = data.getTextureSheet()
             this.particleAlpha = data.alpha
-            this.faceToCamera = data.faceToCamera
+            this.cameraOption = data.cameraOption
+            this.axis = data.axis
+            this.previewAxis = data.axis
+            this.previewWeightSize = data.weightSize
+            this.previewHeightSize = data.heightSize
             this.currentPitch = data.pitch
             this.currentYaw = data.yaw
             this.currentRoll = data.roll
@@ -334,7 +390,9 @@ open class ControlableParticleData : SerializableData {
         return ControlableParticleData().also {
             it.uuid = UUID.randomUUID()
             it.velocity = this.velocity
-            it.size = this.size
+            it.uniformSize = this.uniformSize
+            it.weightSize = this.weightSize
+            it.heightSize = this.heightSize
             it.color = this.color
             it.alpha = this.alpha
             it.visibleRange = this.visibleRange
@@ -349,7 +407,8 @@ open class ControlableParticleData : SerializableData {
             it.yaw = this.yaw
             it.pitch = this.pitch
             it.roll = this.roll
-            it.faceToCamera = this.faceToCamera
+            it.cameraOption = this.cameraOption
+            it.axis = this.axis
         }
     }
 }

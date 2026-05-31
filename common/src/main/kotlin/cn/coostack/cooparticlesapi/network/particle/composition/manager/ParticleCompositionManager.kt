@@ -123,7 +123,7 @@ object ParticleCompositionManager {
         }
         val packet = PacketParticleCompositionS2C(uuid, type, data)
         server.playerList.players.forEach {
-            if (it.level() != composition.world) {
+            if (it.level().dimension() != composition.world?.dimension()) {
                 return@forEach
             }
 
@@ -173,7 +173,7 @@ object ParticleCompositionManager {
             rollDelta
         )
         server.playerList.players.forEach {
-            if (it.level() != composition.world) {
+            if (it.level().dimension() != composition.world?.dimension()) {
                 return@forEach
             }
             val compositions = playerPlayerVisibleSet[it.uuid] ?: return@forEach

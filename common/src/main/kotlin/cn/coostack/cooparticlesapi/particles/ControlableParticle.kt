@@ -5,6 +5,7 @@ import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
 import cn.coostack.cooparticlesapi.particles.control.ParticleControler
 import cn.coostack.cooparticlesapi.utils.GraphMathHelper
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
+import cn.coostack.cooparticlesapi.utils.MinecraftRendererUtil
 import cn.coostack.cooparticlesapi.utils.PhysicsUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import com.mojang.blaze3d.vertex.VertexConsumer
@@ -32,15 +33,30 @@ abstract class ControlableParticle(
     pos: Vec3,
     velocity: Vec3,
     val controlUUID: UUID,
-    /** 是否始终转向玩家(默认实现) */
-    var faceToCamera: Boolean = true
+    /** 粒子的相机朝向模式 */
+    var cameraOption: ParticleCameraOption = ParticleCameraOption.BILLBOARD
 ) : TextureSheetParticle(world, pos.x, pos.y, pos.z, velocity.x, velocity.y, velocity.z) {
+    constructor(
+        world: ClientLevel,
+        pos: Vec3,
+        velocity: Vec3,
+        controlUUID: UUID,
+        faceToCamera: Boolean
+    ) : this(world, pos, velocity, controlUUID, ParticleCameraOption.fromFaceToCamera(faceToCamera))
+
     companion object {
         @JvmStatic
         val LINEAR_INTERPOLATOR: ParticleLerpInterpolator = ParticleLerpInterpolator { p1, p2, delta ->
             GraphMathHelper.lerp(delta, p1, p2)
         }
     }
+
+    /** 旧布尔 API 的兼容桥接：true = BILLBOARD，false = ROTATION。 */
+    var faceToCamera: Boolean
+        get() = cameraOption == ParticleCameraOption.BILLBOARD
+        set(value) {
+            cameraOption = ParticleCameraOption.fromFaceToCamera(value)
+        }
 
     /** 插值修改器 */
     var interpolator: ParticleLerpInterpolator = LINEAR_INTERPOLATOR
@@ -63,6 +79,16 @@ abstract class ControlableParticle(
     /** 粒子渲染类型 可以使用 */
     var textureSheet: ParticleRenderType = ParticleRenderType.PARTICLE_SHEET_LIT
 
+    private var currentAxis: Vec3 = Vec3(0.0, 1.0, 0.0)
+    var previewAxis: Vec3 = currentAxis
+
+    /** AXIS_BILLBOARD 使用的固定轴方向 */
+    var axis: Vec3
+        get() = currentAxis
+        set(value) {
+            currentAxis = value
+        }
+
     /** 是否调用 net.minecraft.client.particle.Particle中的tick方法 */
     var minecraftTick: Boolean = false
 
@@ -84,13 +110,47 @@ abstract class ControlableParticle(
         }
 
     /** @see scale 粒子尺寸 */
-    var size: Float
-        get() = super.quadSize
+    private var currentWeightSize = super.quadSize
+    private var currentHeightSize = super.quadSize
+    var previewWeightSize = currentWeightSize
+    var previewHeightSize = currentHeightSize
+
+    /** 是否保持宽高等比。开启后单独设置宽或高会同步另一边。 */
+    var uniformSize: Boolean = true
+
+    var weightSize: Float
+        get() = currentWeightSize
         set(value) {
-            super.quadSize = value
-            // 对应scale方法
-            this.setSize(0.2f * size, 0.2f * size)
+            currentWeightSize = value
+            if (uniformSize) {
+                currentHeightSize = value
+            }
+            updateRenderSizeBounds()
         }
+
+    var heightSize: Float
+        get() = currentHeightSize
+        set(value) {
+            currentHeightSize = value
+            if (uniformSize) {
+                currentWeightSize = value
+            }
+            updateRenderSizeBounds()
+        }
+
+    var size: Float
+        get() = (currentWeightSize + currentHeightSize) / 2f
+        set(value) {
+            currentWeightSize = value
+            currentHeightSize = value
+            updateRenderSizeBounds()
+    }
+
+    private fun updateRenderSizeBounds() {
+        val boundSize = maxOf(currentWeightSize, currentHeightSize)
+        // 对应scale方法
+        this.setSize(0.2f * boundSize, 0.2f * boundSize)
+    }
 
     /**
      * @see prevPosX
@@ -265,6 +325,10 @@ abstract class ControlableParticle(
         lastRotate = Vector3f(x, y, z)
     }
 
+    fun setAxisLocation(axis: RelativeLocation) {
+        this.axis = Vec3(axis.x, axis.y, axis.z)
+    }
+
     /**
      * 防止频繁调用Math3DUtil (让键盘休息一会) 也不用调用 color =
      * Vector3f(xxx/255f,xxx/255f,xxx/255f)
@@ -339,6 +403,9 @@ abstract class ControlableParticle(
         if (minecraftTick) {
             super.tick()
         }
+        previewWeightSize = currentWeightSize
+        previewHeightSize = currentHeightSize
+        previewAxis = currentAxis
         controler.tick()
         xo = x
         yo = y
@@ -371,6 +438,18 @@ abstract class ControlableParticle(
         return this
     }
 
+    override fun getQuadSize(tickDelta: Float): Float {
+        return maxOf(getWeightSize(tickDelta), getHeightSize(tickDelta))
+    }
+
+    private fun getWeightSize(tickDelta: Float): Float {
+        return Mth.lerp(tickDelta, previewWeightSize, currentWeightSize)
+    }
+
+    private fun getHeightSize(tickDelta: Float): Float {
+        return Mth.lerp(tickDelta, previewHeightSize, currentHeightSize)
+    }
+
     /** @see ParticleControler.remove() */
     override fun remove() {
         super.remove()
@@ -386,29 +465,84 @@ abstract class ControlableParticle(
         val q = Quaternionf()
         // 获取摄像机位置
         val cameraPos = camera.position
-        // 摄像空间（摄像头位置为原点）
-        val lerpPos = (interpolator.consume(
+        val worldPos = interpolator.consume(
             Vec3(xo, yo, zo), Vec3(x, y, z), tickDelta
-        ) - cameraPos).toVector3f()
-        if (faceToCamera) {
-            this.facingCameraMode.setRotation(q, camera, tickDelta)
-            if (this.roll != 0f) {
-                q.rotateZ(Mth.lerp(tickDelta, this.oRoll, this.roll))
+        )
+        // 摄像空间（摄像头位置为原点）
+        val lerpPos = (worldPos - cameraPos).toVector3f()
+        when (cameraOption) {
+            ParticleCameraOption.BILLBOARD -> {
+                this.facingCameraMode.setRotation(q, camera, tickDelta)
+                if (this.roll != 0f) {
+                    q.rotateZ(Mth.lerp(tickDelta, this.oRoll, this.roll))
+                }
             }
-        } else {
-            q.rotateXYZ(
-                Mth.lerp(tickDelta, this.previewPitch, this.currentPitch),
-                Mth.lerp(tickDelta, this.previewYaw, this.currentYaw),
-                Mth.lerp(tickDelta, this.previewRoll, this.currentRoll)
-            )
+
+            ParticleCameraOption.AXIS_BILLBOARD -> {
+                val light = this.getLightColor(tickDelta)
+                renderAxisBillboardQuad(vertexConsumer, camera, worldPos, lerpPos, tickDelta, light)
+                return
+            }
+
+            ParticleCameraOption.ROTATION -> {
+                q.rotateXYZ(
+                    Mth.lerp(tickDelta, this.previewPitch, this.currentPitch),
+                    Mth.lerp(tickDelta, this.previewYaw, this.currentYaw),
+                    Mth.lerp(tickDelta, this.previewRoll, this.currentRoll)
+                )
+            }
         }
         // 构建顶点几何
-        if (faceToCamera) {
-            this.renderRotatedQuad(vertexConsumer, q, lerpPos.x, lerpPos.y, lerpPos.z, tickDelta)
+        if (cameraOption == ParticleCameraOption.BILLBOARD) {
+            val light = this.getLightColor(tickDelta)
+            setParticleTexture(vertexConsumer, q, lerpPos.x, lerpPos.y, lerpPos.z, tickDelta, light)
             return
         }
         val light = this.getLightColor(tickDelta)
-        setParticleTexture(vertexConsumer, q, lerpPos.x, lerpPos.y, lerpPos.z, tickDelta, light)
+        setParticleTexture(
+            vertexConsumer,
+            q,
+            lerpPos.x,
+            lerpPos.y,
+            lerpPos.z,
+            tickDelta,
+            light
+        )
+    }
+
+    private fun renderAxisBillboardQuad(
+        vertexConsumer: VertexConsumer,
+        camera: Camera,
+        worldPos: Vec3,
+        lerpPos: Vector3f,
+        tickDelta: Float,
+        light: Int
+    ) {
+        val axis = GraphMathHelper.lerp(tickDelta, previewAxis, currentAxis)
+        val basis = MinecraftRendererUtil.axialBillboardBasis(axis, camera, worldPos)
+        var right = basis.right
+        val roll = Mth.lerp(tickDelta, this.previewRoll, this.currentRoll)
+        if (roll != 0f) {
+            val rollQ = Quaternionf().rotateAxis(
+                roll,
+                basis.axis.x.toFloat(),
+                basis.axis.y.toFloat(),
+                basis.axis.z.toFloat()
+            )
+            val rolled = Vector3f(right.x.toFloat(), right.y.toFloat(), right.z.toFloat()).rotate(rollQ)
+            right = Vec3(rolled.x.toDouble(), rolled.y.toDouble(), rolled.z.toDouble())
+        }
+
+        renderSizedQuad(
+            vertexConsumer,
+            lerpPos,
+            right,
+            basis.axis,
+            basis.face,
+            getWeightSize(tickDelta),
+            getHeightSize(tickDelta),
+            light
+        )
     }
 
     private fun setParticleTexture(
@@ -420,74 +554,62 @@ abstract class ControlableParticle(
         tickDelta: Float,
         light: Int
     ) {
-        val s = getQuadSize(tickDelta)
-        u1
-        addVertex(
-            vertexConsumer, q, x, y, z, 1f, -1f, u1, v1, s, light
+        val right = Vector3f(1f, 0f, 0f).rotate(q)
+        val up = Vector3f(0f, 1f, 0f).rotate(q)
+        val forward = Vector3f(0f, 0f, 1f).rotate(q)
+        renderSizedQuad(
+            vertexConsumer,
+            Vector3f(x, y, z),
+            Vec3(right.x.toDouble(), right.y.toDouble(), right.z.toDouble()),
+            Vec3(up.x.toDouble(), up.y.toDouble(), up.z.toDouble()),
+            Vec3(forward.x.toDouble(), forward.y.toDouble(), forward.z.toDouble()),
+            getWeightSize(tickDelta),
+            getHeightSize(tickDelta),
+            light
         )
-        addVertex(
-            vertexConsumer, q, x, y, z, 1f, 1f, u1, v0, s, light
-        )
-        addVertex(
-            vertexConsumer, q, x, y, z, -1f, 1f, u0, v0, s, light
-        )
-        addVertex(
-            vertexConsumer, q, x, y, z, -1f, -1f, u0, v1, s, light
-        )
+    }
 
-        // 背面
-        addVertex(
-            vertexConsumer, q, x, y, z,
-            vx = -1f, // 左下角 X
-            vy = -1f,
-            tu = u0, // UV 镜像
-            tv = v1,
-            size = s,
-            light = light
-        )
-        addVertex(
-            vertexConsumer, q, x, y, z,
-            vx = -1f, // 左上角 X
-            vy = 1f,
-            tu = u0,
-            tv = v0,
-            size = s,
-            light = light
-        )
-        addVertex(
-            vertexConsumer, q, x, y, z,
-            vx = 1f,  // 右上角 X
-            vy = 1f,
-            tu = u1, // UV 镜像
-            tv = v0,
-            size = s,
-            light = light
-        )
-        addVertex(
-            vertexConsumer, q, x, y, z,
-            vx = 1f,  // 右下角 X
-            vy = -1f,
-            tu = u1,
-            tv = v1,
-            size = s,
-            light = light
-        )
+    private fun renderSizedQuad(
+        consumer: VertexConsumer,
+        center: Vector3f,
+        right: Vec3,
+        up: Vec3,
+        forward: Vec3,
+        weightSize: Float,
+        heightSize: Float,
+        light: Int
+    ) {
+        addVertex(consumer, center, right, up, forward, 1f, -1f, 0f, u1, v1, weightSize, heightSize, light)
+        addVertex(consumer, center, right, up, forward, 1f, 1f, 0f, u1, v0, weightSize, heightSize, light)
+        addVertex(consumer, center, right, up, forward, -1f, 1f, 0f, u0, v0, weightSize, heightSize, light)
+        addVertex(consumer, center, right, up, forward, -1f, -1f, 0f, u0, v1, weightSize, heightSize, light)
+
+        addVertex(consumer, center, right, up, forward, -1f, -1f, 0f, u0, v1, weightSize, heightSize, light)
+        addVertex(consumer, center, right, up, forward, -1f, 1f, 0f, u0, v0, weightSize, heightSize, light)
+        addVertex(consumer, center, right, up, forward, 1f, 1f, 0f, u1, v0, weightSize, heightSize, light)
+        addVertex(consumer, center, right, up, forward, 1f, -1f, 0f, u1, v1, weightSize, heightSize, light)
     }
 
     private fun addVertex(
         consumer: VertexConsumer,
-        q: Quaternionf,
-        dx: Float,
-        dy: Float,
-        dz: Float,
+        center: Vector3f,
+        right: Vec3,
+        up: Vec3,
+        forward: Vec3,
         vx: Float,
         vy: Float,
+        vz: Float,
         tu: Float,
         tv: Float,
-        size: Float,
+        weightSize: Float,
+        heightSize: Float,
         light: Int
     ) {
-        val pos = Vector3f(vx, vy, 0f).rotate(q).mul(size).add(dx, dy, dz)
+        val pos = Vector3f(
+            center.x + (right.x * vx * weightSize + up.x * vy * heightSize + forward.x * vz).toFloat(),
+            center.y + (right.y * vx * weightSize + up.y * vy * heightSize + forward.y * vz).toFloat(),
+            center.z + (right.z * vx * weightSize + up.z * vy * heightSize + forward.z * vz).toFloat()
+        )
         consumer
             .addVertex(pos.x, pos.y, pos.z)
             .setUv(tu, tv)

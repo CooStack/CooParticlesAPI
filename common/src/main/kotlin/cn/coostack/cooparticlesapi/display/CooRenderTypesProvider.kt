@@ -12,6 +12,10 @@ interface CooRenderTypesProvider {
 
     fun entityCutoutEmissive(texture: ResourceLocation, brightness: Float): RenderType
 
+    fun entityCutoutEmissive(texture: ResourceLocation, brightness: Float, alpha: Float): RenderType {
+        return entityCutoutEmissive(texture, brightness)
+    }
+
     fun create(descriptor: CooRenderTypeDescriptor): RenderType
 
     fun named(id: ResourceLocation): RenderType? {

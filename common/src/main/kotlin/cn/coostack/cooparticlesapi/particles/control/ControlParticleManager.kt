@@ -22,4 +22,11 @@ object ControlParticleManager {
         controls[uuid] = controler
         return controler
     }
+
+    fun clearClient() {
+        controls.values.forEach {
+            it.remove(RemoveReason.QUEUE)
+        }
+        controls.clear()
+    }
 }

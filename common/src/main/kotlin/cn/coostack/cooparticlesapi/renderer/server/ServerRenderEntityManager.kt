@@ -62,7 +62,7 @@ object ServerRenderEntityManager {
         CooParticlesAPI.server.playerList.players.forEach {
             // 世界转换
             val actualCanView = playerCanView(it.uuid, entity)
-            if (it.level() != entity.world) {
+            if (it.level().dimension() != entity.world?.dimension()) {
                 if (actualCanView) {
                     removeVisible(it, entity)
                 }
@@ -138,5 +138,9 @@ object ServerRenderEntityManager {
         }
     }
 
+    fun clear() {
+        entities.clear()
+        playerViewable.clear()
+    }
 
 }

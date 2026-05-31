@@ -118,7 +118,7 @@ object ParticleEmittersManager {
     fun doTickClient() {
         val player = Minecraft.getInstance().player ?: return
         if (player.isDeadOrDying) {
-            clientEmitters.clear()
+            clearAllVisible()
             return
         }
         val iterator = clientEmitters.iterator()
@@ -146,7 +146,7 @@ object ParticleEmittersManager {
         CooEventBus.call(EmitterSpawnEvent(emitters, false))
         CooParticlesAPI.server.playerList.players.forEach { p ->
             val visibleSet = visible.getOrPut(p.uuid) { HashSet() }
-            if (p.level() != emitters.world) {
+            if (p.level().dimension() != emitters.world?.dimension()) {
                 // 世界转换
                 if (emitters in visibleSet) {
                     removeView(p, emitters)
@@ -204,8 +204,16 @@ object ParticleEmittersManager {
     }
 
     fun clearAllVisible() {
-        clientEmitters.onEach { it.value.canceled = true }
-            .clear()
+        clientEmitters.values.forEach {
+            it.remove()
+            CooEventBus.call(EmitterRemoveEvent(it, true))
+        }
+        clientEmitters.clear()
+    }
+
+    fun clearServer() {
+        serverEmitters.onEach { it.value.canceled = true }.clear()
+        visible.clear()
     }
 
     private fun removeView(player: ServerPlayer, emitters: ParticleEmitters) {

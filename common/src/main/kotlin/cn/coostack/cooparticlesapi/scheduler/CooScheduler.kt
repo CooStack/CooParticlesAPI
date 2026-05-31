@@ -20,6 +20,11 @@ class CooScheduler {
         taskQueue.clear()
     }
 
+    fun clear() {
+        ticks.clear()
+        taskQueue.clear()
+    }
+
     /**
      * 每 delay 个tick运行一次
      */

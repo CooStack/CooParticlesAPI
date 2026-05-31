@@ -11,6 +11,7 @@ import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersMan
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleStyleManager
 import cn.coostack.cooparticlesapi.particles.CooModParticles
 import cn.coostack.cooparticlesapi.particles.CooParticleTextureSheet
+import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
 import cn.coostack.cooparticlesapi.particles.control.group.ClientParticleGroupManager
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import cn.coostack.cooparticlesapi.renderer.backend.IrisSafeRenderBackend
@@ -178,17 +179,7 @@ object CooParticlesAPIClient {
     }
 
     private fun onDisconnectInternal() {
-        ParticleEmittersManager.clientEmitters.clear()
-        ParticleStyleManager.clearAllVisible()
-        ClientRenderEntityManager.clear()
-        CooPostEffects.client.clear()
-        ClientParticleGroupManager.clearAllVisible()
-        ParticleCompositionManager.clearClient()
-        DisplayEntityManager.clearClient()
-        DataHolderManager.clearClient()
-        TestManager.clearClient()
-        ClientSoundManager.clear()
-        ClientSoundLoopManager.clear()
+        clearTransientClientState()
     }
 
     fun afterClientWorldChange() {
@@ -198,18 +189,24 @@ object CooParticlesAPIClient {
     }
 
     private fun afterClientWorldChangeInternal() {
-        ParticleEmittersManager.clientEmitters.clear()
+        clearTransientClientState()
+    }
+
+    private fun clearTransientClientState() {
+        ParticleEmittersManager.clearAllVisible()
         ParticleStyleManager.clearAllVisible()
         ClientParticleGroupManager.clearAllVisible()
+        ParticleCompositionManager.clearClient()
+        DisplayEntityManager.clearClient()
+        ControlParticleManager.clearClient()
         ClientRenderEntityManager.clear()
         CooPostEffects.client.clear()
-        ParticleCompositionManager.clearClient()
         DataHolderManager.clearClient()
         TestManager.clearClient()
         ClientSoundManager.clear()
         ClientSoundLoopManager.clear()
-
-        DisplayEntityManager.clearClient()
+        scheduler.clear()
+        subTicks = 0.0
     }
 
     var subTicks = 0.0

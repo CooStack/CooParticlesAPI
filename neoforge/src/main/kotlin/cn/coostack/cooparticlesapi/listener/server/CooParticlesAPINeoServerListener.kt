@@ -34,7 +34,7 @@ object CooParticlesAPINeoServerListener {
 
     @SubscribeEvent
     fun onServerStopped(event: ServerStoppedEvent) {
-        TestManager.clearServer()
+        CooParticlesAPI.onServerStop()
     }
 
     @SubscribeEvent

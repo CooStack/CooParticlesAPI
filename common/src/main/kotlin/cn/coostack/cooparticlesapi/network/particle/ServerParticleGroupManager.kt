@@ -49,6 +49,11 @@ object ServerParticleGroupManager {
         return Collections.unmodifiableMap(serverGroups)
     }
 
+    fun clearServer() {
+        serverGroups.onEach { it.value.canceled = true }.clear()
+        visible.clear()
+    }
+
     fun upgrade() {
         upgradeGroups()
         clearOfflineVisible()
@@ -84,7 +89,7 @@ object ServerParticleGroupManager {
             // 更新可见性
             value.world!!.server!!.playerList.players.forEach { p ->
                 val visibleSet = visible.getOrPut(p.uuid) { HashSet() }
-                if (p.level() != value.world) {
+                if (p.level().dimension() != value.world?.dimension()) {
                     // 世界转换
                     if (value in visibleSet) {
                         removeGroupPlayerView(p, value)

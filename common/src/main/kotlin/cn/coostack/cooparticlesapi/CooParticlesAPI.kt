@@ -71,8 +71,23 @@ object CooParticlesAPI {
     }
 
     fun onServerStart(server: MinecraftServer) {
+        clearServerState()
         this.server = server
         this.registryAccess = server.registryAccess()
+    }
+
+    fun onServerStop() {
+        clearServerState()
+    }
+
+    private fun clearServerState() {
+        ServerParticleGroupManager.clearServer()
+        ParticleStyleManager.clearServer()
+        ParticleEmittersManager.clearServer()
+        ParticleCompositionManager.clearServer()
+        DisplayEntityManager.clearServer()
+        ServerRenderEntityManager.clear()
+        TestManager.clearServer()
     }
 
 
