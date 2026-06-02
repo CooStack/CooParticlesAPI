@@ -458,7 +458,9 @@ abstract class ClassParticleEmitters(
                 }
             }
         }
-        displayer.display(p.toVector(), world)
+        if (displayer.display(p.toVector(), world) == null) {
+            control.remove(RemoveReason.QUEUE)
+        }
     }
 
     fun updatePhysics(pos: Vec3, data: ControlableParticleData, particle: ControlableParticle) {

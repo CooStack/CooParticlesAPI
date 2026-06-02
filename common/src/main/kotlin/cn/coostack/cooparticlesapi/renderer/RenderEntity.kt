@@ -219,6 +219,7 @@ abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) : Serv
      */
     var canceled = false
     private val preTickActions = ArrayList<RenderEntity.() -> Unit>()
+    private val postTickActions = ArrayList<RenderEntity.() -> Unit>()
 
     /**
      * 统一 tick 入口。
@@ -240,11 +241,17 @@ abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) : Serv
         } else {
             serverTick()
         }
+        postTickActions.forEach { it(this) }
     }
 
 
     final override fun addPreTickAction(action: RenderEntity.() -> Unit): Tickable<RenderEntity> {
         preTickActions.add(action)
+        return this
+    }
+
+    final override fun addPreTickActionPost(action: RenderEntity.() -> Unit): Tickable<RenderEntity> {
+        postTickActions.add(action)
         return this
     }
 

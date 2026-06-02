@@ -17,6 +17,7 @@ import cn.coostack.cooparticlesapi.utils.PhysicsUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import cn.coostack.cooparticlesapi.utils.interpolator.Interpolator
 import cn.coostack.cooparticlesapi.utils.interpolator.emitters.LineEmitterInterpolator
+import net.minecraft.client.Minecraft
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
@@ -237,6 +238,9 @@ abstract class ClassEmitters(
             spawnedCount++
             val spawnPos = pos.add(relative.toVector())
             val particleLerpProgress = spawnedCount / total
+            if (!isVisibleToClient(data, spawnPos)) {
+                return@forEach
+            }
             val control = data.createControler(
                 spawnWorld,
                 spawnPos,
@@ -254,6 +258,23 @@ abstract class ClassEmitters(
             )
             bindControlerMotion(displayed, data, spawnWorld)
         }
+    }
+
+    protected open fun resolveVisibleRange(data: SerializableData): Float {
+        return when (data) {
+            is ControlableParticleData -> data.visibleRange
+            is DisplayEntityEmittersData -> data.visibleRange
+            else -> -1f
+        }
+    }
+
+    private fun isVisibleToClient(data: SerializableData, spawnPos: Vec3): Boolean {
+        val visibleRange = resolveVisibleRange(data)
+        if (visibleRange < 0f) {
+            return true
+        }
+        val player = Minecraft.getInstance().player ?: return false
+        return player.position().distanceTo(spawnPos) <= visibleRange
     }
 
     /**

@@ -23,7 +23,9 @@ void main() {
         discard;
     }
     color *= vertexColor * ColorModulator;
-    color.a *= Alpha;
+    float effectiveAlpha = color.a * Alpha;
+    color.rgb *= effectiveAlpha;
+    color.a = effectiveAlpha;
     color.rgb = mix(overlayColor.rgb, color.rgb, overlayColor.a);
     color.rgb *= Brightness;
     fragColor = color;

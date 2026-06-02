@@ -18,7 +18,8 @@ import net.minecraft.world.phys.Vec3
  */
 class DisplayEntityEmittersData(
     var entityType: String = "",
-    var entityData: ByteArray = ByteArray(0)
+    var entityData: ByteArray = ByteArray(0),
+    var visibleRange: Float = 256f
 ) : SerializableData {
     constructor(entity: DisplayEntity) : this() {
         setEntity(entity)
@@ -32,13 +33,15 @@ class DisplayEntityEmittersData(
                     buf.writeUtf(data.entityType)
                     buf.writeInt(data.entityData.size)
                     buf.writeBytes(data.entityData)
+                    buf.writeFloat(data.visibleRange)
                 },
                 { buf ->
                     val type = buf.readUtf()
                     val size = buf.readInt()
                     val bytes = ByteArray(size)
                     buf.readBytes(bytes)
-                    DisplayEntityEmittersData(type, bytes)
+                    val visibleRange = buf.readFloat()
+                    DisplayEntityEmittersData(type, bytes, visibleRange)
                 }
             )
 
@@ -52,7 +55,8 @@ class DisplayEntityEmittersData(
         }
     }
 
-    private var prepared: DisplayEntity? = null
+    private var template: DisplayEntity? = null
+    private var preparedControler: DisplayEntity? = null
 
     private fun decodeEntity(): DisplayEntity {
         val codec = DisplayEntityManager.registeredTypes[entityType]
@@ -72,7 +76,11 @@ class DisplayEntityEmittersData(
     }
 
     private fun resolveEntity(): DisplayEntity {
-        return prepared ?: decodeEntity().also { prepared = it }
+        return template ?: decodeEntity().also { template = it }
+    }
+
+    private fun createEntity(): DisplayEntity {
+        return cloneEntity(resolveEntity())
     }
 
     override fun getCodec(): StreamCodec<RegistryFriendlyByteBuf, out SerializableData> {
@@ -82,9 +90,9 @@ class DisplayEntityEmittersData(
     override fun clone(): SerializableData {
         val entity = runCatching { cloneEntity(resolveEntity()) }.getOrNull()
         return if (entity != null) {
-            DisplayEntityEmittersData(entity)
+            DisplayEntityEmittersData(entity).also { it.visibleRange = visibleRange }
         } else {
-            DisplayEntityEmittersData(entityType, entityData.copyOf())
+            DisplayEntityEmittersData(entityType, entityData.copyOf(), visibleRange)
         }
     }
 
@@ -94,15 +102,16 @@ class DisplayEntityEmittersData(
         particleLerpProcess: Float,
         posLerpProcess: Float
     ): Controlable<*> {
-        val entity = resolveEntity()
+        val entity = createEntity()
         entity.world = world
         entity.pos = pos
-        prepared = entity
+        preparedControler = entity
         return entity
     }
 
     override fun getDisplayer(): ParticleDisplayer {
-        val entity = resolveEntity()
+        val entity = preparedControler ?: createEntity().also { preparedControler = it }
+        preparedControler = null
         return ParticleDisplayer.withDisplayEntity(entity)
     }
 
@@ -111,7 +120,8 @@ class DisplayEntityEmittersData(
         val data = fromEntity(clone)
         entityType = data.entityType
         entityData = data.entityData
-        prepared = clone
+        template = clone
+        preparedControler = null
         return this
     }
 }

@@ -13,6 +13,10 @@ object ClientDisplayEntityPacketHandler {
         payload: PacketDisplayEntityS2C,
         context: ClientContext
     ) {
+        if (payload.removed) {
+            DisplayEntityManager.clientView.remove(payload.uuid)
+            return
+        }
         val new = decodeData(payload)
         new.world = context.player().level()
         val old = DisplayEntityManager.clientView[payload.uuid] ?: let {

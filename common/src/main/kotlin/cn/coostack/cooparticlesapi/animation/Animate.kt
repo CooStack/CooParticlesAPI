@@ -53,6 +53,7 @@ class Animate : Tickable<Animate> {
     private val queuedNodes = LinkedHashSet<AnimateNode>()
     private val completedNodes = LinkedHashSet<AnimateNode>()
     private val preTickActions = ArrayList<Animate.() -> Unit>()
+    private val postTickActions = ArrayList<Animate.() -> Unit>()
 
     fun addNode(node: AnimateNode): Animate {
         return addNode(node, 0)
@@ -107,6 +108,11 @@ class Animate : Tickable<Animate> {
         return this
     }
 
+    override fun addPreTickActionPost(action: Animate.() -> Unit): Tickable<Animate> {
+        postTickActions.add(action)
+        return this
+    }
+
     override fun tick() {
         if (!display || done) return
         val stableSize = preTickActions.size
@@ -140,6 +146,7 @@ class Animate : Tickable<Animate> {
 
         updateLegacyPointers()
         checkDoneState()
+        postTickActions.forEach { it(this) }
         timestamp++
     }
 

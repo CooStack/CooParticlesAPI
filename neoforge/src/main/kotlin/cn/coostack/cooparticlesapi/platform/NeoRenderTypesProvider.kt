@@ -20,7 +20,7 @@ import net.minecraft.resources.ResourceLocation
 
 object NeoRenderTypesProvider : CooRenderTypesProvider {
     private val cache = LinkedHashMap<CooRenderTypeDescriptor, RenderType>()
-    private val entityCutoutEmissiveCache = LinkedHashMap<Triple<ResourceLocation, Float, Float>, RenderType>()
+    private val entityCutoutEmissiveCache = LinkedHashMap<EntityCutoutEmissiveKey, RenderType>()
     private val glowId = ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "glow")
 
     private val glowDescriptor = CooRenderTypeDescriptor.builder("coo_glow")
@@ -36,15 +36,25 @@ object NeoRenderTypesProvider : CooRenderTypesProvider {
         get() = named(glowId) ?: create(glowDescriptor)
 
     override fun entityCutoutEmissive(texture: ResourceLocation, brightness: Float): RenderType {
-        return entityCutoutEmissive(texture, brightness, 1f)
+        return entityCutoutEmissive(texture, brightness, 1f, true)
     }
 
     override fun entityCutoutEmissive(texture: ResourceLocation, brightness: Float, alpha: Float): RenderType {
+        return entityCutoutEmissive(texture, brightness, alpha, alpha < 1f)
+    }
+
+    private fun entityCutoutEmissive(
+        texture: ResourceLocation,
+        brightness: Float,
+        alpha: Float,
+        translucent: Boolean
+    ): RenderType {
         val resolvedBrightness = brightness.coerceAtLeast(0f)
         val resolvedAlpha = alpha.coerceIn(0f, 1f)
-        val translucent = resolvedAlpha < 1f
-        val renderType = entityCutoutEmissiveCache.getOrPut(Triple(texture, resolvedBrightness, resolvedAlpha)) {
-            val renderTypeName = "coo_entity_cutout_emissive_${resolvedBrightness}_$resolvedAlpha"
+        val renderType = entityCutoutEmissiveCache.getOrPut(
+            EntityCutoutEmissiveKey(texture, resolvedBrightness, resolvedAlpha, translucent)
+        ) {
+            val renderTypeName = "coo_entity_cutout_emissive_${resolvedBrightness}_${resolvedAlpha}_$translucent"
             RenderTypeIrisSupposerRegistry.register(renderTypeName, "coo_entity_cutout_emissive")
             val state = RenderType.CompositeState.builder()
                 .setShaderState(
@@ -126,4 +136,11 @@ object NeoRenderTypesProvider : CooRenderTypesProvider {
     }
 
     override fun glow(): RenderType = glow
+
+    private data class EntityCutoutEmissiveKey(
+        val texture: ResourceLocation,
+        val brightness: Float,
+        val alpha: Float,
+        val translucent: Boolean
+    )
 }

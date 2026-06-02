@@ -136,7 +136,7 @@ class CylinderBoardDisplayEntity() : AutoDisplayEntity(Vec3.ZERO, null) {
     ) {
         consumer.addVertex(stack.last(), point.x.toFloat(), point.y.toFloat(), point.z.toFloat())
             .setNormal(stack.last(), normal.x.toFloat(), normal.y.toFloat(), normal.z.toFloat())
-            .setColor(color.x, color.y, color.z, color.w)
+            .setColor(color.x, color.y, color.z, 0.1f)
             .setUv(u, v)
             .setUv1(1, 1)
             .setLight(LightTexture.FULL_BRIGHT)

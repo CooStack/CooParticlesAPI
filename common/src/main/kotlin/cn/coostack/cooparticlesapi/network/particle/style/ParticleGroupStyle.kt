@@ -61,6 +61,7 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
         internal set
     internal var valid = true
     internal val invokeQueue = ArrayList<ParticleGroupStyle.() -> Unit>()
+    internal val postInvokeQueue = ArrayList<ParticleGroupStyle.() -> Unit>()
     val particles = ConcurrentHashMap<UUID, Controlable<*>>()
     val particleLocations = ConcurrentHashMap<Controlable<*>, RelativeLocation>()
 
@@ -99,6 +100,11 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
 
     override fun addPreTickAction(action: ParticleGroupStyle.() -> Unit): ParticleGroupStyle {
         invokeQueue.add(action)
+        return this
+    }
+
+    override fun addPreTickActionPost(action: ParticleGroupStyle.() -> Unit): ParticleGroupStyle {
+        postInvokeQueue.add(action)
         return this
     }
 
@@ -313,6 +319,9 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
                     value.tick()
                 }
             }
+        }
+        postInvokeQueue.forEach {
+            it(this)
         }
         this.lastUpdatedGameTime = current
     }

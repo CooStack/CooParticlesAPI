@@ -46,6 +46,7 @@ abstract class ControlableParticleGroup(val uuid: UUID) : Controlable<Controlabl
 
     // 每个tick执行的调用队列
     internal val invokeQueue = mutableListOf<(ControlableParticleGroup) -> Unit>()
+    internal val postInvokeQueue = mutableListOf<(ControlableParticleGroup) -> Unit>()
 
     var tick = 0
     var maxTick = 120
@@ -145,6 +146,7 @@ abstract class ControlableParticleGroup(val uuid: UUID) : Controlable<Controlabl
                 }
                 (it.value as ControlableParticleGroup).tick()
             }
+        postInvokeQueue.forEach { it(this) }
     }
 
     open fun display(pos: Vec3, world: ClientLevel) {
@@ -247,6 +249,11 @@ abstract class ControlableParticleGroup(val uuid: UUID) : Controlable<Controlabl
      */
     override fun addPreTickAction(action: (ControlableParticleGroup) -> Unit): ControlableParticleGroup {
         invokeQueue.add(action)
+        return this
+    }
+
+    override fun addPreTickActionPost(action: (ControlableParticleGroup) -> Unit): ControlableParticleGroup {
+        postInvokeQueue.add(action)
         return this
     }
 

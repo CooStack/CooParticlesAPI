@@ -19,6 +19,7 @@ class ParticleControler(private val uuid: UUID) : Controlable<ControlableParticl
 
     private var init = false
     private val invokeQueue = mutableListOf<ControlableParticle.() -> Unit>()
+    private val postInvokeQueue = mutableListOf<ControlableParticle.() -> Unit>()
 
     @Volatile
     private var state: ParticleControlerState = ParticleControlerState.UNBOUND
@@ -50,6 +51,25 @@ class ParticleControler(private val uuid: UUID) : Controlable<ControlableParticl
         return this
     }
 
+    override fun addPreTickActionPost(action: ControlableParticle.() -> Unit): ParticleControler {
+        if (isRemoved) {
+            return this
+        }
+        postInvokeQueue.add(action)
+        return this
+    }
+
+    internal fun tickPostActions() {
+        if (state != ParticleControlerState.ACTIVE || !::particle.isInitialized) {
+            return
+        }
+        postInvokeQueue.forEach { action ->
+            if (state != ParticleControlerState.ACTIVE) {
+                return
+            }
+            action(particle)
+        }
+    }
 
     fun controlAction(action: (ControlableParticle.() -> Unit)): ParticleControler {
         action(requireParticleBound())

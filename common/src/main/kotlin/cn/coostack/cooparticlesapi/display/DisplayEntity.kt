@@ -85,6 +85,7 @@ abstract class DisplayEntity(
 
     private var valid = true
     private val preTickActions = ArrayList<DisplayEntity.() -> Unit>()
+    private val postTickActions = ArrayList<DisplayEntity.() -> Unit>()
 
     /**
      * 由 DisplayEntityManager计算模型旋转
@@ -208,10 +209,16 @@ abstract class DisplayEntity(
         this.prevPitch = pitch
         this.prevRoll = roll
         this.prevScale = scale
+        postTickActions.forEach { it(this) }
     }
 
     final override fun addPreTickAction(action: DisplayEntity.() -> Unit): Tickable<DisplayEntity> {
         preTickActions.add(action)
+        return this
+    }
+
+    final override fun addPreTickActionPost(action: DisplayEntity.() -> Unit): Tickable<DisplayEntity> {
+        postTickActions.add(action)
         return this
     }
 

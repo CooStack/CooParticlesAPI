@@ -95,10 +95,13 @@ object DisplayEntityManager {
         camera: Camera
     ) {
         val lerp = delta.getGameTimeDeltaPartialTick(true)
-        clientView.entries.forEach {
-            val entity = it.value
+        val iterator = clientView.entries.iterator()
+        while (iterator.hasNext()) {
+            val entry = iterator.next()
+            val entity = entry.value
             if (!entity.isValid()) {
-                return@forEach
+                iterator.remove()
+                continue
             }
             modelMatrixStack.pushPose()
             MinecraftRendererUtil.transformTo(
@@ -145,7 +148,9 @@ object DisplayEntityManager {
             val entry = iterator.next()
             entry.value.tick()
             if (!entry.value.isValid()) {
+                sendRemove(entry.value)
                 iterator.remove()
+                continue
             }
             sendCreateOrUpdate(entry.value)
         }
@@ -163,6 +168,16 @@ object DisplayEntityManager {
         }
         val packet = PacketDisplayEntityS2C(uuid, type, data)
         server.playerList.players.forEach {
+            if (it.level().dimension() != entity.world?.dimension()) {
+                return@forEach
+            }
+            CooParticlesServices.SERVER_NETWORK.send(packet, it)
+        }
+    }
+
+    fun sendRemove(entity: DisplayEntity) {
+        val packet = PacketDisplayEntityS2C(entity.controlUUID, entity::class.java.name, ByteArray(0), true)
+        CooParticlesAPI.server.playerList.players.forEach {
             if (it.level().dimension() != entity.world?.dimension()) {
                 return@forEach
             }

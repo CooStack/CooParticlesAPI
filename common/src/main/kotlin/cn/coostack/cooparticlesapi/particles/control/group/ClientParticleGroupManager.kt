@@ -53,6 +53,9 @@ object ClientParticleGroupManager {
         while (iterator.hasNext()) {
             val next = iterator.next()
             next.value.tick()
+            if (!next.value.valid || next.value.canceled) {
+                iterator.remove()
+            }
         }
     }
 

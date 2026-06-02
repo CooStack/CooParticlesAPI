@@ -410,6 +410,7 @@ abstract class ControlableParticle(
         xo = x
         yo = y
         zo = z
+        controler.tickPostActions()
         if (update) {
             if (!minecraftTick) {
                 this.boundingBox = AABB.ofSize(

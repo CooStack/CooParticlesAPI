@@ -127,6 +127,7 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
     // 防止频繁的toList造成的性能浪费
 
     internal val invokeQueue = ArrayList<ParticleComposition.() -> Unit>()
+    internal val postInvokeQueue = ArrayList<ParticleComposition.() -> Unit>()
     protected val particleRotatedLocations = ArrayList<RelativeLocation>()
 
     abstract fun getCodec(): StreamCodec<FriendlyByteBuf, ParticleComposition>
@@ -165,6 +166,7 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
         controlerTicks.forEach {
             it.tick()
         }
+        postInvokeQueue.forEach { it() }
     }
 
     open fun scale(new: Double) {
@@ -238,6 +240,11 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
 
     override fun addPreTickAction(action: ParticleComposition.() -> Unit): ParticleComposition {
         invokeQueue.add(action)
+        return this
+    }
+
+    override fun addPreTickActionPost(action: ParticleComposition.() -> Unit): ParticleComposition {
+        postInvokeQueue.add(action)
         return this
     }
 
