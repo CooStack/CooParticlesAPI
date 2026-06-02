@@ -36,6 +36,12 @@ class CooScheduler {
         return tick
     }
 
+    fun runTaskTimer(delay: Int, runnable: Runnable): TickRunnable {
+        return runTaskTimer(delay) {
+            runnable.run()
+        }
+    }
+
 
     /**
      * 循环执行， 假设一共需要执行15次 （count = 15） 然后在totalTick=5 内执行完， 那么每tick就会执行3次

@@ -220,14 +220,12 @@ object ClientCameraUtil {
     }
 
     fun startShakeCamera(tick: Int, amplitude: Double, frequency: Double) {
-        if (tick <= 0 || amplitude <= 0.0 || frequency <= 0.0) {
-            return
-        }
-        this.tick = maxOf(this.tick, tick)
-        shakeDuration = maxOf(shakeDuration, tick)
-        amp = maxOf(amp, amplitude)
-        shakeFrequency = maxOf(shakeFrequency, frequency)
-        ampStep = amp / shakeDuration.toDouble()
+        val state = ClientCameraShakeMath.startShake(tick, amplitude, frequency) ?: return
+        this.tick = state.tick
+        shakeDuration = state.duration
+        amp = state.amplitude
+        shakeFrequency = state.frequency
+        ampStep = state.amplitudeStep
     }
 
     fun tick() {

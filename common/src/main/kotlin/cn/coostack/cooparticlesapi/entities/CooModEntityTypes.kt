@@ -20,7 +20,7 @@ object CooModEntityTypes {
         EntityType.Builder.of(::TestRenderEntity, MobCategory.MISC)
             .sized(0.1f, 0.1f)
             .clientTrackingRange(16)
-            .build(null)
+            .build(entityId.toString())
     }
 
     fun <T : Entity> register(

@@ -10,6 +10,27 @@ internal object ClientCameraShakeMath {
     private const val HIGH_FREQUENCY_FOLLOW_RANGE = 8.0
     private const val MAX_SHAKE_FOLLOW = 0.92
 
+    data class ShakeState(
+        val tick: Int,
+        val duration: Int,
+        val amplitude: Double,
+        val frequency: Double,
+        val amplitudeStep: Double
+    )
+
+    fun startShake(tick: Int, amplitude: Double, frequency: Double): ShakeState? {
+        if (tick <= 0 || amplitude <= 0.0 || frequency <= 0.0) {
+            return null
+        }
+        return ShakeState(
+            tick = tick,
+            duration = tick,
+            amplitude = amplitude,
+            frequency = frequency,
+            amplitudeStep = amplitude / tick.toDouble()
+        )
+    }
+
     fun shakePhaseStep(frequency: Double): Double {
         return frequency / LEGACY_SHAKE_RETARGET_TICKS
     }
