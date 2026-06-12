@@ -7,7 +7,7 @@ import cn.coostack.cooparticlesapi.display.DisplayEntityManager
 import cn.coostack.cooparticlesapi.extend.times
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersManager
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleStyleManager
-import cn.coostack.cooparticlesapi.particles.CooParticleTextureSheet
+import cn.coostack.cooparticlesapi.supports.TextureSheetsEnum
 import cn.coostack.cooparticlesapi.test.options.display.TestDisplayerStyle
 import cn.coostack.cooparticlesapi.test.options.display.TestShapeDisplayEntity
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestPlusBlendEmitter
@@ -41,7 +41,7 @@ class SingleTesting : Item(Properties().stacksTo(1)) {
                 maxTick = 1000
                 shootMovement = user.forward * 0.8
                 template.apply {
-                    setTextureSheet(CooParticleTextureSheet.ADDITION_BLEND)
+                    setTextureSheet(TextureSheetsEnum.ADDITION_BLEND)
                     color = Math3DUtil.colorOf(210, 80, 255)
                     size = 1.8f
                 }

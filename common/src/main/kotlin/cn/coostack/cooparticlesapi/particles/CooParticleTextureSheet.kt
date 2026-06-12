@@ -1,7 +1,7 @@
 package cn.coostack.cooparticlesapi.particles
 
+import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableParticleData
-import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableParticleData.Companion.particleTexturesMapper
 import com.mojang.blaze3d.platform.GlStateManager
 import com.mojang.blaze3d.systems.RenderSystem
 import com.mojang.blaze3d.vertex.BufferBuilder
@@ -13,6 +13,9 @@ import net.minecraft.client.renderer.texture.TextureAtlas
 import net.minecraft.client.renderer.texture.TextureManager
 
 object CooParticleTextureSheet {
+
+    @JvmStatic
+    val particleTexturesMapper: MutableMap<String, ParticleRenderType> = mutableMapOf()
 
     @JvmStatic
     val sheets = mutableListOf<ParticleRenderType>()
@@ -74,18 +77,40 @@ object CooParticleTextureSheet {
         }
     })
 
+    @JvmStatic
+    fun registerRenderType(type: ParticleRenderType) {
+        particleTexturesMapper[type.toString()] = type
+    }
+
+    @JvmStatic
+    fun fromString(sheet: String): ParticleRenderType? = particleTexturesMapper[sheet]
+
+    @JvmStatic
+    fun getOrDefault(sheet: String): ParticleRenderType {
+        return fromString(sheet) ?: run {
+            CooParticlesConstants.logger.error(
+                "can not find textureSheet $sheet, register it via CooParticleTextureSheet.registerRenderType()"
+            )
+            ParticleRenderType.PARTICLE_SHEET_OPAQUE
+        }
+    }
+
     fun init() {
-        ControlableParticleData.registerRenderType(ParticleRenderType.PARTICLE_SHEET_LIT)
-        ControlableParticleData.registerRenderType(ParticleRenderType.TERRAIN_SHEET)
-        ControlableParticleData.registerRenderType(ParticleRenderType.NO_RENDER)
-        ControlableParticleData.registerRenderType(ParticleRenderType.CUSTOM)
-        ControlableParticleData.registerRenderType(ParticleRenderType.PARTICLE_SHEET_OPAQUE)
-        ControlableParticleData.registerRenderType(ParticleRenderType.PARTICLE_SHEET_TRANSLUCENT)
+        registerRenderType(ParticleRenderType.PARTICLE_SHEET_LIT)
+        registerRenderType(ParticleRenderType.TERRAIN_SHEET)
+        registerRenderType(ParticleRenderType.NO_RENDER)
+        registerRenderType(ParticleRenderType.CUSTOM)
+        registerRenderType(ParticleRenderType.PARTICLE_SHEET_OPAQUE)
+        registerRenderType(ParticleRenderType.PARTICLE_SHEET_TRANSLUCENT)
     }
 
     fun register(type: ParticleRenderType): ParticleRenderType {
         sheets.add(type)
-        ControlableParticleData.registerRenderType(type)
+        registerRenderType(type)
         return type
     }
+}
+
+fun ControlableParticleData.setTextureSheet(value: ParticleRenderType) {
+    setTextureSheet(value.toString())
 }

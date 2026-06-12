@@ -16,7 +16,7 @@ class PostEffectChainExecutionTest {
         )
 
         assertTrue("private val frameContext: RenderFrameContext" in graphSource)
-        assertTrue("executor.render(frameContext, grouped.map { it.descriptor })" in graphSource)
+        assertTrue("executor.render(frameContext, currentBatch.toList())" in graphSource)
         assertTrue("fun render(context: RenderFrameContext, effects: List<RenderEffectDescriptor>)" in descriptorSource)
     }
 

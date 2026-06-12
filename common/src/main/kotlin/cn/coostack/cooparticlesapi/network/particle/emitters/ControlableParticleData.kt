@@ -1,9 +1,9 @@
 package cn.coostack.cooparticlesapi.network.particle.emitters
 
-import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.api.controler.SerializableData
 import cn.coostack.cooparticlesapi.api.controler.Controlable
 import cn.coostack.cooparticlesapi.particles.ControlableParticleEffect
+import cn.coostack.cooparticlesapi.particles.CooParticleTextureSheet
 import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
 import cn.coostack.cooparticlesapi.particles.ParticleCameraOption
 import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
@@ -12,7 +12,6 @@ import cn.coostack.cooparticlesapi.supports.TextureSheetsEnum
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import net.minecraft.client.multiplayer.ClientLevel
-import net.minecraft.client.particle.ParticleRenderType
 import net.minecraft.core.particles.ParticleTypes
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.RegistryFriendlyByteBuf
@@ -23,9 +22,6 @@ import java.util.UUID
 
 open class ControlableParticleData : SerializableData {
     companion object {
-        @JvmStatic
-        val particleTexturesMapper: MutableMap<String, ParticleRenderType> = mutableMapOf()
-
         @JvmStatic
         val PACKET_CODEC: StreamCodec<RegistryFriendlyByteBuf, ControlableParticleData> =
             StreamCodec.of(
@@ -108,10 +104,6 @@ open class ControlableParticleData : SerializableData {
             }
         }
 
-        @JvmStatic
-        fun registerRenderType(type: ParticleRenderType) {
-            particleTexturesMapper[type.toString()] = type
-        }
     }
 
 
@@ -273,10 +265,6 @@ open class ControlableParticleData : SerializableData {
      * 在ClassParticlesEmitters默认不生效
      */
     var speed: Double = 1.0
-    fun textureSheetFromString(sheet: String): ParticleRenderType? {
-        return particleTexturesMapper[sheet]
-    }
-
     /**
      * 快速旋转 yaw pitch 到目标点
      *
@@ -310,13 +298,6 @@ open class ControlableParticleData : SerializableData {
         this.axis = Vec3(axis.x, axis.y, axis.z)
     }
 
-    fun getTextureSheet(): ParticleRenderType {
-        return textureSheetFromString(textureSheet) ?: let {
-            CooParticlesConstants.logger.error("can not find textureSheet $textureSheet you need use ControlableParticleData.registerRenderType() to register mapper")
-            ParticleRenderType.PARTICLE_SHEET_OPAQUE
-        }
-    }
-
     /**
      * 如果你的参数暴露在外面 可能会被服务器调用
      * 则使用这个
@@ -331,18 +312,6 @@ open class ControlableParticleData : SerializableData {
 
     fun setTextureSheet(value: TextureSheetsEnum){
         this.textureSheet = value.name
-    }
-
-    /**
-     * 如果你的参数暴露在外面 （可能会被服务器环境调用）
-     * 那就不要使用这个方法 使用字符串的
-     * 因为脑残的设计导致服务器无法访问 ParticleRenderType 类
-     * [setTextureSheet(String)]
-     *
-     * @param value
-     */
-    fun setTextureSheet(value: ParticleRenderType) {
-        this.textureSheet = value.toString()
     }
 
     override fun getCodec(): StreamCodec<RegistryFriendlyByteBuf, out ControlableParticleData> {
@@ -365,7 +334,7 @@ open class ControlableParticleData : SerializableData {
             this.currentAge = data.age
             this.lifetime = data.maxAge
             this.light = data.light
-            this.textureSheet = data.getTextureSheet()
+            this.textureSheet = CooParticleTextureSheet.getOrDefault(data.textureSheet)
             this.particleAlpha = data.alpha
             this.cameraOption = data.cameraOption
             this.axis = data.axis

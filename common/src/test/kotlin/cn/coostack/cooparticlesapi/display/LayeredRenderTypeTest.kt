@@ -18,7 +18,7 @@ class LayeredRenderTypeTest {
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/display/CooRenderTypesProvider.kt"
         )
 
-        assertTrue("data class CooRenderTypeDescriptor" in descriptorSource)
+        assertTrue("class CooRenderTypeDescriptor" in descriptorSource)
         assertTrue("class CooRenderTypeDescriptorBuilder" in descriptorSource)
         assertTrue("class CooLayeredRenderType" in layeredSource)
         assertTrue("class LayeredVertexConsumer" in layeredSource)

@@ -7,7 +7,7 @@ import cn.coostack.cooparticlesapi.extend.plus
 import cn.coostack.cooparticlesapi.extend.random
 import cn.coostack.cooparticlesapi.extend.times
 import cn.coostack.cooparticlesapi.network.particle.emitters.PhysicConstant
-import cn.coostack.cooparticlesapi.particles.CooParticleTextureSheet
+import cn.coostack.cooparticlesapi.supports.TextureSheetsEnum
 import cn.coostack.cooparticlesapi.particles.impl.ControlableSplashEffect
 import cn.coostack.cooparticlesapi.test.api.TestGroup
 import cn.coostack.cooparticlesapi.test.api.TestGroupBuilder
@@ -24,7 +24,6 @@ import cn.coostack.cooparticlesapi.test.options.particle.composition.TestModelCo
 import cn.coostack.cooparticlesapi.test.options.particle.composition.TestNoiseLightComposition
 import cn.coostack.cooparticlesapi.test.options.particle.composition.TestSeqComposition
 import cn.coostack.cooparticlesapi.test.options.particle.composition.TestShapedComposition
-import cn.coostack.cooparticlesapi.test.options.particle.composition.TestSimpleParticleComposition
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.InterpolatorTestEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestAlphaShaderEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestCommandEmitter
@@ -55,7 +54,7 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
         return GamingTestGroup(player, groupID())
             .appendOption {
                 SimpleCompositionOption(
-                    TestSimpleParticleComposition(player.eyePosition.add(player.forward.scale(3.0)), player.level()),
+                    TestComposition(player.eyePosition.add(player.forward.scale(3.0)), player.level()),
                     -1
                 )
             }
@@ -224,7 +223,7 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
                     TestCommandEmitter(player.eyePosition, player.level()).apply {
                         direction = player.forward
                         gravity = 0.05
-                        template.setTextureSheet(CooParticleTextureSheet.ADDITION_BLEND_TRANSLUCENT)
+                        template.setTextureSheet(TextureSheetsEnum.ADDITION_BLEND_TRANSLUCENT)
                         template.color = Vector3f(0.35f, 0.70f, 1.00f)
                         maxTick = -1
                         ballRadius = 1.0
