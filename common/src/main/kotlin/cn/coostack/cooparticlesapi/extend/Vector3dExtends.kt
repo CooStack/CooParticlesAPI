@@ -1,8 +1,11 @@
 package cn.coostack.cooparticlesapi.extend
 
+import cn.coostack.cooparticlesapi.barrages.HitBox
+import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import net.minecraft.core.Vec3i
 import net.minecraft.util.RandomSource
+import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3d
 import org.joml.Vector3f
@@ -33,28 +36,38 @@ fun Vector3d.asVec3() = Vec3(this.x, this.y, this.z)
 operator fun Vector3d.plus(other: Vector3d): Vector3d = Vector3d(this.x + other.x, this.y + other.y, this.z + other.z)
 operator fun Vector3d.plus(other: Vec3): Vector3d = Vector3d(this.x + other.x, this.y + other.y, this.z + other.z)
 operator fun Vector3d.plus(other: Vector3f): Vector3d = Vector3d(this.x + other.x, this.y + other.y, this.z + other.z)
-operator fun Vector3d.plus(other: RelativeLocation): Vector3d = Vector3d(this.x + other.x, this.y + other.y, this.z + other.z)
+operator fun Vector3d.plus(other: RelativeLocation): Vector3d =
+    Vector3d(this.x + other.x, this.y + other.y, this.z + other.z)
+
 operator fun Vector3d.plus(other: Vec3i): Vector3d = Vector3d(this.x + other.x, this.y + other.y, this.z + other.z)
 
 operator fun Vector3d.minus(other: Vector3d): Vector3d = Vector3d(this.x - other.x, this.y - other.y, this.z - other.z)
 operator fun Vector3d.minus(other: Vec3): Vector3d = Vector3d(this.x - other.x, this.y - other.y, this.z - other.z)
 operator fun Vector3d.minus(other: Vector3f): Vector3d = Vector3d(this.x - other.x, this.y - other.y, this.z - other.z)
-operator fun Vector3d.minus(other: RelativeLocation): Vector3d = Vector3d(this.x - other.x, this.y - other.y, this.z - other.z)
+operator fun Vector3d.minus(other: RelativeLocation): Vector3d =
+    Vector3d(this.x - other.x, this.y - other.y, this.z - other.z)
+
 operator fun Vector3d.minus(other: Vec3i): Vector3d = Vector3d(this.x - other.x, this.y - other.y, this.z - other.z)
 
 operator fun Vector3d.times(other: Vector3d): Vector3d = Vector3d(this.x * other.x, this.y * other.y, this.z * other.z)
 operator fun Vector3d.times(other: Vec3): Vector3d = Vector3d(this.x * other.x, this.y * other.y, this.z * other.z)
 operator fun Vector3d.times(other: Vector3f): Vector3d = Vector3d(this.x * other.x, this.y * other.y, this.z * other.z)
-operator fun Vector3d.times(other: RelativeLocation): Vector3d = Vector3d(this.x * other.x, this.y * other.y, this.z * other.z)
+operator fun Vector3d.times(other: RelativeLocation): Vector3d =
+    Vector3d(this.x * other.x, this.y * other.y, this.z * other.z)
+
 operator fun Vector3d.times(other: Vec3i): Vector3d = Vector3d(this.x * other.x, this.y * other.y, this.z * other.z)
-operator fun Vector3d.times(other: Number): Vector3d = Vector3d(this.x * other.toDouble(), this.y * other.toDouble(), this.z * other.toDouble())
+operator fun Vector3d.times(other: Number): Vector3d =
+    Vector3d(this.x * other.toDouble(), this.y * other.toDouble(), this.z * other.toDouble())
 
 operator fun Vector3d.div(other: Vector3d): Vector3d = Vector3d(this.x / other.x, this.y / other.y, this.z / other.z)
 operator fun Vector3d.div(other: Vec3): Vector3d = Vector3d(this.x / other.x, this.y / other.y, this.z / other.z)
 operator fun Vector3d.div(other: Vector3f): Vector3d = Vector3d(this.x / other.x, this.y / other.y, this.z / other.z)
-operator fun Vector3d.div(other: RelativeLocation): Vector3d = Vector3d(this.x / other.x, this.y / other.y, this.z / other.z)
+operator fun Vector3d.div(other: RelativeLocation): Vector3d =
+    Vector3d(this.x / other.x, this.y / other.y, this.z / other.z)
+
 operator fun Vector3d.div(other: Vec3i): Vector3d = Vector3d(this.x / other.x, this.y / other.y, this.z / other.z)
-operator fun Vector3d.div(other: Number): Vector3d = Vector3d(this.x / other.toDouble(), this.y / other.toDouble(), this.z / other.toDouble())
+operator fun Vector3d.div(other: Number): Vector3d =
+    Vector3d(this.x / other.toDouble(), this.y / other.toDouble(), this.z / other.toDouble())
 
 operator fun Vector3d.unaryMinus(): Vector3d = Vector3d(-this.x, -this.y, -this.z)
 operator fun Vector3d.unaryPlus(): Vector3d = this
@@ -73,16 +86,19 @@ fun Vector3d.cross(other: Vec3): Vector3d = Vector3d(
     this.z * other.x - this.x * other.z,
     this.x * other.y - this.y * other.x
 )
+
 fun Vector3d.cross(other: Vector3f): Vector3d = Vector3d(
     this.y * other.z - this.z * other.y,
     this.z * other.x - this.x * other.z,
     this.x * other.y - this.y * other.x
 )
+
 fun Vector3d.cross(other: RelativeLocation): Vector3d = Vector3d(
     this.y * other.z - this.z * other.y,
     this.z * other.x - this.x * other.z,
     this.x * other.y - this.y * other.x
 )
+
 fun Vector3d.cross(other: Vec3i): Vector3d = Vector3d(
     this.y * other.z - this.z * other.y,
     this.z * other.x - this.x * other.z,
@@ -245,4 +261,41 @@ fun Vector3d.lengthCoerceAtMost(max: Double): Vector3d {
         return this.normalize() * max
     }
     return this
+}
+
+fun Vector3d.intersectsCylinder(length: Double, radius: Double, box: AABB): Boolean {
+    return intersectsCylinder(Vec3.ZERO, length, radius, box)
+}
+
+fun Vector3d.intersectsCylinder(start: Vec3, length: Double, radius: Double, box: AABB): Boolean {
+    return Math3DUtil.intersectsCylinder(start, start.add(toCylinderOffset(length)), radius, box)
+}
+
+fun Vector3d.intersectsCylinder(length: Double, radius: Double, center: Vec3, hitBox: HitBox): Boolean {
+    return intersectsCylinder(Vec3.ZERO, length, radius, center, hitBox)
+}
+
+fun Vector3d.intersectsCylinder(start: Vec3, length: Double, radius: Double, center: Vec3, hitBox: HitBox): Boolean {
+    return Math3DUtil.intersectsCylinder(start, start.add(toCylinderOffset(length)), radius, center, hitBox)
+}
+
+fun Vector3d.intersectsBox(length: Double, radius: Double, box: AABB): Boolean {
+    return intersectsCylinder(length, radius, box)
+}
+
+fun Vector3d.intersectsBox(start: Vec3, length: Double, radius: Double, box: AABB): Boolean {
+    return intersectsCylinder(start, length, radius, box)
+}
+
+fun Vector3d.intersectsBox(length: Double, radius: Double, center: Vec3, hitBox: HitBox): Boolean {
+    return intersectsCylinder(length, radius, center, hitBox)
+}
+
+fun Vector3d.intersectsBox(start: Vec3, length: Double, radius: Double, center: Vec3, hitBox: HitBox): Boolean {
+    return intersectsCylinder(start, length, radius, center, hitBox)
+}
+
+private fun Vector3d.toCylinderOffset(length: Double): Vec3 {
+    if (this.lengthSquared() <= 1e-12 || length <= 0.0) return Vec3.ZERO
+    return Vec3(this.x, this.y, this.z).normalize().scale(length)
 }

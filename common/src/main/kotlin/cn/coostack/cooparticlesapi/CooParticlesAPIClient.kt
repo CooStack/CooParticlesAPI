@@ -192,7 +192,7 @@ object CooParticlesAPIClient {
         clearTransientClientState()
     }
 
-    private fun clearTransientClientState() {
+    fun clearTransientClientState() {
         ParticleEmittersManager.clearAllVisible()
         ParticleStyleManager.clearAllVisible()
         ClientParticleGroupManager.clearAllVisible()

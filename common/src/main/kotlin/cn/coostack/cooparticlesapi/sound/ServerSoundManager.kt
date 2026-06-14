@@ -879,7 +879,11 @@ object ServerSoundManager {
             }
         }
 
+        val discardAfterSync = instance.canDiscardAfterSync()
         if (instance.isStopped) {
+            sounds.remove(instance.key, instance)
+            soundViewers.remove(instance.key)
+        } else if (discardAfterSync) {
             sounds.remove(instance.key, instance)
             soundViewers.remove(instance.key)
         }

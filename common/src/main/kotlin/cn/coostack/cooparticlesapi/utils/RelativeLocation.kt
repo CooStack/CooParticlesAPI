@@ -1,8 +1,10 @@
 package cn.coostack.cooparticlesapi.utils
 
 
+import cn.coostack.cooparticlesapi.barrages.HitBox
 import io.netty.buffer.Unpooled
 import net.minecraft.core.Vec3i
+import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3d
 import org.joml.Vector3f
@@ -438,6 +440,43 @@ data class RelativeLocation(var x: Double, var y: Double, var z: Double) {
             return this.normalize() * max
         }
         return this
+    }
+
+    fun intersectsCylinder(length: Double, radius: Double, box: AABB): Boolean {
+        return intersectsCylinder(Vec3.ZERO, length, radius, box)
+    }
+
+    fun intersectsCylinder(start: Vec3, length: Double, radius: Double, box: AABB): Boolean {
+        return Math3DUtil.intersectsCylinder(start, start.add(toCylinderOffset(length)), radius, box)
+    }
+
+    fun intersectsCylinder(length: Double, radius: Double, center: Vec3, hitBox: HitBox): Boolean {
+        return intersectsCylinder(Vec3.ZERO, length, radius, center, hitBox)
+    }
+
+    fun intersectsCylinder(start: Vec3, length: Double, radius: Double, center: Vec3, hitBox: HitBox): Boolean {
+        return Math3DUtil.intersectsCylinder(start, start.add(toCylinderOffset(length)), radius, center, hitBox)
+    }
+
+    fun intersectsBox(length: Double, radius: Double, box: AABB): Boolean {
+        return intersectsCylinder(length, radius, box)
+    }
+
+    fun intersectsBox(start: Vec3, length: Double, radius: Double, box: AABB): Boolean {
+        return intersectsCylinder(start, length, radius, box)
+    }
+
+    fun intersectsBox(length: Double, radius: Double, center: Vec3, hitBox: HitBox): Boolean {
+        return intersectsCylinder(length, radius, center, hitBox)
+    }
+
+    fun intersectsBox(start: Vec3, length: Double, radius: Double, center: Vec3, hitBox: HitBox): Boolean {
+        return intersectsCylinder(start, length, radius, center, hitBox)
+    }
+
+    private fun toCylinderOffset(length: Double): Vec3 {
+        if (length() <= 1e-6 || length <= 0.0) return Vec3.ZERO
+        return normalize().toVector().scale(length)
     }
 }
 

@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi.commands
 
+import cn.coostack.cooparticlesapi.CooParticlesAPIClient
 import cn.coostack.cooparticlesapi.display.DisplayEntityManager
 import com.mojang.brigadier.CommandDispatcher
 import com.mojang.brigadier.builder.ArgumentBuilder
@@ -15,7 +16,7 @@ object APICommand {
                 .then(
                     LiteralArgumentBuilder.literal<CommandSource>("display")
                         .executes {
-                            DisplayEntityManager.clearClient()
+                            CooParticlesAPIClient.clearTransientClientState()
                             1
                         }
                 )

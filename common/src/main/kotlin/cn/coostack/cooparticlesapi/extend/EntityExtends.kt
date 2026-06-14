@@ -1,16 +1,20 @@
 package cn.coostack.cooparticlesapi.extend
 
+import cn.coostack.cooparticlesapi.barrages.HitBox
 import cn.coostack.cooparticlesapi.data.cache.ClientEntityCacheManager
 import cn.coostack.cooparticlesapi.data.cache.EntityCacher
 import cn.coostack.cooparticlesapi.data.cache.ServerEntityCacheManager
 import cn.coostack.cooparticlesapi.data.holder.DataHolder
 import cn.coostack.cooparticlesapi.data.holder.DataHolderManager
+import cn.coostack.cooparticlesapi.utils.Math3DUtil
+import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.level.ClipContext
+import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.HitResult
 import net.minecraft.world.phys.Vec3
 
-fun Entity.canSee(another: Entity): Boolean {
+infix fun Entity.canSee(another: Entity): Boolean {
     if (level() != another.level()) return false
 
     val to = another.eyePosition
@@ -29,7 +33,7 @@ fun Entity.canSee(another: Entity): Boolean {
     }
 }
 
-fun Entity.canSee(to: Vec3): Boolean {
+infix fun Entity.canSee(to: Vec3): Boolean {
     val ctx = ClipContext(
         eyePosition, to,
         ClipContext.Block.COLLIDER,
@@ -60,3 +64,28 @@ val Entity.cacher: EntityCacher
     get() = if (level().isClientSide) ClientEntityCacheManager.getOrCreate(this) else ServerEntityCacheManager.getOrCreate(
         this
     )
+
+fun Entity.intersectsCylinder(start: Vec3, end: Vec3, radius: Double): Boolean {
+    return Math3DUtil.intersectsCylinder(start, end, radius, boundingBox)
+}
+
+fun Entity.intersectsCylinder(start: Vec3, direction: Vec3, length: Double, radius: Double): Boolean {
+    return Math3DUtil.intersectsCylinder(start, start.add(direction.toCylinderOffset(length)), radius, boundingBox)
+}
+
+fun Entity.intersectsCylinder(start: Vec3, direction: RelativeLocation, length: Double, radius: Double): Boolean {
+    return intersectsCylinder(start, direction.toVector(), length, radius)
+}
+
+infix fun Entity.intersectsBox(box: AABB): Boolean {
+    return Math3DUtil.intersectsBox(boundingBox, box)
+}
+
+fun Entity.intersectsBox(center: Vec3, hitBox: HitBox): Boolean {
+    return Math3DUtil.intersectsBox(center, hitBox, boundingBox)
+}
+
+private fun Vec3.toCylinderOffset(length: Double): Vec3 {
+    if (this.lengthSqr() <= 1e-12 || length <= 0.0) return Vec3.ZERO
+    return this.normalize().scale(length)
+}

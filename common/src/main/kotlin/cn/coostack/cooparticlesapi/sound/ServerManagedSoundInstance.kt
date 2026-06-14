@@ -436,6 +436,10 @@ class ServerManagedSoundInstance(
         return restartRequested
     }
 
+    internal fun canDiscardAfterSync(): Boolean {
+        return !isStopped && !loopingSound && !syncEveryTick
+    }
+
     internal fun clearSyncFlags() {
         dirty = false
         restartRequested = false

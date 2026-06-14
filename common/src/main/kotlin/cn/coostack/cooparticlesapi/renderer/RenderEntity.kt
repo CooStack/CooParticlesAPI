@@ -362,13 +362,11 @@ abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) : Serv
     }
 
     /**
-     * 服务端在一次性同步成功后调用的内部钩子。
+     * 服务端在同步成功后调用的内部钩子。
      */
     internal fun onSynced() {
-        if (syncOnce) {
-            dirty = false
-            syncOnce = false
-        }
+        dirty = false
+        syncOnce = false
     }
 
     /**

@@ -58,8 +58,23 @@ object CooKeyBindingManager {
         defaultKey: Int,
         category: String
     ): KeyMapping {
+        return register(keyId, keyType, defaultKey, category, keyType == InputConstants.Type.MOUSE)
+    }
+
+    fun register(
+        keyId: ResourceLocation,
+        keyType: InputConstants.Type,
+        defaultKey: Int,
+        category: String,
+        listenOnly: Boolean
+    ): KeyMapping {
         require(keyId !in keyStates) { "key id already registered: $keyId" }
-        val mapping = KeyMapping("key.${keyId.namespace}.${keyId.path}", keyType, defaultKey, category)
+        val mappingName = "key.${keyId.namespace}.${keyId.path}"
+        val mapping = if (listenOnly) {
+            CooListeningKeyMapping(mappingName, keyType, defaultKey, category)
+        } else {
+            KeyMapping(mappingName, keyType, defaultKey, category)
+        }
         val state = KeyState(keyId, mapping)
         keyStates[keyId] = state
         registerIfPossible(state)
@@ -89,7 +104,7 @@ object CooKeyBindingManager {
         val client = Minecraft.getInstance()
         states.forEach { state ->
             val down = isPhysicallyDown(state.mapping, client)
-            syncMappingsWithSameKey(state.mapping, client, down)
+            state.mapping.setDown(down)
             if (keyCountDowns.containsKey(state.id)) {
                 val current = keyCountDowns[state.id]!!
                 if (current > 0) {
@@ -148,15 +163,6 @@ object CooKeyBindingManager {
             }
         }
         return mapping.isDown
-    }
-
-    private fun syncMappingsWithSameKey(source: KeyMapping, client: Minecraft, down: Boolean) {
-        source.setDown(down)
-        client.options.keyMappings.forEach { mapping ->
-            if (mapping !== source && mapping.same(source)) {
-                mapping.setDown(down)
-            }
-        }
     }
 
     private fun registerIfPossible(state: KeyState) {

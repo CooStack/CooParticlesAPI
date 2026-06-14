@@ -1,8 +1,11 @@
 package cn.coostack.cooparticlesapi.extend
 
+import cn.coostack.cooparticlesapi.barrages.HitBox
+import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import net.minecraft.core.Vec3i
 import net.minecraft.util.RandomSource
+import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3d
 import org.joml.Vector3f
@@ -278,4 +281,41 @@ fun Vec3.lengthCoerceAtMost(max: Double): Vec3 {
         return this.normalize() * max
     }
     return this
+}
+
+fun Vec3.intersectsCylinder(length: Double, radius: Double, box: AABB): Boolean {
+    return intersectsCylinder(Vec3.ZERO, length, radius, box)
+}
+
+fun Vec3.intersectsCylinder(start: Vec3, length: Double, radius: Double, box: AABB): Boolean {
+    return Math3DUtil.intersectsCylinder(start, start.add(toCylinderOffset(length)), radius, box)
+}
+
+fun Vec3.intersectsCylinder(length: Double, radius: Double, center: Vec3, hitBox: HitBox): Boolean {
+    return intersectsCylinder(Vec3.ZERO, length, radius, center, hitBox)
+}
+
+fun Vec3.intersectsCylinder(start: Vec3, length: Double, radius: Double, center: Vec3, hitBox: HitBox): Boolean {
+    return Math3DUtil.intersectsCylinder(start, start.add(toCylinderOffset(length)), radius, center, hitBox)
+}
+
+fun Vec3.intersectsBox(length: Double, radius: Double, box: AABB): Boolean {
+    return intersectsCylinder(length, radius, box)
+}
+
+fun Vec3.intersectsBox(start: Vec3, length: Double, radius: Double, box: AABB): Boolean {
+    return intersectsCylinder(start, length, radius, box)
+}
+
+fun Vec3.intersectsBox(length: Double, radius: Double, center: Vec3, hitBox: HitBox): Boolean {
+    return intersectsCylinder(length, radius, center, hitBox)
+}
+
+fun Vec3.intersectsBox(start: Vec3, length: Double, radius: Double, center: Vec3, hitBox: HitBox): Boolean {
+    return intersectsCylinder(start, length, radius, center, hitBox)
+}
+
+private fun Vec3.toCylinderOffset(length: Double): Vec3 {
+    if (this.lengthSqr() <= 1e-12 || length <= 0.0) return Vec3.ZERO
+    return this.normalize().scale(length)
 }

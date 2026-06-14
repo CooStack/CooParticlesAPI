@@ -34,3 +34,4 @@ object CooModEntityTypes {
         return type
     }
 }
+ 
