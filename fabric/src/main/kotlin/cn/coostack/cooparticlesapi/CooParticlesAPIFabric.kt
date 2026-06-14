@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi
 
+import cn.coostack.cooparticlesapi.commands.APICommand
 import cn.coostack.cooparticlesapi.entities.CooModEntityTypes
 import cn.coostack.cooparticlesapi.event.CooEventBus
 import cn.coostack.cooparticlesapi.event.events.entity.EntityPrePlaceBlockEvent
@@ -13,6 +14,7 @@ import cn.coostack.cooparticlesapi.network.packet.api.CooServerPacketManager
 import cn.coostack.cooparticlesapi.network.packet.api.envelope.CooPacketEnvelopeC2S
 import cn.coostack.cooparticlesapi.network.packet.api.envelope.CooPacketEnvelopeS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketCameraShakeS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketClearClientStateS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketDataHolderS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketDisplayEntityS2C
 import cn.coostack.cooparticlesapi.network.packet.client.PacketKeyActionC2S
@@ -33,6 +35,7 @@ import cn.coostack.cooparticlesapi.particles.CooModParticles
 import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
 import cn.coostack.cooparticlesapi.test.TestManager
 import net.fabricmc.api.ModInitializer
+import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents
@@ -59,6 +62,7 @@ object CooParticlesAPIFabric : ModInitializer {
 
     private fun initPacket() {
         PayloadTypeRegistry.playS2C().register(PacketCameraShakeS2C.payloadID, PacketCameraShakeS2C.CODEC)
+        PayloadTypeRegistry.playS2C().register(PacketClearClientStateS2C.payloadID, PacketClearClientStateS2C.CODEC)
         PayloadTypeRegistry.playS2C().register(PacketParticleS2C.payloadID, PacketParticleS2C.CODEC)
         PayloadTypeRegistry.playS2C().register(PacketParticleEmittersS2C.payloadID, PacketParticleEmittersS2C.CODEC)
         PayloadTypeRegistry.playS2C().register(PacketParticleGroupS2C.payloadID, PacketParticleGroupS2C.CODEC)
@@ -102,6 +106,9 @@ object CooParticlesAPIFabric : ModInitializer {
     }
 
     private fun initEvents() {
+        CommandRegistrationCallback.EVENT.register { dispatcher, _, _ ->
+            APICommand.register(dispatcher)
+        }
         ServerTickEvents.START_SERVER_TICK.register { server ->
             CooEventBus.call(
                 ServerPreTickEvent(server)

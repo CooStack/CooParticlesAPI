@@ -151,6 +151,14 @@ object ServerSoundLoopManager {
         CooParticlesServices.SERVER_NETWORK.send(PacketSoundLoopS2C.stop(key, interrupt), player)
     }
 
+    @JvmStatic
+    fun clear() {
+        synchronized(trackingKeys) {
+            trackingKeys.clear()
+            trackedEntityLoops.clear()
+        }
+    }
+
     private fun sendToEntityWatchers(entity: Entity, packet: PacketSoundLoopS2C, self: Boolean): Boolean {
         val level = entity.level() as? ServerLevel ?: return false
         CooParticlesServices.SERVER_NETWORK.sendToPlayersTrackingChunk(level, entity.chunkPosition(), packet)

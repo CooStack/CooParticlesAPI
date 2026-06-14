@@ -165,6 +165,13 @@ abstract class AbstractBarrage(
      * 判定barrage已经攻击到实体或者触发方块/液体时执行
      */
     override fun hit(result: BarrageHitResult) {
+        hit(result, HashSet())
+    }
+
+    private fun hit(result: BarrageHitResult, visited: MutableSet<UUID>) {
+        if (!valid || !visited.add(uuid)) {
+            return
+        }
         onHit(result)
         val timeoutHit = options.maxLivingTick <= currentTick && options.maxLivingTick != -1
         if (options.acrossable && !timeoutHit) {
@@ -175,7 +182,7 @@ abstract class AbstractBarrage(
             result.barrages.forEach { barrage ->
                 // 防止出现自己调用自己
                 if (!barrage.options.barrageIgnored && barrage is AbstractBarrage && barrage != this) {
-                    barrage.hit(BarrageHitResult().also { it.barrages.add(this) })
+                    barrage.hit(BarrageHitResult().also { it.barrages.add(this) }, visited)
                 }
             }
         }

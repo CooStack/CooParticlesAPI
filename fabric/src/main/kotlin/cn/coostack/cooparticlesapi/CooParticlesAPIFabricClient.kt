@@ -14,6 +14,7 @@ import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldRenderEv
 import cn.coostack.cooparticlesapi.network.packet.api.CooClientPacketManager
 import cn.coostack.cooparticlesapi.network.packet.api.envelope.CooPacketEnvelopeS2C
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientCameraShakeHandler
+import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientClearStateHandler
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientDataHolderPacketHandler
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientDisplayEntityPacketHandler
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientKeyBindingCountdownHandler
@@ -28,6 +29,7 @@ import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientRenderer
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientSoundInstanceHandler
 import cn.coostack.cooparticlesapi.network.packet.client.listener.ClientSoundLoopHandler
 import cn.coostack.cooparticlesapi.network.packet.server.PacketCameraShakeS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketClearClientStateS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketDataHolderS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketDisplayEntityS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketKeyBindingCountdownS2C
@@ -282,6 +284,9 @@ object CooParticlesAPIFabricClient : ClientModInitializer {
         }
         ClientPlayNetworking.registerGlobalReceiver(PacketCameraShakeS2C.payloadID) { payload, context ->
             ClientCameraShakeHandler.receive(payload, FabricClientContext(context))
+        }
+        ClientPlayNetworking.registerGlobalReceiver(PacketClearClientStateS2C.payloadID) { payload, context ->
+            ClientClearStateHandler.receive(payload, FabricClientContext(context))
         }
         ClientPlayNetworking.registerGlobalReceiver(PacketDisplayEntityS2C.payloadID) { payload, context ->
             ClientDisplayEntityPacketHandler.receive(payload, FabricClientContext(context))

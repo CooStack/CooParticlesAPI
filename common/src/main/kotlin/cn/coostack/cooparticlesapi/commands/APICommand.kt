@@ -1,26 +1,22 @@
 package cn.coostack.cooparticlesapi.commands
 
-import cn.coostack.cooparticlesapi.CooParticlesAPIClient
-import cn.coostack.cooparticlesapi.display.DisplayEntityManager
+import cn.coostack.cooparticlesapi.CooParticlesAPI
 import com.mojang.brigadier.CommandDispatcher
-import com.mojang.brigadier.builder.ArgumentBuilder
-import com.mojang.brigadier.builder.LiteralArgumentBuilder
-import net.minecraft.commands.CommandSource
+import net.minecraft.commands.CommandSourceStack
 import net.minecraft.commands.Commands
 
 object APICommand {
-
-    fun register(dispatcher: CommandDispatcher<CommandSource>) {
+    fun register(dispatcher: CommandDispatcher<CommandSourceStack>) {
         dispatcher.register(
-            LiteralArgumentBuilder.literal<CommandSource>("cleanapi")
+            Commands.literal("cooparticlesapi")
+                .requires { it.hasPermission(2) }
                 .then(
-                    LiteralArgumentBuilder.literal<CommandSource>("display")
-                        .executes {
-                            CooParticlesAPIClient.clearTransientClientState()
+                    Commands.literal("clean")
+                        .then(Commands.literal("all").executes {
+                            CooParticlesAPI.clearTransientState()
                             1
-                        }
+                        })
                 )
         )
     }
-
 }

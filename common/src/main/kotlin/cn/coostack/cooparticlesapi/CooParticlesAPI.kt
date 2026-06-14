@@ -15,6 +15,7 @@ import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersMan
 import cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind.WindDirections
 import cn.coostack.cooparticlesapi.network.particle.emitters.event.ParticleEventHandlerManager
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleStyleManager
+import cn.coostack.cooparticlesapi.network.packet.server.PacketClearClientStateS2C
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
 import cn.coostack.cooparticlesapi.renderer.server.ServerRenderEntityManager
@@ -78,6 +79,17 @@ object CooParticlesAPI {
 
     fun onServerStop() {
         clearServerState()
+    }
+
+    fun clearTransientState() {
+        clearServerState()
+        ServerSoundManager.clear()
+        ServerSoundLoopManager.clear()
+        scheduler.clear()
+        subTicks = 0.0
+        server.playerList.players.forEach {
+            CooParticlesServices.SERVER_NETWORK.send(PacketClearClientStateS2C, it)
+        }
     }
 
     private fun clearServerState() {
