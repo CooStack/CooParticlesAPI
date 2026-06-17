@@ -2,7 +2,6 @@ package cn.coostack.cooparticlesapi.network.particle.emitters.command
 
 import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableParticleData
 import cn.coostack.cooparticlesapi.particles.ControlableParticle
-import java.util.function.Predicate
 
 /**
  * `ParticleCommand` 的顺序队列：用于把多个“粒子模块/预设”组合成一个可复用的执行链。
@@ -37,6 +36,10 @@ import java.util.function.Predicate
 class ParticleCommandQueue {
     val commands =
         ArrayDeque<Pair<ParticleCommand, ParticleCommand.(ControlableParticleData, ControlableParticle) -> Boolean>>()
+
+    @Suppress("UNCHECKED_CAST")
+    private val alwaysExecutePredicate =
+        AlwaysExecutePredicate as ParticleCommand.(ControlableParticleData, ControlableParticle) -> Boolean
 
     /**
      * 对当前粒子执行队列中的所有命令。
@@ -88,7 +91,7 @@ class ParticleCommandQueue {
      * @return this（便于 `.add(...).add(...)` 链式写法）
      */
     fun add(command: ParticleCommand): ParticleCommandQueue {
-        commands.add(command to { data, particle -> true })
+        commands.add(command to alwaysExecutePredicate)
         return this
     }
 
@@ -105,5 +108,13 @@ class ParticleCommandQueue {
     ): ParticleCommandQueue {
         commands.add(command to predicate)
         return this
+    }
+
+    private object AlwaysExecutePredicate : Function3<ParticleCommand, ControlableParticleData, Any?, Boolean> {
+        override fun invoke(
+            command: ParticleCommand,
+            data: ControlableParticleData,
+            particle: Any?
+        ): Boolean = true
     }
 }
