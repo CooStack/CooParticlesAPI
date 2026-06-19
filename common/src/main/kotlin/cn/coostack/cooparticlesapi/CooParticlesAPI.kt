@@ -35,9 +35,35 @@ object CooParticlesAPI {
     var renderInit = false
     lateinit var server: MinecraftServer
     lateinit var registryAccess: RegistryAccess
+    private var activeServer: MinecraftServer? = null
+    private var activeRegistryAccess: RegistryAccess? = null
+
+    @get:JvmStatic
+    val serverOrNull: MinecraftServer?
+        get() = activeServer
+
+    @get:JvmStatic
+    val registryAccessOrNull: RegistryAccess?
+        get() = activeRegistryAccess
 
     @JvmField
     val scheduler = CooScheduler()
+
+    @JvmStatic
+    fun <T> invokeIfServerNotNull(block: (MinecraftServer) -> T): T? {
+        val server = serverOrNull ?: return null
+        return block(server)
+    }
+
+    @JvmStatic
+    fun <T> invokeAsServer(block: (MinecraftServer) -> T): T? {
+        return invokeIfServerNotNull(block)
+    }
+
+    @JvmStatic
+    fun safelyServerInstance(): MinecraftServer? {
+        return serverOrNull
+    }
 
     @JvmStatic
     fun init() {
@@ -75,10 +101,14 @@ object CooParticlesAPI {
         clearServerState()
         this.server = server
         this.registryAccess = server.registryAccess()
+        activeServer = server
+        activeRegistryAccess = registryAccess
     }
 
     fun onServerStop() {
         clearServerState()
+        activeServer = null
+        activeRegistryAccess = null
     }
 
     fun clearTransientState() {
@@ -87,8 +117,10 @@ object CooParticlesAPI {
         ServerSoundLoopManager.clear()
         scheduler.clear()
         subTicks = 0.0
-        server.playerList.players.forEach {
-            CooParticlesServices.SERVER_NETWORK.send(PacketClearClientStateS2C, it)
+        invokeIfServerNotNull { server ->
+            server.playerList.players.forEach {
+                CooParticlesServices.SERVER_NETWORK.send(PacketClearClientStateS2C, it)
+            }
         }
     }
 

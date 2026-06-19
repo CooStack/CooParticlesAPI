@@ -158,10 +158,11 @@ object DisplayEntityManager {
 
 
     fun sendCreateOrUpdate(entity: DisplayEntity) {
-        val server = CooParticlesAPI.server
+        val server = CooParticlesAPI.serverOrNull ?: return
+        val registryAccess = CooParticlesAPI.registryAccessOrNull ?: return
         val uuid = entity.controlUUID
         val type = entity::class.java.name
-        val buf = RegistryFriendlyByteBuf(Unpooled.buffer(), CooParticlesAPI.registryAccess)
+        val buf = RegistryFriendlyByteBuf(Unpooled.buffer(), registryAccess)
         entity.getCodec().encode(buf, entity)
         val data = ByteArray(buf.readableBytes()).apply {
             buf.readBytes(this)
@@ -176,8 +177,9 @@ object DisplayEntityManager {
     }
 
     fun sendRemove(entity: DisplayEntity) {
+        val server = CooParticlesAPI.serverOrNull ?: return
         val packet = PacketDisplayEntityS2C(entity.controlUUID, entity::class.java.name, ByteArray(0), true)
-        CooParticlesAPI.server.playerList.players.forEach {
+        server.playerList.players.forEach {
             if (it.level().dimension() != entity.world?.dimension()) {
                 return@forEach
             }

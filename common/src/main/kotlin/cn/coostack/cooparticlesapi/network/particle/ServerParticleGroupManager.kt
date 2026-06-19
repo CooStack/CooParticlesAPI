@@ -126,7 +126,7 @@ object ServerParticleGroupManager {
     }
 
     private fun clearOfflineVisible() {
-        val server = CooParticlesAPI.server
+        val server = CooParticlesAPI.serverOrNull ?: return
         // 清空所有离线玩家
         val visibleIterator = visible.iterator()
         while (visibleIterator.hasNext()) {

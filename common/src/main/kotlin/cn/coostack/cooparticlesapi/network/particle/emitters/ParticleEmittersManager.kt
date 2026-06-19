@@ -144,7 +144,8 @@ object ParticleEmittersManager {
 
     fun updateClientVisible(emitters: ParticleEmitters) {
         CooEventBus.call(EmitterSpawnEvent(emitters, false))
-        CooParticlesAPI.server.playerList.players.forEach { p ->
+        val server = CooParticlesAPI.serverOrNull ?: return
+        server.playerList.players.forEach { p ->
             val visibleSet = visible.getOrPut(p.uuid) { HashSet() }
             if (p.level().dimension() != emitters.world?.dimension()) {
                 // 世界转换
@@ -230,9 +231,10 @@ object ParticleEmittersManager {
 
     private fun encodeEmittersToArray(emitters: ParticleEmitters): ByteArray {
         val codec = emitters.getCodec()
+        val registryAccess = emitters.world?.registryAccess() ?: CooParticlesAPI.registryAccessOrNull ?: return ByteArray(0)
         val buf = RegistryFriendlyByteBuf(
             Unpooled.buffer(),
-            emitters.world?.registryAccess() ?: CooParticlesAPI.registryAccess
+            registryAccess
         )
         codec.encode(buf, emitters)
 

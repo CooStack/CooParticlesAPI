@@ -58,7 +58,7 @@ object CooServerPacketManager {
      */
     @JvmStatic
     fun sendAll(packet: CooPacket) {
-        val server = runCatching { CooParticlesAPI.server }.getOrNull() ?: return
+        val server = CooParticlesAPI.serverOrNull ?: return
         server.playerList.players.forEach { sendTo(it, packet) }
     }
 
@@ -146,7 +146,7 @@ object CooServerPacketManager {
         timeoutTicks: Int = DEFAULT_TIMEOUT_TICKS,
         onResponse: (ServerPlayer, R) -> Unit,
     ): List<Long> {
-        val server = runCatching { CooParticlesAPI.server }.getOrNull() ?: return emptyList()
+        val server = CooParticlesAPI.serverOrNull ?: return emptyList()
         return server.playerList.players.map { player ->
             requestWithSender(player, packet, responseType, timeoutTicks, onResponse)
         }
@@ -211,7 +211,7 @@ object CooServerPacketManager {
             }
         }
         if (expired.isEmpty()) return
-        val server = runCatching { CooParticlesAPI.server }.getOrNull()
+        val server = CooParticlesAPI.serverOrNull
         expired.forEach { (id, p) ->
             val target = if (server != null && p.targetPlayerUUID != null) {
                 server.playerList.getPlayer(p.targetPlayerUUID)

@@ -112,10 +112,11 @@ object ParticleCompositionManager {
     }
 
     fun sendCreateOrUpdate(composition: ParticleComposition) {
-        val server = CooParticlesAPI.server
+        val server = CooParticlesAPI.serverOrNull ?: return
+        val registryAccess = CooParticlesAPI.registryAccessOrNull ?: return
         val uuid = composition.controlUUID
         val type = composition::class.java.name
-        val buf = RegistryFriendlyByteBuf(Unpooled.buffer(), CooParticlesAPI.registryAccess)
+        val buf = RegistryFriendlyByteBuf(Unpooled.buffer(), registryAccess)
         registeredTypes[composition::class.java.name]!!
             .encode(buf, composition)
         val data = ByteArray(buf.readableBytes()).apply {
@@ -148,7 +149,7 @@ object ParticleCompositionManager {
     }
 
     fun sendRemove(composition: ParticleComposition) {
-        val server = CooParticlesAPI.server
+        val server = CooParticlesAPI.serverOrNull ?: return
         val uuid = composition.controlUUID
         val type = composition::class.java.name
         val packet = PacketParticleCompositionS2C(uuid, type, ByteArray(0)).apply {
@@ -166,7 +167,7 @@ object ParticleCompositionManager {
         if (!composition.displayed || composition.canceled) {
             return
         }
-        val server = CooParticlesAPI.server
+        val server = CooParticlesAPI.serverOrNull ?: return
         val packet = PacketParticleCompositionRotateS2C(
             composition.controlUUID,
             direction?.toVector(),

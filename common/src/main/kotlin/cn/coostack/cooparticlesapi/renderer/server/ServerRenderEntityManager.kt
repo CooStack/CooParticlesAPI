@@ -29,10 +29,11 @@ object ServerRenderEntityManager {
     }
 
     fun clearEmptyData() {
+        val server = CooParticlesAPI.serverOrNull ?: return
         val iterator = playerViewable.iterator()
         while (iterator.hasNext()) {
             val entity = iterator.next()
-            val player = CooParticlesAPI.server.playerList.getPlayer(entity.key)
+            val player = server.playerList.getPlayer(entity.key)
             if (entity.value.isEmpty() || player == null) iterator.remove()
         }
     }
@@ -59,7 +60,8 @@ object ServerRenderEntityManager {
 
 
     fun updateVisible(entity: RenderEntity) {
-        CooParticlesAPI.server.playerList.players.forEach {
+        val server = CooParticlesAPI.serverOrNull ?: return
+        server.playerList.players.forEach {
             // 世界转换
             val actualCanView = playerCanView(it.uuid, entity)
             if (it.level().dimension() != entity.world?.dimension()) {
@@ -95,7 +97,8 @@ object ServerRenderEntityManager {
 
     fun toggle(entity: RenderEntity) {
         val packet = entity.getTogglePacket(entity.alwaysToggle) ?: return
-        val targets = CooParticlesAPI.server.playerList.players.filter { playerCanView(it.uuid, entity) }
+        val server = CooParticlesAPI.serverOrNull ?: return
+        val targets = server.playerList.players.filter { playerCanView(it.uuid, entity) }
         if (targets.isEmpty()) {
             entity.onSynced()
             return

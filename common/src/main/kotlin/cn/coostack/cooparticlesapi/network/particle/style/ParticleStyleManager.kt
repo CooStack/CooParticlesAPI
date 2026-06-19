@@ -121,7 +121,8 @@ object ParticleStyleManager {
         while (playerVisibleIterator.hasNext()) {
             val playerUUID = playerVisibleIterator.next().key
             // 判断玩家是否在线
-            val player = CooParticlesAPI.server.playerList.getPlayer(playerUUID)
+            val server = CooParticlesAPI.serverOrNull ?: return
+            val player = server.playerList.getPlayer(playerUUID)
             if (player == null) {
                 playerVisibleIterator.remove()
             }
@@ -139,7 +140,8 @@ object ParticleStyleManager {
     }
 
     private fun upgradeVisible(style: ParticleGroupStyle) {
-        CooParticlesAPI.server.playerList.players.forEach { p ->
+        val server = CooParticlesAPI.serverOrNull ?: return
+        server.playerList.players.forEach { p ->
             val visibleSet = visible.getOrPut(p.uuid) { HashSet() }
             if (p.level().dimension() != style.world?.dimension()) {
                 // 世界转换

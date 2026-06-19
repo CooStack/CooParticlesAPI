@@ -853,13 +853,23 @@ object ServerSoundManager {
 
     private fun syncSound(instance: ServerManagedSoundInstance) {
         instance.tick()
+        val server = CooParticlesAPI.serverOrNull
+        if (server == null) {
+            val discardAfterSync = instance.canDiscardAfterSync()
+            if (instance.isStopped || discardAfterSync) {
+                sounds.remove(instance.key, instance)
+                soundViewers.remove(instance.key)
+            }
+            instance.clearSyncFlags()
+            return
+        }
         val viewers = soundViewerSet(instance.key)
         pruneOfflineViewers(viewers)
         val needsPlay = instance.needsPlayPacket()
         val needsUpdate = instance.needsUpdatePacket()
         val stopPacket = if (instance.isStopped) instance.toStopPacket() else null
 
-        CooParticlesAPI.server.playerList.players.forEach { player ->
+        server.playerList.players.forEach { player ->
             val wasVisible = player.uuid in viewers
             val shouldBeVisible = !instance.isStopped && instance.shouldSyncTo(player)
             when {
@@ -892,6 +902,15 @@ object ServerSoundManager {
 
     private fun syncDucking(effect: ServerDuckingSoundEffect, forceStart: Boolean) {
         effect.tick()
+        val server = CooParticlesAPI.serverOrNull
+        if (server == null) {
+            if (effect.isStopped) {
+                duckingEffects.remove(effect.key, effect)
+                duckingViewers.remove(effect.key)
+            }
+            effect.clearSyncFlags()
+            return
+        }
         val viewers = duckingViewerSet(effect.key)
         pruneOfflineViewers(viewers)
         val needsUpdate = effect.needsUpdatePacket()
@@ -899,7 +918,7 @@ object ServerSoundManager {
         val updatePacket = if (needsUpdate) effect.toUpdatePacket() else null
         val stopPacket = if (effect.isStopped) effect.toStopPacket() else null
 
-        CooParticlesAPI.server.playerList.players.forEach { player ->
+        server.playerList.players.forEach { player ->
             val wasVisible = player.uuid in viewers
             val shouldBeVisible = !effect.isStopped && effect.shouldSyncTo(player)
             when {
@@ -928,7 +947,8 @@ object ServerSoundManager {
 
     private fun sendToEntityWatchers(entity: Entity, packet: PacketSoundInstanceS2C, self: Boolean): Boolean {
         val level = entity.level() as? ServerLevel ?: return false
-        CooParticlesAPI.server.playerList.players.forEach { player ->
+        val server = CooParticlesAPI.serverOrNull ?: return false
+        server.playerList.players.forEach { player ->
             if (player.level().dimension() != level.dimension()) {
                 return@forEach
             }
@@ -943,7 +963,8 @@ object ServerSoundManager {
     }
 
     private fun sendToPlayersNear(world: ServerLevel, pos: Vec3, range: Double, packet: PacketSoundInstanceS2C) {
-        CooParticlesAPI.server.playerList.players.forEach { player ->
+        val server = CooParticlesAPI.serverOrNull ?: return
+        server.playerList.players.forEach { player ->
             if (player.level().dimension() != world.dimension()) {
                 return@forEach
             }
@@ -963,7 +984,8 @@ object ServerSoundManager {
     }
 
     private fun pruneOfflineViewers(viewers: MutableSet<UUID>) {
-        val online = CooParticlesAPI.server.playerList.players.mapTo(HashSet()) { it.uuid }
+        val server = CooParticlesAPI.serverOrNull ?: return
+        val online = server.playerList.players.mapTo(HashSet()) { it.uuid }
         viewers.removeIf { it !in online }
     }
 
