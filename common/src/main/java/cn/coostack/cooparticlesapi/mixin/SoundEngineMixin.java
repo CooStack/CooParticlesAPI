@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi.mixin;
 
-import cn.coostack.cooparticlesapi.sound.ClientSoundManager;
+import cn.coostack.cooparticlesapi.supports.sound.ClientSoundManager;
 import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import com.llamalad7.mixinextras.sugar.Local;
 import net.minecraft.client.resources.sounds.SoundInstance;

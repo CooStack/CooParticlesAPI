@@ -1,7 +1,6 @@
 package cn.coostack.cooparticlesapi
 
 import cn.coostack.cooparticlesapi.animation.AnimateManager
-import cn.coostack.cooparticlesapi.data.cache.ClientEntityCacheManager
 import cn.coostack.cooparticlesapi.data.holder.DataHolderManager
 import cn.coostack.cooparticlesapi.display.DisplayEntityManager
 import cn.coostack.cooparticlesapi.display.CooRenderTypeResourceRegistry
@@ -30,8 +29,8 @@ import cn.coostack.cooparticlesapi.renderer.post.PostEffectFrameExecutor
 import cn.coostack.cooparticlesapi.renderer.post.PostEffectRuntimeRegistry
 import cn.coostack.cooparticlesapi.renderer.shader.ShaderProgramRegistry
 import cn.coostack.cooparticlesapi.scheduler.CooScheduler
-import cn.coostack.cooparticlesapi.sound.ClientSoundManager
-import cn.coostack.cooparticlesapi.sound.ClientSoundLoopManager
+import cn.coostack.cooparticlesapi.supports.sound.ClientSoundManager
+import cn.coostack.cooparticlesapi.supports.sound.ClientSoundLoopManager
 import cn.coostack.cooparticlesapi.test.TestControlKeyBindings
 import cn.coostack.cooparticlesapi.test.TestManager
 import cn.coostack.cooparticlesapi.test.options.display.TestDisplayerStyle

@@ -14,8 +14,6 @@
   },
   "client": [
     "CooParticleCameraMixin",
-    "KeyMappingAccessor",
-    "KeyMappingMixin",
     "LevelRendererMixin",
     "MainTargetMixin",
     "ParticleEngineAccessor",

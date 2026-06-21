@@ -1,4 +1,4 @@
-package cn.coostack.cooparticlesapi.sound
+package cn.coostack.cooparticlesapi.supports.sound
 
 import cn.coostack.cooparticlesapi.network.packet.server.PacketSoundInstanceS2C
 import net.minecraft.client.Minecraft

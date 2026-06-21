@@ -1,4 +1,4 @@
-package cn.coostack.cooparticlesapi.sound
+package cn.coostack.cooparticlesapi.supports.sound
 
 import kotlin.math.pow
 

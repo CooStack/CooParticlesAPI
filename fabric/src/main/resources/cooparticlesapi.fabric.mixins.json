@@ -11,6 +11,8 @@
   ],
   "client": [
     "DeathScreenOpenListenerMinecraftMixin",
+    "KeyMappingAccessor",
+    "KeyMappingMixin",
     "event.entity.player.ItemStackMixinFabric"
   ],
   "server": [],

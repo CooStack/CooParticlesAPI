@@ -5,6 +5,8 @@ import cn.coostack.cooparticlesapi.renderer.backend.RenderBackendCapability
 import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameContext
 import cn.coostack.cooparticlesapi.renderer.effects.RenderEffectGraph
 import cn.coostack.cooparticlesapi.renderer.post.CooPostEffects
+import cn.coostack.cooparticlesapi.renderer.runtime.ClientRenderEntityRegistry
+import cn.coostack.cooparticlesapi.renderer.runtime.LegacyRenderEntityRenderer
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityInstance
 import cn.coostack.cooparticlesapi.renderer.state.RenderStateGuard
 import cn.coostack.cooparticlesapi.test.options.renderer.world.DemoWorldRenderEffectClientRegistry
@@ -14,6 +16,9 @@ import net.minecraft.client.Camera
 import net.minecraft.client.Minecraft
 import net.minecraft.client.Minecraft.getInstance
 import net.minecraft.client.renderer.MultiBufferSource
+import net.minecraft.network.FriendlyByteBuf
+import net.minecraft.network.codec.StreamCodec
+import net.minecraft.resources.ResourceLocation
 import net.minecraft.util.Mth
 import net.minecraft.world.phys.Vec3
 import org.joml.Matrix4f
@@ -29,9 +34,37 @@ object ClientRenderEntityManager {
     private val cachedViewMatrix = Matrix4f()
     private val cachedProjMatrix = Matrix4f()
     private val renderStateGuard = RenderStateGuard()
+    private val entityPipeTypes = HashMap<ResourceLocation, ResourceLocation>()
 
     fun init() {
         DemoWorldRenderEffectClientRegistry.register()
+    }
+
+    fun register(id: ResourceLocation, codec: StreamCodec<FriendlyByteBuf, RenderEntity>) {
+        val existing = ClientRenderEntityRegistry.get(id)
+        if (existing == null) {
+            ClientRenderEntityRegistry.register(id, codec) { LegacyRenderEntityRenderer() }
+            return
+        }
+        if (existing.rendererFactory == null) {
+            ClientRenderEntityRegistry.registerRenderer(id) { LegacyRenderEntityRenderer() }
+        }
+    }
+
+    fun register(entity: RenderEntity) {
+        register(entity.getRenderID(), entity.getCodec())
+    }
+
+    fun bindEntityRenderPipe(type: ResourceLocation, pipeID: ResourceLocation) {
+        entityPipeTypes[type] = pipeID
+    }
+
+    fun getPipeIDFromType(type: ResourceLocation): ResourceLocation {
+        return entityPipeTypes[type] ?: ShaderPipeManagers.default.pipeID
+    }
+
+    fun getCodecFromID(id: ResourceLocation): StreamCodec<FriendlyByteBuf, RenderEntity>? {
+        return ClientRenderEntityRegistry.get(id)?.codec
     }
 
     fun getFrom(uuid: UUID): RenderEntityInstance<RenderEntity>? {

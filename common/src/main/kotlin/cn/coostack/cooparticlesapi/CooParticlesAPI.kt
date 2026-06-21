@@ -3,7 +3,6 @@ package cn.coostack.cooparticlesapi
 import cn.coostack.cooparticlesapi.animation.AnimateManager
 import cn.coostack.cooparticlesapi.annotations.packet.CooPacketRegistry
 import cn.coostack.cooparticlesapi.barrages.BarrageManager
-import cn.coostack.cooparticlesapi.data.cache.ServerEntityCacheManager
 import cn.coostack.cooparticlesapi.data.holder.DataHolderManager
 import cn.coostack.cooparticlesapi.display.DisplayEntityManager
 import cn.coostack.cooparticlesapi.enums.DistType
@@ -21,8 +20,8 @@ import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
 import cn.coostack.cooparticlesapi.renderer.server.ServerRenderEntityManager
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityAutoRegistry
 import cn.coostack.cooparticlesapi.scheduler.CooScheduler
-import cn.coostack.cooparticlesapi.sound.ServerSoundLoopManager
-import cn.coostack.cooparticlesapi.sound.ServerSoundManager
+import cn.coostack.cooparticlesapi.supports.sound.ServerSoundLoopManager
+import cn.coostack.cooparticlesapi.supports.sound.ServerSoundManager
 import cn.coostack.cooparticlesapi.test.APITestGroupBuilder
 import cn.coostack.cooparticlesapi.test.TestManager
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.event.TestCollideEventHandler

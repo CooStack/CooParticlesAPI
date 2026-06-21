@@ -43,7 +43,7 @@ object ParticleStyleManager {
     /**
      * 在ClientModInitializer 注册ParticleStyle 用于服务器同步
      */
-    @JvmStatic
+    // Keep this as an instance method for binary compatibility with existing consumers.
     fun register(
         type: Class<out ParticleGroupStyle>,
         provider: ParticleStyleProvider

@@ -1,9 +1,9 @@
 package cn.coostack.cooparticlesapi.test
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
-import cn.coostack.cooparticlesapi.sound.ServerDuckingSoundEffect
-import cn.coostack.cooparticlesapi.sound.ServerManagedSoundInstance
-import cn.coostack.cooparticlesapi.sound.ServerSoundManager
+import cn.coostack.cooparticlesapi.supports.sound.ServerDuckingSoundEffect
+import cn.coostack.cooparticlesapi.supports.sound.ServerManagedSoundInstance
+import cn.coostack.cooparticlesapi.supports.sound.ServerSoundManager
 import cn.coostack.cooparticlesapi.test.api.TestOption
 import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
