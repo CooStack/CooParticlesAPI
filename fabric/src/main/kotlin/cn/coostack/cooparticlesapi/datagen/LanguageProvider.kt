@@ -21,6 +21,9 @@ class LanguageProvider(
             add(CooItems.SINGLE_TESTING.getItem(), "新API单项测试")
             add(CooItems.testSequencedParticle.getItem(), "§a顺序出现粒子组测试工具")
             add(CooItems.testStyleItem.getItem(), "§a粒子样式测试工具-C-S共用")
+            add(CooItems.testTickItem.getItem(), "§aTick 粒子测试工具")
+            add(CooItems.TEST_CONTROLLER_ITEM.getItem(), "粒子测试方块")
+            add(CooItems.TEST_BLOCK_BINDER.getItem(), "测试方块调试器")
         }
     }
 }

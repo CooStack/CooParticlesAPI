@@ -318,18 +318,43 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
         if (!client) {
             return
         }
+        val staleControls = ArrayList<Controlable<*>>()
         val iterator = particleLocations.iterator()
         while (iterator.hasNext()) {
             val entry = iterator.next()
             val particle = entry.key
             val rel = entry.value
+            if (particle is ParticleControler && !particle.isBound) {
+                staleControls.add(particle)
+                continue
+            }
             // 减少一倍的new Vec3
-            particle.teleportTo(
-                position.add(rel.x, rel.y, rel.z)
-            )
+            try {
+                particle.teleportTo(
+                    position.add(rel.x, rel.y, rel.z)
+                )
+            } catch (error: IllegalStateException) {
+                if (particle is ParticleControler && !particle.isBound) {
+                    staleControls.add(particle)
+                    continue
+                }
+                throw error
+            }
         }
+        staleControls.forEach { removeDisplayedControl(it) }
     }
 
+    private fun removeDisplayedControl(control: Controlable<*>) {
+        control.remove(RemoveReason.QUEUE)
+        if (control is Tickable<*>) {
+            controlerTicks.remove(control)
+        }
+        particleLocations.remove(control)
+        particles.remove(control.controlUUID())
+        particleDefaultLength.remove(control.controlUUID())
+        particleRotatedLocations.clear()
+        particleLocations.values.forEach { particleRotatedLocations.add(it) }
+    }
 
     override fun teleportTo(to: Vec3) {
         position = to

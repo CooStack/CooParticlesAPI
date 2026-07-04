@@ -13,6 +13,7 @@ class LangProvider(output: PackOutput) :
         add(CooItems.SINGLE_TESTING.getItem(), "弹幕测试法杖")
         add(CooItems.testSequencedParticle.getItem(), "§a顺序出现粒子组测试工具")
         add(CooItems.testStyleItem.getItem(), "§a粒子样式测试工具-C-S共用")
+        add(CooItems.TEST_BLOCK_BINDER.getItem(), "测试方块调试器")
         CooParticlesConstants.logger.info("语言注册.............. Language generated")
     }
 }

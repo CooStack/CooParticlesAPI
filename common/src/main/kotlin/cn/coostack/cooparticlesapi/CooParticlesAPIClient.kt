@@ -33,6 +33,7 @@ import cn.coostack.cooparticlesapi.supports.sound.ClientSoundManager
 import cn.coostack.cooparticlesapi.supports.sound.ClientSoundLoopManager
 import cn.coostack.cooparticlesapi.test.TestControlKeyBindings
 import cn.coostack.cooparticlesapi.test.TestManager
+import cn.coostack.cooparticlesapi.test.block.client.TestControllerPickClient
 import cn.coostack.cooparticlesapi.test.options.display.TestDisplayerStyle
 import cn.coostack.cooparticlesapi.test.options.particle.client.BarrierSwordGroupClient
 import cn.coostack.cooparticlesapi.test.options.particle.client.ScaleCircleGroupClient
@@ -202,6 +203,7 @@ object CooParticlesAPIClient {
         CooPostEffects.client.clear()
         DataHolderManager.clearClient()
         TestManager.clearClient()
+        TestControllerPickClient.cancel()
         ClientSoundManager.clear()
         ClientSoundLoopManager.clear()
         scheduler.clear()
@@ -238,6 +240,7 @@ object CooParticlesAPIClient {
                 TestManager.doTickClient()
                 AnimateManager.tickClient()
                 CooClientPacketManager.tick()
+                TestControllerPickClient.tick()
             }
         }
     }

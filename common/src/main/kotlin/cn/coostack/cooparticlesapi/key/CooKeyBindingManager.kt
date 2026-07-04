@@ -33,7 +33,9 @@ object CooKeyBindingManager {
     private data class KeyState(
         val id: ResourceLocation,
         val mapping: KeyMapping,
+        val triggerScope: CooKeyBindingTriggerScope,
         var wasDown: Boolean = false,
+        var blockedUntilRelease: Boolean = false,
         var pressTick: Int = 0,
         var lastClickTick: Long = -1
     )
@@ -58,7 +60,17 @@ object CooKeyBindingManager {
         defaultKey: Int,
         category: String
     ): KeyMapping {
-        return register(keyId, keyType, defaultKey, category, keyType == InputConstants.Type.MOUSE)
+        return register(keyId, keyType, defaultKey, category, CooKeyBindingTriggerScope.BOTH)
+    }
+
+    fun register(
+        keyId: ResourceLocation,
+        keyType: InputConstants.Type,
+        defaultKey: Int,
+        category: String,
+        triggerScope: CooKeyBindingTriggerScope
+    ): KeyMapping {
+        return register(keyId, keyType, defaultKey, category, keyType == InputConstants.Type.MOUSE, triggerScope)
     }
 
     fun register(
@@ -68,6 +80,17 @@ object CooKeyBindingManager {
         category: String,
         listenOnly: Boolean
     ): KeyMapping {
+        return register(keyId, keyType, defaultKey, category, listenOnly, CooKeyBindingTriggerScope.BOTH)
+    }
+
+    fun register(
+        keyId: ResourceLocation,
+        keyType: InputConstants.Type,
+        defaultKey: Int,
+        category: String,
+        listenOnly: Boolean,
+        triggerScope: CooKeyBindingTriggerScope
+    ): KeyMapping {
         require(keyId !in keyStates) { "key id already registered: $keyId" }
         val mappingName = "key.${keyId.namespace}.${keyId.path}"
         val mapping = if (listenOnly) {
@@ -75,7 +98,7 @@ object CooKeyBindingManager {
         } else {
             KeyMapping(mappingName, keyType, defaultKey, category)
         }
-        val state = KeyState(keyId, mapping)
+        val state = KeyState(keyId, mapping, triggerScope)
         keyStates[keyId] = state
         registerIfPossible(state)
         return mapping
@@ -102,14 +125,23 @@ object CooKeyBindingManager {
         val states = keyStates.values.toList()
         val pendingActions = ArrayList<KeyActionData<ResourceLocation>>()
         val client = Minecraft.getInstance()
+        val isGuiOpen = client.screen != null
         states.forEach { state ->
             val down = isPhysicallyDown(state.mapping, client)
-            state.mapping.setDown(down)
+            if (!down) {
+                state.blockedUntilRelease = false
+            }
+            val canStart = state.triggerScope.canStart(isGuiOpen)
+            val canContinue = state.triggerScope.canContinue(isGuiOpen)
+            val activeDown = down && !state.blockedUntilRelease && (if (state.wasDown) canContinue else canStart)
+            state.mapping.setDown(activeDown)
             if (keyCountDowns.containsKey(state.id)) {
                 val current = keyCountDowns[state.id]!!
                 if (current > 0) {
                     keyCountDowns[state.id] = current - 1
                     state.wasDown = false
+                    state.blockedUntilRelease = down
+                    state.mapping.setDown(false)
                     state.pressTick = 0
                     state.lastClickTick = tickCounter
                     return@forEach
@@ -117,7 +149,7 @@ object CooKeyBindingManager {
                     keyCountDowns.remove(state.id)
                 }
             }
-            if (down) {
+            if (activeDown) {
                 if (!state.wasDown) {
                     state.pressTick = 0
                     pendingActions.add(
@@ -143,7 +175,10 @@ object CooKeyBindingManager {
                 state.lastClickTick = tickCounter
                 state.pressTick = 0
             }
-            state.wasDown = down
+            if (down && !activeDown) {
+                state.blockedUntilRelease = true
+            }
+            state.wasDown = activeDown
         }
         if (pendingActions.isNotEmpty()) {
             sendActions(KeyActionBatch(pendingActions))

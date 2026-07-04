@@ -2,17 +2,68 @@ package cn.coostack.cooparticlesapi.test
 
 import cn.coostack.cooparticlesapi.test.api.TestGroup
 import cn.coostack.cooparticlesapi.test.api.TestGroupBuilder
+import cn.coostack.cooparticlesapi.test.block.BlockTestGroup
+import cn.coostack.cooparticlesapi.test.block.BlockTestPlayer
+import cn.coostack.cooparticlesapi.test.block.builtin.BlockAPITestGroupBuilder
 import net.minecraft.world.entity.player.Player
 
 object TestManager {
 
-    val builders = HashMap<String, (Player) -> TestGroupBuilder>()
+    val builders = linkedMapOf<String, (Player) -> TestGroupBuilder>()
 
     val validGroupsServer = HashSet<TestGroup>()
     val validGroupsClient = HashSet<TestGroup>()
+    private var builtinsRegistered = false
 
     fun register(id: String, group: (Player) -> TestGroupBuilder) {
         builders[id] = group
+    }
+
+    fun registerBuiltins() {
+        if (builtinsRegistered) {
+            return
+        }
+        builtinsRegistered = true
+        register(BlockAPITestGroupBuilder.ID) { BlockAPITestGroupBuilder(it) }
+        register(APITestGroupBuilder.ID) {
+            APITestGroupBuilder(it)
+        }
+    }
+
+    fun registeredIds(): List<String> {
+        return builders.keys.toList()
+    }
+
+    fun contains(id: String): Boolean {
+        return builders.containsKey(id)
+    }
+
+    fun build(id: String, user: Player): TestGroup? {
+        return builders[id]?.invoke(user)?.build()
+    }
+
+    fun buildBlock(id: String, user: BlockTestPlayer): BlockTestGroup? {
+        return build(id, user) as? BlockTestGroup
+    }
+
+    fun buildBlock(id: String, user: Player): BlockTestGroup? {
+        return build(id, user as? BlockTestPlayer ?: BlockTestPlayer(user)) as? BlockTestGroup
+    }
+
+    fun optionCount(id: String, user: BlockTestPlayer): Int {
+        return buildBlock(id, user)?.optionCount() ?: 0
+    }
+
+    fun optionCount(id: String, user: Player): Int {
+        return buildBlock(id, user)?.optionCount() ?: 0
+    }
+
+    fun optionIds(id: String, user: BlockTestPlayer): List<String> {
+        return buildBlock(id, user)?.optionIds() ?: emptyList()
+    }
+
+    fun optionIds(id: String, user: Player): List<String> {
+        return buildBlock(id, user)?.optionIds() ?: emptyList()
     }
 
 
@@ -38,7 +89,7 @@ object TestManager {
             validGroupsServer
         }
         clearGroupsFor(groups, user)
-        val group = builders[id]!!(user).build()
+        val group = build(id, user) ?: return null
         groups.add(group)
         group.start()
         return group

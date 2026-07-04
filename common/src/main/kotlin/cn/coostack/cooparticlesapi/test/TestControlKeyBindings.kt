@@ -42,6 +42,14 @@ object TestControlKeyBindings {
     fun isLongPressRelease(event: KeyActionEvent, keyId: ResourceLocation): Boolean {
         return event.serverSide && event.isReleased(keyId) && event.getPressTick(keyId) >= LONG_PRESS_THRESHOLD
     }
+
+    fun isReleasedDoubleClick(event: KeyActionEvent, keyId: ResourceLocation): Boolean {
+        return event.serverSide && event.isReleased(keyId) && event.isDoubleClick(keyId)
+    }
+
+    fun isReleasedSingleClick(event: KeyActionEvent, keyId: ResourceLocation): Boolean {
+        return event.serverSide && event.isReleased(keyId) && event.isSingleClick(keyId)
+    }
 }
 
 @EventListener(CooParticlesConstants.MOD_ID)
@@ -61,19 +69,19 @@ object TestControlKeyListener {
                 TestManager.jumpToFirst(player)
             }
 
-            event.isDoubleClick(TestControlKeyBindings.NEXT_KEY) -> {
+            TestControlKeyBindings.isReleasedDoubleClick(event, TestControlKeyBindings.NEXT_KEY) -> {
                 TestManager.jumpRelative(player, 5)
             }
 
-            event.isDoubleClick(TestControlKeyBindings.PREVIOUS_KEY) -> {
+            TestControlKeyBindings.isReleasedDoubleClick(event, TestControlKeyBindings.PREVIOUS_KEY) -> {
                 TestManager.jumpRelative(player, -5)
             }
 
-            event.isSingleClick(TestControlKeyBindings.NEXT_KEY) -> {
+            TestControlKeyBindings.isReleasedSingleClick(event, TestControlKeyBindings.NEXT_KEY) -> {
                 TestManager.completeCurrent(player)
             }
 
-            event.isSingleClick(TestControlKeyBindings.PREVIOUS_KEY) -> {
+            TestControlKeyBindings.isReleasedSingleClick(event, TestControlKeyBindings.PREVIOUS_KEY) -> {
                 TestManager.jumpRelative(player, -1)
             }
         }

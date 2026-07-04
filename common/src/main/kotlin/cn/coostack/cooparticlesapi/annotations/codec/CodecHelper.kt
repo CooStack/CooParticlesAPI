@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi.annotations.codec
 
+import cn.coostack.cooparticlesapi.CodecHelperJava
 import cn.coostack.cooparticlesapi.animation.timeline.ValueConstSpeedAnimator
 import cn.coostack.cooparticlesapi.animation.timeline.ValueConstTimeAnimator
 import cn.coostack.cooparticlesapi.animation.timeline.DoubleConstSpeedAnimator
@@ -47,6 +48,7 @@ import java.lang.reflect.Field
 import java.lang.reflect.Modifier
 import java.lang.reflect.ParameterizedType
 import java.lang.reflect.Type
+import java.lang.reflect.WildcardType
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -54,6 +56,7 @@ object CodecHelper {
     val supposedTypes = ConcurrentHashMap<String, StreamCodec<out FriendlyByteBuf, *>>()
 
     init {
+        CodecHelperJava.init()
         register(Short::class.java, StreamCodec.of({ buf, i -> buf.writeShort(i.toInt()) }, { it.readShort() }))
         register(Int::class.java, StreamCodec.of({ buf, i -> buf.writeInt(i) }, { it.readInt() }))
         register(Long::class.java, StreamCodec.of({ buf, i -> buf.writeLong(i) }, { it.readLong() }))
@@ -64,7 +67,7 @@ object CodecHelper {
         register(Byte::class.java, StreamCodec.of({ buf, i -> buf.writeByte(i.toInt()) }, { it.readByte() }))
         register(Boolean::class.java, StreamCodec.of({ buf, i -> buf.writeBoolean(i) }, { it.readBoolean() }))
         register(ByteArray::class.java, StreamCodec.of({ buf, i -> buf.writeByteArray(i) }, { it.readByteArray() }))
-        register(Char::class.java, StreamCodec.of({ buf, i -> buf.writeChar(i.toInt()) }, { it.readChar() }))
+        register(Char::class.java, StreamCodec.of({ buf, i -> buf.writeChar(i.code) }, { it.readChar() }))
         register(UUID::class.java, StreamCodec.of({ buf, i -> buf.writeUUID(i) }, { it.readUUID() }))
         register(ControlableParticleData::class.java, ControlableParticleData.PACKET_CODEC)
         register(CompositionEmittersData::class.java, CompositionEmittersData.PACKET_CODEC)
@@ -349,44 +352,56 @@ object CodecHelper {
      */
 
     fun codecOf(type: Type): StreamCodec<out FriendlyByteBuf, *> {
-        if (type is Class<*>) {
-            return supposedTypes[type.name]
-                ?: throw IllegalArgumentException("不支持的类型: ${type.name}")
+        val codecType = normalizeCodecType(type)
+
+        if (codecType is Class<*>) {
+            return supposedTypes[codecType.name]
+                ?: throw IllegalArgumentException("不支持的类型: ${codecType.name}")
         }
 
-        if (type is ParameterizedType) {
-            val raw = type.rawType as Class<*>
+        if (codecType is ParameterizedType) {
+            val raw = codecType.rawType as Class<*>
 
             if (List::class.java.isAssignableFrom(raw)) {
-                return codecList(type)
+                return codecList(codecType)
             }
 
             if (Set::class.java.isAssignableFrom(raw)) {
-                return codecSet(type)
+                return codecSet(codecType)
             }
 
             if (Map::class.java.isAssignableFrom(raw)) {
-                return codecMap(type)
+                return codecMap(codecType)
             }
         }
 
         throw IllegalArgumentException("不支持的字段类型: $type")
     }
 
+    private fun normalizeCodecType(type: Type): Type {
+        if (type is WildcardType) {
+            if (type.lowerBounds.isNotEmpty()) {
+                throw IllegalArgumentException("不支持的字段类型: $type")
+            }
+            return type.upperBounds.firstOrNull() ?: Any::class.java
+        }
+        return type
+    }
+
+    @Suppress("UNCHECKED_CAST")
     fun codecList(type: Type): StreamCodec<out FriendlyByteBuf, *> {
         if (type !is ParameterizedType) {
             throw IllegalArgumentException("List字段必须声明具体泛型: $type")
         }
 
         val elementType = type.actualTypeArguments[0]
-        val elementCodec = codecOf(elementType) as StreamCodec<FriendlyByteBuf, Any?>
+        val elementCodec = codecOf(elementType) as StreamCodec<FriendlyByteBuf, Any>
 
-        return StreamCodec.of(
+        return StreamCodec.of<FriendlyByteBuf, List<*>>(
             { buf, value ->
-                val list = value as List<*>
-                buf.writeVarInt(list.size)
-                list.forEach { element ->
-                    elementCodec.encode(buf, element)
+                buf.writeVarInt(value.size)
+                value.forEach { element ->
+                    elementCodec.encode(buf, element ?: error("List字段不支持null元素: $type"))
                 }
             },
             { buf ->
@@ -400,20 +415,20 @@ object CodecHelper {
         )
     }
 
+    @Suppress("UNCHECKED_CAST")
     fun codecSet(type: Type): StreamCodec<out FriendlyByteBuf, *> {
         if (type !is ParameterizedType) {
             throw IllegalArgumentException("Set字段必须声明具体泛型: $type")
         }
 
         val elementType = type.actualTypeArguments[0]
-        val elementCodec = codecOf(elementType) as StreamCodec<FriendlyByteBuf, Any?>
+        val elementCodec = codecOf(elementType) as StreamCodec<FriendlyByteBuf, Any>
 
-        return StreamCodec.of(
+        return StreamCodec.of<FriendlyByteBuf, Set<*>>(
             { buf, value ->
-                val set = value as Set<*>
-                buf.writeVarInt(set.size)
-                set.forEach { element ->
-                    elementCodec.encode(buf, element)
+                buf.writeVarInt(value.size)
+                value.forEach { element ->
+                    elementCodec.encode(buf, element ?: error("Set字段不支持null元素: $type"))
                 }
             },
             { buf ->
@@ -427,6 +442,7 @@ object CodecHelper {
         )
     }
 
+    @Suppress("UNCHECKED_CAST")
     fun codecMap(type: Type): StreamCodec<out FriendlyByteBuf, *> {
         if (type !is ParameterizedType) {
             throw IllegalArgumentException("Map字段必须声明具体泛型: $type")
@@ -434,16 +450,15 @@ object CodecHelper {
 
         val keyType = type.actualTypeArguments[0]
         val valueType = type.actualTypeArguments[1]
-        val keyCodec = codecOf(keyType) as StreamCodec<FriendlyByteBuf, Any?>
-        val valueCodec = codecOf(valueType) as StreamCodec<FriendlyByteBuf, Any?>
+        val keyCodec = codecOf(keyType) as StreamCodec<FriendlyByteBuf, Any>
+        val valueCodec = codecOf(valueType) as StreamCodec<FriendlyByteBuf, Any>
 
-        return StreamCodec.of(
+        return StreamCodec.of<FriendlyByteBuf, Map<*, *>>(
             { buf, value ->
-                val map = value as Map<*, *>
-                buf.writeVarInt(map.size)
-                map.forEach { (key, mapValue) ->
-                    keyCodec.encode(buf, key)
-                    valueCodec.encode(buf, mapValue)
+                buf.writeVarInt(value.size)
+                value.forEach { (key, mapValue) ->
+                    keyCodec.encode(buf, key ?: error("Map字段不支持null键: $type"))
+                    valueCodec.encode(buf, mapValue ?: error("Map字段不支持null值: $type"))
                 }
             },
             { buf ->

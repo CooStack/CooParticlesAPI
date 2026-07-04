@@ -11,7 +11,6 @@ class ItemModelProvider(output: FabricDataOutput?) : FabricModelProvider(output)
 
 
     override fun generateBlockStateModels(gen: BlockModelGenerators) {
-
     }
 
     override fun generateItemModels(gen: ItemModelGenerators) {

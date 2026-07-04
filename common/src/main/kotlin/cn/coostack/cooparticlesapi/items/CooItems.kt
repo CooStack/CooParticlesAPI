@@ -1,8 +1,10 @@
 package cn.coostack.cooparticlesapi.items
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
+import cn.coostack.cooparticlesapi.blocks.CooBlocks
 import cn.coostack.cooparticlesapi.platform.registry.CommonDeferredItem
 import net.minecraft.resources.ResourceLocation
+import net.minecraft.world.item.BlockItem
 import net.minecraft.world.item.Item
 import java.util.function.Supplier
 
@@ -30,6 +32,14 @@ object CooItems {
 
     val testTickItem = register("test_tick") {
         TestTickItem()
+    }
+
+    val TEST_CONTROLLER_ITEM = register("test_controller") {
+        BlockItem(CooBlocks.TEST_CONTROLLER.get(), Item.Properties())
+    }
+
+    val TEST_BLOCK_BINDER = register("test_block_binder") {
+        TestBlockBinderItem(Item.Properties().stacksTo(1))
     }
 
     fun register(id: String, item: Supplier<Item>): CommonDeferredItem {

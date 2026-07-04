@@ -3,6 +3,7 @@ package cn.coostack.cooparticlesapi
 import cn.coostack.cooparticlesapi.animation.AnimateManager
 import cn.coostack.cooparticlesapi.annotations.packet.CooPacketRegistry
 import cn.coostack.cooparticlesapi.barrages.BarrageManager
+import cn.coostack.cooparticlesapi.blocks.CooBlocks
 import cn.coostack.cooparticlesapi.data.holder.DataHolderManager
 import cn.coostack.cooparticlesapi.display.DisplayEntityManager
 import cn.coostack.cooparticlesapi.enums.DistType
@@ -29,6 +30,23 @@ import com.ezylang.evalex.Expression
 import net.minecraft.core.RegistryAccess
 import net.minecraft.server.MinecraftServer
 
+/**
+ * TODO List
+ * 基于 OPENGL 制作的独立于Minecraft的粒子系统
+ * 制作出类似 GPU粒子的效果？
+ *
+ * 粒子的要求是
+ * 客户端外部控制位置 （Controler）
+ * 粒子发射器效果
+ * billboard
+ * 纹理支持
+ * 泛光 / 亮度效果
+ * 不透明度支持
+ * 亮度叠加
+ * 缩放效果
+ * 生命周期变化
+ * 目标是达到10w粒子的级别
+ */
 object CooParticlesAPI {
     var subTicks = 0.0
     var renderInit = false
@@ -75,6 +93,7 @@ object CooParticlesAPI {
             .evaluate()
         CooParticlesConstants.logger.info("eval api {}", builder.value)
         CooParticlesServices.API_CONFIG_MANAGER.loadConfig()
+        CooBlocks.registerAll()
         WindDirections.init()
         ParticleEventHandlerManager.register(TestCollideEventHandler)
         registerTest()
@@ -135,9 +154,7 @@ object CooParticlesAPI {
 
 
     fun registerTest() {
-        TestManager.register(APITestGroupBuilder.ID) {
-            APITestGroupBuilder(it)
-        }
+        TestManager.registerBuiltins()
     }
 
     fun tickServer(server: MinecraftServer) {
