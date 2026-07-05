@@ -2,6 +2,7 @@ package cn.coostack.cooparticlesapi.test.block
 
 import cn.coostack.cooparticlesapi.test.api.TestGroup
 import cn.coostack.cooparticlesapi.test.api.TestOption
+import cn.coostack.cooparticlesapi.test.api.TestOptionParamSpec
 import cn.coostack.cooparticlesapi.test.api.TestReviewMode
 import net.minecraft.network.chat.Component
 import net.minecraft.world.entity.player.Player
@@ -20,6 +21,7 @@ class BlockTestGroup(
     }
 
     val options = ArrayList<Supplier<TestOption>>()
+    private val optionParamOverrides = linkedMapOf<Int, Map<String, String>>()
     var currentOption: TestOption? = null
         private set
     private var pendingReviewOption: TestOption? = null
@@ -42,6 +44,18 @@ class BlockTestGroup(
 
     fun optionIds(): List<String> {
         return options.map { supplier -> supplier.get().optionID() }
+    }
+
+    fun optionParamSpecs(): List<List<TestOptionParamSpec<*>>> {
+        return options.map { supplier -> supplier.get().optionParamSpecs() }
+    }
+
+    fun setOptionParamOverrides(overrides: Map<Int, Map<String, String>>): BlockTestGroup {
+        optionParamOverrides.clear()
+        overrides.forEach { (index, values) ->
+            optionParamOverrides[index] = LinkedHashMap(values)
+        }
+        return this
     }
 
     fun activeIndex(): Int = activeOptionIndex
@@ -80,6 +94,9 @@ class BlockTestGroup(
         }
         return BlockTestGroup(testPlayer, id).also {
             it.announceGroupFinished = announceGroupFinished
+            optionParamOverrides[index]?.let { values ->
+                it.setOptionParamOverrides(mapOf(0 to values))
+            }
         }.appendOption(options[index])
     }
 
@@ -163,6 +180,7 @@ class BlockTestGroup(
         val option = options[nextOptionIndex].get()
         nextOptionIndex++
         currentOption = option
+        option.applyOptionParams(optionParamOverrides[activeOptionIndex].orEmpty())
         option.start()
         lastStatus = buildCurrentStatusLine() ?: "运行中"
     }

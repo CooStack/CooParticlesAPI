@@ -36,4 +36,32 @@ interface TestOption {
     fun reviewDescription(): String? {
         return null
     }
+
+    fun <T : Any> applyParam(type: TestOptionParamType<T>, defaultValue: T): TestOption {
+        return TestOptionParamSupport.applyParam(this, type, defaultValue)
+    }
+
+    fun applyTo(action: TestOption.(Any) -> Unit): TestOption {
+        return TestOptionParamSupport.applyTo(this, action)
+    }
+
+    fun applyOptionParams(values: Map<String, String>) {
+        TestOptionParamSupport.applyOptionParams(this, values)
+    }
+
+    fun optionParamSpecs(): List<TestOptionParamSpec<*>> {
+        return TestOptionParamSupport.optionParamSpecs(this)
+    }
+
+    fun optionParamValues(): Map<String, String> {
+        return TestOptionParamSupport.optionParamValues(this)
+    }
+
+    fun <T : Any> getParam(id: String): T? {
+        return TestOptionParamSupport.getParam(this, id)
+    }
+
+    fun paramTarget(): Any {
+        return this
+    }
 }

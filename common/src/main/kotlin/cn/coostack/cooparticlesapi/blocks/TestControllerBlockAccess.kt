@@ -37,7 +37,7 @@ object TestControllerBlockAccess {
             PacketOpenTestControllerScreenS2C.fromBlockEntity(
                 dimensionId(level),
                 blockEntity,
-                TestManager.registeredIds()
+                blockEntity.registeredGroupIds()
             )
         )
     }

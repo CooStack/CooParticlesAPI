@@ -6,7 +6,7 @@ import net.minecraft.client.Minecraft
 
 object TestControllerClientScreens {
     fun openController(packet: PacketOpenTestControllerScreenS2C) {
-        Minecraft.getInstance().setScreen(TestControllerScreen(packet))
+        Minecraft.getInstance().setScreen(TestControllerScreen(packet, TestControllerPickClient.consumeOpenParamPage()))
     }
 
     fun openBoundSelection(packet: PacketOpenBoundTestSelectionScreenS2C) {

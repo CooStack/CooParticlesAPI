@@ -5,6 +5,10 @@ import cn.coostack.cooparticlesapi.display.DisplayEntityManager
 import cn.coostack.cooparticlesapi.test.api.TestOption
 
 class SimpleDisplayEntityOption(val testDisplayEntity: DisplayEntity, var testingTick: Int = 100) : TestOption {
+    override fun paramTarget(): Any {
+        return testDisplayEntity
+    }
+
     override fun start() {
         DisplayEntityManager.spawn(testDisplayEntity)
     }

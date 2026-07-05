@@ -5,6 +5,10 @@ import cn.coostack.cooparticlesapi.network.particle.composition.manager.Particle
 import cn.coostack.cooparticlesapi.test.api.TestOption
 
 class SimpleCompositionOption(val composition: ParticleComposition, var testingTick: Int = 100) : TestOption {
+    override fun paramTarget(): Any {
+        return composition
+    }
+
     override fun start() {
         ParticleCompositionManager.spawn(composition)
     }

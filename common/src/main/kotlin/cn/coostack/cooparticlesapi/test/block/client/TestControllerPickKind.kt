@@ -2,5 +2,6 @@ package cn.coostack.cooparticlesapi.test.block.client
 
 enum class TestControllerPickKind {
     OFFSET,
-    FORWARD
+    FORWARD,
+    PARAM_POSITION
 }

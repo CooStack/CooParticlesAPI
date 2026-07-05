@@ -195,6 +195,7 @@ class GamingTestGroup(val testPlayer: Player, val id: String) : TestGroup {
         val option = options[nextOptionIndex].get()
         nextOptionIndex++
         currentOption = option
+        option.applyOptionParams(emptyMap())
         option.start()
         actionBarCooldown = 0
         sendOptionStarted(option)

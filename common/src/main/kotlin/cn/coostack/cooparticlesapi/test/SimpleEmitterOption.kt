@@ -6,6 +6,11 @@ import cn.coostack.cooparticlesapi.test.api.TestOption
 
 class SimpleEmitterOption(val testEmitters: ParticleEmitters, var testingTick: Int = 100) : TestOption {
     var ticking: SimpleEmitterOption.() -> Unit = {}
+
+    override fun paramTarget(): Any {
+        return testEmitters
+    }
+
     override fun start() {
         ParticleEmittersManager.spawnEmitters(testEmitters)
     }

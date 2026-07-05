@@ -6,6 +6,7 @@ package cn.coostack.cooparticlesapi.supports
  */
 enum class TextureSheetsEnum {
     // CooParticlesAPI 提供
+    ADDITION_BLEND_TRANSLUCENT_NO_DEPTH_WRITE,
     ADDITION_BLEND_TRANSLUCENT,
     ADDITION_BLEND,
 

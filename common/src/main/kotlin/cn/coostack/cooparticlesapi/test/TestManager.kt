@@ -2,6 +2,7 @@ package cn.coostack.cooparticlesapi.test
 
 import cn.coostack.cooparticlesapi.test.api.TestGroup
 import cn.coostack.cooparticlesapi.test.api.TestGroupBuilder
+import cn.coostack.cooparticlesapi.test.api.TestOptionParamSpec
 import cn.coostack.cooparticlesapi.test.block.BlockTestGroup
 import cn.coostack.cooparticlesapi.test.block.BlockTestPlayer
 import cn.coostack.cooparticlesapi.test.block.builtin.BlockAPITestGroupBuilder
@@ -34,8 +35,24 @@ object TestManager {
         return builders.keys.toList()
     }
 
+    fun registeredBlockIds(user: BlockTestPlayer): List<String> {
+        return builders.keys.filter { id -> buildBlock(id, user) != null }
+    }
+
+    fun registeredBlockIds(user: Player): List<String> {
+        return registeredBlockIds(user as? BlockTestPlayer ?: BlockTestPlayer(user))
+    }
+
     fun contains(id: String): Boolean {
         return builders.containsKey(id)
+    }
+
+    fun containsBlock(id: String, user: BlockTestPlayer): Boolean {
+        return buildBlock(id, user) != null
+    }
+
+    fun containsBlock(id: String, user: Player): Boolean {
+        return buildBlock(id, user) != null
     }
 
     fun build(id: String, user: Player): TestGroup? {
@@ -64,6 +81,14 @@ object TestManager {
 
     fun optionIds(id: String, user: Player): List<String> {
         return buildBlock(id, user)?.optionIds() ?: emptyList()
+    }
+
+    fun optionParamSpecs(id: String, user: BlockTestPlayer): List<List<TestOptionParamSpec<*>>> {
+        return buildBlock(id, user)?.optionParamSpecs() ?: emptyList()
+    }
+
+    fun optionParamSpecs(id: String, user: Player): List<List<TestOptionParamSpec<*>>> {
+        return buildBlock(id, user)?.optionParamSpecs() ?: emptyList()
     }
 
 

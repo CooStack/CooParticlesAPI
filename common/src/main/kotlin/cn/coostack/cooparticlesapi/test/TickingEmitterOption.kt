@@ -9,6 +9,10 @@ class TickingEmitterOption(
     var testingTick: Int = 100,
     val ticking: (ParticleEmitters) -> Boolean
 ) : TestOption {
+    override fun paramTarget(): Any {
+        return testEmitters
+    }
+
     override fun start() {
         ParticleEmittersManager.spawnEmitters(testEmitters)
     }

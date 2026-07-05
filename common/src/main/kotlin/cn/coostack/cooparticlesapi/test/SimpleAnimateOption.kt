@@ -6,6 +6,10 @@ import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersMan
 import cn.coostack.cooparticlesapi.test.api.TestOption
 
 class SimpleAnimateOption(val animate: Animate, var testingTick: Int = 100) : TestOption {
+    override fun paramTarget(): Any {
+        return animate
+    }
+
     override fun start() {
         AnimateManager.displayAnimateServer(animate)
     }

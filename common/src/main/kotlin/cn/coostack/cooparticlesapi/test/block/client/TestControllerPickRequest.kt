@@ -8,7 +8,11 @@ internal data class TestControllerPickRequest(
     val screenPacket: PacketOpenTestControllerScreenS2C,
     val packet: PacketUpdateTestControllerC2S,
     val kind: TestControllerPickKind,
-    val precisionUnlocked: Boolean
+    val precisionUnlocked: Boolean,
+    val paramOptionIndex: Int = 0,
+    val paramId: String = "",
+    val paramComponentCount: Int = 3,
+    val paramAbsolute: Boolean = false
 ) {
     fun format(value: Double): Double {
         if (precisionUnlocked) {

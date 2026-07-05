@@ -4,6 +4,7 @@ import cn.coostack.cooparticlesapi.test.TestManager
 import cn.coostack.cooparticlesapi.test.block.BlockTestGroup
 import cn.coostack.cooparticlesapi.test.block.BlockTestMode
 import cn.coostack.cooparticlesapi.test.block.BlockTestPlayer
+import cn.coostack.cooparticlesapi.test.api.TestOptionParamSpec
 import net.minecraft.core.BlockPos
 import net.minecraft.core.HolderLookup
 import net.minecraft.nbt.CompoundTag
@@ -27,6 +28,7 @@ class TestControllerBlockEntity(
     var playerBoxHeight: Double = 1.8
     var playerBoxDepth: Double = 0.6
 
+    private val optionParamValueOverrides = linkedMapOf<Int, MutableMap<String, String>>()
     private var activeGroup: BlockTestGroup? = null
     private var waitTicks: Int = 0
     private var shouldAutoRun: Boolean = false
@@ -46,6 +48,11 @@ class TestControllerBlockEntity(
         }
     }
 
+    fun registeredGroupIds(): List<String> {
+        val serverLevel = level as? ServerLevel ?: return emptyList()
+        return TestManager.registeredBlockIds(createTestPlayer(serverLevel))
+    }
+
     fun optionCount(): Int {
         val serverLevel = level as? ServerLevel ?: return 0
         return TestManager.optionCount(groupId, createTestPlayer(serverLevel))
@@ -59,6 +66,23 @@ class TestControllerBlockEntity(
     fun optionIds(groupId: String): List<String> {
         val serverLevel = level as? ServerLevel ?: return emptyList()
         return TestManager.optionIds(groupId, createTestPlayer(serverLevel))
+    }
+
+    fun optionParamSpecs(): List<List<TestOptionParamSpec<*>>> {
+        val serverLevel = level as? ServerLevel ?: return emptyList()
+        return TestManager.optionParamSpecs(groupId, createTestPlayer(serverLevel))
+    }
+
+    fun optionParamSpecs(groupId: String): List<List<TestOptionParamSpec<*>>> {
+        val serverLevel = level as? ServerLevel ?: return emptyList()
+        return TestManager.optionParamSpecs(groupId, createTestPlayer(serverLevel))
+    }
+
+    fun optionParamValues(): List<Map<String, String>> {
+        return optionParamSpecs().mapIndexed { index, specs ->
+            val saved = optionParamValueOverrides[index].orEmpty()
+            specs.associate { spec -> spec.id to (saved[spec.id] ?: spec.defaultText()) }
+        }
     }
 
     fun currentIndex(): Int {
@@ -81,7 +105,9 @@ class TestControllerBlockEntity(
         playerForward: Vec3,
         playerBoxWidth: Double,
         playerBoxHeight: Double,
-        playerBoxDepth: Double
+        playerBoxDepth: Double,
+        optionParamIndex: Int,
+        optionParamValues: Map<String, String>
     ): Boolean {
         val nextGroupId = groupId.trim()
         val nextSelectedIndex = selectedIndex.coerceAtLeast(0)
@@ -90,6 +116,12 @@ class TestControllerBlockEntity(
         val nextPlayerBoxWidth = playerBoxWidth.coerceIn(0.05, 16.0)
         val nextPlayerBoxHeight = playerBoxHeight.coerceIn(0.05, 16.0)
         val nextPlayerBoxDepth = playerBoxDepth.coerceIn(0.05, 16.0)
+        val groupChanged = this.groupId != nextGroupId
+        val normalizedParamIndex = optionParamIndex.coerceAtLeast(0)
+        val normalizedParamValues = optionParamValues
+            .filterKeys { it.isNotBlank() }
+            .mapValues { it.value.trim() }
+        val paramsChanged = optionParamValueOverrides[normalizedParamIndex].orEmpty() != normalizedParamValues
         val changed = this.groupId != nextGroupId ||
                 this.mode != mode ||
                 this.selectedIndex != nextSelectedIndex ||
@@ -99,7 +131,8 @@ class TestControllerBlockEntity(
                 this.playerForward != nextPlayerForward ||
                 this.playerBoxWidth != nextPlayerBoxWidth ||
                 this.playerBoxHeight != nextPlayerBoxHeight ||
-                this.playerBoxDepth != nextPlayerBoxDepth
+                this.playerBoxDepth != nextPlayerBoxDepth ||
+                paramsChanged
 
         this.groupId = nextGroupId
         this.mode = mode
@@ -111,6 +144,14 @@ class TestControllerBlockEntity(
         this.playerBoxWidth = nextPlayerBoxWidth
         this.playerBoxHeight = nextPlayerBoxHeight
         this.playerBoxDepth = nextPlayerBoxDepth
+        if (groupChanged) {
+            optionParamValueOverrides.clear()
+        }
+        if (normalizedParamValues.isEmpty()) {
+            optionParamValueOverrides.remove(normalizedParamIndex)
+        } else {
+            optionParamValueOverrides[normalizedParamIndex] = LinkedHashMap(normalizedParamValues)
+        }
         setChanged()
         return changed
     }
@@ -118,7 +159,7 @@ class TestControllerBlockEntity(
     fun startTest(): Boolean {
         val serverLevel = level as? ServerLevel ?: return false
         cancelRuntime(resetHidden = false)
-        if (groupId.isBlank() || !TestManager.contains(groupId)) {
+        if (groupId.isBlank() || !TestManager.containsBlock(groupId, createTestPlayer(serverLevel))) {
             shouldAutoRun = false
             lastStatus = "未知 TestGroupID: $groupId"
             setChanged()
@@ -193,6 +234,19 @@ class TestControllerBlockEntity(
         playerBoxWidth = tag.getDouble("playerBoxWidth").takeIf { it > 0.0 } ?: 0.6
         playerBoxHeight = tag.getDouble("playerBoxHeight").takeIf { it > 0.0 } ?: 1.8
         playerBoxDepth = tag.getDouble("playerBoxDepth").takeIf { it > 0.0 } ?: 0.6
+        optionParamValueOverrides.clear()
+        val optionParams = tag.getCompound("optionParams")
+        optionParams.getAllKeys().forEach { indexKey ->
+            val index = indexKey.toIntOrNull() ?: return@forEach
+            val valuesTag = optionParams.getCompound(indexKey)
+            val values = linkedMapOf<String, String>()
+            valuesTag.getAllKeys().forEach { paramId ->
+                values[paramId] = valuesTag.getString(paramId)
+            }
+            if (values.isNotEmpty()) {
+                optionParamValueOverrides[index] = values
+            }
+        }
         shouldAutoRun = tag.getBoolean("shouldAutoRun")
         waitTicks = if (shouldAutoRun) tag.getInt("waitTicks").coerceAtLeast(0) else 0
         lastStatus = when {
@@ -216,6 +270,13 @@ class TestControllerBlockEntity(
         tag.putDouble("playerBoxWidth", playerBoxWidth)
         tag.putDouble("playerBoxHeight", playerBoxHeight)
         tag.putDouble("playerBoxDepth", playerBoxDepth)
+        val optionParams = CompoundTag()
+        optionParamValueOverrides.forEach { (index, values) ->
+            val valuesTag = CompoundTag()
+            values.forEach { (id, value) -> valuesTag.putString(id, value) }
+            optionParams.put(index.toString(), valuesTag)
+        }
+        tag.put("optionParams", optionParams)
     }
 
     private fun startFreshGroup(serverLevel: ServerLevel): Boolean {
@@ -224,6 +285,7 @@ class TestControllerBlockEntity(
             lastStatus = "未知 TestGroupID: $groupId"
             return false
         }
+        built.setOptionParamOverrides(optionParamValueOverrides)
         val group = when (mode) {
             BlockTestMode.INDEX -> built.singleOption(selectedIndex) ?: run {
                 lastStatus = "索引越界: $selectedIndex / ${built.optionCount()}"

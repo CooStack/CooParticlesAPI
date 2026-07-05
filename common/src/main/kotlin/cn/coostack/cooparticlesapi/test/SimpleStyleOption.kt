@@ -12,6 +12,10 @@ class SimpleStyleOption(
     val pos: Vec3,
     var testingTick: Int = 100
 ) : TestOption {
+    override fun paramTarget(): Any {
+        return testStyle
+    }
+
     override fun start() {
         ParticleStyleManager.spawnStyle(world, pos, testStyle)
     }

@@ -6,6 +6,7 @@ import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
 import cn.coostack.cooparticlesapi.blocks.TestControllerBlockAccess
 import cn.coostack.cooparticlesapi.network.packet.api.CooPacket
 import cn.coostack.cooparticlesapi.network.packet.api.ServerContext
+import cn.coostack.cooparticlesapi.test.api.TestOptionParamCodec
 import cn.coostack.cooparticlesapi.test.block.BlockTestMode
 import net.minecraft.core.BlockPos
 import net.minecraft.resources.ResourceLocation
@@ -26,6 +27,8 @@ class PacketUpdateTestControllerC2S() : CooPacket() {
     @CodecField var offsetX: Double = 0.0
     @CodecField var offsetY: Double = 0.0
     @CodecField var offsetZ: Double = 0.0
+    @CodecField var optionParamIndex: Int = 0
+    @CodecField var optionParamValues: String = ""
     @CodecField var repeatDelayTicks: Int = 0
     @CodecField var repeatIndex: Boolean = false
     @CodecField var reopen: Boolean = false
@@ -50,7 +53,9 @@ class PacketUpdateTestControllerC2S() : CooPacket() {
             playerForward = Vec3(forwardX, forwardY, forwardZ),
             playerBoxWidth = boxWidth,
             playerBoxHeight = boxHeight,
-            playerBoxDepth = boxDepth
+            playerBoxDepth = boxDepth,
+            optionParamIndex = optionParamIndex,
+            optionParamValues = TestOptionParamCodec.decodeOptionValues(optionParamValues)
         )
         if (wasRunning && changed) {
             blockEntity.startTest()

@@ -40,6 +40,7 @@ import net.minecraft.world.item.ItemStack
 import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.AABB
+import net.minecraft.world.phys.Vec2
 import net.minecraft.world.phys.Vec3
 import org.joml.Quaternionf
 import org.joml.Vector3f
@@ -80,6 +81,12 @@ object CodecHelper {
             buf.writeFloat(v.w)
         }, {
             Vector4f(it.readFloat(), it.readFloat(), it.readFloat(), it.readFloat())
+        }))
+        register(Vec2::class.java, StreamCodec.of({ buf, i ->
+            buf.writeFloat(i.x)
+            buf.writeFloat(i.y)
+        }, {
+            Vec2(it.readFloat(), it.readFloat())
         }))
         register(Vec3::class.java, StreamCodec.of({ buf, i -> buf.writeVec3(i) }, { it.readVec3() }))
         register(Quaternionf::class.java, StreamCodec.of({ buf, q -> buf.writeQuaternion(q) }, { it.readQuaternion() }))

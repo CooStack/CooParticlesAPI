@@ -10,6 +10,10 @@ class SimpleRendererEntityOption(
     var testingTick: Int = 100,
     val displayName: String = "entity: ${testEntity::class.java.simpleName}"
 ) : TestOption {
+    override fun paramTarget(): Any {
+        return testEntity
+    }
+
     override fun start() {
         ServerRenderEntityManager.spawn(testEntity)
     }
