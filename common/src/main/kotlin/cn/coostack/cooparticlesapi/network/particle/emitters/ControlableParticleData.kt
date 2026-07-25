@@ -56,6 +56,7 @@ open class ControlableParticleData : SerializableData {
             buf.writeFloat(data.yaw)
             buf.writeFloat(data.pitch)
             buf.writeFloat(data.roll)
+            buf.writeFloat(data.depthSize)
         }
 
         private fun decode(
@@ -83,6 +84,7 @@ open class ControlableParticleData : SerializableData {
             val yaw = buf.readFloat()
             val pitch = buf.readFloat()
             val roll = buf.readFloat()
+            val depthSize = buf.readFloat()
             return ControlableParticleData().apply {
                 this.uuid = uuid
                 this.velocity = velocity
@@ -91,6 +93,7 @@ open class ControlableParticleData : SerializableData {
                 this.uniformSize = uniformSize
                 this.weightSize = weightSize
                 this.heightSize = heightSize
+                this.depthSize = depthSize
                 this.visibleRange = visibleRange
                 this.age = age
                 this.maxAge = maxAge
@@ -191,6 +194,13 @@ open class ControlableParticleData : SerializableData {
             if (uniformSize) {
                 currentWeightSize = value
             }
+        }
+
+    private var currentDepthSize = 0f
+    var depthSize: Float
+        get() = currentDepthSize
+        set(value) {
+            currentDepthSize = value
         }
 
     /** 旧 size 兼容属性：设置时同时修改宽高。 */
@@ -361,6 +371,7 @@ open class ControlableParticleData : SerializableData {
             this.uniformSize = data.uniformSize
             this.weightSize = data.weightSize
             this.heightSize = data.heightSize
+            this.depthSize = data.depthSize
             this.color = data.color
             this.currentAge = data.age
             this.lifetime = data.maxAge
@@ -372,6 +383,7 @@ open class ControlableParticleData : SerializableData {
             this.previewAxis = data.axis
             this.previewWeightSize = data.weightSize
             this.previewHeightSize = data.heightSize
+            this.previewDepthSize = data.depthSize
             this.currentPitch = data.pitch
             this.currentYaw = data.yaw
             this.currentRoll = data.roll
@@ -393,6 +405,7 @@ open class ControlableParticleData : SerializableData {
             it.uniformSize = this.uniformSize
             it.weightSize = this.weightSize
             it.heightSize = this.heightSize
+            it.depthSize = this.depthSize
             it.color = this.color
             it.alpha = this.alpha
             it.visibleRange = this.visibleRange

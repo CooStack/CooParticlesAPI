@@ -2,6 +2,7 @@ package cn.coostack.cooparticlesapi.test.block.client
 
 import cn.coostack.cooparticlesapi.network.packet.api.CooClientPacketManager
 import cn.coostack.cooparticlesapi.network.packet.testblock.PacketOpenTestControllerScreenS2C
+import cn.coostack.cooparticlesapi.network.packet.testblock.PacketReviewTestControllerC2S
 import cn.coostack.cooparticlesapi.network.packet.testblock.PacketStartTestControllerC2S
 import cn.coostack.cooparticlesapi.network.packet.testblock.PacketStopTestControllerC2S
 import cn.coostack.cooparticlesapi.network.packet.testblock.PacketUpdateTestControllerC2S
@@ -9,6 +10,7 @@ import cn.coostack.cooparticlesapi.test.api.EncodedTestOptionParamSpec
 import cn.coostack.cooparticlesapi.test.api.TestOptionParamCodec
 import cn.coostack.cooparticlesapi.test.api.TestOptionParamEditorKind
 import cn.coostack.cooparticlesapi.test.api.TestOptionParamPositionMode
+import cn.coostack.cooparticlesapi.test.api.normalizeTestOptionColorHexInput
 import cn.coostack.cooparticlesapi.test.block.BlockTestMode
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.components.Button
@@ -17,6 +19,7 @@ import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
 import org.lwjgl.glfw.GLFW
 import java.util.Locale
+import kotlin.math.floor
 import kotlin.math.roundToInt
 import kotlin.math.pow
 import kotlin.math.round
@@ -45,15 +48,17 @@ class TestControllerScreen(
     private lateinit var saveButton: Button
     private lateinit var startButton: Button
     private lateinit var stopButton: Button
+    private lateinit var reviewPassButton: Button
+    private lateinit var reviewFailButton: Button
+    private lateinit var reviewSkipButton: Button
     private lateinit var paramsButton: Button
     private lateinit var backButton: Button
+    private lateinit var colorHexBox: EditBox
 
     private val paramBoxes = ArrayList<EditBox>()
     private val paramComponentBoxes = ArrayList<List<EditBox>>()
     private val paramModeButtons = ArrayList<Button>()
     private val paramPickButtons = ArrayList<Button>()
-    private val paramPaletteButtons = ArrayList<Button>()
-    private val paramSnapButtons = ArrayList<Button>()
     private val paramAbsoluteModes = ArrayList<Boolean>()
     private val paramValues = LinkedHashMap<String, String>()
     private val maxVisibleSuggestions = 3
@@ -70,6 +75,13 @@ class TestControllerScreen(
     private var paramSuggestions: List<String> = emptyList()
     private var selectedParamSuggestionIndex = -1
     private var paramSuggestionScroll = 0
+    private var colorPickerRow = -1
+    private var colorPickerHue = 0f
+    private var colorPickerSaturation = 0f
+    private var colorPickerValue = 1f
+    private var colorPickerAlpha = 1f
+    private var colorPickerDrag = ColorPickerDrag.NONE
+    private var updatingColorHex = false
 
     override fun init() {
         val left = width / 2 - 170
@@ -78,8 +90,6 @@ class TestControllerScreen(
         paramComponentBoxes.clear()
         paramModeButtons.clear()
         paramPickButtons.clear()
-        paramPaletteButtons.clear()
-        paramSnapButtons.clear()
         groupBox = editBox(left + 92, y, 220, packet.groupId)
         groupBox.setMaxLength(256)
         groupBox.setResponder { updateSuggestions() }
@@ -152,17 +162,6 @@ class TestControllerScreen(
             paramPickButtons.add(pickButton)
             addRenderableWidget(pickButton)
 
-            val paletteButton = Button.builder(Component.literal("色板")) {
-                applyNextPaletteColor(index)
-            }.bounds(left + 248, y, 38, 20).build()
-            paramPaletteButtons.add(paletteButton)
-            addRenderableWidget(paletteButton)
-
-            val snapButton = Button.builder(Component.literal("吸附")) {
-                snapColorToPalette(index)
-            }.bounds(left + 290, y, 38, 20).build()
-            paramSnapButtons.add(snapButton)
-            addRenderableWidget(snapButton)
         }
 
         y += 28
@@ -226,6 +225,13 @@ class TestControllerScreen(
         }.bounds(left + 220, y, 86, 20).build()
         addRenderableWidget(stopButton)
 
+        reviewPassButton = reviewButton("通过", PacketReviewTestControllerC2S.PASS, left + 44, y, 74)
+        reviewFailButton = reviewButton("失败", PacketReviewTestControllerC2S.FAIL, left + 126, y, 86)
+        reviewSkipButton = reviewButton("跳过", PacketReviewTestControllerC2S.SKIP, left + 220, y, 86)
+        addRenderableWidget(reviewPassButton)
+        addRenderableWidget(reviewFailButton)
+        addRenderableWidget(reviewSkipButton)
+
         backButton = Button.builder(Component.literal("\u8fd4\u56de")) {
             syncVisibleParamValuesToState()
             page = ControllerPage.MAIN
@@ -234,6 +240,11 @@ class TestControllerScreen(
         }.bounds(left, y, 58, 20).build()
         addRenderableWidget(backButton)
 
+        colorHexBox = editBox(0, 0, COLOR_HEX_INPUT_WIDTH, "")
+        colorHexBox.setMaxLength(10)
+        colorHexBox.setResponder(::onColorHexChanged)
+        addRenderableWidget(colorHexBox)
+
         updateSuggestions()
         updateIndexSuggestion()
         updateParamBoxes(syncVisible = false)
@@ -241,6 +252,13 @@ class TestControllerScreen(
     }
 
     override fun keyPressed(keyCode: Int, scanCode: Int, modifiers: Int): Boolean {
+        if (colorPickerRow >= 0) {
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+                closeColorPicker()
+                return true
+            }
+            return colorHexBox.keyPressed(keyCode, scanCode, modifiers)
+        }
         if (keyCode == GLFW.GLFW_KEY_ESCAPE && page == ControllerPage.PARAMS) {
             syncVisibleParamValuesToState()
             page = ControllerPage.MAIN
@@ -282,9 +300,22 @@ class TestControllerScreen(
     }
 
     override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
-        val pickedColor = colorPaletteAt(mouseX.toInt(), mouseY.toInt())
-        if (pickedColor != null) {
-            applyPaletteColor(pickedColor.first, pickedColor.second)
+        if (colorPickerRow >= 0) {
+            if (handleColorPickerClick(mouseX, mouseY, button)) {
+                return true
+            }
+            if (isInsideColorPicker(mouseX, mouseY)) {
+                if (colorHexBox.mouseClicked(mouseX, mouseY, button)) {
+                    setFocused(colorHexBox)
+                }
+                return true
+            }
+            closeColorPicker()
+            return true
+        }
+        val swatchRow = colorSwatchAt(mouseX.toInt(), mouseY.toInt())
+        if (swatchRow != null) {
+            openColorPicker(swatchRow)
             return true
         }
         val pickedParamIndex = paramSuggestionAt(mouseX.toInt(), mouseY.toInt())
@@ -305,7 +336,36 @@ class TestControllerScreen(
         return handled
     }
 
+    override fun mouseDragged(
+        mouseX: Double,
+        mouseY: Double,
+        button: Int,
+        dragX: Double,
+        dragY: Double
+    ): Boolean {
+        if (colorPickerRow >= 0 && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            when (colorPickerDrag) {
+                ColorPickerDrag.SATURATION_VALUE -> updateSaturationValue(mouseX, mouseY)
+                ColorPickerDrag.HUE -> updateHue(mouseX)
+                ColorPickerDrag.NONE -> return super.mouseDragged(mouseX, mouseY, button, dragX, dragY)
+            }
+            return true
+        }
+        return super.mouseDragged(mouseX, mouseY, button, dragX, dragY)
+    }
+
+    override fun mouseReleased(mouseX: Double, mouseY: Double, button: Int): Boolean {
+        if (colorPickerDrag != ColorPickerDrag.NONE) {
+            colorPickerDrag = ColorPickerDrag.NONE
+            return true
+        }
+        return super.mouseReleased(mouseX, mouseY, button)
+    }
+
     override fun mouseScrolled(mouseX: Double, mouseY: Double, scrollX: Double, scrollY: Double): Boolean {
+        if (colorPickerRow >= 0) {
+            return true
+        }
         if (page == ControllerPage.PARAMS && currentParamSpecs.size > paramBoxes.size) {
             val delta = when {
                 scrollY > 0.0 -> -1
@@ -333,6 +393,7 @@ class TestControllerScreen(
         renderLabels(graphics)
         renderSuggestions(graphics, mouseX, mouseY)
         renderParamSuggestions(graphics, mouseX, mouseY)
+        renderColorPicker(graphics, mouseX, mouseY, partialTick)
     }
 
     private fun renderLabels(graphics: GuiGraphics) {
@@ -385,7 +446,6 @@ class TestControllerScreen(
             graphics.drawString(font, paramLabel(spec), left, rowY + 4, 0xE0E0E0, true)
             if (spec.color) {
                 renderColorSwatch(graphics, left + 56, rowY + 4, colorOfParam(row, spec))
-                renderColorPalette(graphics, row, spec, left, rowY)
             }
         }
         renderParamScrollBar(graphics, left)
@@ -410,6 +470,15 @@ class TestControllerScreen(
         return EditBox(font, x, y, width, 20, Component.empty()).also { box ->
             box.value = value
         }
+    }
+
+    private fun reviewButton(label: String, action: String, x: Int, y: Int, width: Int): Button {
+        return Button.builder(Component.literal(label)) {
+            CooClientPacketManager.sendTo(
+                PacketReviewTestControllerC2S(packet.dimension, packet.blockPos, action)
+            )
+            onClose()
+        }.bounds(x, y, width, 20).build()
     }
 
     private fun updatePacket(): PacketUpdateTestControllerC2S {
@@ -860,71 +929,238 @@ class TestControllerScreen(
         onClose()
     }
 
-    private fun applyNextPaletteColor(row: Int) = snapColorToPalette(row)
-
-    private fun snapColorToPalette(row: Int) {
-        val index = actualParamIndex(row)
-        val spec = currentParamSpecs.getOrNull(index)?.takeIf { it.color } ?: return
-        val current = parseColorComponents(rowParamValue(row, spec), spec.componentCount) ?: return
-        val nearest = COLOR_PALETTE.minBy { palette -> colorDistance(current, palette) }
-        writeRowParamValue(row, spec, formatColor(nearest, spec.componentCount, current.getOrNull(3)))
-    }
-
     private fun renderColorSwatch(graphics: GuiGraphics, x: Int, y: Int, color: Int?) {
         graphics.fill(x, y, x + 14, y + 14, 0xFF111111.toInt())
         graphics.fill(x + 1, y + 1, x + 13, y + 13, color ?: 0xFF444444.toInt())
     }
 
-    private fun renderColorPalette(
-        graphics: GuiGraphics,
-        row: Int,
-        spec: EncodedTestOptionParamSpec,
-        left: Int,
-        rowY: Int
-    ) {
-        val current = parseColorComponents(rowParamValue(row, spec), spec.componentCount)
-        COLOR_PALETTE.forEachIndexed { index, color ->
-            val x = paletteCellX(left, index)
-            val y = paletteCellY(rowY, index)
-            val selected = current != null && colorDistance(current, color) <= 0.0001f
-            graphics.fill(x - 1, y - 1, x + PALETTE_CELL_SIZE + 1, y + PALETTE_CELL_SIZE + 1, if (selected) 0xFFFFFFFF.toInt() else 0xFF111111.toInt())
-            graphics.fill(x, y, x + PALETTE_CELL_SIZE, y + PALETTE_CELL_SIZE, color.toColorInt())
-        }
-    }
-
-    private fun colorPaletteAt(mouseX: Int, mouseY: Int): Pair<Int, List<Float>>? {
+    private fun colorSwatchAt(mouseX: Int, mouseY: Int): Int? {
         if (page != ControllerPage.PARAMS) return null
         val left = width / 2 - 170
         repeat(visibleParamRowCount()) { row ->
             val spec = currentParamSpecs.getOrNull(actualParamIndex(row)) ?: return@repeat
             if (!spec.color) return@repeat
             val rowY = PARAM_LIST_TOP + row * PARAM_ROW_HEIGHT
-            COLOR_PALETTE.forEachIndexed { index, color ->
-                val x = paletteCellX(left, index)
-                val y = paletteCellY(rowY, index)
-                if (mouseX in (x - 1)..(x + PALETTE_CELL_SIZE + 1) &&
-                    mouseY in (y - 1)..(y + PALETTE_CELL_SIZE + 1)
-                ) {
-                    return row to color
-                }
+            if (mouseX in (left + 55)..(left + 71) && mouseY in (rowY + 3)..(rowY + 19)) {
+                return row
             }
         }
         return null
     }
 
-    private fun applyPaletteColor(row: Int, color: List<Float>) {
-        val index = actualParamIndex(row)
-        val spec = currentParamSpecs.getOrNull(index)?.takeIf { it.color } ?: return
+    private fun openColorPicker(row: Int) {
+        val spec = currentParamSpecs.getOrNull(actualParamIndex(row))?.takeIf { it.color } ?: return
         val current = parseColorComponents(rowParamValue(row, spec), spec.componentCount)
-        writeRowParamValue(row, spec, formatColor(color, spec.componentCount, current?.getOrNull(3)))
+            ?: listOf(1f, 1f, 1f, 1f)
+        val hsv = rgbToHsv(current)
+        colorPickerRow = row
+        colorPickerHue = hsv[0]
+        colorPickerSaturation = hsv[1]
+        colorPickerValue = hsv[2]
+        colorPickerAlpha = current.getOrElse(3) { 1f }
+        clearFocus()
+        updateColorHexBox()
+        layoutWidgets()
     }
 
-    private fun paletteCellX(left: Int, index: Int): Int {
-        return left + PALETTE_LEFT_OFFSET + (index % PALETTE_COLUMNS) * (PALETTE_CELL_SIZE + PALETTE_CELL_GAP)
+    private fun closeColorPicker() {
+        colorPickerRow = -1
+        colorPickerDrag = ColorPickerDrag.NONE
+        clearFocus()
+        layoutWidgets()
     }
 
-    private fun paletteCellY(rowY: Int, index: Int): Int {
-        return rowY + 1 + (index / PALETTE_COLUMNS) * (PALETTE_CELL_SIZE + PALETTE_CELL_GAP)
+    private fun renderColorPicker(graphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
+        val spec = activeColorSpec() ?: return
+        val left = colorPickerLeft()
+        val top = colorPickerTop()
+        val svLeft = left + 12
+        val svTop = top + 20
+        val hueTop = svTop + COLOR_PICKER_SV_HEIGHT + 8
+
+        graphics.fill(0, 0, width, height, 0x88000000.toInt())
+        graphics.fill(left - 1, top - 1, left + COLOR_PICKER_WIDTH + 1, top + COLOR_PICKER_HEIGHT + 1, 0xFF9A9A9A.toInt())
+        graphics.fill(left, top, left + COLOR_PICKER_WIDTH, top + COLOR_PICKER_HEIGHT, 0xFF202020.toInt())
+        graphics.drawString(font, "颜色", left + 12, top + 7, 0xFFFFFFFF.toInt(), false)
+
+        var y = 0
+        while (y < COLOR_PICKER_SV_HEIGHT) {
+            var x = 0
+            val value = 1f - y.toFloat() / (COLOR_PICKER_SV_HEIGHT - 1).toFloat()
+            while (x < COLOR_PICKER_SV_WIDTH) {
+                val saturation = x.toFloat() / (COLOR_PICKER_SV_WIDTH - 1).toFloat()
+                val color = hsvToRgb(colorPickerHue, saturation, value).toColorInt()
+                graphics.fill(
+                    svLeft + x,
+                    svTop + y,
+                    svLeft + minOf(x + COLOR_PICKER_STEP, COLOR_PICKER_SV_WIDTH),
+                    svTop + minOf(y + COLOR_PICKER_STEP, COLOR_PICKER_SV_HEIGHT),
+                    color
+                )
+                x += COLOR_PICKER_STEP
+            }
+            y += COLOR_PICKER_STEP
+        }
+
+        var hueX = 0
+        while (hueX < COLOR_PICKER_SV_WIDTH) {
+            val hue = hueX.toFloat() / (COLOR_PICKER_SV_WIDTH - 1).toFloat()
+            graphics.fill(
+                svLeft + hueX,
+                hueTop,
+                svLeft + minOf(hueX + COLOR_PICKER_STEP, COLOR_PICKER_SV_WIDTH),
+                hueTop + COLOR_PICKER_HUE_HEIGHT,
+                hsvToRgb(hue, 1f, 1f).toColorInt()
+            )
+            hueX += COLOR_PICKER_STEP
+        }
+
+        val selectorX = svLeft + (colorPickerSaturation * (COLOR_PICKER_SV_WIDTH - 1)).roundToInt()
+        val selectorY = svTop + ((1f - colorPickerValue) * (COLOR_PICKER_SV_HEIGHT - 1)).roundToInt()
+        graphics.fill(selectorX - 3, selectorY, selectorX + 4, selectorY + 1, 0xFFFFFFFF.toInt())
+        graphics.fill(selectorX, selectorY - 3, selectorX + 1, selectorY + 4, 0xFFFFFFFF.toInt())
+        val hueSelectorX = svLeft + (colorPickerHue * (COLOR_PICKER_SV_WIDTH - 1)).roundToInt()
+        graphics.fill(hueSelectorX - 1, hueTop - 2, hueSelectorX + 2, hueTop + COLOR_PICKER_HUE_HEIGHT + 2, 0xFFFFFFFF.toInt())
+
+        val preview = pickerColor(spec).toColorInt()
+        graphics.fill(left + 12, top + 149, left + 42, top + 173, 0xFF0A0A0A.toInt())
+        graphics.fill(left + 14, top + 151, left + 40, top + 171, preview)
+        graphics.drawString(font, "HEX", left + 52, top + 140, 0xFFD0D0D0.toInt(), false)
+        colorHexBox.render(graphics, mouseX, mouseY, partialTick)
+    }
+
+    private fun handleColorPickerClick(mouseX: Double, mouseY: Double, button: Int): Boolean {
+        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return false
+        val svLeft = colorPickerLeft() + 12
+        val svTop = colorPickerTop() + 20
+        val hueTop = svTop + COLOR_PICKER_SV_HEIGHT + 8
+        if (mouseX >= svLeft && mouseX <= svLeft + COLOR_PICKER_SV_WIDTH &&
+            mouseY >= svTop && mouseY <= svTop + COLOR_PICKER_SV_HEIGHT
+        ) {
+            colorPickerDrag = ColorPickerDrag.SATURATION_VALUE
+            updateSaturationValue(mouseX, mouseY)
+            return true
+        }
+        if (mouseX >= svLeft && mouseX <= svLeft + COLOR_PICKER_SV_WIDTH &&
+            mouseY >= hueTop && mouseY <= hueTop + COLOR_PICKER_HUE_HEIGHT
+        ) {
+            colorPickerDrag = ColorPickerDrag.HUE
+            updateHue(mouseX)
+            return true
+        }
+        return false
+    }
+
+    private fun updateSaturationValue(mouseX: Double, mouseY: Double) {
+        val svLeft = colorPickerLeft() + 12
+        val svTop = colorPickerTop() + 20
+        colorPickerSaturation = ((mouseX - svLeft) / COLOR_PICKER_SV_WIDTH).toFloat().coerceIn(0f, 1f)
+        colorPickerValue = (1f - ((mouseY - svTop) / COLOR_PICKER_SV_HEIGHT).toFloat()).coerceIn(0f, 1f)
+        applyPickerColor(updateHex = true)
+    }
+
+    private fun updateHue(mouseX: Double) {
+        val svLeft = colorPickerLeft() + 12
+        colorPickerHue = ((mouseX - svLeft) / COLOR_PICKER_SV_WIDTH).toFloat().coerceIn(0f, 1f)
+        applyPickerColor(updateHex = true)
+    }
+
+    private fun applyPickerColor(updateHex: Boolean) {
+        val spec = activeColorSpec() ?: return
+        val color = pickerColor(spec)
+        writeRowParamValue(colorPickerRow, spec, formatColor(color, spec.componentCount, colorPickerAlpha))
+        paramValues[spec.id] = rowParamValue(colorPickerRow, spec)
+        if (updateHex) {
+            updateColorHexBox()
+        }
+    }
+
+    private fun onColorHexChanged(rawValue: String) {
+        if (updatingColorHex) return
+        val spec = activeColorSpec() ?: return
+        val normalized = normalizeTestOptionColorHexInput(rawValue)
+        if (normalized != rawValue) {
+            updatingColorHex = true
+            colorHexBox.value = normalized
+            updatingColorHex = false
+        }
+        val validLength = normalized.length == 6 || spec.componentCount >= 4 && normalized.length == 8
+        if (!validLength) return
+        val color = parseHexColor(normalized, spec.componentCount) ?: return
+        val hsv = rgbToHsv(color)
+        colorPickerHue = hsv[0]
+        colorPickerSaturation = hsv[1]
+        colorPickerValue = hsv[2]
+        colorPickerAlpha = color.getOrElse(3) { colorPickerAlpha }
+        applyPickerColor(updateHex = false)
+    }
+
+    private fun updateColorHexBox() {
+        val spec = activeColorSpec() ?: return
+        val color = pickerColor(spec)
+        val componentCount = if (spec.componentCount >= 4) 4 else 3
+        val hex = color.take(componentCount).joinToString("") { component ->
+            String.format(Locale.ROOT, "%02X", (component.coerceIn(0f, 1f) * 255f).roundToInt())
+        }
+        updatingColorHex = true
+        colorHexBox.value = hex
+        updatingColorHex = false
+    }
+
+    private fun pickerColor(spec: EncodedTestOptionParamSpec): List<Float> {
+        val rgb = hsvToRgb(colorPickerHue, colorPickerSaturation, colorPickerValue)
+        return if (spec.componentCount >= 4) rgb + colorPickerAlpha else rgb
+    }
+
+    private fun activeColorSpec(): EncodedTestOptionParamSpec? {
+        if (colorPickerRow !in paramBoxes.indices) return null
+        return currentParamSpecs.getOrNull(actualParamIndex(colorPickerRow))?.takeIf { it.color }
+    }
+
+    private fun isInsideColorPicker(mouseX: Double, mouseY: Double): Boolean {
+        val left = colorPickerLeft()
+        val top = colorPickerTop()
+        return mouseX >= left && mouseX <= left + COLOR_PICKER_WIDTH &&
+                mouseY >= top && mouseY <= top + COLOR_PICKER_HEIGHT
+    }
+
+    private fun colorPickerLeft(): Int = (width - COLOR_PICKER_WIDTH) / 2
+
+    private fun colorPickerTop(): Int = (height - COLOR_PICKER_HEIGHT) / 2
+
+    private fun rgbToHsv(color: List<Float>): List<Float> {
+        val r = color.getOrElse(0) { 0f }.coerceIn(0f, 1f)
+        val g = color.getOrElse(1) { 0f }.coerceIn(0f, 1f)
+        val b = color.getOrElse(2) { 0f }.coerceIn(0f, 1f)
+        val max = maxOf(r, g, b)
+        val min = minOf(r, g, b)
+        val delta = max - min
+        val hue = when {
+            delta <= 0.00001f -> 0f
+            max == r -> ((g - b) / delta / 6f).let { if (it < 0f) it + 1f else it }
+            max == g -> ((b - r) / delta + 2f) / 6f
+            else -> ((r - g) / delta + 4f) / 6f
+        }
+        val saturation = if (max <= 0.00001f) 0f else delta / max
+        return listOf(hue.coerceIn(0f, 1f), saturation.coerceIn(0f, 1f), max)
+    }
+
+    private fun hsvToRgb(hue: Float, saturation: Float, value: Float): List<Float> {
+        val normalizedHue = ((hue % 1f) + 1f) % 1f
+        val scaledHue = normalizedHue * 6f
+        val sector = floor(scaledHue.toDouble()).toInt().coerceIn(0, 5)
+        val fraction = scaledHue - sector
+        val p = value * (1f - saturation)
+        val q = value * (1f - fraction * saturation)
+        val t = value * (1f - (1f - fraction) * saturation)
+        return when (sector) {
+            0 -> listOf(value, t, p)
+            1 -> listOf(q, value, p)
+            2 -> listOf(p, value, t)
+            3 -> listOf(p, q, value)
+            4 -> listOf(t, p, value)
+            else -> listOf(value, p, q)
+        }
     }
 
     private fun colorOfParam(index: Int, spec: EncodedTestOptionParamSpec): Int? {
@@ -1073,7 +1309,7 @@ class TestControllerScreen(
         val hex = when {
             text.startsWith("#") -> text.substring(1)
             text.startsWith("0x", ignoreCase = true) -> text.substring(2)
-            else -> return null
+            else -> text
         }
         if (hex.length != 6 && hex.length != 8) return null
         val value = hex.toLongOrNull(16) ?: return null
@@ -1093,12 +1329,6 @@ class TestControllerScreen(
             )
         }
         return components.take(componentCount).map { (it / 255f).coerceIn(0f, 1f) }
-    }
-
-    private fun colorDistance(first: List<Float>, second: List<Float>): Float {
-        return (first.getOrElse(0) { 0f } - second[0]).let { it * it } +
-                (first.getOrElse(1) { 0f } - second[1]).let { it * it } +
-                (first.getOrElse(2) { 0f } - second[2]).let { it * it }
     }
 
     private fun formatColor(color: List<Float>, componentCount: Int, alpha: Float?): String {
@@ -1125,6 +1355,9 @@ class TestControllerScreen(
     }
 
     private fun displayStatus(): String {
+        if (packet.pendingReview) {
+            return "等待人工复核"
+        }
         if (packet.running) {
             return if (packet.currentIndex > 0 && packet.optionCount > 0) {
                 "运行中 当前索引: ${packet.currentIndex}/${packet.optionCount}"
@@ -1209,6 +1442,7 @@ class TestControllerScreen(
         val mainPage = page == ControllerPage.MAIN
         val paramPage = page == ControllerPage.PARAMS
         val indexVisible = mainPage && mode == BlockTestMode.INDEX
+        val reviewVisible = mainPage && packet.pendingReview
         val offsetY = if (indexVisible) 128 else 90
         val forwardY = offsetY + 28
         val boxY = forwardY + 28
@@ -1261,15 +1495,13 @@ class TestControllerScreen(
             paramPickButtons[row].setY(rowY)
             paramPickButtons[row].visible = visible && spec?.pickable == true
             paramPickButtons[row].active = paramPickButtons[row].visible
-            paramPaletteButtons[row].setX(left + 248)
-            paramPaletteButtons[row].setY(rowY)
-            paramPaletteButtons[row].visible = false
-            paramPaletteButtons[row].active = false
-            paramSnapButtons[row].setX(left + 290)
-            paramSnapButtons[row].setY(rowY)
-            paramSnapButtons[row].visible = visible && spec?.color == true
-            paramSnapButtons[row].active = paramSnapButtons[row].visible
         }
+
+        colorHexBox.setX(colorPickerLeft() + 52)
+        colorHexBox.setY(colorPickerTop() + 151)
+        colorHexBox.width = COLOR_HEX_INPUT_WIDTH
+        colorHexBox.visible = colorPickerRow >= 0
+        colorHexBox.active = colorPickerRow >= 0
 
         setRow(offsetY, offsetXBox, offsetYBox, offsetZBox, offsetPickButton)
         setRow(forwardY, forwardXBox, forwardYBox, forwardZBox, forwardPickButton)
@@ -1305,14 +1537,25 @@ class TestControllerScreen(
             stopButton.setX(left + 220)
             stopButton.setY(buttonsY)
         }
+        reviewPassButton.setX(left + 44)
+        reviewPassButton.setY(buttonsY)
+        reviewFailButton.setX(left + 126)
+        reviewFailButton.setY(buttonsY)
+        reviewSkipButton.setX(left + 220)
+        reviewSkipButton.setY(buttonsY)
         backButton.visible = paramPage
         backButton.active = paramPage
-        saveButton.visible = true
-        saveButton.active = true
-        startButton.visible = true
-        startButton.active = true
-        stopButton.visible = true
-        stopButton.active = true
+        val commandButtonsVisible = paramPage || !reviewVisible
+        saveButton.visible = commandButtonsVisible
+        saveButton.active = commandButtonsVisible
+        startButton.visible = commandButtonsVisible
+        startButton.active = commandButtonsVisible
+        stopButton.visible = commandButtonsVisible
+        stopButton.active = commandButtonsVisible
+        listOf(reviewPassButton, reviewFailButton, reviewSkipButton).forEach {
+            it.visible = reviewVisible
+            it.active = reviewVisible
+        }
     }
 
     private fun layoutComponentBoxes(
@@ -1362,6 +1605,12 @@ class TestControllerScreen(
         PARAMS
     }
 
+    private enum class ColorPickerDrag {
+        NONE,
+        SATURATION_VALUE,
+        HUE
+    }
+
     companion object {
         private const val PARAM_ROW_HEIGHT = 24
         private const val PARAM_LIST_TOP = 78
@@ -1370,24 +1619,12 @@ class TestControllerScreen(
         private const val PARAM_CONTENT_WIDTH = 334
         private const val PARAM_INPUT_WIDTH = 150
         private const val PARAM_MAX_COMPONENT_BOXES = 4
-        private const val PALETTE_LEFT_OFFSET = 248
-        private const val PALETTE_COLUMNS = 4
-        private const val PALETTE_CELL_SIZE = 7
-        private const val PALETTE_CELL_GAP = 1
-
-        private val COLOR_PALETTE: List<List<Float>> = listOf(
-            listOf(1f, 1f, 1f, 1f),
-            listOf(0.75f, 0.75f, 0.75f, 1f),
-            listOf(0.35f, 0.35f, 0.35f, 1f),
-            listOf(0f, 0f, 0f, 1f),
-            listOf(1f, 0f, 0f, 1f),
-            listOf(0f, 1f, 0f, 1f),
-            listOf(0f, 0f, 1f, 1f),
-            listOf(1f, 0.85f, 0.25f, 1f),
-            listOf(0f, 1f, 1f, 1f),
-            listOf(1f, 0f, 1f, 1f),
-            listOf(0.35f, 0.70f, 1f, 1f),
-            listOf(1f, 0.5f, 0f, 1f)
-        )
+        private const val COLOR_PICKER_WIDTH = 224
+        private const val COLOR_PICKER_HEIGHT = 184
+        private const val COLOR_PICKER_SV_WIDTH = 200
+        private const val COLOR_PICKER_SV_HEIGHT = 96
+        private const val COLOR_PICKER_HUE_HEIGHT = 12
+        private const val COLOR_PICKER_STEP = 2
+        private const val COLOR_HEX_INPUT_WIDTH = 160
     }
 }

@@ -367,7 +367,7 @@ object TestOptionParamSupport {
         return option
     }
 
-    fun applyOptionParams(option: TestOption, encodedValues: Map<String, String>) {
+    fun applyOptionParams(option: TestOption, encodedValues: Map<String, String>): TestOption {
         val optionValues = valuesFor(option)
         optionParamSpecs(option).forEach { spec ->
             optionValues[spec.id] = spec.defaultValue
@@ -377,6 +377,7 @@ object TestOptionParamSupport {
             }
         }
         runAppliers(option)
+        return option
     }
 
     fun optionParamSpecs(option: TestOption): List<TestOptionParamSpec<*>> {
@@ -485,7 +486,7 @@ private fun parseHexColor(raw: String, count: Int): List<Float>? {
     val hex = when {
         text.startsWith("#") -> text.substring(1)
         text.startsWith("0x", ignoreCase = true) -> text.substring(2)
-        else -> return null
+        else -> text
     }
     if (hex.length != 6 && hex.length != 8) return null
     val value = hex.toLongOrNull(16) ?: return null
@@ -506,6 +507,18 @@ private fun parseHexColor(raw: String, count: Int): List<Float>? {
     }
     val components = listOf(r, g, b, a).map { (it / 255f).coerceIn(0f, 1f) }
     return components.take(count)
+}
+
+internal fun normalizeTestOptionColorHexInput(rawValue: String): String {
+    val trimmed = rawValue.trim()
+    val withoutPrefix = when {
+        trimmed.startsWith("#") -> trimmed.substring(1)
+        trimmed.startsWith("0x", ignoreCase = true) -> trimmed.substring(2)
+        else -> trimmed
+    }
+    return withoutPrefix
+        .uppercase(Locale.ROOT)
+        .take(8)
 }
 
 private fun formatComponents(vararg values: Number): String {

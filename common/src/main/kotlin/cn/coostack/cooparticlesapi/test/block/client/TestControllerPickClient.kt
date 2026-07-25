@@ -230,6 +230,7 @@ object TestControllerPickClient {
                 }
                 values[update.optionParamIndex] = update.optionParamValues
             }
+            it.pendingReview = source.pendingReview
             it.registeredIds = ArrayList(source.registeredIds)
             it.registeredOptionIds = ArrayList(source.registeredOptionIds)
             it.registeredOptionParamSpecs = ArrayList(source.registeredOptionParamSpecs)

@@ -12,6 +12,9 @@ class BlockTestGroup(
     val testPlayer: BlockTestPlayer,
     private val id: String
 ) : TestGroup {
+    internal var statusAnnouncer: (String) -> Unit = { message ->
+        testPlayer.level.server.sendSystemMessage(Component.literal(message))
+    }
     constructor(testPlayer: Player, id: String) : this(BlockTestPlayer(testPlayer), id)
 
     enum class OptionResult(val displayName: String) {
@@ -29,6 +32,7 @@ class BlockTestGroup(
     private var nextOptionIndex = 0
     private var finishedAnnounced = false
     var announceGroupFinished: Boolean = true
+    var reviewMode: BlockTestReviewMode = BlockTestReviewMode.MANUAL_VISUAL
     private var lastStatus = "未开始"
 
     override fun getUser(): Player {
@@ -59,6 +63,8 @@ class BlockTestGroup(
     }
 
     fun activeIndex(): Int = activeOptionIndex
+
+    fun hasPendingReview(): Boolean = pendingReviewOption != null
 
     override fun groupID(): String = id
 
@@ -94,6 +100,8 @@ class BlockTestGroup(
         }
         return BlockTestGroup(testPlayer, id).also {
             it.announceGroupFinished = announceGroupFinished
+            it.reviewMode = reviewMode
+            it.statusAnnouncer = statusAnnouncer
             optionParamOverrides[index]?.let { values ->
                 it.setOptionParamOverrides(mapOf(0 to values))
             }
@@ -142,7 +150,9 @@ class BlockTestGroup(
         if (!option.isValid()) {
             option.stop()
             currentOption = null
-            if (option.reviewMode() == TestReviewMode.MANUAL_VISUAL) {
+            if (option.reviewMode() == TestReviewMode.MANUAL_VISUAL &&
+                reviewMode == BlockTestReviewMode.MANUAL_VISUAL
+            ) {
                 pendingReviewOption = option
                 lastStatus = buildCurrentStatusLine() ?: "等待人工复核"
                 return
@@ -195,14 +205,14 @@ class BlockTestGroup(
         }
         lastStatus = "[测试 ${activeOptionIndex + 1}/${options.size}] ${option.optionID()} -> ${result.displayName}"
         if (announce) {
-            testPlayer.level.server.sendSystemMessage(Component.literal("[方块测试 $id] $lastStatus"))
+            statusAnnouncer("[方块测试 $id] $lastStatus")
         }
     }
 
     override fun onOptionFailure(t: Throwable, option: TestOption) {
         val message = "测试项: ${option.optionID()} tick 异常: ${t.message ?: t::class.java.name}"
         lastStatus = message
-        testPlayer.level.server.sendSystemMessage(Component.literal("[方块测试 $id] $message"))
+        statusAnnouncer("[方块测试 $id] $message")
     }
 
     override fun onOptionSuccess(option: TestOption) {
@@ -211,7 +221,7 @@ class BlockTestGroup(
 
     override fun onGroupFinished() {
         lastStatus = "测试 $id 已经全部完成"
-        testPlayer.level.server.sendSystemMessage(Component.literal("[方块测试] $lastStatus"))
+        statusAnnouncer("[方块测试] $lastStatus")
     }
 
     private fun buildCurrentStatusLine(): String? {

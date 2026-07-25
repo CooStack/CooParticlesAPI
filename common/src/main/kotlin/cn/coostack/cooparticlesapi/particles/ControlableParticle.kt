@@ -112,8 +112,10 @@ abstract class ControlableParticle(
     /** @see scale 粒子尺寸 */
     private var currentWeightSize = super.quadSize
     private var currentHeightSize = super.quadSize
+    private var currentDepthSize = 0f
     var previewWeightSize = currentWeightSize
     var previewHeightSize = currentHeightSize
+    var previewDepthSize = currentDepthSize
 
     /** 是否保持宽高等比。开启后单独设置宽或高会同步另一边。 */
     var uniformSize: Boolean = true
@@ -138,6 +140,13 @@ abstract class ControlableParticle(
             updateRenderSizeBounds()
         }
 
+    var depthSize: Float
+        get() = currentDepthSize
+        set(value) {
+            currentDepthSize = value
+            updateRenderSizeBounds()
+        }
+
     var size: Float
         get() = (currentWeightSize + currentHeightSize) / 2f
         set(value) {
@@ -147,7 +156,7 @@ abstract class ControlableParticle(
     }
 
     private fun updateRenderSizeBounds() {
-        val boundSize = maxOf(currentWeightSize, currentHeightSize)
+        val boundSize = maxOf(currentWeightSize, currentHeightSize, currentDepthSize)
         // 对应scale方法
         this.setSize(0.2f * boundSize, 0.2f * boundSize)
     }
@@ -405,6 +414,7 @@ abstract class ControlableParticle(
         }
         previewWeightSize = currentWeightSize
         previewHeightSize = currentHeightSize
+        previewDepthSize = currentDepthSize
         previewAxis = currentAxis
         controler.tick()
         xo = x
@@ -440,7 +450,7 @@ abstract class ControlableParticle(
     }
 
     override fun getQuadSize(tickDelta: Float): Float {
-        return maxOf(getWeightSize(tickDelta), getHeightSize(tickDelta))
+        return maxOf(getWeightSize(tickDelta), getHeightSize(tickDelta), getDepthSize(tickDelta))
     }
 
     private fun getWeightSize(tickDelta: Float): Float {
@@ -449,6 +459,10 @@ abstract class ControlableParticle(
 
     private fun getHeightSize(tickDelta: Float): Float {
         return Mth.lerp(tickDelta, previewHeightSize, currentHeightSize)
+    }
+
+    private fun getDepthSize(tickDelta: Float): Float {
+        return Mth.lerp(tickDelta, previewDepthSize, currentDepthSize)
     }
 
     /** @see ParticleControler.remove() */
@@ -542,6 +556,7 @@ abstract class ControlableParticle(
             basis.face,
             getWeightSize(tickDelta),
             getHeightSize(tickDelta),
+            getDepthSize(tickDelta),
             light
         )
     }
@@ -566,6 +581,7 @@ abstract class ControlableParticle(
             Vec3(forward.x.toDouble(), forward.y.toDouble(), forward.z.toDouble()),
             getWeightSize(tickDelta),
             getHeightSize(tickDelta),
+            getDepthSize(tickDelta),
             light
         )
     }
@@ -578,17 +594,142 @@ abstract class ControlableParticle(
         forward: Vec3,
         weightSize: Float,
         heightSize: Float,
+        depthSize: Float,
         light: Int
     ) {
-        addVertex(consumer, center, right, up, forward, 1f, -1f, 0f, u1, v1, weightSize, heightSize, light)
-        addVertex(consumer, center, right, up, forward, 1f, 1f, 0f, u1, v0, weightSize, heightSize, light)
-        addVertex(consumer, center, right, up, forward, -1f, 1f, 0f, u0, v0, weightSize, heightSize, light)
-        addVertex(consumer, center, right, up, forward, -1f, -1f, 0f, u0, v1, weightSize, heightSize, light)
+        if (depthSize == 0f) {
+            addDoubleSidedQuad(
+                consumer,
+                center,
+                right,
+                up,
+                forward,
+                weightSize,
+                heightSize,
+                depthSize,
+                light,
+                1f,
+                -1f,
+                0f,
+                1f,
+                1f,
+                0f,
+                -1f,
+                1f,
+                0f,
+                -1f,
+                -1f,
+                0f
+            )
+            return
+        }
 
-        addVertex(consumer, center, right, up, forward, -1f, -1f, 0f, u0, v1, weightSize, heightSize, light)
-        addVertex(consumer, center, right, up, forward, -1f, 1f, 0f, u0, v0, weightSize, heightSize, light)
-        addVertex(consumer, center, right, up, forward, 1f, 1f, 0f, u1, v0, weightSize, heightSize, light)
-        addVertex(consumer, center, right, up, forward, 1f, -1f, 0f, u1, v1, weightSize, heightSize, light)
+        addBoxFace(
+            consumer, center, right, up, forward, weightSize, heightSize, depthSize, light,
+            1f, -1f, 1f, 1f, 1f, 1f, -1f, 1f, 1f, -1f, -1f, 1f
+        )
+        addBoxFace(
+            consumer, center, right, up, forward, weightSize, heightSize, depthSize, light,
+            -1f, -1f, -1f, -1f, 1f, -1f, 1f, 1f, -1f, 1f, -1f, -1f
+        )
+        addBoxFace(
+            consumer, center, right, up, forward, weightSize, heightSize, depthSize, light,
+            1f, -1f, -1f, 1f, 1f, -1f, 1f, 1f, 1f, 1f, -1f, 1f
+        )
+        addBoxFace(
+            consumer, center, right, up, forward, weightSize, heightSize, depthSize, light,
+            -1f, -1f, 1f, -1f, 1f, 1f, -1f, 1f, -1f, -1f, -1f, -1f
+        )
+        addBoxFace(
+            consumer, center, right, up, forward, weightSize, heightSize, depthSize, light,
+            1f, 1f, 1f, 1f, 1f, -1f, -1f, 1f, -1f, -1f, 1f, 1f
+        )
+        addBoxFace(
+            consumer, center, right, up, forward, weightSize, heightSize, depthSize, light,
+            1f, -1f, -1f, 1f, -1f, 1f, -1f, -1f, 1f, -1f, -1f, -1f
+        )
+    }
+
+    private fun addBoxFace(
+        consumer: VertexConsumer,
+        center: Vector3f,
+        right: Vec3,
+        up: Vec3,
+        forward: Vec3,
+        weightSize: Float,
+        heightSize: Float,
+        depthSize: Float,
+        light: Int,
+        x0: Float,
+        y0: Float,
+        z0: Float,
+        x1: Float,
+        y1: Float,
+        z1: Float,
+        x2: Float,
+        y2: Float,
+        z2: Float,
+        x3: Float,
+        y3: Float,
+        z3: Float
+    ) {
+        addDoubleSidedQuad(
+            consumer,
+            center,
+            right,
+            up,
+            forward,
+            weightSize,
+            heightSize,
+            depthSize,
+            light,
+            x0,
+            y0,
+            z0,
+            x1,
+            y1,
+            z1,
+            x2,
+            y2,
+            z2,
+            x3,
+            y3,
+            z3
+        )
+    }
+
+    private fun addDoubleSidedQuad(
+        consumer: VertexConsumer,
+        center: Vector3f,
+        right: Vec3,
+        up: Vec3,
+        forward: Vec3,
+        weightSize: Float,
+        heightSize: Float,
+        depthSize: Float,
+        light: Int,
+        x0: Float,
+        y0: Float,
+        z0: Float,
+        x1: Float,
+        y1: Float,
+        z1: Float,
+        x2: Float,
+        y2: Float,
+        z2: Float,
+        x3: Float,
+        y3: Float,
+        z3: Float
+    ) {
+        addVertex(consumer, center, right, up, forward, x0, y0, z0, u1, v1, weightSize, heightSize, depthSize, light)
+        addVertex(consumer, center, right, up, forward, x1, y1, z1, u1, v0, weightSize, heightSize, depthSize, light)
+        addVertex(consumer, center, right, up, forward, x2, y2, z2, u0, v0, weightSize, heightSize, depthSize, light)
+        addVertex(consumer, center, right, up, forward, x3, y3, z3, u0, v1, weightSize, heightSize, depthSize, light)
+
+        addVertex(consumer, center, right, up, forward, x3, y3, z3, u0, v1, weightSize, heightSize, depthSize, light)
+        addVertex(consumer, center, right, up, forward, x2, y2, z2, u0, v0, weightSize, heightSize, depthSize, light)
+        addVertex(consumer, center, right, up, forward, x1, y1, z1, u1, v0, weightSize, heightSize, depthSize, light)
+        addVertex(consumer, center, right, up, forward, x0, y0, z0, u1, v1, weightSize, heightSize, depthSize, light)
     }
 
     private fun addVertex(
@@ -604,12 +745,13 @@ abstract class ControlableParticle(
         tv: Float,
         weightSize: Float,
         heightSize: Float,
+        depthSize: Float,
         light: Int
     ) {
         val pos = Vector3f(
-            center.x + (right.x * vx * weightSize + up.x * vy * heightSize + forward.x * vz).toFloat(),
-            center.y + (right.y * vx * weightSize + up.y * vy * heightSize + forward.y * vz).toFloat(),
-            center.z + (right.z * vx * weightSize + up.z * vy * heightSize + forward.z * vz).toFloat()
+            center.x + (right.x * vx * weightSize + up.x * vy * heightSize + forward.x * vz * depthSize).toFloat(),
+            center.y + (right.y * vx * weightSize + up.y * vy * heightSize + forward.y * vz * depthSize).toFloat(),
+            center.z + (right.z * vx * weightSize + up.z * vy * heightSize + forward.z * vz * depthSize).toFloat()
         )
         consumer
             .addVertex(pos.x, pos.y, pos.z)

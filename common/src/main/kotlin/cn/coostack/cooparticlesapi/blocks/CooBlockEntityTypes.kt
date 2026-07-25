@@ -14,7 +14,6 @@ object CooBlockEntityTypes {
     }
 
     fun registerAll() {
-        TEST_CONTROLLER.get()
     }
 
     private fun register(id: String, supplier: () -> BlockEntityType<*>): CommonDeferredRegistry<BlockEntityType<*>> {

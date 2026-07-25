@@ -29,6 +29,7 @@ import cn.coostack.cooparticlesapi.test.options.particle.emitter.event.TestColli
 import com.ezylang.evalex.Expression
 import net.minecraft.core.RegistryAccess
 import net.minecraft.server.MinecraftServer
+import net.minecraft.world.level.block.state.pattern.BlockPattern
 
 /**
  * TODO List
@@ -91,6 +92,7 @@ object CooParticlesAPI {
         val builder = Expression("1+SQRT(x)")
             .with("x", 4.0)
             .evaluate()
+
         CooParticlesConstants.logger.info("eval api {}", builder.value)
         CooParticlesServices.API_CONFIG_MANAGER.loadConfig()
         CooBlocks.registerAll()

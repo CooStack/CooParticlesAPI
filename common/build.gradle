@@ -4,6 +4,7 @@ plugins {
     id 'org.jetbrains.kotlin.jvm'
     id "java-library"
     id 'kotlin'
+    id "org.jetbrains.kotlin.kapt"
 }
 neoForge {
     neoFormVersion = neo_form_version
@@ -39,6 +40,11 @@ dependencies {
     testImplementation 'org.jetbrains.kotlin:kotlin-test'
     testImplementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2"
     testImplementation 'org.joml:joml:1.10.8'
+    testRuntimeOnly files(configurations.runtimeClasspath)
+    testRuntimeOnly files(fileTree("$buildDir/moddev/artifacts") {
+        include "vanilla-${minecraft_version}-*.jar"
+        exclude "*-client-extra-*", "*-merged.jar", "*-sources.jar"
+    })
 }
 tasks.named('jar', Jar) {
     destinationDirectory.set(file("../builds/jar"))
@@ -68,4 +74,7 @@ configurations {
 
 tasks.withType(Test).configureEach {
     useJUnitPlatform()
+}
+repositories {
+    mavenCentral()
 }

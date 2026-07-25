@@ -29,23 +29,21 @@ class TestControllerBlockEntity(
     var playerBoxDepth: Double = 0.6
 
     private val optionParamValueOverrides = linkedMapOf<Int, MutableMap<String, String>>()
-    private var activeGroup: BlockTestGroup? = null
-    private var waitTicks: Int = 0
-    private var shouldAutoRun: Boolean = false
-    private var lastStatus: String = "空闲"
+    private var buildFailureStatus: String = "无法创建测试组"
+    private val runLoop = TestControllerRunLoop(
+        groupFactory = ::buildRuntimeGroup,
+        modeProvider = { mode },
+        repeatIndexProvider = { repeatIndex },
+        repeatDelayTicksProvider = { repeatDelayTicks },
+        buildFailureStatusProvider = { buildFailureStatus }
+    )
 
     fun isRunning(): Boolean {
-        return activeGroup != null || waitTicks > 0 || shouldAutoRun
+        return runLoop.isRunning()
     }
 
     fun statusText(): String {
-        val group = activeGroup
-        return when {
-            group != null -> group.statusLine()
-            waitTicks > 0 -> "等待 ${waitTicks} tick 后重复"
-            shouldAutoRun -> "等待自动启动"
-            else -> lastStatus
-        }
+        return runLoop.statusText()
     }
 
     fun registeredGroupIds(): List<String> {
@@ -92,8 +90,10 @@ class TestControllerBlockEntity(
         if (mode == BlockTestMode.INDEX) {
             return selectedIndex + 1
         }
-        return activeGroup?.activeIndex()?.takeIf { it >= 0 }?.plus(1) ?: 0
+        return runLoop.currentIndex()
     }
+
+    fun hasPendingReview(): Boolean = runLoop.hasPendingReview()
 
     fun updateConfig(
         groupId: String,
@@ -157,68 +157,45 @@ class TestControllerBlockEntity(
     }
 
     fun startTest(): Boolean {
-        val serverLevel = level as? ServerLevel ?: return false
-        cancelRuntime(resetHidden = false)
-        if (groupId.isBlank() || !TestManager.containsBlock(groupId, createTestPlayer(serverLevel))) {
-            shouldAutoRun = false
-            lastStatus = "未知 TestGroupID: $groupId"
-            setChanged()
-            return false
-        }
-        shouldAutoRun = true
-        val started = startFreshGroup(serverLevel)
+        if (level !is ServerLevel) return false
+        val started = runLoop.start()
         if (!started) {
-            shouldAutoRun = false
             setHidden(false)
-            setChanged()
+        } else {
+            setHidden(true)
         }
+        setChanged()
         return started
     }
 
     fun stopTest(resetHidden: Boolean = true) {
-        shouldAutoRun = false
-        cancelRuntime(resetHidden)
-        lastStatus = "已停止"
+        runLoop.stop()
+        if (resetHidden) {
+            setHidden(false)
+        }
         setChanged()
     }
 
-    fun tickServer() {
-        val serverLevel = level as? ServerLevel ?: return
-        if (shouldAutoRun && activeGroup == null && waitTicks <= 0) {
-            if (!startFreshGroup(serverLevel)) {
-                shouldAutoRun = false
-                setHidden(false)
-                setChanged()
-            }
+    fun reviewCurrent(result: BlockTestGroup.OptionResult): Boolean {
+        if (level !is ServerLevel) return false
+        val reviewed = runLoop.reviewCurrent(result)
+        if (reviewed) {
+            setHidden(runLoop.isRunning())
+            setChanged()
         }
-        if (!isRunning() && blockState.getValue(TestControllerBlock.HIDDEN)) {
-            setHidden(false)
-        }
-        if (waitTicks > 0) {
-            waitTicks--
-            if (waitTicks <= 0) {
-                if (!startFreshGroup(serverLevel)) {
-                    shouldAutoRun = false
-                    setHidden(false)
-                    setChanged()
-                }
-            }
-            return
-        }
+        return reviewed
+    }
 
-        val group = activeGroup ?: return
-        if (group.isDone()) {
-            handleGroupDone(serverLevel)
-            return
+    fun tickServer() {
+        if (level !is ServerLevel) return
+        if (runLoop.tick()) {
+            setChanged()
         }
-        group.doTick()
-        if (group.isDone()) {
-            handleGroupDone(serverLevel)
-        }
+        setHidden(runLoop.isRunning())
     }
 
     override fun setRemoved() {
-        cancelRuntime(resetHidden = false, clearWait = false)
+        runLoop.cancel(clearWait = false)
         super.setRemoved()
     }
 
@@ -247,13 +224,7 @@ class TestControllerBlockEntity(
                 optionParamValueOverrides[index] = values
             }
         }
-        shouldAutoRun = tag.getBoolean("shouldAutoRun")
-        waitTicks = if (shouldAutoRun) tag.getInt("waitTicks").coerceAtLeast(0) else 0
-        lastStatus = when {
-            waitTicks > 0 -> "等待 ${waitTicks} tick 后重复"
-            shouldAutoRun -> "等待自动启动"
-            else -> "空闲"
-        }
+        runLoop.restore(tag.getBoolean("shouldAutoRun"), tag.getInt("waitTicks"))
     }
 
     override fun saveAdditional(tag: CompoundTag, provider: HolderLookup.Provider) {
@@ -263,8 +234,8 @@ class TestControllerBlockEntity(
         tag.putInt("selectedIndex", selectedIndex)
         tag.putBoolean("repeatIndex", repeatIndex)
         tag.putInt("repeatDelayTicks", repeatDelayTicks)
-        tag.putBoolean("shouldAutoRun", shouldAutoRun)
-        tag.putInt("waitTicks", waitTicks.coerceAtLeast(0))
+        tag.putBoolean("shouldAutoRun", runLoop.shouldAutoRun)
+        tag.putInt("waitTicks", runLoop.waitTicks.coerceAtLeast(0))
         writeVec3(tag, "playerOffset", playerOffset)
         writeVec3(tag, "playerForward", playerForward)
         tag.putDouble("playerBoxWidth", playerBoxWidth)
@@ -279,85 +250,20 @@ class TestControllerBlockEntity(
         tag.put("optionParams", optionParams)
     }
 
-    private fun startFreshGroup(serverLevel: ServerLevel): Boolean {
+    private fun buildRuntimeGroup(): BlockTestGroup? {
+        val serverLevel = level as? ServerLevel ?: return null
         val player = createTestPlayer(serverLevel)
         val built = TestManager.buildBlock(groupId, player) ?: run {
-            lastStatus = "未知 TestGroupID: $groupId"
-            return false
+            buildFailureStatus = "未知 TestGroupID: $groupId"
+            return null
         }
         built.setOptionParamOverrides(optionParamValueOverrides)
-        val group = when (mode) {
+        return when (mode) {
             BlockTestMode.INDEX -> built.singleOption(selectedIndex) ?: run {
-                lastStatus = "索引越界: $selectedIndex / ${built.optionCount()}"
-                setHidden(false)
-                setChanged()
-                return false
+                buildFailureStatus = "索引越界: $selectedIndex / ${built.optionCount()}"
+                return null
             }
             else -> built
-        }
-        activeGroup = group
-        group.announceGroupFinished = shouldAnnounceGroupFinished()
-        waitTicks = 0
-        group.start()
-        lastStatus = group.statusLine()
-        setHidden(true)
-        setChanged()
-        return true
-    }
-
-    private fun handleGroupDone(serverLevel: ServerLevel) {
-        activeGroup = null
-        when (mode) {
-            BlockTestMode.SEQUENTIAL -> {
-                shouldAutoRun = false
-                lastStatus = "已完成"
-                setHidden(false)
-            }
-            BlockTestMode.LOOP -> {
-                shouldAutoRun = true
-                lastStatus = "循环重启"
-                if (!startFreshGroup(serverLevel)) {
-                    shouldAutoRun = false
-                    setHidden(false)
-                }
-            }
-            BlockTestMode.INDEX -> {
-                if (repeatIndex) {
-                    shouldAutoRun = true
-                    waitTicks = repeatDelayTicks.coerceAtLeast(0)
-                    lastStatus = if (waitTicks > 0) "等待 ${waitTicks} tick 后重复" else "重复重启"
-                    if (waitTicks == 0) {
-                        if (!startFreshGroup(serverLevel)) {
-                            shouldAutoRun = false
-                            setHidden(false)
-                        }
-                    }
-                } else {
-                    shouldAutoRun = false
-                    lastStatus = "已完成索引 $selectedIndex"
-                    setHidden(false)
-                }
-            }
-        }
-        setChanged()
-    }
-
-    private fun shouldAnnounceGroupFinished(): Boolean {
-        return when (mode) {
-            BlockTestMode.SEQUENTIAL -> true
-            BlockTestMode.LOOP -> false
-            BlockTestMode.INDEX -> !repeatIndex
-        }
-    }
-
-    private fun cancelRuntime(resetHidden: Boolean, clearWait: Boolean = true) {
-        activeGroup?.cancel()
-        activeGroup = null
-        if (clearWait) {
-            waitTicks = 0
-        }
-        if (resetHidden) {
-            setHidden(false)
         }
     }
 

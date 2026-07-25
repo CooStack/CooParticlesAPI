@@ -24,6 +24,7 @@ object CooParticlesAPINeo {
         CooParticlesConstants.logger.info("Listener registered on CooParticlesNeo Initialize")
         CooParticlesAPI.init()
         CooItemNeoForge.reg(MOD_BUS)
+        CooItemGroup.reg()
         CooParticlesServices.COO_REGISTRY.init(MOD_BUS)
     }
 
@@ -49,9 +50,6 @@ object CooParticlesAPINeo {
     }
 
     fun onRegistryRegister(event: RegisterEvent) {
-        event.register(BuiltInRegistries.CREATIVE_MODE_TAB.key()) {
-            it.register(CooItemGroup.API_GROUP.id, CooItemGroup.API_GROUP.get()!!)
-        }
         event.register(BuiltInRegistries.PARTICLE_TYPE.key()) {
             CooModParticles.particleTypes.forEach { type ->
                 it.register(type.id, type.get())
