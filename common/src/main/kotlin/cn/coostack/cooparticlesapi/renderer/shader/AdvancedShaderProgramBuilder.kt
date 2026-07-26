@@ -17,6 +17,7 @@ class AdvancedShaderProgramBuilder {
     private var tessellationEvaluation: GlShader? = null
     private var compute: GlShader? = null
     private val shaderBufferLayouts = mutableListOf<ShaderBufferLayout<*>>()
+    private val attributeLocations = linkedMapOf<String, Int>()
     private var managedProgramId: ResourceLocation? = null
 
     fun vertex(path: String): AdvancedShaderProgramBuilder {
@@ -94,6 +95,12 @@ class AdvancedShaderProgramBuilder {
         return this
     }
 
+    fun attributeLocation(name: String, location: Int): AdvancedShaderProgramBuilder {
+        require(location >= 0) { "attribute location must be non-negative" }
+        attributeLocations[name] = location
+        return this
+    }
+
     fun build(): CooShaderProgram {
         require(compute == null) { "compute shader must be built with buildCompute()" }
         check(vertex != null && fragment != null) { "vertex and fragment can not be null" }
@@ -105,6 +112,7 @@ class AdvancedShaderProgramBuilder {
             tessellationControlShaderInternal = tessellationControl,
             tessellationEvaluationShaderInternal = tessellationEvaluation,
             shaderBufferLayoutsInternal = shaderBufferLayouts.toList(),
+            attributeLocationsInternal = attributeLocations.toMap(),
             managedProgramIdInternal = managedProgramId
             )
         )

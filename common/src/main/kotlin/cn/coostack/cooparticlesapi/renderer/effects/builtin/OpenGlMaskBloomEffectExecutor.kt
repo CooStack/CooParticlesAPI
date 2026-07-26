@@ -60,6 +60,7 @@ import org.lwjgl.opengl.GL33.glIsEnabled
 import org.lwjgl.opengl.GL33.glViewport
 import java.util.function.Supplier
 import kotlin.math.max
+import kotlin.math.pow
 
 object OpenGlMaskBloomEffectExecutor : RenderEffectExecutor {
     private val screenVertexId: ResourceLocation =
@@ -127,22 +128,66 @@ object OpenGlMaskBloomEffectExecutor : RenderEffectExecutor {
         )
         val brightTexture = bright.textureId() ?: return
 
-        drawBlur(
-            context = context,
-            target = blurA,
-            fragment = blurHorizontalId,
-            sourceTexture = brightTexture,
-            config = request.config
-        )
-        val blurATexture = blurA.textureId() ?: return
-        drawBlur(
-            context = context,
-            target = blurB,
-            fragment = blurVerticalId,
-            sourceTexture = blurATexture,
-            config = request.config
-        )
-        compositeToFinal(context, blurB.textureId() ?: return, sourceTexture, request.config)
+        val blurPasses: Int
+        val blurIterations: Int
+        when (request.config.bloomMode) {
+            MaskBloomMode.SOFT -> {
+                blurPasses = 1
+                blurIterations = 1
+            }
+
+            MaskBloomMode.STRONG -> {
+                blurPasses = STRONG_MODE_BLUR_PASSES
+                blurIterations = STRONG_MODE_BLUR_ITERATIONS
+            }
+        }
+        var blurredTexture = brightTexture
+        repeat(blurPasses) {
+            drawBlur(
+                context = context,
+                target = blurA,
+                fragment = blurHorizontalId,
+                sourceTexture = blurredTexture,
+                config = request.config,
+                iterations = blurIterations
+            )
+            val blurATexture = blurA.textureId() ?: return
+            drawBlur(
+                context = context,
+                target = blurB,
+                fragment = blurVerticalId,
+                sourceTexture = blurATexture,
+                config = request.config,
+                iterations = blurIterations
+            )
+            blurredTexture = blurB.textureId() ?: return
+        }
+        compositeToFinal(context, blurredTexture, sourceTexture, request.config, exposureFor(context, request))
+    }
+
+    /**
+     * 根据泛光模式、曝光补偿和距离聚光补偿计算最终合成阶段的曝光倍率。
+     *
+     * 默认配置（SOFT / ev = 0 / 无距离补偿）返回 1.0，与旧版本行为一致。
+     */
+    private fun exposureFor(context: RenderFrameContext, request: MaskBloomRenderRequest): Float {
+        val config = request.config
+        var exposure = when (config.bloomMode) {
+            MaskBloomMode.SOFT -> 1.0f
+            MaskBloomMode.STRONG -> STRONG_MODE_EXPOSURE_BOOST
+        }
+        if (config.exposureCompensation != 0.0f) {
+            exposure *= 2.0f.pow(config.exposureCompensation)
+        }
+        val compensation = config.distanceCompensation ?: return exposure
+        val entity = request.sourceEntity ?: return exposure
+        val camera = Minecraft.getInstance().gameRenderer.mainCamera.position
+        val renderPos = entity.lastRenderPos.lerp(entity.pos, context.tickDelta.toDouble())
+        val distance = camera.distanceTo(renderPos).toFloat()
+        val range = (compensation.fullDistance - compensation.startDistance).coerceAtLeast(1.0E-3f)
+        val progress = ((distance - compensation.startDistance) / range).coerceIn(0f, 1f)
+        exposure *= 1f + progress * (compensation.maxBoost - 1f)
+        return exposure
     }
 
     private fun maskContext(
@@ -200,14 +245,15 @@ object OpenGlMaskBloomEffectExecutor : RenderEffectExecutor {
         target: ManagedTarget,
         fragment: ResourceLocation,
         sourceTexture: Int,
-        config: MaskBloomConfig
+        config: MaskBloomConfig,
+        iterations: Int = 1
     ) {
         target.writeWithCleanColor {
             val program = programFor(fragment)
             withFlatState {
                 program.useOnContext {
                     setFloat("blurRadius", config.blurRange.coerceAtLeast(1f))
-                    setInt("iterations", 1)
+                    setInt("iterations", iterations.coerceAtLeast(1))
                     bindTexture(this, "bright", sourceTexture) {
                         screenBuffer().draw()
                     }
@@ -239,7 +285,8 @@ object OpenGlMaskBloomEffectExecutor : RenderEffectExecutor {
         context: RenderFrameContext,
         bloomTexture: Int,
         maskTexture: Int,
-        config: MaskBloomConfig
+        config: MaskBloomConfig,
+        exposure: Float = 1.0f
     ) {
         val target = context.finalCompositeTarget ?: Minecraft.getInstance().mainRenderTarget
         val framebuffer = context.finalCompositeFramebufferId?.takeIf { it > 0 } ?: target.frameBufferId
@@ -256,6 +303,7 @@ object OpenGlMaskBloomEffectExecutor : RenderEffectExecutor {
                 program.useOnContext {
                     setFloat("intensity", config.intensity)
                     setFloat("baseMaskIntensity", config.baseMaskIntensity)
+                    setFloat("exposure", exposure.coerceAtLeast(0f))
                     setFloat3("tint", config.tint)
                     bindTextures(this, "bloom" to bloomTexture, "mask" to maskTexture) {
                         screenBuffer().draw()
@@ -505,4 +553,7 @@ object OpenGlMaskBloomEffectExecutor : RenderEffectExecutor {
     )
 
     private const val TARGET_SCALE_DIVISOR = 2
+    private const val STRONG_MODE_BLUR_PASSES = 2
+    private const val STRONG_MODE_BLUR_ITERATIONS = 2
+    private const val STRONG_MODE_EXPOSURE_BOOST = 1.5f
 }

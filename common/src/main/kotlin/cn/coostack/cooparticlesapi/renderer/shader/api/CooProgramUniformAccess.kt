@@ -9,6 +9,7 @@ import org.joml.Vector2f
 import org.joml.Vector3f
 import org.joml.Vector4f
 import org.lwjgl.BufferUtils
+import org.lwjgl.system.MemoryStack
 import org.lwjgl.opengl.GL33.*
 
 /**
@@ -104,7 +105,9 @@ interface CooProgramUniformAccess {
      */
     fun setMatrix4(key: String, value: Matrix4f) {
         val glLocation = getGlLocation(key) ?: return
-        glUniformMatrix4fv(glLocation, false, value.get(BufferUtils.createFloatBuffer(16)))
+        MemoryStack.stackPush().use { stack ->
+            glUniformMatrix4fv(glLocation, false, value.get(stack.mallocFloat(16)))
+        }
     }
 
     /**

@@ -7,6 +7,8 @@ uniform sampler2D scene;
 uniform sampler2D bright;
 uniform float intensity = 1.0;
 uniform int mipLevels = 4;
+// 曝光补偿倍率，默认 1.0 保持旧行为
+uniform float exposure = 1.0;
 
 const int MAX_BLOOM_MIPS = 6;
 const vec3 TENT_KERNEL[9] = vec3[9](
@@ -48,6 +50,6 @@ vec3 accumulateBloom(vec2 uv) {
 
 void main() {
     vec4 base = texture(scene, screen_uv);
-    vec3 bloom = accumulateBloom(screen_uv) * intensity;
+    vec3 bloom = accumulateBloom(screen_uv) * intensity * exposure;
     FragColor = vec4(base.rgb + bloom, base.a);
 }

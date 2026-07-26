@@ -1,5 +1,7 @@
 package cn.coostack.cooparticlesapi.network.particle.composition
 
+import cn.coostack.cooparticlesapi.cparticle.CParticle
+import cn.coostack.cooparticlesapi.cparticle.compat.CParticleControlable
 import cn.coostack.cooparticlesapi.particles.ControlableParticle
 import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
 import cn.coostack.cooparticlesapi.particles.control.ParticleControler
@@ -11,6 +13,8 @@ class CompositionData : Comparable<CompositionData> {
     val uuid = UUID.randomUUID()
     val singleParticleHandlers = ArrayList<ControlableParticle.() -> Unit>()
     val particleControlerHandlers = ArrayList<ParticleControler.() -> Unit>()
+    val cParticleHandlers = ArrayList<CParticle.() -> Unit>()
+    val cParticleControlerHandlers = ArrayList<CParticleControlable.() -> Unit>()
     var displayerBuilder: (UUID) -> ParticleDisplayer = {
         ParticleDisplayer.withSingle(ControlableEndRodEffect(it))
     }
@@ -28,6 +32,16 @@ class CompositionData : Comparable<CompositionData> {
 
     fun addParticleControlerInstanceInit(init: ParticleControler.() -> Unit): CompositionData {
         particleControlerHandlers.add(init)
+        return this
+    }
+
+    fun addCParticleInstanceInit(init: CParticle.() -> Unit): CompositionData {
+        cParticleHandlers.add(init)
+        return this
+    }
+
+    fun addCParticleControlerInstanceInit(init: CParticleControlable.() -> Unit): CompositionData {
+        cParticleControlerHandlers.add(init)
         return this
     }
 

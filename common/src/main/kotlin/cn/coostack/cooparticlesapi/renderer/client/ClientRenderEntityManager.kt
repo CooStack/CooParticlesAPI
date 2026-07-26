@@ -140,6 +140,25 @@ object ClientRenderEntityManager {
         }
     }
 
+    fun renderIrisWorldPass(
+        tickDelta: Float,
+        viewMatrix: Matrix4f,
+        projMatrix: Matrix4f,
+        irisShaderPackInUse: Boolean
+    ) {
+        if (!irisShaderPackInUse) {
+            return
+        }
+        val stack = Matrix4fStack(16)
+        entities.values.forEach { instance ->
+            val entity = instance.entity
+            stack.pushMatrix()
+            RenderUtil.setRenderStackWithEntity(stack, entity, tickDelta)
+            instance.renderIrisWorldPass(tickDelta, viewMatrix, projMatrix, stack, renderStateGuard)
+            stack.popMatrix()
+        }
+    }
+
     fun cacheFrameState(tickDelta: Float, viewMatrix: Matrix4f, projMatrix: Matrix4f) {
         cachedTickDelta = tickDelta
         cachedViewMatrix.set(viewMatrix)

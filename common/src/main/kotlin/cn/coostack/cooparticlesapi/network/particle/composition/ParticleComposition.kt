@@ -7,6 +7,14 @@ import cn.coostack.cooparticlesapi.api.controler.server.ServerControler
 import cn.coostack.cooparticlesapi.network.particle.composition.manager.ParticleCompositionManager
 import cn.coostack.cooparticlesapi.api.controler.Controlable
 import cn.coostack.cooparticlesapi.api.controler.Tickable
+import cn.coostack.cooparticlesapi.cparticle.CParticleSystem
+import cn.coostack.cooparticlesapi.cparticle.CParticleSystemManager
+import cn.coostack.cooparticlesapi.cparticle.CParticleSystemMode
+import cn.coostack.cooparticlesapi.cparticle.CParticleRenderLayer
+import cn.coostack.cooparticlesapi.cparticle.CParticleCurve
+import cn.coostack.cooparticlesapi.cparticle.CParticleTransitionMode
+import cn.coostack.cooparticlesapi.cparticle.compat.CParticleControlable
+import cn.coostack.cooparticlesapi.cparticle.compat.CParticleDisplayer
 import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
 import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
 import cn.coostack.cooparticlesapi.particles.control.ParticleControler
@@ -20,6 +28,10 @@ import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
+import org.joml.Matrix4f
+import org.joml.Quaternionf
+import org.joml.Vector3f
+import org.joml.Vector3fc
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.PI
@@ -129,6 +141,16 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
     internal val invokeQueue = ArrayList<ParticleComposition.() -> Unit>()
     internal val postInvokeQueue = ArrayList<ParticleComposition.() -> Unit>()
     protected val particleRotatedLocations = ArrayList<RelativeLocation>()
+    private val managedCParticleSystems = LinkedHashSet<CParticleSystem>()
+    private val cParticleSystemConfigurations =
+        LinkedHashMap<CParticleRenderLayer?, ArrayList<CParticleSystem.() -> Unit>>()
+    private val cParticleLinearTransform = Matrix4f()
+    private val cParticleRenderTransform = Matrix4f()
+    private var cParticleCapacityHint = 1
+    private var managedCParticleCount = 0
+    private var gpuTransformActive = false
+    private var cParticleAppliedScale = 1.0
+    private var cParticleScaleCollapsed = false
 
     abstract fun getCodec(): StreamCodec<FriendlyByteBuf, ParticleComposition>
 
@@ -144,6 +166,73 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
      */
     fun setDisabledInterval(interval: Int): ParticleComposition {
         this.status.closedInternal = interval
+        return this
+    }
+
+    /**
+     * 配置此 composition 自动创建的所有 CParticle systems。
+     * 名称、容量、渲染层、模式和生命周期由 composition 管理。
+     */
+    fun configureCParticleSystem(configure: CParticleSystem.() -> Unit): ParticleComposition {
+        return setCParticleSystemConfiguration(null, configure)
+    }
+
+    /** 只配置指定渲染层的 system。 */
+    fun configureCParticleSystem(
+        layer: CParticleRenderLayer,
+        configure: CParticleSystem.() -> Unit,
+    ): ParticleComposition {
+        return setCParticleSystemConfiguration(layer, configure)
+    }
+
+    private fun setCParticleSystemConfiguration(
+        layer: CParticleRenderLayer?,
+        configure: CParticleSystem.() -> Unit,
+    ): ParticleComposition {
+        cParticleSystemConfigurations.getOrPut(layer) { ArrayList() }.add(configure)
+        managedCParticleSystems.forEach { system ->
+            if (layer == null || system.layer == layer) configure(system)
+        }
+        return this
+    }
+
+    /** 返回此 composition 在指定层自动创建的 system；尚未显示时返回 null。 */
+    fun getCParticleSystem(layer: CParticleRenderLayer): CParticleSystem? {
+        return managedCParticleSystems.firstOrNull { !it.released && it.layer == layer }
+    }
+
+    /** 返回此 composition 当前持有的 systems 快照。 */
+    fun getCParticleSystems(): List<CParticleSystem> {
+        return managedCParticleSystems.filterNot { it.released }
+    }
+
+    /** 对当前 composition 创建的所有 CParticle systems 播放同一段 GPU 视觉过渡。 */
+    @JvmOverloads
+    fun playCParticleVisualTransition(
+        durationTicks: Float,
+        alphaCurve: CParticleCurve? = null,
+        sizeCurve: CParticleCurve? = null,
+        colorFrom: Vector3fc? = null,
+        colorTo: Vector3fc? = null,
+        mode: CParticleTransitionMode = CParticleTransitionMode.HOLD_END,
+    ): ParticleComposition {
+        managedCParticleSystems.forEach { system ->
+            system.playVisualTransition(
+                durationTicks = durationTicks,
+                alphaCurve = alphaCurve,
+                sizeCurve = sizeCurve,
+                colorFrom = colorFrom,
+                colorTo = colorTo,
+                mode = mode,
+            )
+        }
+        return this
+    }
+
+    /** 停止当前 composition 的 CParticle GPU 视觉过渡。 */
+    @JvmOverloads
+    fun stopCParticleVisualTransition(reset: Boolean = false): ParticleComposition {
+        managedCParticleSystems.forEach { it.stopVisualTransition(reset) }
         return this
     }
 
@@ -163,8 +252,17 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
         }
 
         invokeQueue.forEach { it() }
-        controlerTicks.forEach {
-            it.tick()
+        val tickIterator = controlerTicks.iterator()
+        while (tickIterator.hasNext()) {
+            val controler = tickIterator.next()
+            if (controler is CParticleControlable && !controler.valid) {
+                tickIterator.remove()
+                continue
+            }
+            controler.tick()
+            if (controler is CParticleControlable && !controler.valid) {
+                tickIterator.remove()
+            }
         }
         postInvokeQueue.forEach { it() }
     }
@@ -178,7 +276,11 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
         // 如果没有创建, 那么此处的环境100%是创建此对象时使用的环境
         // 多为服务端(除非有人使在Client环境创建了这个类)
         if (displayed) {
-            toggleScaleDisplayed()
+            if (gpuTransformActive) {
+                applyGpuScale(new)
+            } else {
+                toggleScaleDisplayed()
+            }
         }
         // 发包有效
         if (!canceled) {
@@ -252,6 +354,7 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
         particles.forEach {
             it.value.remove()
         }
+        resetGpuTransformState()
         controlerTicks.clear()
         particles.clear()
         particleLocations.clear()
@@ -318,6 +421,10 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
         if (!client) {
             return
         }
+        if (gpuTransformActive) {
+            syncGpuTransform()
+            return
+        }
         val staleControls = ArrayList<Controlable<*>>()
         val iterator = particleLocations.iterator()
         while (iterator.hasNext()) {
@@ -371,6 +478,11 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
             ParticleCompositionManager.sendRotate(this, to, 0.0)
             return
         }
+        if (gpuTransformActive) {
+            applyGpuRotationTo(axis, to, 0.0)
+            axis.copyFrom(to)
+            return
+        }
         Math3DUtil.rotatePointsToPoint(
             particleRotatedLocations, to, axis
         )
@@ -391,6 +503,11 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
             ParticleCompositionManager.sendRotate(this, to, radian)
             return
         }
+        if (gpuTransformActive) {
+            applyGpuRotationTo(axis, to, radian)
+            axis.copyFrom(to)
+            return
+        }
         Math3DUtil.rotateToWithRoll(
             particleRotatedLocations, axis, to, radian
         )
@@ -408,6 +525,10 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
         }
         if (!client) {
             ParticleCompositionManager.sendRotate(this, null, radian)
+            return
+        }
+        if (gpuTransformActive) {
+            applyGpuAxisRotation(axis, radian)
             return
         }
         Math3DUtil.rotateAsAxis(
@@ -452,7 +573,20 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
     }
 
     fun applyRemoteRotation(to: RelativeLocation?, radian: Double) {
-        if (!client || !displayed || particleRotatedLocations.isEmpty()) {
+        if (!client || !displayed) {
+            to?.let { axis.copyFrom(it) }
+            return
+        }
+        if (gpuTransformActive) {
+            if (to == null) {
+                applyGpuAxisRotation(axis, radian)
+            } else {
+                applyGpuRotationTo(axis, to, radian)
+                axis.copyFrom(to)
+            }
+            return
+        }
+        if (particleRotatedLocations.isEmpty()) {
             to?.let { axis.copyFrom(it) }
             return
         }
@@ -468,6 +602,10 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
     protected open fun displayEntry(data: CompositionData, pos: RelativeLocation) {
         val uuid = data.uuid
         val displayer = data.displayerBuilder(uuid)
+        if (displayer is CParticleDisplayer) {
+            data.cParticleHandlers.forEach(displayer::applyParticleInit)
+            bindManagedSystem(displayer)
+        }
         if (displayer is ParticleDisplayer.SingleParticleDisplayer) {
             val controler = ControlParticleManager.createControl(uuid)
             controler.applyInitializedAction {
@@ -486,7 +624,19 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
                 handler(controler)
             }
         }
-        if (controler is Tickable<*>) {
+        if (controler is CParticleControlable) {
+            data.cParticleControlerHandlers.forEach { handler ->
+                handler(controler)
+            }
+            // composition 自己负责可见距离和移除，系统不能再围绕旧 origin 剔除。
+            controler.system.visibleRange = Double.MAX_VALUE
+            if (controler.system in managedCParticleSystems) {
+                managedCParticleCount++
+            }
+        }
+        if (controler is CParticleControlable && controler.hasTickActions) {
+            controlerTicks.add(controler)
+        } else if (controler is Tickable<*> && controler !is CParticleControlable) {
             controlerTicks.add(controler)
         }
         particleRotatedLocations.add(pos)
@@ -500,6 +650,7 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
             return
         }
         val locations = getParticles()
+        prepareGpuComposition(locations.size)
         beforeDisplay(locations)
         toggleScale(locations)
         Math3DUtil.rotatePointsToPoint(locations.values.toList(), axis, RelativeLocation.yAxis())
@@ -507,6 +658,112 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
         locations.forEach {
             displayEntry(it.key, it.value)
         }
+        refreshGpuTransformMode()
+    }
+
+    private fun prepareGpuComposition(particleCount: Int) {
+        cParticleCapacityHint = particleCount.coerceAtLeast(1)
+        cParticleAppliedScale = if (scale > 1e-7) scale else 1.0
+        cParticleScaleCollapsed = scale <= 1e-7
+    }
+
+    private fun bindManagedSystem(displayer: CParticleDisplayer) {
+        if (displayer.hasBoundSystem) return
+        val layerName = displayer.layer.name.lowercase()
+        val name = "composition/$controlUUID/$layerName"
+        val existing = CParticleSystemManager.getSystem(name)
+        if (existing != null && existing.capacity < cParticleCapacityHint) {
+            CParticleSystemManager.removeSystem(name)
+        }
+        val target = CParticleSystemManager.getOrCreateSystem(
+            name,
+            cParticleCapacityHint,
+            displayer.layer,
+            CParticleSystemMode.SCRIPTED,
+            autoReleaseWhenEmpty = true,
+        )
+        if (!displayer.bindSystemIfAbsent(target)) return
+        target.setOriginIfEmpty(position)
+        target.visibleRange = Double.MAX_VALUE
+        cParticleSystemConfigurations[null]?.forEach { it(target) }
+        cParticleSystemConfigurations[displayer.layer]?.forEach { it(target) }
+        managedCParticleSystems.add(target)
+    }
+
+    private fun applyGpuAxisRotation(rotationAxis: RelativeLocation, radian: Double) {
+        val axisVector = normalizedAxis(rotationAxis)
+        val delta = Matrix4f().rotate(radian.toFloat(), axisVector)
+        delta.mul(cParticleLinearTransform, cParticleLinearTransform)
+        syncGpuTransform()
+    }
+
+    private fun applyGpuRotationTo(from: RelativeLocation, to: RelativeLocation, radian: Double) {
+        val fromVector = normalizedAxis(from)
+        val toVector = normalizedAxis(to)
+        val align = Matrix4f().rotation(Quaternionf().rotationTo(fromVector, toVector))
+        if (radian != 0.0) {
+            align.mul(Matrix4f().rotate(radian.toFloat(), fromVector))
+        }
+        align.mul(cParticleLinearTransform, cParticleLinearTransform)
+        syncGpuTransform()
+    }
+
+    private fun applyGpuScale(newScale: Double) {
+        if (newScale <= 1e-7) {
+            cParticleScaleCollapsed = true
+            syncGpuTransform()
+            return
+        }
+        val factor = (newScale / cParticleAppliedScale).toFloat()
+        Matrix4f().scaling(factor).mul(cParticleLinearTransform, cParticleLinearTransform)
+        cParticleAppliedScale = newScale
+        cParticleScaleCollapsed = false
+        syncGpuTransform()
+    }
+
+    private fun refreshGpuTransformMode() {
+        gpuTransformActive = managedCParticleCount > 0 &&
+                managedCParticleCount == particles.size &&
+                controlerTicks.none { it is CParticleControlable }
+        if (gpuTransformActive) {
+            syncGpuTransform()
+            managedCParticleSystems.forEach { it.snapGroupTransform() }
+        }
+    }
+
+    private fun syncGpuTransform() {
+        val linear = if (cParticleScaleCollapsed) {
+            cParticleRenderTransform.set(cParticleLinearTransform)
+                .m00(0f).m01(0f).m02(0f)
+                .m10(0f).m11(0f).m12(0f)
+                .m20(0f).m21(0f).m22(0f)
+        } else {
+            cParticleLinearTransform
+        }
+        managedCParticleSystems.forEach { system ->
+            system.groupTransform
+                .set(linear)
+                .m30((position.x - system.origin.x).toFloat())
+                .m31((position.y - system.origin.y).toFloat())
+                .m32((position.z - system.origin.z).toFloat())
+        }
+    }
+
+    private fun resetGpuTransformState() {
+        managedCParticleSystems.forEach { it.groupTransform.identity() }
+        managedCParticleSystems.clear()
+        cParticleLinearTransform.identity()
+        cParticleRenderTransform.identity()
+        cParticleCapacityHint = 1
+        managedCParticleCount = 0
+        gpuTransformActive = false
+        cParticleAppliedScale = 1.0
+        cParticleScaleCollapsed = false
+    }
+
+    private fun normalizedAxis(value: RelativeLocation): Vector3f {
+        val result = Vector3f(value.x.toFloat(), value.y.toFloat(), value.z.toFloat())
+        return if (result.lengthSquared() > 1e-12f) result.normalize() else result.set(0f, 1f, 0f)
     }
 
     open fun clone(): ParticleComposition {

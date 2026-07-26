@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi.renderer.runtime
 
+import cn.coostack.cooparticlesapi.compat.IrisCompat
 import cn.coostack.cooparticlesapi.renderer.RenderEntity
 import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameContext
 import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameStage
@@ -50,6 +51,7 @@ class RenderEntityInstance<T : RenderEntity>(
     private var initialized = false
     private var released = false
     private var renderTypeWorldPassSubmitted = false
+    private var irisWorldPassSubmitted = false
 
     /**
      * 初始化 renderer 生命周期。
@@ -107,9 +109,46 @@ class RenderEntityInstance<T : RenderEntity>(
         modelMatrix: Matrix4fStack,
         stateGuard: RenderStateGuard
     ) {
+        if (consumeIrisWorldPass()) {
+            return
+        }
         if (consumeRenderTypeWorldPass()) {
             return
         }
+        renderLocalBody(tickDelta, viewMatrix, projMatrix, modelMatrix, stateGuard)
+    }
+
+    /** 在 Iris 最终合成前提交显式启用的本地 OpenGL world pass。 */
+    fun renderIrisWorldPass(
+        tickDelta: Float,
+        viewMatrix: Matrix4f,
+        projMatrix: Matrix4f,
+        modelMatrix: Matrix4fStack,
+        stateGuard: RenderStateGuard
+    ) {
+        @Suppress("UNCHECKED_CAST")
+        val irisRenderer = renderer as? IrisWorldPassRenderEntityRenderer<T> ?: return
+        if (consumeRenderTypeWorldPass()) {
+            irisWorldPassSubmitted = true
+            return
+        }
+        if (!featureSet.localRendererEnabled || RenderFrameStage.WORLD_PASS !in featureSet.stages) {
+            return
+        }
+        val irisMode = irisRenderer.irisWorldPassMode(entity)
+        IrisCompat.runWithEntityShader(irisMode) {
+            renderLocalBody(tickDelta, viewMatrix, projMatrix, modelMatrix, stateGuard)
+        }
+        irisWorldPassSubmitted = true
+    }
+
+    private fun renderLocalBody(
+        tickDelta: Float,
+        viewMatrix: Matrix4f,
+        projMatrix: Matrix4f,
+        modelMatrix: Matrix4fStack,
+        stateGuard: RenderStateGuard
+    ) {
         if (!featureSet.localRendererEnabled || RenderFrameStage.WORLD_PASS !in featureSet.stages) {
             return
         }
@@ -180,6 +219,7 @@ class RenderEntityInstance<T : RenderEntity>(
      */
     fun beginWorldRenderFrame() {
         renderTypeWorldPassSubmitted = false
+        irisWorldPassSubmitted = false
     }
 
     private fun shouldRenderTypeWorldPass(
@@ -212,6 +252,12 @@ class RenderEntityInstance<T : RenderEntity>(
             RenderTypeBackedRenderMode.ALWAYS_RENDER_TYPE,
             RenderTypeBackedRenderMode.IRIS_FIRST_OPENGL_FALLBACK -> true
         }
+    }
+
+    private fun consumeIrisWorldPass(): Boolean {
+        val submitted = irisWorldPassSubmitted
+        irisWorldPassSubmitted = false
+        return submitted
     }
 
     private fun hasOpenGlWorldPass(): Boolean {

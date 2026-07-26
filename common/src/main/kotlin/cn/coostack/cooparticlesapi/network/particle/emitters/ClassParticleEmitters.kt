@@ -1,6 +1,8 @@
 package cn.coostack.cooparticlesapi.network.particle.emitters
 
 import cn.coostack.cooparticlesapi.annotations.emitter.handle.ParticleEmittersRegistryHelper
+import cn.coostack.cooparticlesapi.cparticle.CParticleUpdateMode
+import cn.coostack.cooparticlesapi.cparticle.force.CParticleForce
 import cn.coostack.cooparticlesapi.extend.asVec3
 import cn.coostack.cooparticlesapi.extend.lengthCoerceAtMost
 import cn.coostack.cooparticlesapi.extend.ofFloored
@@ -177,6 +179,48 @@ abstract class ClassParticleEmitters(
         it.loadEmitters(this)
     }
 
+    /**
+     * # cparticle GPU 粒子系统开关
+     *
+     * 子类覆写返回 true 后, 此发射器生成的粒子进入 GPU 粒子系统
+     * (instanced 渲染 + compute/CPU 并行模拟, 10w 粒子 60FPS 级别).
+     *
+     * 代价: GPU 模式下不执行 singleParticleAction 的逐粒子回调、
+     * 碰撞/事件 (ParticleEvent)、singleParticleDeathAction 重生;
+     * 粒子运动改由 [cparticleForces] 声明的力场驱动
+     * (发射器自身的 gravity / airDensity / 全局风会自动映射).
+     */
+    open val useCParticleSystem: Boolean
+        get() = false
+
+    /**
+     * GPU 模式下此发射器粒子池容量 (粒子峰值数量; 每发射器独占一个池)
+     */
+    open val cparticleCapacity: Int
+        get() = 262144
+
+    /**
+     * GPU 模式附加力场 (每 tick 同步一次).
+     * 内置 ParticleCommand 可用 [cn.coostack.cooparticlesapi.cparticle.force.CParticleForce.fromCommand] 转换.
+     */
+    open fun cparticleForces(): List<CParticleForce> = emptyList()
+
+    /**
+     * 逐粒子选择 GPU 或完整 CPU 语义.
+     *
+     * 返回 false 时, 当前粒子走原有 ControlableParticle 路径, 因而保留
+     * [singleParticleAction]、碰撞、ParticleEvent 与 [singleParticleDeathAction].
+     * 可根据 [data] 做少量特殊粒子的混合回退; 默认沿用 [useCParticleSystem].
+     */
+    open fun shouldUseCParticleSystem(data: ControlableParticleData): Boolean = useCParticleSystem
+
+    /**
+     * GPU 粒子的数据更新方式。动态模式支持生命周期贴图和生成后的外观修改；
+     * 大型纯模拟发射器可返回 [CParticleUpdateMode.STATIC] 以减少对象保留和逐帧扫描。
+     */
+    open fun cparticleUpdateMode(data: ControlableParticleData): CParticleUpdateMode =
+        CParticleUpdateMode.DYNAMIC
+
     /** 质量 单位 g */
     var mass: Double = 1.0
     override fun start() {
@@ -327,6 +371,12 @@ abstract class ClassParticleEmitters(
 
         val player = Minecraft.getInstance().player ?: return
         if (player.position().distanceTo(pos) > data.visibleRange) {
+            return
+        }
+        // cparticle GPU 路径: 数据直接进 GPU 粒子系统, 跳过 controler/事件/碰撞
+        if (shouldUseCParticleSystem(data) &&
+            cn.coostack.cooparticlesapi.cparticle.compat.CParticleEmitterBridge.trySpawn(this, world, pos, data)
+        ) {
             return
         }
         val effect = data.effect

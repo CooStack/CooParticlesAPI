@@ -521,6 +521,22 @@ internal fun normalizeTestOptionColorHexInput(rawValue: String): String {
         .take(8)
 }
 
+internal fun parseTestOptionRgbInputs(rawValues: List<String>): List<Float>? {
+    if (rawValues.size != 3) return null
+    return rawValues.map { rawValue ->
+        val value = rawValue.toIntOrNull() ?: return null
+        if (value !in 0..255) return null
+        value / 255f
+    }
+}
+
+internal fun formatTestOptionRgbInputs(color: List<Float>): List<String> {
+    return List(3) { index ->
+        val component = color.getOrElse(index) { 0f }.coerceIn(0f, 1f)
+        kotlin.math.round(component * 255f).toInt().toString()
+    }
+}
+
 private fun formatComponents(vararg values: Number): String {
     return values.joinToString(",") { value -> formatNumber(value.toDouble()) }
 }

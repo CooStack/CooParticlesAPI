@@ -99,6 +99,29 @@ class TestOptionParamSupportTest {
     }
 
     @Test
+    fun `color picker renders above parameter controls and exposes rgb inputs`() {
+        val source = readProjectFile(
+            "common/src/main/kotlin/cn/coostack/cooparticlesapi/test/block/client/TestControllerScreen.kt"
+        )
+        val renderBody = source
+            .substringAfter("private fun renderColorPicker(")
+            .substringBefore("private fun handleColorPickerClick(")
+        val firstFlush = renderBody.indexOf("graphics.flush()")
+        val pushPose = renderBody.indexOf("graphics.pose().pushPose()")
+        val translate = renderBody.indexOf("graphics.pose().translate(0f, 0f, COLOR_PICKER_Z)")
+        val secondFlush = renderBody.indexOf("graphics.flush()", firstFlush + 1)
+        val popPose = renderBody.indexOf("graphics.pose().popPose()")
+
+        assertTrue(firstFlush >= 0 && firstFlush < pushPose)
+        assertTrue(pushPose >= 0 && pushPose < translate)
+        assertTrue(translate >= 0 && translate < secondFlush)
+        assertTrue(secondFlush >= 0 && secondFlush < popPose)
+        assertTrue("colorRgbBoxes" in source)
+        assertTrue("onColorRgbChanged" in source)
+        assertTrue("moveColorInputFocus" in source)
+    }
+
+    @Test
     fun `vector color accepts bare and prefixed hex values`() {
         val type = Vector3fTestOptionValue("color").asColor()
 
@@ -125,6 +148,18 @@ class TestOptionParamSupportTest {
 
         assertEquals(Vector4f(1f, 1f, 1f, 1f), type.parse("#FFFFFF"))
         assertEquals(Vector4f(1f, 0f, 0f, 128f / 255f), type.parse("0xFF000080"))
+    }
+
+    @Test
+    fun `rgb component inputs use the zero to 255 range`() {
+        assertEquals(
+            listOf(0f, 128f / 255f, 1f),
+            parseTestOptionRgbInputs(listOf("0", "128", "255"))
+        )
+        assertEquals(listOf("0", "128", "255"), formatTestOptionRgbInputs(listOf(0f, 128f / 255f, 1f)))
+        assertEquals(null, parseTestOptionRgbInputs(listOf("", "128", "255")))
+        assertEquals(null, parseTestOptionRgbInputs(listOf("-1", "128", "255")))
+        assertEquals(null, parseTestOptionRgbInputs(listOf("256", "128", "255")))
     }
 
     @Test

@@ -1,6 +1,9 @@
 package cn.coostack.cooparticlesapi.compat
 
 import cn.coostack.cooparticlesapi.CooParticlesAPIClient
+import cn.coostack.cooparticlesapi.cparticle.CParticleRenderPass
+import cn.coostack.cooparticlesapi.renderer.runtime.IrisWorldPassMode
+import net.minecraft.client.renderer.GameRenderer
 import net.minecraft.client.renderer.RenderStateShard
 import net.minecraft.client.renderer.RenderType
 import net.minecraft.client.renderer.ShaderInstance
@@ -8,6 +11,8 @@ import org.slf4j.LoggerFactory
 import java.lang.invoke.MethodHandle
 import java.lang.invoke.MethodHandles
 import java.lang.invoke.MethodType
+import java.lang.reflect.Method
+import java.util.Optional
 
 /**
  * 与 IRIS 互操作的反射桥接，不依赖 IRIS 类型也不需要 mixin。
@@ -42,6 +47,18 @@ object IrisCompat {
 
     @Volatile
     private var entityRenderStateShard: RenderStateShard? = null
+
+    @Volatile
+    private var particleRenderingMethodsResolved = false
+
+    @Volatile
+    private var particleRenderingMethods: ParticleRenderingMethods? = null
+
+    @Volatile
+    private var particleTranslucentShaderMethodResolved = false
+
+    @Volatile
+    private var particleTranslucentShaderMethod: Method? = null
 
     /** 单例 MethodHandle：永远返回 false (= "请不要跳过我")。 */
     private val NEVER_SKIP: MethodHandle by lazy {
@@ -80,6 +97,79 @@ object IrisCompat {
         } catch (t: Throwable) {
             LOGGER.warn("Failed to wrap custom RenderType for Iris entity rendering: $renderType", t)
             renderType
+        }
+    }
+
+    /** Iris 的 MIXED 设置会把粒子分成 opaque/translucent 两次调用。 */
+    @JvmStatic
+    fun usesMixedParticleRendering(): Boolean {
+        if (!CooParticlesAPIClient.checkIrisShaderPackUsed()) return false
+        val methods = resolveParticleRenderingMethods() ?: return false
+        return try {
+            val manager = methods.getPipelineManager.invoke(null)
+            val pipeline = (methods.getPipeline.invoke(manager) as Optional<*>).orElse(null) ?: return false
+            val setting = methods.getParticleRenderingSettings.invoke(pipeline) as? Enum<*>
+            setting?.name == "MIXED"
+        } catch (t: Throwable) {
+            LOGGER.warn("Failed to query Iris particle rendering mode", t)
+            false
+        }
+    }
+
+    /**
+     * 在 Iris 粒子 shader 的 writing framebuffer 中执行 GPU 粒子绘制。
+     *
+     * 原版粒子批次结束后 Iris 已通过 ShaderInstance.clear() 切回主目标，不能依赖
+     * RenderSystem 中残留的 shader。TRANSLUCENT pass 使用 Iris 的公开 ShaderAccess 入口。
+     */
+    @JvmStatic
+    fun runWithParticleShader(pass: CParticleRenderPass, draw: () -> Unit) {
+        if (!CooParticlesAPIClient.checkIrisShaderPackUsed()) {
+            draw()
+            return
+        }
+
+        val particleShader = when (pass) {
+            CParticleRenderPass.TRANSLUCENT -> getParticleTranslucentShader()
+            CParticleRenderPass.ALL, CParticleRenderPass.OPAQUE -> GameRenderer.getParticleShader()
+            CParticleRenderPass.NONE -> null
+        }
+        if (particleShader == null) {
+            draw()
+            return
+        }
+
+        particleShader.apply()
+        try {
+            draw()
+        } finally {
+            particleShader.clear()
+        }
+    }
+
+    /** 在 Iris 对应的 entity framebuffer 中执行 RenderEntity 的本地 world pass。 */
+    @JvmStatic
+    fun runWithEntityShader(mode: IrisWorldPassMode, draw: () -> Unit) {
+        if (!CooParticlesAPIClient.checkIrisShaderPackUsed()) {
+            draw()
+            return
+        }
+
+        val entityShader = when (mode) {
+            IrisWorldPassMode.ENTITY_SOLID -> GameRenderer.getRendertypeEntitySolidShader()
+            IrisWorldPassMode.ENTITY_CUTOUT -> GameRenderer.getRendertypeEntityCutoutShader()
+            IrisWorldPassMode.ENTITY_TRANSLUCENT -> GameRenderer.getRendertypeEntityTranslucentShader()
+        }
+        if (entityShader == null) {
+            draw()
+            return
+        }
+
+        entityShader.apply()
+        try {
+            draw()
+        } finally {
+            entityShader.clear()
         }
     }
 
@@ -140,4 +230,67 @@ object IrisCompat {
             return entityRenderTypeWrapperHandle
         }
     }
+
+    private fun resolveParticleRenderingMethods(): ParticleRenderingMethods? {
+        if (particleRenderingMethodsResolved) return particleRenderingMethods
+        synchronized(this) {
+            if (particleRenderingMethodsResolved) return particleRenderingMethods
+            particleRenderingMethodsResolved = true
+            particleRenderingMethods = try {
+                val irisClass = Class.forName("net.irisshaders.iris.Iris")
+                val pipelineManagerClass = Class.forName("net.irisshaders.iris.pipeline.PipelineManager")
+                val worldPipelineClass = Class.forName("net.irisshaders.iris.pipeline.WorldRenderingPipeline")
+                ParticleRenderingMethods(
+                    irisClass.getMethod("getPipelineManager"),
+                    pipelineManagerClass.getMethod("getPipeline"),
+                    worldPipelineClass.getMethod("getParticleRenderingSettings")
+                )
+            } catch (_: ClassNotFoundException) {
+                null
+            } catch (_: NoSuchMethodException) {
+                null
+            } catch (t: Throwable) {
+                LOGGER.warn("Unexpected failure resolving Iris particle rendering mode", t)
+                null
+            }
+            return particleRenderingMethods
+        }
+    }
+
+    private fun getParticleTranslucentShader(): ShaderInstance? {
+        val method = resolveParticleTranslucentShaderMethod() ?: return null
+        return try {
+            method.invoke(null) as? ShaderInstance
+        } catch (t: Throwable) {
+            LOGGER.warn("Failed to get Iris translucent particle shader", t)
+            null
+        }
+    }
+
+    private fun resolveParticleTranslucentShaderMethod(): Method? {
+        if (particleTranslucentShaderMethodResolved) return particleTranslucentShaderMethod
+        synchronized(this) {
+            if (particleTranslucentShaderMethodResolved) return particleTranslucentShaderMethod
+            particleTranslucentShaderMethodResolved = true
+            particleTranslucentShaderMethod = try {
+                Class.forName("net.irisshaders.iris.pipeline.programs.ShaderAccess")
+                    .getMethod("getParticleTranslucentShader")
+            } catch (_: ClassNotFoundException) {
+                null
+            } catch (_: NoSuchMethodException) {
+                null
+            } catch (t: Throwable) {
+                LOGGER.warn("Unexpected failure resolving Iris translucent particle shader", t)
+                null
+            }
+            return particleTranslucentShaderMethod
+        }
+    }
+
+    private data class ParticleRenderingMethods(
+        val getPipelineManager: Method,
+        val getPipeline: Method,
+        val getParticleRenderingSettings: Method,
+    )
+
 }

@@ -72,6 +72,25 @@ interface WorldPassRenderEntityRenderer<T : RenderEntity> : RenderEntityRenderer
     fun renderLocal(input: LocalRenderInput<T>)
 }
 
+/** Iris 为本地 OpenGL world pass 选择的 entity gbuffer 通道。 */
+enum class IrisWorldPassMode {
+    ENTITY_SOLID,
+    ENTITY_CUTOUT,
+    ENTITY_TRANSLUCENT
+}
+
+/**
+ * 显式让 renderer 的本地 OpenGL world pass 在 Iris 最终合成前写入 entity gbuffer。
+ *
+ * 未实现这个接口的 renderer 继续使用原有绘制时序。大多数发光、半透明效果使用
+ * [IrisWorldPassMode.ENTITY_TRANSLUCENT]；只有确实需要对应材质语义时才改成其他模式。
+ */
+interface IrisWorldPassRenderEntityRenderer<T : RenderEntity> {
+    fun irisWorldPassMode(entity: T): IrisWorldPassMode {
+        return IrisWorldPassMode.ENTITY_TRANSLUCENT
+    }
+}
+
 /**
  * RenderType 路线与本地 OpenGL 路线的组合方式。
  */

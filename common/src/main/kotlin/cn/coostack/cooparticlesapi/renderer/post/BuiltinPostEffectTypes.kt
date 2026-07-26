@@ -100,6 +100,7 @@ object BuiltinPostEffectTypes {
      * - `iterations: IntValue`：每级 blur 次数，默认 `1`
      * - `mipLevels: IntValue`：mip 层数，默认 `4`
      * - `intensity: FloatValue`：合成强度，默认 `1.0`
+     * - `exposure: FloatValue`：曝光补偿倍率，默认 `1.0`（即关闭）
      */
     val BLOOM: PostEffectType = CooPostEffectTypes.register(id("bloom")) {
         screenQuad()
@@ -128,6 +129,7 @@ object BuiltinPostEffectTypes {
             inputBrightColor("bright")
             outputToFinalScreen()
             uniform("intensity") { it.params["intensity"] ?: PostEffectParamValue.FloatValue(1.0f) }
+            uniform("exposure") { it.params["exposure"] ?: PostEffectParamValue.FloatValue(1.0f) }
             uniform("mipLevels") {
                 it.params["mipLevels"] ?: it.params["mipLevel"] ?: PostEffectParamValue.IntValue(4)
             }

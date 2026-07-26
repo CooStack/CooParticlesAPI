@@ -63,6 +63,15 @@ object DemoWorldRenderEffectOptions {
         )
     }
 
+    fun trailOrb(player: Player): SimpleRendererEntityOption {
+        return option(
+            player = player,
+            forwardDistance = 5.0,
+            displayName = "render_entity/trail_orb",
+            factory = { world, center -> DemoTrailOrbRenderEntity(world, center) }
+        )
+    }
+
     private fun option(
         player: Player,
         forwardDistance: Double,

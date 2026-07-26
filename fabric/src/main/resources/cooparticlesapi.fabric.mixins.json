@@ -10,6 +10,7 @@
     "events.entity.player.PlayerListMixinFabric"
   ],
   "client": [
+    "CParticleEngineFabricMixin",
     "DeathScreenOpenListenerMinecraftMixin",
     "KeyMappingAccessor",
     "KeyMappingMixin",

@@ -2,6 +2,7 @@ package cn.coostack.cooparticlesapi.mixin;
 
 import cn.coostack.cooparticlesapi.CooParticlesAPIClient;
 import cn.coostack.cooparticlesapi.accessor.LevelRendererAccessor;
+import cn.coostack.cooparticlesapi.cparticle.CParticleSystemManager;
 import cn.coostack.cooparticlesapi.renderer.client.ClientRenderEntityManager;
 import cn.coostack.cooparticlesapi.renderer.client.ClientRenderPipelineManager;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -26,6 +27,18 @@ public class LevelRendererMixin {
     @Nullable
     private ClientLevel level;
 
+    @Inject(method = "renderLevel", at = @At("HEAD"))
+    private void cooParticlesAPI$beginRenderFrame(DeltaTracker deltaTracker,
+                                                  boolean renderBlockOutline,
+                                                  Camera camera,
+                                                  GameRenderer gameRenderer,
+                                                  LightTexture lightTexture,
+                                                  Matrix4f frustumMatrix,
+                                                  Matrix4f projectionMatrix,
+                                                  CallbackInfo info) {
+        CParticleSystemManager.beginRenderFrame();
+    }
+
     @Inject(method = "renderLevel",
             at = @At(value = "INVOKE",
                     target = "Lnet/minecraft/util/profiling/ProfilerFiller;popPush(Ljava/lang/String;)V",
@@ -49,6 +62,7 @@ public class LevelRendererMixin {
         ClientRenderPipelineManager.INSTANCE.beginFrame(tickDelta, frustumMatrix, projectionMatrix);
         MultiBufferSource.BufferSource bufferSource =
                 ((LevelRendererAccessor) this).renderBuffers().bufferSource();
+        boolean irisShaderPackInUse = CooParticlesAPIClient.checkIrisShaderPackUsed();
         ClientRenderEntityManager.INSTANCE.renderRenderTypePass(
                 tickDelta,
                 frustumMatrix,
@@ -56,7 +70,13 @@ public class LevelRendererMixin {
                 new PoseStack(),
                 bufferSource,
                 camera,
-                CooParticlesAPIClient.checkIrisShaderPackUsed()
+                irisShaderPackInUse
+        );
+        ClientRenderEntityManager.INSTANCE.renderIrisWorldPass(
+                tickDelta,
+                frustumMatrix,
+                projectionMatrix,
+                irisShaderPackInUse
         );
     }
 

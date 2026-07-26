@@ -25,6 +25,11 @@ object ShaderProgramRegistry {
         return program
     }
 
+    fun unregister(program: CooComputeShaderProgram): Boolean {
+        program.release()
+        return computePrograms.remove(program)
+    }
+
     fun graphicsCount(): Int = graphicsPrograms.size
 
     fun computeCount(): Int = computePrograms.size

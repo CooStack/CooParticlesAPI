@@ -200,6 +200,8 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
                 DemoWorldRenderEffectOptions.lightOrb(player)
             }.appendOption {
                 DemoWorldRenderEffectOptions.waterBall(player)
+            }.appendOption {
+                DemoWorldRenderEffectOptions.trailOrb(player)
             }
             .appendOption {
                 SimpleCompositionOption(TestSeqComposition(player.eyePosition, player.level()), 1000)

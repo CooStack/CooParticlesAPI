@@ -14,6 +14,7 @@ class SimpleShaderProgram(
     private val tessellationControlShaderInternal: GlShader? = null,
     private val tessellationEvaluationShaderInternal: GlShader? = null,
     private val shaderBufferLayoutsInternal: List<ShaderBufferLayout<*>> = emptyList(),
+    private val attributeLocationsInternal: Map<String, Int> = emptyMap(),
     private val managedProgramIdInternal: ResourceLocation? = null
 ) : CooShaderProgram {
     override var program: Int = 0
@@ -34,6 +35,9 @@ class SimpleShaderProgram(
         attachedShaders().forEach { shader ->
             shader.compile()
             glAttachShader(program, shader.shaderID())
+        }
+        attributeLocationsInternal.forEach { (name, location) ->
+            glBindAttribLocation(program, location, name)
         }
         glLinkProgram(program)
         assertProgram()

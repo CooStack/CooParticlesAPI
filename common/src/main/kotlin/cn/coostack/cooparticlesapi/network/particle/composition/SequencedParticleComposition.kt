@@ -1,6 +1,8 @@
 package cn.coostack.cooparticlesapi.network.particle.composition
 
 import cn.coostack.cooparticlesapi.api.controler.Tickable
+import cn.coostack.cooparticlesapi.cparticle.compat.CParticleControlable
+import cn.coostack.cooparticlesapi.cparticle.compat.CParticleDisplayer
 import cn.coostack.cooparticlesapi.network.particle.composition.AutoParticleComposition
 import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
 import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
@@ -406,6 +408,9 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
     override fun displayEntry(data: CompositionData, pos: RelativeLocation) {
         val uuid = data.uuid
         val displayer = data.displayerBuilder(uuid)
+        if (displayer is CParticleDisplayer) {
+            data.cParticleHandlers.forEach(displayer::applyParticleInit)
+        }
         if (displayer is ParticleDisplayer.SingleParticleDisplayer) {
             val controler = ControlParticleManager.createControl(uuid)
             controler.applyInitializedAction {
@@ -421,7 +426,14 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
                 handler(controler)
             }
         }
-        if (controler is Tickable<*>) {
+        if (controler is CParticleControlable) {
+            data.cParticleControlerHandlers.forEach { handler ->
+                handler(controler)
+            }
+        }
+        if (controler is CParticleControlable && controler.hasTickActions) {
+            controlerTicks.add(controler)
+        } else if (controler is Tickable<*> && controler !is CParticleControlable) {
             controlerTicks.add(controler)
         }
         particles[uuid] = controler
@@ -441,6 +453,9 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
         }
 
         obj.remove()
+        if (obj is Tickable<*>) {
+            controlerTicks.remove(obj)
+        }
         particles.remove(uuid)
         particleLocations.remove(obj)
         indexToUuid[i] = null

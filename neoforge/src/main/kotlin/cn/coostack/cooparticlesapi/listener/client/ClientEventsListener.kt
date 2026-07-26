@@ -33,6 +33,22 @@ object ClientEventsListener {
                     )
                 )
             }
+
+            RenderLevelStageEvent.Stage.AFTER_PARTICLES -> {
+                CooEventBus.call(
+                    ClientWorldRenderEvent(
+                        Minecraft.getInstance().level ?: return,
+                        ClientWorldRenderEvent.RenderStage.AFTER_TRANSLUCENT,
+                        e.modelViewMatrix,
+                        e.projectionMatrix,
+                        e.poseStack,
+                        (e.levelRenderer as LevelRendererAccessor).renderBuffers().bufferSource(),
+                        e.levelRenderer,
+                        e.camera,
+                        e.partialTick
+                    )
+                )
+            }
         }
     }
 

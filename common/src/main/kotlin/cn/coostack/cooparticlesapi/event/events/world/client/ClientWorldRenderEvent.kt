@@ -50,6 +50,14 @@ class ClientWorldRenderEvent(
          */
         AFTER_ENTITY,
 
+        /**
+         * 在半透明方块(水等)渲染之后执行
+         * 对标Fabric的 AFTER_TRANSLUCENT 和 NeoForged的 AFTER_PARTICLES
+         *
+         * cparticle GPU 粒子系统在此阶段绘制
+         */
+        AFTER_TRANSLUCENT,
+
     }
 
     fun transformTo(pos: Vec3, invoker: PoseStack.() -> Unit) {

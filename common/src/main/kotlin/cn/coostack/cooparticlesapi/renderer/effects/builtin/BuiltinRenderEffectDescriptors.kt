@@ -18,6 +18,39 @@ import org.joml.Vector3f
 import org.joml.Vector4f
 
 /**
+ * mask bloom 的泛光模式。
+ *
+ * 模式只影响 executor 内部的模糊与合成策略，不改变任何调用方式；
+ * 默认 [SOFT] 与旧版本行为完全一致。
+ */
+enum class MaskBloomMode {
+    /** 柔和泛光（默认）：单次高斯 ping-pong 模糊，与旧版本观感一致。 */
+    SOFT,
+
+    /** 强泛光：双重 ping-pong 模糊 + 更宽的模糊迭代 + 约 1.5 倍合成亮度，适合高能量光效。 */
+    STRONG
+}
+
+/**
+ * 距离聚光补偿参数。
+ *
+ * 现实中远处的光源因为视角变小、光线聚在一点，观感上会更亮。
+ * 启用后 executor 会按相机与 `sourceEntity` 插值渲染位置的距离，
+ * 在 `[startDistance, fullDistance]` 区间内线性提升 bloom 亮度，最高到 `maxBoost` 倍。
+ *
+ * 仅在 descriptor 提供了 `sourceEntity` 时生效；`MaskBloomConfig.distanceCompensation`
+ * 为 `null`（默认）时该功能完全关闭。
+ */
+data class MaskBloomDistanceCompensation(
+    /** 开始增强的相机距离（格）。 */
+    val startDistance: Float = 16.0f,
+    /** 达到最大增强的相机距离（格）。 */
+    val fullDistance: Float = 64.0f,
+    /** 最大额外亮度倍率，1.0 表示不增强。 */
+    val maxBoost: Float = 2.0f
+)
+
+/**
  * 基于内容 mask 的 bloom 参数。
  *
  * - `threshold/thresholdSoftness` 控制进入 bloom mask 的门限
@@ -25,6 +58,11 @@ import org.joml.Vector4f
  * - `intensity` 控制最终 bloom 亮度
  * - `baseMaskIntensity` 控制未模糊 source 保留比例，默认为 0，只输出真正 bloom
  * - `tint` 控制最终 bloom 色调
+ *
+ * 以下为可选增强项，默认值下行为与旧版本完全一致：
+ * - `bloomMode` 泛光模式；[MaskBloomMode.STRONG] 为强泛光
+ * - `exposureCompensation` 曝光补偿（EV 档位），0 表示关闭；按 `2^ev` 缩放 bloom 亮度，可为负
+ * - `distanceCompensation` 距离聚光补偿；`null` 表示关闭
  */
 data class MaskBloomConfig(
     val blurSigma: Float = 14.0f,
@@ -33,7 +71,10 @@ data class MaskBloomConfig(
     val baseMaskIntensity: Float = 0.0f,
     val threshold: Float = 0.0f,
     val thresholdSoftness: Float = 0.015f,
-    val tint: Vector3f = Vector3f(1.0f, 1.0f, 1.0f)
+    val tint: Vector3f = Vector3f(1.0f, 1.0f, 1.0f),
+    val bloomMode: MaskBloomMode = MaskBloomMode.SOFT,
+    val exposureCompensation: Float = 0.0f,
+    val distanceCompensation: MaskBloomDistanceCompensation? = null
 )
 
 /**

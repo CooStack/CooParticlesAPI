@@ -30,7 +30,12 @@ dependencies {
     modImplementation fileTree(dir: "../depend", includes: ["*.jar"])
     modImplementation 'io.github.classgraph:classgraph:4.8.184'
     modCompileOnly fileTree(dir: "../compile_only_depend", includes: ["*.jar"])
+    testImplementation 'org.jetbrains.kotlin:kotlin-test'
 
+}
+
+tasks.withType(Test).configureEach {
+    useJUnitPlatform()
 }
 
 tasks.register("sourceWithCommon", Jar) {

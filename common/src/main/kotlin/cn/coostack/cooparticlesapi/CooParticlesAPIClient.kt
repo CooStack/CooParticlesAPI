@@ -1,6 +1,7 @@
 package cn.coostack.cooparticlesapi
 
 import cn.coostack.cooparticlesapi.animation.AnimateManager
+import cn.coostack.cooparticlesapi.cparticle.CParticleSystemManager
 import cn.coostack.cooparticlesapi.data.holder.DataHolderManager
 import cn.coostack.cooparticlesapi.display.DisplayEntityManager
 import cn.coostack.cooparticlesapi.display.CooRenderTypeResourceRegistry
@@ -156,6 +157,7 @@ object CooParticlesAPIClient {
     @JvmStatic
     fun reloadShaderPrograms() {
         renderInit = false
+        CParticleSystemManager.onResourceReload()
         OpenGlRenderEntityModelExecutor.release()
         OpenGlMaskBloomEffectExecutor.release()
         RenderEntityModelExecutors.reset()
@@ -199,6 +201,7 @@ object CooParticlesAPIClient {
         ParticleCompositionManager.clearClient()
         DisplayEntityManager.clearClient()
         ControlParticleManager.clearClient()
+        CParticleSystemManager.clear()
         ClientRenderEntityManager.clear()
         CooPostEffects.client.clear()
         DataHolderManager.clearClient()
@@ -237,6 +240,7 @@ object CooParticlesAPIClient {
                 DataHolderManager.tick()
                 ClientCameraUtil.tick()
                 ParticleCompositionManager.tickClient()
+                CParticleSystemManager.tick()
                 TestManager.doTickClient()
                 AnimateManager.tickClient()
                 CooClientPacketManager.tick()

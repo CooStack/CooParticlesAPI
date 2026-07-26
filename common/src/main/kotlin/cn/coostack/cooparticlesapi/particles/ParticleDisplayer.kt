@@ -1,6 +1,9 @@
 package cn.coostack.cooparticlesapi.particles
 
 import cn.coostack.cooparticlesapi.api.controler.Controlable
+import cn.coostack.cooparticlesapi.cparticle.CParticleRenderLayer
+import cn.coostack.cooparticlesapi.cparticle.CParticleSystem
+import cn.coostack.cooparticlesapi.cparticle.compat.CParticleDisplayer
 import cn.coostack.cooparticlesapi.display.DisplayEntity
 import cn.coostack.cooparticlesapi.display.DisplayEntityManager
 import cn.coostack.cooparticlesapi.network.particle.composition.ParticleComposition
@@ -9,6 +12,7 @@ import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
 import cn.coostack.cooparticlesapi.particles.control.group.ControlableParticleGroup
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.world.phys.Vec3
+import java.util.UUID
 
 /**
  * 为了更好的让ControlableParticleGroup 进行操作
@@ -39,6 +43,17 @@ interface ParticleDisplayer {
         fun withComposition(composition: ParticleComposition): ParticleDisplayer {
             return ParticleCompositionDisplayer(composition)
         }
+
+        @JvmStatic
+        @JvmOverloads
+        fun withCParticle(
+            uuid: UUID,
+            layer: CParticleRenderLayer = CParticleRenderLayer.ADDITION_BLEND_TRANSLUCENT,
+            system: CParticleSystem? = null,
+        ): ParticleDisplayer {
+            return CParticleDisplayer.of(uuid, layer, system)
+        }
+
     }
 
     fun display(loc: Vec3, world: ClientLevel): Controlable<*>?

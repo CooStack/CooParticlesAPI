@@ -111,6 +111,21 @@ object CooParticlesAPIFabricClient : ClientModInitializer {
             )
         }
 
+        WorldRenderEvents.AFTER_TRANSLUCENT.register {
+            CooEventBus.call(
+                ClientWorldRenderEvent(
+                    it.world(), ClientWorldRenderEvent.RenderStage.AFTER_TRANSLUCENT,
+                    it.positionMatrix(),
+                    it.projectionMatrix(),
+                    it.matrixStack() ?: return@register,
+                    it.consumers() ?: return@register,
+                    it.worldRenderer(),
+                    it.camera(),
+                    it.tickCounter()
+                )
+            )
+        }
+
         ClientTickEvents.END_CLIENT_TICK.register {
             val event = ClientPostTickEvent(it)
             CooEventBus.call(event)

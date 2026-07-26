@@ -25,6 +25,9 @@ object DemoWorldRenderEffectClientRegistry {
         register(DemoWaterBallRenderEntity.ID) {
             DemoWaterBallRenderEntityRenderer()
         }
+        register(DemoTrailOrbRenderEntity.ID) {
+            DemoTrailOrbRenderEntityRenderer()
+        }
     }
 
     private fun register(

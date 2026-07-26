@@ -10,7 +10,9 @@ import cn.coostack.cooparticlesapi.test.api.EncodedTestOptionParamSpec
 import cn.coostack.cooparticlesapi.test.api.TestOptionParamCodec
 import cn.coostack.cooparticlesapi.test.api.TestOptionParamEditorKind
 import cn.coostack.cooparticlesapi.test.api.TestOptionParamPositionMode
+import cn.coostack.cooparticlesapi.test.api.formatTestOptionRgbInputs
 import cn.coostack.cooparticlesapi.test.api.normalizeTestOptionColorHexInput
+import cn.coostack.cooparticlesapi.test.api.parseTestOptionRgbInputs
 import cn.coostack.cooparticlesapi.test.block.BlockTestMode
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.components.Button
@@ -59,6 +61,7 @@ class TestControllerScreen(
     private val paramComponentBoxes = ArrayList<List<EditBox>>()
     private val paramModeButtons = ArrayList<Button>()
     private val paramPickButtons = ArrayList<Button>()
+    private val colorRgbBoxes = ArrayList<EditBox>()
     private val paramAbsoluteModes = ArrayList<Boolean>()
     private val paramValues = LinkedHashMap<String, String>()
     private val maxVisibleSuggestions = 3
@@ -82,6 +85,7 @@ class TestControllerScreen(
     private var colorPickerAlpha = 1f
     private var colorPickerDrag = ColorPickerDrag.NONE
     private var updatingColorHex = false
+    private var updatingColorRgb = false
 
     override fun init() {
         val left = width / 2 - 170
@@ -90,6 +94,7 @@ class TestControllerScreen(
         paramComponentBoxes.clear()
         paramModeButtons.clear()
         paramPickButtons.clear()
+        colorRgbBoxes.clear()
         groupBox = editBox(left + 92, y, 220, packet.groupId)
         groupBox.setMaxLength(256)
         groupBox.setResponder { updateSuggestions() }
@@ -244,6 +249,18 @@ class TestControllerScreen(
         colorHexBox.setMaxLength(10)
         colorHexBox.setResponder(::onColorHexChanged)
         addRenderableWidget(colorHexBox)
+        repeat(3) {
+            val rgbBox = editBox(0, 0, COLOR_RGB_INPUT_WIDTH, "")
+            rgbBox.setMaxLength(3)
+            rgbBox.setFilter { value ->
+                value.isEmpty() || value.length <= 3 &&
+                        value.all { character -> character in '0'..'9' } &&
+                        value.toIntOrNull()?.let { it in 0..255 } == true
+            }
+            rgbBox.setResponder { onColorRgbChanged() }
+            colorRgbBoxes.add(rgbBox)
+            addRenderableWidget(rgbBox)
+        }
 
         updateSuggestions()
         updateIndexSuggestion()
@@ -257,7 +274,14 @@ class TestControllerScreen(
                 closeColorPicker()
                 return true
             }
-            return colorHexBox.keyPressed(keyCode, scanCode, modifiers)
+            if (keyCode == GLFW.GLFW_KEY_TAB) {
+                moveColorInputFocus(if (modifiers and GLFW.GLFW_MOD_SHIFT != 0) -1 else 1)
+                return true
+            }
+            return colorInputBoxes()
+                .firstOrNull { it.isFocused }
+                ?.keyPressed(keyCode, scanCode, modifiers)
+                ?: false
         }
         if (keyCode == GLFW.GLFW_KEY_ESCAPE && page == ControllerPage.PARAMS) {
             syncVisibleParamValuesToState()
@@ -305,8 +329,11 @@ class TestControllerScreen(
                 return true
             }
             if (isInsideColorPicker(mouseX, mouseY)) {
-                if (colorHexBox.mouseClicked(mouseX, mouseY, button)) {
-                    setFocused(colorHexBox)
+                val clickedInput = colorInputBoxes().firstOrNull {
+                    it.mouseClicked(mouseX, mouseY, button)
+                }
+                if (clickedInput != null) {
+                    setFocused(clickedInput)
                 }
                 return true
             }
@@ -727,7 +754,10 @@ class TestControllerScreen(
         }
         val index = currentOptionIndex()
         val optionSpecs = currentGroupOptionParamSpecs()
-        return optionSpecs.getOrNull(index)?.let(TestOptionParamCodec::decodeOptionSpecs) ?: emptyList()
+        return optionSpecs.getOrNull(index)
+            ?.decodeToString()
+            ?.let(TestOptionParamCodec::decodeOptionSpecs)
+            ?: emptyList()
     }
 
     private fun currentOptionParamValues(): Map<String, String> {
@@ -742,19 +772,14 @@ class TestControllerScreen(
             ?: emptyMap()
     }
 
-    private fun currentGroupOptionParamSpecs(): List<String> {
+    private fun currentGroupOptionParamSpecs(): List<ByteArray> {
         val groupId = groupBox.value.trim()
         if (groupId.isBlank()) {
             return emptyList()
         }
         val index = packet.registeredIds.indexOfFirst { id -> id.equals(groupId, ignoreCase = true) }
         if (index in packet.registeredOptionParamSpecs.indices) {
-            val encoded = packet.registeredOptionParamSpecs[index]
-            return if (encoded.isBlank()) {
-                emptyList()
-            } else {
-                encoded.split(TestOptionParamCodec.OPTION_SEPARATOR)
-            }
+            return packet.registeredOptionParamSpecs[index]
         }
         return if (groupId.equals(packet.groupId, ignoreCase = true)) packet.optionParamSpecs else emptyList()
     }
@@ -960,6 +985,7 @@ class TestControllerScreen(
         colorPickerAlpha = current.getOrElse(3) { 1f }
         clearFocus()
         updateColorHexBox()
+        updateColorRgbBoxes()
         layoutWidgets()
     }
 
@@ -978,6 +1004,9 @@ class TestControllerScreen(
         val svTop = top + 20
         val hueTop = svTop + COLOR_PICKER_SV_HEIGHT + 8
 
+        graphics.flush()
+        graphics.pose().pushPose()
+        graphics.pose().translate(0f, 0f, COLOR_PICKER_Z)
         graphics.fill(0, 0, width, height, 0x88000000.toInt())
         graphics.fill(left - 1, top - 1, left + COLOR_PICKER_WIDTH + 1, top + COLOR_PICKER_HEIGHT + 1, 0xFF9A9A9A.toInt())
         graphics.fill(left, top, left + COLOR_PICKER_WIDTH, top + COLOR_PICKER_HEIGHT, 0xFF202020.toInt())
@@ -1027,6 +1056,20 @@ class TestControllerScreen(
         graphics.fill(left + 14, top + 151, left + 40, top + 171, preview)
         graphics.drawString(font, "HEX", left + 52, top + 140, 0xFFD0D0D0.toInt(), false)
         colorHexBox.render(graphics, mouseX, mouseY, partialTick)
+        graphics.drawString(font, "RGB", left + 12, top + 184, 0xFFD0D0D0.toInt(), false)
+        RGB_COMPONENT_LABELS.forEachIndexed { index, label ->
+            graphics.drawString(
+                font,
+                label,
+                left + COLOR_RGB_INPUT_X + index * COLOR_RGB_INPUT_STEP - 8,
+                top + COLOR_RGB_INPUT_Y + 6,
+                0xFFD0D0D0.toInt(),
+                false
+            )
+        }
+        colorRgbBoxes.forEach { box -> box.render(graphics, mouseX, mouseY, partialTick) }
+        graphics.flush()
+        graphics.pose().popPose()
     }
 
     private fun handleColorPickerClick(mouseX: Double, mouseY: Double, button: Int): Boolean {
@@ -1037,6 +1080,7 @@ class TestControllerScreen(
         if (mouseX >= svLeft && mouseX <= svLeft + COLOR_PICKER_SV_WIDTH &&
             mouseY >= svTop && mouseY <= svTop + COLOR_PICKER_SV_HEIGHT
         ) {
+            clearFocus()
             colorPickerDrag = ColorPickerDrag.SATURATION_VALUE
             updateSaturationValue(mouseX, mouseY)
             return true
@@ -1044,6 +1088,7 @@ class TestControllerScreen(
         if (mouseX >= svLeft && mouseX <= svLeft + COLOR_PICKER_SV_WIDTH &&
             mouseY >= hueTop && mouseY <= hueTop + COLOR_PICKER_HUE_HEIGHT
         ) {
+            clearFocus()
             colorPickerDrag = ColorPickerDrag.HUE
             updateHue(mouseX)
             return true
@@ -1056,22 +1101,25 @@ class TestControllerScreen(
         val svTop = colorPickerTop() + 20
         colorPickerSaturation = ((mouseX - svLeft) / COLOR_PICKER_SV_WIDTH).toFloat().coerceIn(0f, 1f)
         colorPickerValue = (1f - ((mouseY - svTop) / COLOR_PICKER_SV_HEIGHT).toFloat()).coerceIn(0f, 1f)
-        applyPickerColor(updateHex = true)
+        applyPickerColor(updateHex = true, updateRgb = true)
     }
 
     private fun updateHue(mouseX: Double) {
         val svLeft = colorPickerLeft() + 12
         colorPickerHue = ((mouseX - svLeft) / COLOR_PICKER_SV_WIDTH).toFloat().coerceIn(0f, 1f)
-        applyPickerColor(updateHex = true)
+        applyPickerColor(updateHex = true, updateRgb = true)
     }
 
-    private fun applyPickerColor(updateHex: Boolean) {
+    private fun applyPickerColor(updateHex: Boolean, updateRgb: Boolean) {
         val spec = activeColorSpec() ?: return
         val color = pickerColor(spec)
         writeRowParamValue(colorPickerRow, spec, formatColor(color, spec.componentCount, colorPickerAlpha))
         paramValues[spec.id] = rowParamValue(colorPickerRow, spec)
         if (updateHex) {
             updateColorHexBox()
+        }
+        if (updateRgb) {
+            updateColorRgbBoxes()
         }
     }
 
@@ -1092,7 +1140,17 @@ class TestControllerScreen(
         colorPickerSaturation = hsv[1]
         colorPickerValue = hsv[2]
         colorPickerAlpha = color.getOrElse(3) { colorPickerAlpha }
-        applyPickerColor(updateHex = false)
+        applyPickerColor(updateHex = false, updateRgb = true)
+    }
+
+    private fun onColorRgbChanged() {
+        if (updatingColorRgb) return
+        val color = parseTestOptionRgbInputs(colorRgbBoxes.map { it.value }) ?: return
+        val hsv = rgbToHsv(color)
+        colorPickerHue = hsv[0]
+        colorPickerSaturation = hsv[1]
+        colorPickerValue = hsv[2]
+        applyPickerColor(updateHex = true, updateRgb = false)
     }
 
     private fun updateColorHexBox() {
@@ -1105,6 +1163,31 @@ class TestControllerScreen(
         updatingColorHex = true
         colorHexBox.value = hex
         updatingColorHex = false
+    }
+
+    private fun updateColorRgbBoxes() {
+        val spec = activeColorSpec() ?: return
+        val values = formatTestOptionRgbInputs(pickerColor(spec))
+        updatingColorRgb = true
+        colorRgbBoxes.forEachIndexed { index, box ->
+            box.value = values[index]
+        }
+        updatingColorRgb = false
+    }
+
+    private fun colorInputBoxes(): List<EditBox> {
+        return listOf(colorHexBox) + colorRgbBoxes
+    }
+
+    private fun moveColorInputFocus(offset: Int) {
+        val inputs = colorInputBoxes()
+        val focusedIndex = inputs.indexOfFirst { it.isFocused }
+        val nextIndex = if (focusedIndex < 0) {
+            if (offset < 0) inputs.lastIndex else 0
+        } else {
+            (focusedIndex + offset + inputs.size) % inputs.size
+        }
+        setFocused(inputs[nextIndex])
     }
 
     private fun pickerColor(spec: EncodedTestOptionParamSpec): List<Float> {
@@ -1502,6 +1585,13 @@ class TestControllerScreen(
         colorHexBox.width = COLOR_HEX_INPUT_WIDTH
         colorHexBox.visible = colorPickerRow >= 0
         colorHexBox.active = colorPickerRow >= 0
+        colorRgbBoxes.forEachIndexed { index, box ->
+            box.setX(colorPickerLeft() + COLOR_RGB_INPUT_X + index * COLOR_RGB_INPUT_STEP)
+            box.setY(colorPickerTop() + COLOR_RGB_INPUT_Y)
+            box.width = COLOR_RGB_INPUT_WIDTH
+            box.visible = colorPickerRow >= 0
+            box.active = colorPickerRow >= 0
+        }
 
         setRow(offsetY, offsetXBox, offsetYBox, offsetZBox, offsetPickButton)
         setRow(forwardY, forwardXBox, forwardYBox, forwardZBox, forwardPickButton)
@@ -1620,11 +1710,17 @@ class TestControllerScreen(
         private const val PARAM_INPUT_WIDTH = 150
         private const val PARAM_MAX_COMPONENT_BOXES = 4
         private const val COLOR_PICKER_WIDTH = 224
-        private const val COLOR_PICKER_HEIGHT = 184
+        private const val COLOR_PICKER_HEIGHT = 208
         private const val COLOR_PICKER_SV_WIDTH = 200
         private const val COLOR_PICKER_SV_HEIGHT = 96
         private const val COLOR_PICKER_HUE_HEIGHT = 12
         private const val COLOR_PICKER_STEP = 2
+        private const val COLOR_PICKER_Z = 400f
         private const val COLOR_HEX_INPUT_WIDTH = 160
+        private const val COLOR_RGB_INPUT_X = 52
+        private const val COLOR_RGB_INPUT_Y = 178
+        private const val COLOR_RGB_INPUT_WIDTH = 42
+        private const val COLOR_RGB_INPUT_STEP = 60
+        private val RGB_COMPONENT_LABELS = listOf("R", "G", "B")
     }
 }

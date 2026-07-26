@@ -8,6 +8,7 @@
     "event.entity.player.ItemStackMixinNeoForge"
   ],
   "client": [
+    "CParticleEngineNeoForgeMixin"
   ],
   "server": [],
   "injectors": {
