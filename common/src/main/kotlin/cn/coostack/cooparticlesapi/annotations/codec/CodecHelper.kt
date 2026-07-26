@@ -348,6 +348,7 @@ object CodecHelper {
      * @param type 类型对应的类
      * @param codec 他的编解码器
      */
+    @JvmStatic
     fun <T> register(type: Class<T>, codec: StreamCodec<out FriendlyByteBuf, T>) {
         supposedTypes[type.name] = codec
     }

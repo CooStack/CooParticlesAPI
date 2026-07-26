@@ -6,13 +6,13 @@ import net.minecraft.network.codec.StreamCodec;
 
 public class CodecHelperJava {
     static {
-        CodecHelper.INSTANCE.register(
+        CodecHelper.register(
                 Boolean.class, StreamCodec.of(FriendlyByteBuf::writeBoolean, FriendlyByteBuf::readBoolean)
         );
-        CodecHelper.INSTANCE.register(
+        CodecHelper.register(
                 Integer.class, StreamCodec.of(FriendlyByteBuf::writeInt, FriendlyByteBuf::readInt)
         );
-        CodecHelper.INSTANCE.register(
+        CodecHelper.register(
                 Long.class, StreamCodec.of(FriendlyByteBuf::writeLong, FriendlyByteBuf::readLong)
         );
     }

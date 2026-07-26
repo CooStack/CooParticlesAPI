@@ -429,7 +429,7 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
         )
     }
 
-    protected fun toggleScaleDisplayed() {
+    protected open fun toggleScaleDisplayed() {
         if (!displayed) {
             return
         }

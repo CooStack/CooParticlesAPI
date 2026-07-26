@@ -383,6 +383,18 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
         return getBit(this.index.get(), index)
     }
 
+    final override fun toggleScaleDisplayed() {
+        if (!displayed) {
+            return
+        }
+        sequencedParticlesData.forEach { (data, location) ->
+            val defaultLength = particleDefaultLength[data.uuid] ?: return@forEach
+            if (defaultLength in -1e-3..1e-3) return@forEach
+            location.multiply(defaultLength * scale / location.length())
+        }
+        toggleRelative()
+    }
+
     /**
      * 客户端映射：index -> uuid（用于按 index 删除）
      * 只在 client 使用；server 不会用到
