@@ -21,6 +21,7 @@ import cn.coostack.cooparticlesapi.particles.control.ParticleControler
 import cn.coostack.cooparticlesapi.particles.control.RemoveReason
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
+import cn.coostack.cooparticlesapi.utils.helper.impl.composition.CParticleCompositionAlphaHelper
 import cn.coostack.cooparticlesapi.utils.helper.impl.composition.CompositionStatusHelper
 import net.minecraft.client.Minecraft
 import net.minecraft.client.multiplayer.ClientLevel
@@ -215,6 +216,7 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
         colorFrom: Vector3fc? = null,
         colorTo: Vector3fc? = null,
         mode: CParticleTransitionMode = CParticleTransitionMode.HOLD_END,
+        restart: Boolean = false,
     ): ParticleComposition {
         managedCParticleSystems.forEach { system ->
             system.playVisualTransition(
@@ -224,6 +226,7 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
                 colorFrom = colorFrom,
                 colorTo = colorTo,
                 mode = mode,
+                restart = restart,
             )
         }
         return this
@@ -234,6 +237,32 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
     fun stopCParticleVisualTransition(reset: Boolean = false): ParticleComposition {
         managedCParticleSystems.forEach { it.stopVisualTransition(reset) }
         return this
+    }
+
+    /**
+     * 扫描此 composition 的完整运行时子树，为所有 CParticle systems 播放同一段 GPU alpha 过渡。
+     * 子树包括嵌套 composition、ParticleGroupStyle 和 ControlableParticleGroup。
+     */
+    @JvmOverloads
+    fun playCParticleAlphaTransition(
+        durationTicks: Float,
+        alphaCurve: CParticleCurve,
+        mode: CParticleTransitionMode = CParticleTransitionMode.HOLD_END,
+        restart: Boolean = false,
+    ): ParticleComposition {
+        return CParticleCompositionAlphaHelper.play(
+            composition = this,
+            durationTicks = durationTicks,
+            alphaCurve = alphaCurve,
+            mode = mode,
+            restart = restart,
+        )
+    }
+
+    /** 停止此 composition 完整运行时子树中的 CParticle alpha 过渡。 */
+    @JvmOverloads
+    fun stopCParticleAlphaTransition(reset: Boolean = false): ParticleComposition {
+        return CParticleCompositionAlphaHelper.stop(this, reset)
     }
 
     open fun beforeDisplay(map: Map<CompositionData, RelativeLocation>) {}

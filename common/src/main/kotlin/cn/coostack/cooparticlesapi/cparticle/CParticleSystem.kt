@@ -141,7 +141,8 @@ class CParticleSystem(
      * 从当前 system tick 开始播放一次 GPU 视觉过渡。
      *
      * alpha 和 size 曲线作为粒子原始值的倍率；同时提供 [colorFrom]、[colorTo]
-     * 时，颜色在两者之间插值。重复调用会从头播放，不会改写粒子实例缓冲。
+     * 时，颜色在两者之间插值。相同配置的重复调用不会重置进度；需要重播时传入 [restart]。
+     * 该操作不会改写粒子实例缓冲。
      */
     @JvmOverloads
     fun playVisualTransition(
@@ -151,6 +152,7 @@ class CParticleSystem(
         colorFrom: Vector3fc? = null,
         colorTo: Vector3fc? = null,
         mode: CParticleTransitionMode = CParticleTransitionMode.HOLD_END,
+        restart: Boolean = false,
     ): CParticleSystem {
         require(durationTicks.isFinite() && durationTicks > 0f) {
             "durationTicks must be finite and greater than zero"
@@ -160,6 +162,17 @@ class CParticleSystem(
         }
         require(alphaCurve != null || sizeCurve != null || colorFrom != null) {
             "visual transition requires an alpha curve, size curve, or color range"
+        }
+        if (!restart && visualTransition?.matches(
+                durationTicks,
+                alphaCurve,
+                sizeCurve,
+                colorFrom,
+                colorTo,
+                mode,
+            ) == true
+        ) {
+            return this
         }
         visualTransition = CParticleVisualTransition(
             startTick = tickCount.toFloat(),
