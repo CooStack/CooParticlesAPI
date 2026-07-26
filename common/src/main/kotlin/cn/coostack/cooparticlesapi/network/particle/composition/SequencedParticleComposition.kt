@@ -1,17 +1,11 @@
 package cn.coostack.cooparticlesapi.network.particle.composition
 
 import cn.coostack.cooparticlesapi.api.controler.Tickable
-import cn.coostack.cooparticlesapi.cparticle.compat.CParticleControlable
-import cn.coostack.cooparticlesapi.cparticle.compat.CParticleDisplayer
 import cn.coostack.cooparticlesapi.network.particle.composition.AutoParticleComposition
-import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
-import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
-import cn.coostack.cooparticlesapi.particles.control.ParticleControler
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import cn.coostack.cooparticlesapi.utils.helper.SequencedCompositionAnimationHelper
 import cn.coostack.cooparticlesapi.utils.storage.Memo
-import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
@@ -135,6 +129,7 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
     override fun displayParticles() {
         val locations = getParticles()
         val newCount = locations.size
+        prepareGpuComposition(newCount)
 
         // 更新 count 并保证 bitset capacity（保留旧状态）
         ensureIndexCapacity(newCount)
@@ -153,7 +148,8 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
 
         sequencedParticlesData.clear()
         sequencedParticlesData.addAll(locations.toList())
-        this.particleRotatedLocations.addAll(locations.values)
+        particleRotatedLocations.clear()
+        particleRotatedLocations.addAll(locations.values)
         // client：准备 index->uuid 数组
         if (indexToUuid.size != count) {
             indexToUuid = arrayOfNulls(count)
@@ -406,39 +402,11 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
     }
 
     override fun displayEntry(data: CompositionData, pos: RelativeLocation) {
-        val uuid = data.uuid
-        val displayer = data.displayerBuilder(uuid)
-        if (displayer is CParticleDisplayer) {
-            data.cParticleHandlers.forEach(displayer::applyParticleInit)
-        }
-        if (displayer is ParticleDisplayer.SingleParticleDisplayer) {
-            val controler = ControlParticleManager.createControl(uuid)
-            controler.applyInitializedAction {
-                for (function in data.singleParticleHandlers) {
-                    function(this)
-                }
-            }
-        }
-        val toPos = position.add(pos.x, pos.y, pos.z)
-        val controler = displayer.display(toPos, world as ClientLevel) ?: return
-        if (controler is ParticleControler) {
-            data.particleControlerHandlers.forEach { handler ->
-                handler(controler)
-            }
-        }
-        if (controler is CParticleControlable) {
-            data.cParticleControlerHandlers.forEach { handler ->
-                handler(controler)
-            }
-        }
-        if (controler is CParticleControlable && controler.hasTickActions) {
-            controlerTicks.add(controler)
-        } else if (controler is Tickable<*> && controler !is CParticleControlable) {
-            controlerTicks.add(controler)
-        }
-        particles[uuid] = controler
-        particleLocations[controler] = pos
+        super.displayEntry(data, pos)
+        refreshGpuTransformMode()
     }
+
+    override fun trackDisplayedParticleLocation(pos: RelativeLocation) = Unit
 
 
     private fun removeWithIndex(i: Int) {
@@ -452,6 +420,7 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
             return
         }
 
+        unregisterCParticleNode(obj)
         obj.remove()
         if (obj is Tickable<*>) {
             controlerTicks.remove(obj)
@@ -459,6 +428,7 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
         particles.remove(uuid)
         particleLocations.remove(obj)
         indexToUuid[i] = null
+        refreshGpuTransformMode()
     }
 
 

@@ -149,13 +149,15 @@ abstract class SequencedParticleGroup(uuid: UUID) : ControlableParticleGroup(uui
     }
 
     fun removeSingle(): Boolean {
-        if (particleLinkageDisplayCurrentIndex < 0 || sequencedParticles.isEmpty()) {
+        if (particleLinkageDisplayCurrentIndex <= 0 || sequencedParticles.isEmpty()) {
             return false
         }
         particleDisplayedCount--
         val currentPair = sequencedParticles[particleLinkageDisplayCurrentIndex-- - 1]
         val currentUUID = currentPair.first.uuid
         val particle = particles[currentUUID] ?: return true
+        unregisterCParticleNode(particle)
+        particles.remove(currentUUID)
         particlesLocations.remove(particle)
         particle.remove()
         return true
@@ -292,6 +294,7 @@ abstract class SequencedParticleGroup(uuid: UUID) : ControlableParticleGroup(uui
         val rl = pair.second
         val uuid = data.uuid
         val particleDisplayer = data.effect(uuid)
+        prepareCParticleDisplayer(particleDisplayer, sequencedParticles.size, origin)
         if (particleDisplayer is ParticleDisplayer.SingleParticleDisplayer) {
             val controler = ControlParticleManager.createControl(uuid)
             controler.applyInitializedAction(data.invoker)
@@ -302,6 +305,7 @@ abstract class SequencedParticleGroup(uuid: UUID) : ControlableParticleGroup(uui
         if (controler is ParticleControler) {
             data.controlerAction(controler)
         }
+        registerCParticleNode(controler)
         particles[uuid] = controler
         particlesLocations[controler] = rl
 
@@ -334,6 +338,7 @@ abstract class SequencedParticleGroup(uuid: UUID) : ControlableParticleGroup(uui
         } else {
             val uuid = sequencedParticles[index].first.uuid
             val particle = particles[uuid] ?: return
+            unregisterCParticleNode(particle)
             particle.remove()
             particles.remove(uuid)
             particlesLocations.remove(particle)

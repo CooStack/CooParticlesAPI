@@ -235,6 +235,10 @@ class UsefulMagicTestComposition(position: Vec3, world: Level? = null) :
                             )
                             applyDisplayAction {
                                 addPreTickAction {
+                                    this.playCParticleVisualTransition(
+                                        20f,
+                                        alphaCurve = CParticleCurve.linear(0f, 1f)
+                                    )
                                     rotateToWithAngle(direction, -PI / 64)
                                 }
                             }
@@ -270,14 +274,12 @@ class UsefulMagicTestComposition(position: Vec3, world: Level? = null) :
                                     }
                             }
                             applyDisplayAction {
-                                var displayed = false
                                 addPreTickAction {
-                                    if (this@UsefulMagicTestComposition.status.isEnable() && !displayed) {
+                                    if (this@UsefulMagicTestComposition.status.isEnable()) {
                                         this.playCParticleVisualTransition(
                                             20f,
                                             alphaCurve = CParticleCurve.linear(0f, 1f)
                                         )
-                                        displayed = true
                                     }
                                     rotateToWithAngle(direction, PI / 128)
                                 }
@@ -320,14 +322,12 @@ class UsefulMagicTestComposition(position: Vec3, world: Level? = null) :
                                 RelativeLocation(-7.611607, 0.281553, 0.0)
                             )
                             applyDisplayAction {
-                                var displayed = false
                                 addPreTickAction {
-                                    if (this@UsefulMagicTestComposition.status.isEnable() && !displayed) {
+                                    if (this@UsefulMagicTestComposition.status.isEnable()) {
                                         this.playCParticleVisualTransition(
                                             20f,
                                             alphaCurve = CParticleCurve.linear(0f, 1f)
                                         )
-                                        displayed = true
                                     }
                                     rotateToWithAngle(direction, PI / 64)
                                 }
@@ -366,14 +366,12 @@ class UsefulMagicTestComposition(position: Vec3, world: Level? = null) :
 
                             }
                             applyDisplayAction {
-                                var displayed = false
                                 addPreTickAction {
-                                    if (this@UsefulMagicTestComposition.status.isEnable() && !displayed) {
+                                    if (this@UsefulMagicTestComposition.status.isEnable()) {
                                         this.playCParticleVisualTransition(
                                             20f,
                                             alphaCurve = CParticleCurve.linear(0f, 1f)
                                         )
-                                        displayed = true
                                     }
                                     rotateToWithAngle(direction, PI / 64)
                                 }
@@ -408,14 +406,12 @@ class UsefulMagicTestComposition(position: Vec3, world: Level? = null) :
                                     }
                             }
                             applyDisplayAction {
-                                var displayed = false
                                 addPreTickAction {
-                                    if (this@UsefulMagicTestComposition.status.isEnable() && !displayed) {
+                                    if (this@UsefulMagicTestComposition.status.isEnable()) {
                                         this.playCParticleVisualTransition(
                                             20f,
                                             alphaCurve = CParticleCurve.linear(0f, 1f)
                                         )
-                                        displayed = true
                                     }
                                     rotateToWithAngle(direction, PI / 128)
                                 }

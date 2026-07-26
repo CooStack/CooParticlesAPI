@@ -469,6 +469,7 @@ abstract class SequencedParticleStyle(visibleRange: Double = 32.0, uuid: UUID = 
         val uuid = data.uuid
 
         val displayer = data.displayerBuilder(uuid)
+        prepareCParticleDisplayer(displayer, sequencedParticles.size)
         if (displayer is ParticleDisplayer.SingleParticleDisplayer) {
             val controler = ControlParticleManager.createControl(uuid)
             controler.applyInitializedAction(data.particleHandler)
@@ -478,6 +479,7 @@ abstract class SequencedParticleStyle(visibleRange: Double = 32.0, uuid: UUID = 
         if (controler is ParticleControler) {
             data.particleControlerHandler(controler)
         }
+        registerCParticleNode(controler)
         particles[uuid] = controler
         particleLocations[controler] = rl
     }
@@ -491,6 +493,7 @@ abstract class SequencedParticleStyle(visibleRange: Double = 32.0, uuid: UUID = 
         } else {
             val uuid = sequencedParticles[index].first.uuid
             val particle = particles[uuid] ?: return
+            unregisterCParticleNode(particle)
             particle.remove()
             particles.remove(uuid)
             particleLocations.remove(particle)

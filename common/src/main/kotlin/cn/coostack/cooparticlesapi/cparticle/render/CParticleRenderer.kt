@@ -90,10 +90,11 @@ object CParticleRenderer {
         // ---- 状态快照 ----
         val prevProgram = glGetInteger(GL_CURRENT_PROGRAM)
         val prevActiveTexture = glGetInteger(GL_ACTIVE_TEXTURE)
-        glActiveTexture(GL_TEXTURE0)
+        RenderSystem.activeTexture(GL_TEXTURE0)
         val prevTex0 = glGetInteger(GL_TEXTURE_BINDING_2D)
-        glActiveTexture(GL_TEXTURE1)
+        RenderSystem.activeTexture(GL_TEXTURE1)
         val prevTex1 = glGetInteger(GL_TEXTURE_BINDING_2D)
+        RenderSystem.activeTexture(prevActiveTexture)
         val blendEnabled = glIsEnabled(GL_BLEND)
         val blendSrcRgb = glGetInteger(GL_BLEND_SRC_RGB)
         val blendDstRgb = glGetInteger(GL_BLEND_DST_RGB)
@@ -104,15 +105,19 @@ object CParticleRenderer {
         val depthFunc = glGetInteger(GL_DEPTH_FUNC)
         val cullEnabled = glIsEnabled(GL_CULL_FACE)
         val lightTexture = Minecraft.getInstance().gameRenderer.lightTexture()
+        val lightmapWasEnabled = RenderSystem.getShaderTexture(2) != 0
 
         try {
             // ---- 纹理: 0=粒子图集 1=光照贴图 ----
-            lightTexture.turnOnLightLayer()
+            if (!lightmapWasEnabled) {
+                RenderSystem.activeTexture(GL_TEXTURE0)
+                lightTexture.turnOnLightLayer()
+            }
             val lightmapId = RenderSystem.getShaderTexture(2)
-            glActiveTexture(GL_TEXTURE0)
-            glBindTexture(GL_TEXTURE_2D, CParticleSprites.atlasGlId())
-            glActiveTexture(GL_TEXTURE1)
-            glBindTexture(GL_TEXTURE_2D, lightmapId)
+            RenderSystem.activeTexture(GL_TEXTURE0)
+            RenderSystem.bindTexture(CParticleSprites.atlasGlId())
+            RenderSystem.activeTexture(GL_TEXTURE1)
+            RenderSystem.bindTexture(lightmapId)
 
             glUseProgram(shader.program)
             shader.setMatrix4("uView", view)
@@ -189,17 +194,27 @@ object CParticleRenderer {
                         shader.setFloat3("uTransitionColorTo", transition.colorTo)
                     }
                 }
+                val alphaTransition = system.alphaTransition
+                val alphaTransitionProgress = alphaTransition?.progressAt(systemTime)
+                shader.setFloat(
+                    "uAlphaTransitionScale",
+                    if (alphaTransition != null && alphaTransitionProgress != null) {
+                        alphaTransition.alphaCurve?.sample(alphaTransitionProgress) ?: 1f
+                    } else {
+                        1f
+                    },
+                )
 
                 system.glBuffer.draw(system.store.highWater)
             }
         } finally {
             // ---- 状态还原 ----
-            lightTexture.turnOffLightLayer()
-            glActiveTexture(GL_TEXTURE1)
-            glBindTexture(GL_TEXTURE_2D, prevTex1)
-            glActiveTexture(GL_TEXTURE0)
-            glBindTexture(GL_TEXTURE_2D, prevTex0)
-            glActiveTexture(prevActiveTexture)
+            if (!lightmapWasEnabled) lightTexture.turnOffLightLayer()
+            RenderSystem.activeTexture(GL_TEXTURE1)
+            RenderSystem.bindTexture(prevTex1)
+            RenderSystem.activeTexture(GL_TEXTURE0)
+            RenderSystem.bindTexture(prevTex0)
+            RenderSystem.activeTexture(prevActiveTexture)
             if (blendEnabled) glEnable(GL_BLEND) else glDisable(GL_BLEND)
             glBlendFuncSeparate(blendSrcRgb, blendDstRgb, blendSrcAlpha, blendDstAlpha)
             if (depthEnabled) glEnable(GL_DEPTH_TEST) else glDisable(GL_DEPTH_TEST)

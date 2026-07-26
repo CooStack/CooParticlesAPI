@@ -5,6 +5,10 @@ import cn.coostack.cooparticlesapi.network.particle.style.ParticleGroupStyle.Sty
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleShapeStyle
 import cn.coostack.cooparticlesapi.api.controler.Controlable
 import cn.coostack.cooparticlesapi.api.controler.Tickable
+import cn.coostack.cooparticlesapi.cparticle.CParticleSystem
+import cn.coostack.cooparticlesapi.cparticle.compat.CParticleControlable
+import cn.coostack.cooparticlesapi.cparticle.compat.CParticleDisplayer
+import cn.coostack.cooparticlesapi.network.particle.composition.ParticleComposition
 import cn.coostack.cooparticlesapi.particles.ControlableParticle
 import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
 import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
@@ -41,6 +45,54 @@ abstract class ControlableParticleGroup(val uuid: UUID) : Controlable<Controlabl
 
     // 实际显示的粒子相对位置关系
     val particlesLocations = ConcurrentHashMap<Controlable<*>, RelativeLocation>()
+    private val cParticleSystems = LinkedHashMap<CParticleSystem, Int>()
+    private val cParticleContainers = LinkedHashSet<Controlable<*>>()
+
+    internal fun getCParticleSystems(): List<CParticleSystem> {
+        removeReleasedCParticleSystems()
+        return cParticleSystems.keys.toList()
+    }
+
+    internal fun getCParticleContainers(): List<Controlable<*>> =
+        cParticleContainers.toList()
+
+    protected fun prepareCParticleDisplayer(
+        displayer: ParticleDisplayer,
+        capacity: Int,
+        origin: Vec3,
+    ) {
+        if (displayer is CParticleDisplayer) {
+            displayer.bindDedicatedSystemIfAbsent("group/$uuid", capacity, origin)
+        }
+    }
+
+    protected fun registerCParticleNode(controler: Controlable<*>) {
+        removeReleasedCParticleSystems()
+        when (controler) {
+            is CParticleControlable -> cParticleSystems.merge(controler.system, 1, Int::plus)
+            is ParticleComposition,
+            is ParticleGroupStyle,
+            is ControlableParticleGroup -> cParticleContainers.add(controler)
+        }
+    }
+
+    protected fun unregisterCParticleNode(controler: Controlable<*>) {
+        when (controler) {
+            is CParticleControlable -> {
+                val count = cParticleSystems[controler.system] ?: return
+                if (count <= 1) cParticleSystems.remove(controler.system)
+                else cParticleSystems[controler.system] = count - 1
+            }
+
+            is ParticleComposition,
+            is ParticleGroupStyle,
+            is ControlableParticleGroup -> cParticleContainers.remove(controler)
+        }
+    }
+
+    private fun removeReleasedCParticleSystems() {
+        cParticleSystems.keys.removeIf { it.released }
+    }
 
     val particlesDefaultScaleLengths = ConcurrentHashMap<UUID, Double>()
 
@@ -98,6 +150,8 @@ abstract class ControlableParticleGroup(val uuid: UUID) : Controlable<Controlabl
         }.clear()
         particlesLocations.clear()
         particlesDefaultScaleLengths.clear()
+        cParticleSystems.clear()
+        cParticleContainers.clear()
         valid = false
     }
 
@@ -300,6 +354,7 @@ abstract class ControlableParticleGroup(val uuid: UUID) : Controlable<Controlabl
         for ((v, rl) in locations) {
             val uuid = v.uuid
             val particleDisplayer = v.effect(uuid)
+            prepareCParticleDisplayer(particleDisplayer, locations.size, pos)
             if (particleDisplayer is ParticleDisplayer.SingleParticleDisplayer) {
                 val controler = ControlParticleManager.createControl(uuid)
                 controler.applyInitializedAction(v.invoker)
@@ -309,6 +364,7 @@ abstract class ControlableParticleGroup(val uuid: UUID) : Controlable<Controlabl
             if (controler is ParticleControler) {
                 v.controlerAction(controler)
             }
+            registerCParticleNode(controler)
             particles[uuid] = controler
             particlesLocations[controler] = rl
         }

@@ -36,6 +36,7 @@ uniform int uTransitionEnabled;
 uniform vec4 uTransitionParams; // alphaScale, sizeScale, colorProgress, hasColor
 uniform vec3 uTransitionColorFrom;
 uniform vec3 uTransitionColorTo;
+uniform float uAlphaTransitionScale;
 
 out vec2 vUv;
 out vec4 vColor;
@@ -179,6 +180,7 @@ void main() {
     if (applyTransition) {
         alphaScale *= uTransitionParams.x;
     }
+    alphaScale *= uAlphaTransitionScale;
     vColor = vec4(particleColor, iColor.a * alphaScale);
 
     int blockLight = (flags >> 3) & 15;

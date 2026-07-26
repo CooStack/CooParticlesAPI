@@ -20,7 +20,7 @@ class TestAlphaShaderEmitter(pos: Vec3, world: Level?) : AutoParticleEmitters(po
         return listOf(
             ControlableParticleData().apply {
                 maxAge = 20
-                alpha = 0.08f
+                alpha = 0.02f
                 setTextureSheet(TextureSheetsEnum.PARTICLE_SHEET_TRANSLUCENT)
             } to RelativeLocation(),
 

@@ -70,6 +70,9 @@ class CParticleSystem(
     internal var visualTransition: CParticleVisualTransition? = null
         private set
 
+    internal var alphaTransition: CParticleVisualTransition? = null
+        private set
+
     /**
      * 整组变换 (SCRIPTED 模式): 施加于粒子的原点相对坐标.
      * 用它做整组旋转/缩放是零 per-particle CPU 开销的.
@@ -152,7 +155,48 @@ class CParticleSystem(
         colorFrom: Vector3fc? = null,
         colorTo: Vector3fc? = null,
         mode: CParticleTransitionMode = CParticleTransitionMode.HOLD_END,
-        restart: Boolean = false,
+    ): CParticleSystem {
+        return playVisualTransitionInternal(
+            durationTicks,
+            alphaCurve,
+            sizeCurve,
+            colorFrom,
+            colorTo,
+            mode,
+            restart = false,
+        )
+    }
+
+    /** 与 [playVisualTransition] 相同；[restart] 为 true 时强制从头播放。 */
+    @JvmOverloads
+    fun playVisualTransition(
+        durationTicks: Float,
+        restart: Boolean,
+        alphaCurve: CParticleCurve? = null,
+        sizeCurve: CParticleCurve? = null,
+        colorFrom: Vector3fc? = null,
+        colorTo: Vector3fc? = null,
+        mode: CParticleTransitionMode = CParticleTransitionMode.HOLD_END,
+    ): CParticleSystem {
+        return playVisualTransitionInternal(
+            durationTicks,
+            alphaCurve,
+            sizeCurve,
+            colorFrom,
+            colorTo,
+            mode,
+            restart,
+        )
+    }
+
+    private fun playVisualTransitionInternal(
+        durationTicks: Float,
+        alphaCurve: CParticleCurve?,
+        sizeCurve: CParticleCurve?,
+        colorFrom: Vector3fc?,
+        colorTo: Vector3fc?,
+        mode: CParticleTransitionMode,
+        restart: Boolean,
     ): CParticleSystem {
         require(durationTicks.isFinite() && durationTicks > 0f) {
             "durationTicks must be finite and greater than zero"
@@ -187,6 +231,42 @@ class CParticleSystem(
     }
 
     /**
+     * 播放独立的 system alpha 倍率过渡，不会替换颜色或大小视觉过渡。
+     */
+    @JvmOverloads
+    fun playAlphaTransition(
+        durationTicks: Float,
+        alphaCurve: CParticleCurve,
+        mode: CParticleTransitionMode = CParticleTransitionMode.HOLD_END,
+        restart: Boolean = false,
+    ): CParticleSystem {
+        require(durationTicks.isFinite() && durationTicks > 0f) {
+            "durationTicks must be finite and greater than zero"
+        }
+        if (!restart && alphaTransition?.matches(
+                durationTicks,
+                alphaCurve,
+                null,
+                null,
+                null,
+                mode,
+            ) == true
+        ) {
+            return this
+        }
+        alphaTransition = CParticleVisualTransition(
+            startTick = tickCount.toFloat(),
+            durationTicks = durationTicks,
+            alphaCurve = alphaCurve,
+            sizeCurve = null,
+            colorFrom = null,
+            colorTo = null,
+            mode = mode,
+        )
+        return this
+    }
+
+    /**
      * 停止当前过渡。[reset] 为 true 时恢复原始状态，否则立即停在最终状态。
      */
     @JvmOverloads
@@ -202,6 +282,26 @@ class CParticleSystem(
                 sizeCurve = current.sizeCurve,
                 colorFrom = current.colorFrom.takeIf { current.hasColor },
                 colorTo = current.colorTo.takeIf { current.hasColor },
+                mode = CParticleTransitionMode.HOLD_END,
+            )
+        }
+        return this
+    }
+
+    /** 停止独立 alpha 过渡。[reset] 为 false 时停在曲线终点。 */
+    @JvmOverloads
+    fun stopAlphaTransition(reset: Boolean = false): CParticleSystem {
+        val current = alphaTransition ?: return this
+        alphaTransition = if (reset) {
+            null
+        } else {
+            CParticleVisualTransition(
+                startTick = tickCount.toFloat() - current.durationTicks,
+                durationTicks = current.durationTicks,
+                alphaCurve = current.alphaCurve,
+                sizeCurve = null,
+                colorFrom = null,
+                colorTo = null,
                 mode = CParticleTransitionMode.HOLD_END,
             )
         }
@@ -377,12 +477,15 @@ class CParticleSystem(
     }
 
     private fun clearFinishedResetTransition() {
-        val transition = visualTransition ?: return
-        if (transition.mode == CParticleTransitionMode.RESET &&
-            tickCount - transition.startTick >= transition.durationTicks
-        ) {
-            visualTransition = null
-        }
+        visualTransition = clearFinishedResetTransition(visualTransition)
+        alphaTransition = clearFinishedResetTransition(alphaTransition)
+    }
+
+    private fun clearFinishedResetTransition(
+        transition: CParticleVisualTransition?,
+    ): CParticleVisualTransition? {
+        if (transition == null || transition.mode != CParticleTransitionMode.RESET) return transition
+        return transition.takeIf { tickCount - it.startTick < it.durationTicks }
     }
 
     private fun tickSimulated() {

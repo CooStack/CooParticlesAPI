@@ -7,12 +7,17 @@ import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleStyleS2C
 import cn.coostack.cooparticlesapi.api.controler.server.ServerControler
 import cn.coostack.cooparticlesapi.api.controler.Controlable
 import cn.coostack.cooparticlesapi.api.controler.Tickable
+import cn.coostack.cooparticlesapi.cparticle.CParticleSystem
+import cn.coostack.cooparticlesapi.cparticle.compat.CParticleControlable
+import cn.coostack.cooparticlesapi.cparticle.compat.CParticleDisplayer
+import cn.coostack.cooparticlesapi.network.particle.composition.ParticleComposition
 import cn.coostack.cooparticlesapi.particles.ControlableParticle
 import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
 import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
 import cn.coostack.cooparticlesapi.particles.control.ControlType
 import cn.coostack.cooparticlesapi.particles.control.ParticleControler
 import cn.coostack.cooparticlesapi.particles.control.RemoveReason
+import cn.coostack.cooparticlesapi.particles.control.group.ControlableParticleGroup
 import cn.coostack.cooparticlesapi.particles.impl.ControlableEndRodEffect
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
@@ -64,6 +69,50 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
     internal val postInvokeQueue = ArrayList<ParticleGroupStyle.() -> Unit>()
     val particles = ConcurrentHashMap<UUID, Controlable<*>>()
     val particleLocations = ConcurrentHashMap<Controlable<*>, RelativeLocation>()
+    private val cParticleSystems = LinkedHashMap<CParticleSystem, Int>()
+    private val cParticleContainers = LinkedHashSet<Controlable<*>>()
+
+    internal fun getCParticleSystems(): List<CParticleSystem> {
+        removeReleasedCParticleSystems()
+        return cParticleSystems.keys.toList()
+    }
+
+    internal fun getCParticleContainers(): List<Controlable<*>> =
+        cParticleContainers.toList()
+
+    protected fun prepareCParticleDisplayer(displayer: ParticleDisplayer, capacity: Int) {
+        if (displayer is CParticleDisplayer) {
+            displayer.bindDedicatedSystemIfAbsent("style/$uuid", capacity, pos)
+        }
+    }
+
+    protected fun registerCParticleNode(controler: Controlable<*>) {
+        removeReleasedCParticleSystems()
+        when (controler) {
+            is CParticleControlable -> cParticleSystems.merge(controler.system, 1, Int::plus)
+            is ParticleComposition,
+            is ParticleGroupStyle,
+            is ControlableParticleGroup -> cParticleContainers.add(controler)
+        }
+    }
+
+    protected fun unregisterCParticleNode(controler: Controlable<*>) {
+        when (controler) {
+            is CParticleControlable -> {
+                val count = cParticleSystems[controler.system] ?: return
+                if (count <= 1) cParticleSystems.remove(controler.system)
+                else cParticleSystems[controler.system] = count - 1
+            }
+
+            is ParticleComposition,
+            is ParticleGroupStyle,
+            is ControlableParticleGroup -> cParticleContainers.remove(controler)
+        }
+    }
+
+    private fun removeReleasedCParticleSystems() {
+        cParticleSystems.keys.removeIf { it.released }
+    }
 
     override fun isValid(): Boolean {
         return valid
@@ -415,6 +464,7 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
             val uuid = it.key.uuid
             val rl = it.value
             val displayer = it.key.displayerBuilder(uuid)
+            prepareCParticleDisplayer(displayer, locations.size)
             if (displayer is ParticleDisplayer.SingleParticleDisplayer) {
                 val controler = ControlParticleManager.createControl(uuid)
                 controler.applyInitializedAction(data.particleHandler)
@@ -424,6 +474,7 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
             if (controler is ParticleControler) {
                 data.particleControlerHandler(controler)
             }
+            registerCParticleNode(controler)
 
             particles[uuid] = controler
             particleLocations[controler] = rl
@@ -441,6 +492,8 @@ abstract class ParticleGroupStyle(var visibleRange: Double = 32.0, val uuid: UUI
         particles.clear()
         particleLocations.clear()
         particleDefaultLength.clear()
+        cParticleSystems.clear()
+        cParticleContainers.clear()
         this.valid = valid
     }
 

@@ -51,6 +51,29 @@ class CParticleDisplayer(
         return true
     }
 
+    internal fun bindDedicatedSystemIfAbsent(
+        ownerName: String,
+        capacity: Int,
+        origin: Vec3,
+    ) {
+        if (system != null) return
+        val name = "$ownerName/${layer.name.lowercase()}"
+        val existing = CParticleSystemManager.getSystem(name)
+        if (existing != null && existing.capacity < capacity) {
+            CParticleSystemManager.removeSystem(name)
+        }
+        val target = CParticleSystemManager.getOrCreateSystem(
+            name,
+            capacity.coerceAtLeast(1),
+            layer,
+            CParticleSystemMode.SCRIPTED,
+            autoReleaseWhenEmpty = true,
+        )
+        if (!bindSystemIfAbsent(target)) return
+        target.setOriginIfEmpty(origin)
+        target.visibleRange = Double.MAX_VALUE
+    }
+
     internal fun applyParticleInit(init: CParticle.() -> Unit) {
         init(template)
     }

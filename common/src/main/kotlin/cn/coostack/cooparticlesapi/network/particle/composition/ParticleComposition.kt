@@ -19,6 +19,8 @@ import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
 import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
 import cn.coostack.cooparticlesapi.particles.control.ParticleControler
 import cn.coostack.cooparticlesapi.particles.control.RemoveReason
+import cn.coostack.cooparticlesapi.network.particle.style.ParticleGroupStyle
+import cn.coostack.cooparticlesapi.particles.control.group.ControlableParticleGroup
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import cn.coostack.cooparticlesapi.utils.helper.impl.composition.CParticleCompositionAlphaHelper
@@ -143,6 +145,8 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
     internal val postInvokeQueue = ArrayList<ParticleComposition.() -> Unit>()
     protected val particleRotatedLocations = ArrayList<RelativeLocation>()
     private val managedCParticleSystems = LinkedHashSet<CParticleSystem>()
+    private val referencedCParticleSystems = LinkedHashMap<CParticleSystem, Int>()
+    private val cParticleContainers = LinkedHashSet<Controlable<*>>()
     private val cParticleSystemConfigurations =
         LinkedHashMap<CParticleRenderLayer?, ArrayList<CParticleSystem.() -> Unit>>()
     private val cParticleLinearTransform = Matrix4f()
@@ -204,7 +208,53 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
 
     /** 返回此 composition 当前持有的 systems 快照。 */
     fun getCParticleSystems(): List<CParticleSystem> {
-        return managedCParticleSystems.filterNot { it.released }
+        removeReleasedCParticleSystems()
+        return referencedCParticleSystems.keys.toList()
+    }
+
+    internal fun getCParticleContainers(): List<Controlable<*>> =
+        cParticleContainers.toList()
+
+    protected fun registerCParticleNode(controler: Controlable<*>) {
+        when (controler) {
+            is CParticleControlable -> {
+                removeReleasedCParticleSystems()
+                referencedCParticleSystems.merge(controler.system, 1, Int::plus)
+                controler.system.visibleRange = Double.MAX_VALUE
+                if (controler.system in managedCParticleSystems) {
+                    managedCParticleCount++
+                }
+            }
+
+            is ParticleComposition,
+            is ParticleGroupStyle,
+            is ControlableParticleGroup -> cParticleContainers.add(controler)
+        }
+    }
+
+    protected fun unregisterCParticleNode(controler: Controlable<*>) {
+        when (controler) {
+            is CParticleControlable -> {
+                val count = referencedCParticleSystems[controler.system] ?: return
+                if (count <= 1) referencedCParticleSystems.remove(controler.system)
+                else referencedCParticleSystems[controler.system] = count - 1
+                if (controler.system in managedCParticleSystems) {
+                    managedCParticleCount = (managedCParticleCount - 1).coerceAtLeast(0)
+                }
+            }
+
+            is ParticleComposition,
+            is ParticleGroupStyle,
+            is ControlableParticleGroup -> cParticleContainers.remove(controler)
+        }
+    }
+
+    private fun removeReleasedCParticleSystems() {
+        managedCParticleSystems.removeIf { it.released }
+        referencedCParticleSystems.keys.removeIf { it.released }
+        managedCParticleCount = referencedCParticleSystems.entries.sumOf { (system, count) ->
+            if (system in managedCParticleSystems) count else 0
+        }
     }
 
     /** 对当前 composition 创建的所有 CParticle systems 播放同一段 GPU 视觉过渡。 */
@@ -216,17 +266,58 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
         colorFrom: Vector3fc? = null,
         colorTo: Vector3fc? = null,
         mode: CParticleTransitionMode = CParticleTransitionMode.HOLD_END,
-        restart: Boolean = false,
     ): ParticleComposition {
-        managedCParticleSystems.forEach { system ->
+        return playCParticleVisualTransitionInternal(
+            durationTicks,
+            alphaCurve,
+            sizeCurve,
+            colorFrom,
+            colorTo,
+            mode,
+            restart = false,
+        )
+    }
+
+    /** 与 [playCParticleVisualTransition] 相同；[restart] 为 true 时强制从头播放。 */
+    @JvmOverloads
+    fun playCParticleVisualTransition(
+        durationTicks: Float,
+        restart: Boolean,
+        alphaCurve: CParticleCurve? = null,
+        sizeCurve: CParticleCurve? = null,
+        colorFrom: Vector3fc? = null,
+        colorTo: Vector3fc? = null,
+        mode: CParticleTransitionMode = CParticleTransitionMode.HOLD_END,
+    ): ParticleComposition {
+        return playCParticleVisualTransitionInternal(
+            durationTicks,
+            alphaCurve,
+            sizeCurve,
+            colorFrom,
+            colorTo,
+            mode,
+            restart,
+        )
+    }
+
+    private fun playCParticleVisualTransitionInternal(
+        durationTicks: Float,
+        alphaCurve: CParticleCurve?,
+        sizeCurve: CParticleCurve?,
+        colorFrom: Vector3fc?,
+        colorTo: Vector3fc?,
+        mode: CParticleTransitionMode,
+        restart: Boolean,
+    ): ParticleComposition {
+        getCParticleSystems().forEach { system ->
             system.playVisualTransition(
                 durationTicks = durationTicks,
+                restart = restart,
                 alphaCurve = alphaCurve,
                 sizeCurve = sizeCurve,
                 colorFrom = colorFrom,
                 colorTo = colorTo,
                 mode = mode,
-                restart = restart,
             )
         }
         return this
@@ -235,7 +326,7 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
     /** 停止当前 composition 的 CParticle GPU 视觉过渡。 */
     @JvmOverloads
     fun stopCParticleVisualTransition(reset: Boolean = false): ParticleComposition {
-        managedCParticleSystems.forEach { it.stopVisualTransition(reset) }
+        getCParticleSystems().forEach { it.stopVisualTransition(reset) }
         return this
     }
 
@@ -356,7 +447,9 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
         val newAxis = other.axis.clone()
 
         this.visibleRange = other.visibleRange
-        this.position = other.position
+        if (this.position != other.position) {
+            teleportTo(other.position)
+        }
         this.canceled = other.canceled
 
         this.controlUUID = other.controlUUID
@@ -481,6 +574,7 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
     }
 
     private fun removeDisplayedControl(control: Controlable<*>) {
+        unregisterCParticleNode(control)
         control.remove(RemoveReason.QUEUE)
         if (control is Tickable<*>) {
             controlerTicks.remove(control)
@@ -657,18 +751,14 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
             data.cParticleControlerHandlers.forEach { handler ->
                 handler(controler)
             }
-            // composition 自己负责可见距离和移除，系统不能再围绕旧 origin 剔除。
-            controler.system.visibleRange = Double.MAX_VALUE
-            if (controler.system in managedCParticleSystems) {
-                managedCParticleCount++
-            }
         }
+        registerCParticleNode(controler)
         if (controler is CParticleControlable && controler.hasTickActions) {
             controlerTicks.add(controler)
         } else if (controler is Tickable<*> && controler !is CParticleControlable) {
             controlerTicks.add(controler)
         }
-        particleRotatedLocations.add(pos)
+        trackDisplayedParticleLocation(pos)
         particles[uuid] = controler
         particleLocations[controler] = pos
     }
@@ -690,10 +780,14 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
         refreshGpuTransformMode()
     }
 
-    private fun prepareGpuComposition(particleCount: Int) {
+    protected fun prepareGpuComposition(particleCount: Int) {
         cParticleCapacityHint = particleCount.coerceAtLeast(1)
         cParticleAppliedScale = if (scale > 1e-7) scale else 1.0
         cParticleScaleCollapsed = scale <= 1e-7
+    }
+
+    protected open fun trackDisplayedParticleLocation(pos: RelativeLocation) {
+        particleRotatedLocations.add(pos)
     }
 
     private fun bindManagedSystem(displayer: CParticleDisplayer) {
@@ -750,7 +844,7 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
         syncGpuTransform()
     }
 
-    private fun refreshGpuTransformMode() {
+    protected fun refreshGpuTransformMode() {
         gpuTransformActive = managedCParticleCount > 0 &&
                 managedCParticleCount == particles.size &&
                 controlerTicks.none { it is CParticleControlable }
@@ -781,6 +875,8 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
     private fun resetGpuTransformState() {
         managedCParticleSystems.forEach { it.groupTransform.identity() }
         managedCParticleSystems.clear()
+        referencedCParticleSystems.clear()
+        cParticleContainers.clear()
         cParticleLinearTransform.identity()
         cParticleRenderTransform.identity()
         cParticleCapacityHint = 1
