@@ -30,7 +30,7 @@ import org.lwjgl.opengl.GL31.glTexBuffer
  * Forbidden: [frames] 不得返回其他 [bindingKey] 的 UV。
  *
  * @property id 在 float 精确整数范围内的稳定 ID
- * @property bindingKey 所有帧所属的主纹理绑定
+ * @property bindingKey 所有帧所属的纹理绑定
  * @property frames 资源重载后可再次调用的帧解析函数
  */
 internal data class CParticleTextureDescriptorDefinition(
@@ -167,13 +167,13 @@ object CParticleTextureDescriptors {
     }
 
     /**
-     * 校验描述符已经注册并属于预期主纹理绑定。
+     * 校验描述符已经注册并属于预期纹理绑定。
      *
      * Example: 方块图集 system 可接受由 `textureOfBlock` 注册的 descriptor。
      * Forbidden: 粒子图集 system 不能写入方块图集 descriptor。
      *
      * @param descriptorId 要写入实例数据的 descriptor ID
-     * @param expectedBindingKey 当前 system 固定的主纹理绑定
+     * @param expectedBindingKey 当前 system 固定的基础或蒙版纹理绑定
      * @return 已验证的 descriptor ID
      * @throws IllegalArgumentException ID 未注册或 binding 不一致时抛出
      */

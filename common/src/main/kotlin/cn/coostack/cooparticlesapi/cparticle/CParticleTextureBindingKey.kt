@@ -29,7 +29,7 @@ enum class CParticleTextureBindingKind {
 }
 
 /**
- * 一次实例化绘制实际使用的主纹理绑定。
+ * 一次实例化绘制使用的一张纹理绑定，可用于基础纹理或蒙版。
  *
  * 相同 key 的粒子可以共用 draw call；不同 key 必须进入不同系统或批次。
  * Example: `CParticleTextureBindingKey.BLOCK_ATLAS` 可混合多个 BlockState 和物品 sprite。

@@ -5,16 +5,17 @@ import cn.coostack.cooparticlesapi.cparticle.CParticleAppearanceDescriptors
 import cn.coostack.cooparticlesapi.cparticle.CParticleGpuMath
 import cn.coostack.cooparticlesapi.cparticle.CParticleInstanceFlags
 import cn.coostack.cooparticlesapi.cparticle.CParticleResolvedTexture
+import cn.coostack.cooparticlesapi.cparticle.CParticleResolvedTextures
 import cn.coostack.cooparticlesapi.cparticle.CParticleSprites
 import cn.coostack.cooparticlesapi.cparticle.CParticleSystemManager
 import cn.coostack.cooparticlesapi.cparticle.CParticleTextureBindingKey
 import cn.coostack.cooparticlesapi.cparticle.CParticleTextureDescriptors
-import cn.coostack.cooparticlesapi.cparticle.CParticleTextureSource
 import cn.coostack.cooparticlesapi.cparticle.CParticleUpdateMode
 import cn.coostack.cooparticlesapi.particles.ParticleCameraOption
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
+import kotlin.math.roundToInt
 
 /**
  * # SoA 粒子存储
@@ -31,12 +32,12 @@ import org.joml.Vector3f
  * vec4 5: animationId visualAgeBase seedLow16 seedHigh16
  * vec4 6: r g b a
  * vec4 7: angularVelocity(pitch,yaw,roll) epochTick
- * vec4 8: appearanceDescriptorId speedLimit/systemSentinel reserved reserved
+ * vec4 8: appearanceDescriptorId speedLimit/systemSentinel maskDescriptorId packedMaskRgb8
  * ```
  *
  * flags 位: bit0 alive; bit1..2 cameraMode(0=BILLBOARD 1=AXIS 2=ROTATION);
  * bit3..6 blockLight; bit7..10 skyLight; bit11 randomAge; bit12 rotationDirection;
- * bit13 randomQuarterUv
+ * bit13 randomQuarterUv; bit14 randomMaskQuarterUv
  *
  * 槽位管理: 空闲栈 + 存活位图 + 世代计数(句柄失效检测).
  * 死槽位不压缩 — 渲染端对非 alive 实例输出退化三角形, 代价可忽略.
@@ -74,6 +75,10 @@ class CParticleStore(val capacity: Int) {
         const val OFF_EPOCH_TICK = 31
         const val OFF_APPEARANCE = 32
         const val OFF_SPEED_LIMIT = OFF_APPEARANCE + 1
+        const val OFF_MASK_ANIMATION = OFF_APPEARANCE + 2
+
+        /** 蒙版 RGB8 倍率的 24-bit 打包值。Example: 白色为 `0xFFFFFF`。Forbidden: 不要写入超过 24 bit 的值。 */
+        const val OFF_MASK_COLOR = OFF_APPEARANCE + 3
         private const val SYSTEM_SPEED_LIMIT_SENTINEL = -1f
 
         const val FLAG_ALIVE = CParticleInstanceFlags.ALIVE
@@ -83,6 +88,7 @@ class CParticleStore(val capacity: Int) {
         const val FLAG_RANDOM_AGE = CParticleInstanceFlags.RANDOM_AGE
         const val FLAG_ROTATION_DIRECTION = CParticleInstanceFlags.ROTATION_DIRECTION
         const val FLAG_RANDOM_QUARTER_UV = CParticleInstanceFlags.RANDOM_QUARTER_UV
+        const val FLAG_MASK_RANDOM_QUARTER_UV = CParticleInstanceFlags.MASK_RANDOM_QUARTER_UV
 
         private const val SNAP_SIZE_W = 0
         private const val SNAP_SIZE_H = 1
@@ -103,6 +109,12 @@ class CParticleStore(val capacity: Int) {
         private const val SNAPSHOT_STRIDE = 16
         private val EMPTY_SLOTS = IntArray(0)
 
+        /**
+         * 按旧布局打包基础实例 flags。
+         *
+         * Example: `packFlags(true, 0, 15, 15)` 创建一个存活 billboard 粒子。
+         * Forbidden: 该兼容入口不会设置蒙版裁剪位。
+         */
         @JvmStatic
         fun packFlags(
             alive: Boolean,
@@ -121,6 +133,48 @@ class CParticleStore(val capacity: Int) {
             rotationDirection,
             randomQuarterUv,
         )
+
+        /**
+         * 打包包含蒙版裁剪位的实例 flags。
+         *
+         * Example: 方块蒙版开启随机裁剪时把 [randomMaskQuarterUv] 设为 `true`。
+         * Forbidden: 不要把蒙版裁剪位写进基础裁剪参数。
+         */
+        internal fun packFlagsWithMask(
+            alive: Boolean,
+            cameraMode: Int,
+            blockLight: Int,
+            skyLight: Int,
+            randomAge: Boolean,
+            rotationDirection: Boolean,
+            randomQuarterUv: Boolean,
+            randomMaskQuarterUv: Boolean,
+        ): Int = CParticleInstanceFlags.packWithMask(
+            alive,
+            cameraMode,
+            blockLight,
+            skyLight,
+            randomAge,
+            rotationDirection,
+            randomQuarterUv,
+            randomMaskQuarterUv,
+        )
+
+        /**
+         * 把蒙版 RGB 倍率量化为 float 可精确保存的 24-bit 整数。
+         *
+         * Example: `(1, 0.5, 0)` 会打包为 `0x0080FF`。
+         * Forbidden: 不要用它保存 HDR 或负颜色，输入会限制到 `0..1`。
+         *
+         * @param color 蒙版 RGB 倍率；`null` 表示白色
+         * @return 按低位到高位排列的 R、G、B 8-bit 通道
+         */
+        internal fun packRgb8(color: Vector3f?): Int {
+            val red = ((color?.x ?: 1f).coerceIn(0f, 1f) * 255f).roundToInt()
+            val green = ((color?.y ?: 1f).coerceIn(0f, 1f) * 255f).roundToInt()
+            val blue = ((color?.z ?: 1f).coerceIn(0f, 1f) * 255f).roundToInt()
+            return red or (green shl 8) or (blue shl 16)
+        }
     }
 
     /** 交错主数据 (与 GPU 缓冲 1:1) */
@@ -192,24 +246,24 @@ class CParticleStore(val capacity: Int) {
         slot in 0 until capacity && (aliveBits[slot ushr 6] and (1L shl (slot and 63))) != 0L
 
     /**
-     * 生成一个粒子, 返回槽位 (-1 = 池满).
+     * 使用基础纹理描述符生成一个粒子。
      *
      * Example: `spawn(particle, origin, animationId, 15, 15)` 占用一个空槽位。
-     * Forbidden: 受全局限制的 store 达到共享上限后不能继续生成。
+     * Forbidden: 该兼容入口不接受额外蒙版；蒙版由 system 的解析路径写入。
      *
      * @param p 粒子数据
-     * @param origin 系统原点 (位置写入为原点相对 float)
+     * @param origin 系统原点
      * @param animationId GPU 动画描述符
-     * @param blockLight 0..15 (light==-1 时由调用方先采样世界光照)
+     * @param blockLight 0..15
      * @param skyLight 0..15
      * @param epochTick 粒子生成时的 system tick
      * @param randomSeed GPU 随机种子
-     * @param colorMultiplier 纹理颜色倍率
-     * @param randomQuarterUv 是否随机裁剪到四分之一 UV
-     * @param textureBindingKey 粒子所属的主纹理绑定
+     * @param colorMultiplier 基础纹理颜色倍率
+     * @param randomQuarterUv 是否随机裁剪基础纹理
+     * @param textureBindingKey 粒子所属的基础纹理 binding
      * @param textureGeneration 纹理缓存代数
      * @param appearanceDescriptorId GPU 外观描述符
-     * @return 分配的槽位；本地池或全局额度已满时返回 `-1`
+     * @return 分配的槽位；池满时返回 `-1`
      */
     fun spawn(
         p: CParticle,
@@ -224,8 +278,65 @@ class CParticleStore(val capacity: Int) {
         textureBindingKey: CParticleTextureBindingKey = CParticleTextureBindingKey.PARTICLE_ATLAS,
         textureGeneration: Int = 0,
         appearanceDescriptorId: Int = p.appearanceDescriptorId(),
+    ): Int = spawnWithMask(
+        p = p,
+        origin = origin,
+        animationId = animationId,
+        blockLight = blockLight,
+        skyLight = skyLight,
+        epochTick = epochTick,
+        randomSeed = randomSeed,
+        colorMultiplier = colorMultiplier,
+        randomQuarterUv = randomQuarterUv,
+        textureBindingKey = textureBindingKey,
+        textureGeneration = textureGeneration,
+        appearanceDescriptorId = appearanceDescriptorId,
+    )
+
+    /**
+     * 使用基础纹理和可选蒙版描述符生成一个粒子。
+     *
+     * Example: `spawn(particle, origin, animationId, 15, 15)` 占用一个空槽位。
+     * Forbidden: 受全局限制的 store 达到共享上限后不能继续生成。
+     *
+     * @param p 粒子数据
+     * @param origin 系统原点 (位置写入为原点相对 float)
+     * @param animationId GPU 动画描述符
+     * @param maskAnimationId 可选蒙版 GPU 动画描述符
+     * @param blockLight 0..15 (light==-1 时由调用方先采样世界光照)
+     * @param skyLight 0..15
+     * @param epochTick 粒子生成时的 system tick
+     * @param randomSeed GPU 随机种子
+     * @param colorMultiplier 基础纹理颜色倍率
+     * @param randomQuarterUv 是否随机裁剪到四分之一 UV
+     * @param randomMaskQuarterUv 是否随机裁剪蒙版到四分之一 UV
+     * @param textureBindingKey 粒子所属的基础纹理绑定
+     * @param maskTextureBindingKey 粒子所属的可选蒙版纹理绑定
+     * @param maskColorMultiplier 蒙版采样使用的独立 RGB 倍率
+     * @param textureGeneration 纹理缓存代数
+     * @param appearanceDescriptorId GPU 外观描述符
+     * @return 分配的槽位；本地池或全局额度已满时返回 `-1`
+     */
+    internal fun spawnWithMask(
+        p: CParticle,
+        origin: Vec3,
+        animationId: Int,
+        blockLight: Int,
+        skyLight: Int,
+        epochTick: Int = 0,
+        randomSeed: Int = p.randomSeed ?: CParticleGpuMath.nextAutomaticSeed(),
+        colorMultiplier: Vector3f = Vector3f(1f),
+        randomQuarterUv: Boolean = false,
+        textureBindingKey: CParticleTextureBindingKey = CParticleTextureBindingKey.PARTICLE_ATLAS,
+        textureGeneration: Int = 0,
+        appearanceDescriptorId: Int = p.appearanceDescriptorId(),
+        maskAnimationId: Int? = null,
+        randomMaskQuarterUv: Boolean = false,
+        maskTextureBindingKey: CParticleTextureBindingKey? = null,
+        maskColorMultiplier: Vector3f? = null,
     ): Int {
         CParticleTextureDescriptors.requireValidDescriptorId(animationId)
+        maskAnimationId?.let(CParticleTextureDescriptors::requireValidDescriptorId)
         CParticleAppearanceDescriptors.requireValidDescriptorId(appearanceDescriptorId)
         if (freeTop <= 0) return -1
         if (countsTowardGlobalLimit && !CParticleSystemManager.tryAcquireParticleSlot()) return -1
@@ -245,7 +356,7 @@ class CParticleStore(val capacity: Int) {
         data[base + OFF_VEL + 1] = p.velocity.y.toFloat()
         data[base + OFF_VEL + 2] = p.velocity.z.toFloat()
         val hasDirection = p.cameraOption == ParticleCameraOption.ROTATION && p.rotationDirection != null
-        data[base + OFF_FLAGS] = packFlags(
+        data[base + OFF_FLAGS] = packFlagsWithMask(
             true,
             p.cameraOption.ordinal,
             blockLight,
@@ -253,6 +364,7 @@ class CParticleStore(val capacity: Int) {
             p.randomAgePreTick,
             hasDirection,
             randomQuarterUv,
+            randomMaskQuarterUv,
         ).toFloat()
         data[base + OFF_SIZE] = p.weightSize
         data[base + OFF_SIZE + 1] = p.heightSize
@@ -277,8 +389,8 @@ class CParticleStore(val capacity: Int) {
         data[base + OFF_EPOCH_TICK] = epochTick.toFloat()
         data[base + OFF_APPEARANCE] = appearanceDescriptorId.toFloat()
         data[base + OFF_SPEED_LIMIT] = p.speedLimit ?: SYSTEM_SPEED_LIMIT_SENTINEL
-        data[base + OFF_APPEARANCE + 2] = 0f
-        data[base + OFF_APPEARANCE + 3] = 0f
+        data[base + OFF_MASK_ANIMATION] = (maskAnimationId ?: 0).toFloat()
+        data[base + OFF_MASK_COLOR] = packRgb8(maskColorMultiplier).toFloat()
 
         ages[slot] = p.age
         maxAges[slot] = maxAge
@@ -304,7 +416,9 @@ class CParticleStore(val capacity: Int) {
                 p,
                 colorMultiplier,
                 randomQuarterUv,
+                randomMaskQuarterUv,
                 textureBindingKey,
+                maskTextureBindingKey,
                 textureGeneration,
             )
         }
@@ -646,6 +760,43 @@ class CParticleStore(val capacity: Int) {
         expectedBindingKey: CParticleTextureBindingKey,
         resolveTexture: (CParticle) -> CParticleResolvedTexture,
         onBindingMismatch: (Int, CParticleTextureBindingKey) -> Unit,
+    ): Int = prepareDynamicTextures(
+        tick = tick,
+        textureGeneration = textureGeneration,
+        expectedBindingKey = expectedBindingKey,
+        expectedMaskBindingKey = null,
+        resolveTextures = { particle ->
+            CParticleResolvedTextures(
+                base = resolveTexture(particle),
+                mask = null,
+                randomBaseQuarterUv = false,
+                randomMaskQuarterUv = false,
+            )
+        },
+        onBindingMismatch = { slot, actual, _ -> onBindingMismatch(slot, actual) },
+    )
+
+    /**
+     * 把 DYNAMIC 来源中的基础纹理和蒙版描述符写回 CPU 镜像。
+     *
+     * Example: 石头蒙版换成泥土蒙版时，两个来源都留在原 binding 才会更新槽位。
+     * Forbidden: 任一来源跨 binding 时不能继续使用旧 system。
+     *
+     * @param tick 当前 system tick
+     * @param textureGeneration 资源解析缓存代数
+     * @param expectedBindingKey system 固定的基础纹理 binding
+     * @param expectedMaskBindingKey system 固定的可选蒙版 binding
+     * @param resolveTextures 来源变化时调用的双纹理解析函数
+     * @param onBindingMismatch 跨 binding 被移除前的通知
+     * @return 本帧需要补写 GPU 视觉区的槽位数量
+     */
+    internal fun prepareDynamicTextures(
+        tick: Int,
+        textureGeneration: Int,
+        expectedBindingKey: CParticleTextureBindingKey,
+        expectedMaskBindingKey: CParticleTextureBindingKey?,
+        resolveTextures: (CParticle) -> CParticleResolvedTextures,
+        onBindingMismatch: (Int, CParticleTextureBindingKey, CParticleTextureBindingKey?) -> Unit,
     ): Int {
         val state = dynamicState ?: return 0
         if (state.sourceCount == 0) return 0
@@ -739,33 +890,48 @@ class CParticleStore(val capacity: Int) {
             if (source.textureRevision != state.textureRevisions[slot] ||
                 textureGeneration != state.textureGenerations[slot]
             ) {
-                val resolved = resolveTexture(source)
-                if (resolved.bindingKey != expectedBindingKey) {
-                    onBindingMismatch(slot, resolved.bindingKey)
+                val resolved = resolveTextures(source)
+                if (!resolved.isValid ||
+                    resolved.base.bindingKey != expectedBindingKey ||
+                    resolved.mask?.bindingKey != expectedMaskBindingKey
+                ) {
+                    onBindingMismatch(slot, resolved.base.bindingKey, resolved.mask?.bindingKey)
                     kill(slot)
                     state.dirtySlots[dirtyCount++] = slot
                     continue
                 }
-                data[base + OFF_ANIMATION] = (resolved.animationId ?: resolved.descriptorId).toFloat()
+                data[base + OFF_ANIMATION] =
+                    (resolved.base.animationId ?: resolved.base.descriptorId).toFloat()
+                data[base + OFF_MASK_ANIMATION] = resolved.mask
+                    ?.let { it.animationId ?: it.descriptorId }
+                    ?.toFloat()
+                    ?: 0f
                 state.textureRevisions[slot] = source.textureRevision
                 state.textureGenerations[slot] = textureGeneration
-                state.bindingKeys[slot] = resolved.bindingKey
-                state.colorMultipliers[colorBase] = resolved.colorMultiplier.x
-                state.colorMultipliers[colorBase + 1] = resolved.colorMultiplier.y
-                state.colorMultipliers[colorBase + 2] = resolved.colorMultiplier.z
-                data[base + OFF_COLOR] = source.color.x * resolved.colorMultiplier.x
-                data[base + OFF_COLOR + 1] = source.color.y * resolved.colorMultiplier.y
-                data[base + OFF_COLOR + 2] = source.color.z * resolved.colorMultiplier.z
-                val randomQuarterUv =
-                    (source.effectiveTextureSource() as? CParticleTextureSource.Block)?.randomCrop == true
+                state.bindingKeys[slot] = resolved.base.bindingKey
+                state.maskBindingKeys[slot] = resolved.mask?.bindingKey
+                val colorMultiplier = resolved.base.colorMultiplier
+                state.colorMultipliers[colorBase] = colorMultiplier.x
+                state.colorMultipliers[colorBase + 1] = colorMultiplier.y
+                state.colorMultipliers[colorBase + 2] = colorMultiplier.z
+                data[base + OFF_COLOR] = source.color.x * colorMultiplier.x
+                data[base + OFF_COLOR + 1] = source.color.y * colorMultiplier.y
+                data[base + OFF_COLOR + 2] = source.color.z * colorMultiplier.z
+                data[base + OFF_MASK_COLOR] = packRgb8(resolved.mask?.colorMultiplier).toFloat()
                 var flags = data[base + OFF_FLAGS].toInt()
-                flags = if (randomQuarterUv) {
+                flags = if (resolved.randomBaseQuarterUv) {
                     flags or FLAG_RANDOM_QUARTER_UV
                 } else {
                     flags and FLAG_RANDOM_QUARTER_UV.inv()
                 }
+                flags = if (resolved.randomMaskQuarterUv) {
+                    flags or FLAG_MASK_RANDOM_QUARTER_UV
+                } else {
+                    flags and FLAG_MASK_RANDOM_QUARTER_UV.inv()
+                }
                 data[base + OFF_FLAGS] = flags.toFloat()
-                state.randomCropModes[slot] = randomQuarterUv
+                state.randomCropModes[slot] = resolved.randomBaseQuarterUv
+                state.randomMaskCropModes[slot] = resolved.randomMaskQuarterUv
                 changed = true
             }
 
@@ -817,7 +983,9 @@ class CParticleStore(val capacity: Int) {
         source: CParticle,
         colorMultiplier: Vector3f,
         randomQuarterUv: Boolean,
+        randomMaskQuarterUv: Boolean,
         textureBindingKey: CParticleTextureBindingKey,
+        maskTextureBindingKey: CParticleTextureBindingKey?,
         textureGeneration: Int,
     ) {
         val snapshot = slot * SNAPSHOT_STRIDE
@@ -844,11 +1012,13 @@ class CParticleStore(val capacity: Int) {
         state.textureRevisions[slot] = source.textureRevision
         state.textureGenerations[slot] = textureGeneration
         state.bindingKeys[slot] = textureBindingKey
+        state.maskBindingKeys[slot] = maskTextureBindingKey
         val colorBase = slot * 3
         state.colorMultipliers[colorBase] = colorMultiplier.x
         state.colorMultipliers[colorBase + 1] = colorMultiplier.y
         state.colorMultipliers[colorBase + 2] = colorMultiplier.z
         state.randomCropModes[slot] = randomQuarterUv
+        state.randomMaskCropModes[slot] = randomMaskQuarterUv
         state.randomModes[slot] = source.randomAgePreTick
         state.appearanceRevisions[slot] = source.appearanceRevision
         state.explicitSeedModes[slot] = source.randomSeed != null
@@ -978,8 +1148,10 @@ class CParticleStore(val capacity: Int) {
         val textureRevisions = IntArray(capacity)
         val textureGenerations = IntArray(capacity)
         val bindingKeys = arrayOfNulls<CParticleTextureBindingKey>(capacity)
+        val maskBindingKeys = arrayOfNulls<CParticleTextureBindingKey>(capacity)
         val colorMultipliers = FloatArray(capacity * 3)
         val randomCropModes = BooleanArray(capacity)
+        val randomMaskCropModes = BooleanArray(capacity)
         val randomModes = BooleanArray(capacity)
         val appearanceRevisions = IntArray(capacity)
         val explicitSeedModes = BooleanArray(capacity)

@@ -29,8 +29,11 @@ object CParticleInstanceFlags {
     /** 使用稳定随机 1/4 UV 裁剪，bit 13。Example: Block randomCrop 开启时置位。Forbidden: 不要为每粒子注册裁剪 UV。 */
     const val RANDOM_QUARTER_UV = 1 shl 13
 
+    /** 蒙版使用稳定随机 1/4 UV 裁剪，bit 14。Example: 方块蒙版开启 randomCrop 时置位。Forbidden: 不要裁剪基础纹理两次。 */
+    const val MASK_RANDOM_QUARTER_UV = 1 shl 14
+
     /** 当前已分配位形成的最大值。Example: 可用于 float 精确性测试。Forbidden: 不要把它当成 descriptor 上限。 */
-    const val MAX_PACKED_VALUE = (1 shl 14) - 1
+    const val MAX_PACKED_VALUE = (1 shl 15) - 1
 
     /** float 能精确表示的整数边界。Example: flags 必须小于此值。Forbidden: 不要分配 bit 24。 */
     const val FLOAT_EXACT_INTEGER_LIMIT = 1 shl 24
@@ -60,6 +63,27 @@ object CParticleInstanceFlags {
         randomAge: Boolean = false,
         rotationDirection: Boolean = false,
         randomQuarterUv: Boolean = false,
+    ): Int = packWithMask(
+        alive,
+        cameraMode,
+        blockLight,
+        skyLight,
+        randomAge,
+        rotationDirection,
+        randomQuarterUv,
+        false,
+    )
+
+    /** 打包包含蒙版随机裁剪位的内部实例 flags。 */
+    internal fun packWithMask(
+        alive: Boolean,
+        cameraMode: Int,
+        blockLight: Int,
+        skyLight: Int,
+        randomAge: Boolean,
+        rotationDirection: Boolean,
+        randomQuarterUv: Boolean,
+        randomMaskQuarterUv: Boolean,
     ): Int {
         var flags = if (alive) ALIVE else 0
         flags = flags or ((cameraMode and 3) shl CAMERA_SHIFT)
@@ -68,6 +92,7 @@ object CParticleInstanceFlags {
         if (randomAge) flags = flags or RANDOM_AGE
         if (rotationDirection) flags = flags or ROTATION_DIRECTION
         if (randomQuarterUv) flags = flags or RANDOM_QUARTER_UV
+        if (randomMaskQuarterUv) flags = flags or MASK_RANDOM_QUARTER_UV
         return flags
     }
 

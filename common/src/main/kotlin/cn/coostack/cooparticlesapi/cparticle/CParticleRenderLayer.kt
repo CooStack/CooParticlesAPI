@@ -7,7 +7,7 @@ import org.lwjgl.opengl.GL33.*
  * GPU 粒子渲染层 — 与 [TextureSheetsEnum] / ParticleRenderType 的混合语义一一对应.
  *
  * 同一层的所有系统在一帧内按 [drawOrder] 排序后各自一次 instanced draw.
- * 渲染层只描述混合与深度状态，主纹理由系统的 [CParticleSystem.textureBindingKey] 决定。
+ * 渲染层只描述混合与深度状态；基础纹理和蒙版由 [CParticleSystem] 决定。
  */
 enum class CParticleRenderLayer(
     /** 绘制顺序: 越小越先画 (不透明最先, 加法混合最后) */
@@ -32,8 +32,14 @@ enum class CParticleRenderLayer(
     /** 对应 ADDITION_BLEND_TRANSLUCENT_NO_DEPTH_WRITE: SRC_ALPHA/ONE, 不写深度 (大量发光粒子推荐) */
     ADDITION_BLEND_TRANSLUCENT_NO_DEPTH_WRITE(4, true, GL_SRC_ALPHA, GL_ONE, false);
 
+    /**
+     * 是否在颜色累加完成后单独写入深度。
+     *
+     * Example: [ADDITION_BLEND] 返回 `true`，避免实例顺序截断颜色累加。
+     * Forbidden: [ADDITION_BLEND_TRANSLUCENT_NO_DEPTH_WRITE] 必须保持 `false`，不能遮挡后绘制内容。
+     */
     val requiresDeferredDepthWrite: Boolean
-        get() = blend && blendDst == GL_ONE
+        get() = blend && blendDst == GL_ONE && depthWrite
 
     /**
      * 应用本层完整的混合与深度写入状态。

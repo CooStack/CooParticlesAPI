@@ -21,10 +21,10 @@ import org.joml.Vector4f
 import org.lwjgl.opengl.GL33.*
 
 /**
- * GPU 粒子渲染器: 每个系统一次 instanced draw，同层系统按主纹理绑定连续绘制。
+ * GPU 粒子渲染器: 每个系统一次 instanced draw，同层系统按基础纹理和蒙版纹理连续绘制。
  *
  * 融入 Minecraft 帧: 使用 LevelRenderer 传入的 view/projection 矩阵,
- * 相机相对坐标 (双精度 CPU 侧相减), 通用主纹理 + 光照贴图 + 原版雾效.
+ * 相机相对坐标 (双精度 CPU 侧相减), 基础纹理 + 可选蒙版 + 光照贴图 + 原版雾效.
  * 调用方先应用当前粒子 ShaderInstance，使 Iris 绑定正确的 gbuffer framebuffer。
  */
 object CParticleRenderer {
@@ -113,6 +113,8 @@ object CParticleRenderer {
         val prevTex2Buffer = glGetInteger(GL_TEXTURE_BINDING_BUFFER)
         RenderSystem.activeTexture(GL_TEXTURE3)
         val prevTex3Buffer = glGetInteger(GL_TEXTURE_BINDING_BUFFER)
+        RenderSystem.activeTexture(GL_TEXTURE4)
+        val prevTex4 = glGetInteger(GL_TEXTURE_BINDING_2D)
         RenderSystem.activeTexture(prevActiveTexture)
         val blendEnabled = glIsEnabled(GL_BLEND)
         val blendSrcRgb = glGetInteger(GL_BLEND_SRC_RGB)
@@ -131,7 +133,7 @@ object CParticleRenderer {
         val lightmapWasEnabled = RenderSystem.getShaderTexture(2) != 0
 
         try {
-            // ---- 纹理: 0=当前批次主纹理 1=光照贴图 2=纹理描述符 3=外观描述符 ----
+            // ---- 纹理: 0=基础纹理 1=光照贴图 2=纹理描述符 3=外观描述符 4=蒙版纹理 ----
             if (!lightmapWasEnabled) {
                 RenderSystem.activeTexture(GL_TEXTURE0)
                 lightTexture.turnOnLightLayer()
@@ -155,6 +157,7 @@ object CParticleRenderer {
             shader.setInt("uLightmap", 1)
             shader.setInt("uAnimationLookup", 2)
             shader.setInt("uAppearanceLookup", 3)
+            shader.setInt("uMaskTexture", 4)
             shader.setInt("uDepthOnly", 0)
 
             // 相机朝向基 (BILLBOARD 用; 与原版粒子 q*X̂=left / q*Ŷ=up 一致)
@@ -180,7 +183,8 @@ object CParticleRenderer {
                 if (!pass.accepts(layer)) continue
                 val layerSystems = visibleSystems.asSequence()
                     .filter { it.layer == layer }
-                    .sortedBy(CParticleSystem::textureBindingKey)
+                    .sortedWith(compareBy(CParticleSystem::textureBindingKey)
+                        .thenBy(CParticleSystem::maskTextureBindingKey))
                     .toList()
                 if (layerSystems.isEmpty()) continue
                 layer.applyState()
@@ -189,12 +193,19 @@ object CParticleRenderer {
                     deferredDepthSystems.addAll(layerSystems)
                 }
                 var boundMainTexture: CParticleTextureBindingKey? = null
+                var boundMaskTexture: CParticleTextureBindingKey? = null
 
                 for (system in layerSystems) {
                     if (system.textureBindingKey != boundMainTexture) {
                         RenderSystem.activeTexture(GL_TEXTURE0)
                         RenderSystem.bindTexture(CParticleTextureResolver.textureId(system.textureBindingKey))
                         boundMainTexture = system.textureBindingKey
+                    }
+                    val maskBinding = system.maskTextureBindingKey
+                    if (maskBinding != null && maskBinding != boundMaskTexture) {
+                        RenderSystem.activeTexture(GL_TEXTURE4)
+                        RenderSystem.bindTexture(CParticleTextureResolver.textureId(maskBinding))
+                        boundMaskTexture = maskBinding
                     }
 
                     applySystemUniforms(shader, system, cameraPos, partial)
@@ -207,11 +218,21 @@ object CParticleRenderer {
                 glColorMaski(0, false, false, false, false)
                 glDepthMask(true)
                 var boundMainTexture: CParticleTextureBindingKey? = null
-                for (system in deferredDepthSystems.sortedBy(CParticleSystem::textureBindingKey)) {
+                var boundMaskTexture: CParticleTextureBindingKey? = null
+                for (system in deferredDepthSystems.sortedWith(
+                    compareBy(CParticleSystem::textureBindingKey)
+                        .thenBy(CParticleSystem::maskTextureBindingKey)
+                )) {
                     if (system.textureBindingKey != boundMainTexture) {
                         RenderSystem.activeTexture(GL_TEXTURE0)
                         RenderSystem.bindTexture(CParticleTextureResolver.textureId(system.textureBindingKey))
                         boundMainTexture = system.textureBindingKey
+                    }
+                    val maskBinding = system.maskTextureBindingKey
+                    if (maskBinding != null && maskBinding != boundMaskTexture) {
+                        RenderSystem.activeTexture(GL_TEXTURE4)
+                        RenderSystem.bindTexture(CParticleTextureResolver.textureId(maskBinding))
+                        boundMaskTexture = maskBinding
                     }
                     applySystemUniforms(shader, system, cameraPos, partial)
                     system.glBuffer.draw(system.store.highWater)
@@ -220,6 +241,8 @@ object CParticleRenderer {
         } finally {
             // ---- 状态还原 ----
             if (!lightmapWasEnabled) lightTexture.turnOffLightLayer()
+            RenderSystem.activeTexture(GL_TEXTURE4)
+            RenderSystem.bindTexture(prevTex4)
             RenderSystem.activeTexture(GL_TEXTURE3)
             glBindTexture(GL_TEXTURE_BUFFER, prevTex3Buffer)
             RenderSystem.activeTexture(GL_TEXTURE2)
@@ -276,6 +299,7 @@ object CParticleRenderer {
         val systemTime = system.tickCount + partial
         shader.setFloat("uSystemTime", systemTime)
         shader.setInt("uSystemTick", system.tickCount)
+        shader.setInt("uHasMask", if (system.maskTextureBindingKey == null) 0 else 1)
         shader.setFloat("uCurveCycleTicks", system.curveCycleTicks)
         shader.setFloat("uColorCycleTicks", system.colorCycleTicks)
         shader.setFloat("uColorCycleSpatialScale", system.colorCycleSpatialScale)

@@ -35,13 +35,49 @@ class CParticleSystem(
     val layer: CParticleRenderLayer,
     val mode: CParticleSystemMode,
     /**
-     * 本系统所有实例共用的主纹理绑定。
+     * 本系统所有实例共用的基础纹理绑定。
      *
      * Example: 同一方块图集系统可混合多种 BlockState。
      * Forbidden: 粒子生成后不能把槽位改到另一 binding。
      */
     val textureBindingKey: CParticleTextureBindingKey = CParticleTextureBindingKey.PARTICLE_ATLAS,
 ) {
+    /** 构造阶段记录的蒙版 binding。Example: 方块蒙版使用 `BLOCK_ATLAS`。Forbidden: 初始化后不能改动。 */
+    private var configuredMaskTextureBindingKey: CParticleTextureBindingKey? = null
+
+    /**
+     * 本 system 所有实例共用的可选蒙版纹理 binding。
+     *
+     * Example: 粒子图集基础纹理可以配 [CParticleTextureBindingKey.BLOCK_ATLAS] 蒙版。
+     * Forbidden: 生成后不能把槽位切到另一蒙版图集。
+     */
+    val maskTextureBindingKey: CParticleTextureBindingKey?
+        get() = configuredMaskTextureBindingKey
+
+    /**
+     * 创建同时固定基础纹理和蒙版纹理 binding 的粒子系统。
+     *
+     * Example: `CParticleSystem(name, capacity, layer, mode, PARTICLE_ATLAS, BLOCK_ATLAS)`。
+     * Forbidden: 蒙版 binding 不能在系统存活期间改变。
+     *
+     * @param name 系统逻辑名称
+     * @param capacity 最大槽位数
+     * @param layer 混合与深度状态
+     * @param mode 更新模式
+     * @param textureBindingKey 基础纹理 binding
+     * @param maskTextureBindingKey 可选蒙版纹理 binding
+     */
+    constructor(
+        name: String,
+        capacity: Int,
+        layer: CParticleRenderLayer,
+        mode: CParticleSystemMode,
+        textureBindingKey: CParticleTextureBindingKey,
+        maskTextureBindingKey: CParticleTextureBindingKey?,
+    ) : this(name, capacity, layer, mode, textureBindingKey) {
+        configuredMaskTextureBindingKey = maskTextureBindingKey
+    }
+
     /**
      * 该 system 的 CPU 槽位存储，所有存活槽位计入全局 GPU 粒子上限。
      *
@@ -112,7 +148,7 @@ class CParticleSystem(
     private var settleTicks = 0
 
     private val packedForces = FloatArray(CParticleGpuSimulator.PACKED_SIZE)
-    private val warnedBindingMismatches = HashSet<CParticleTextureBindingKey>()
+    private val warnedBindingMismatches = HashSet<Pair<CParticleTextureBindingKey, CParticleTextureBindingKey?>>()
 
     internal var lastDynamicPrepareFrame = Long.MIN_VALUE
         private set
@@ -136,62 +172,70 @@ class CParticleSystem(
             ) {
                 listOf(uv)
             }
-            return spawnResolved(
-                p,
-                CParticleResolvedTexture(
+            val base = CParticleResolvedTexture(
                     textureBindingKey,
                     descriptorId,
                     uv,
                     null,
                     Vector3f(1f),
+            )
+            val maskSource = p.textureSource
+            val mask = maskSource?.let { CParticleTextureResolver.resolve(it, p.pos) }
+            return spawnResolved(
+                p,
+                CParticleResolvedTextures(
+                    base,
+                    mask,
+                    randomBaseQuarterUv = false,
+                    randomMaskQuarterUv = (maskSource as? CParticleTextureSource.Block)?.randomCrop == true,
                 ),
-                randomQuarterUv = false,
             )
         }
-        val source = p.effectiveTextureSource()
-        val resolved = CParticleTextureResolver.resolve(source, p.pos)
-        return spawnResolved(
-            p,
-            resolved,
-            randomQuarterUv = (source as? CParticleTextureSource.Block)?.randomCrop == true,
-        )
+        return spawnResolved(p, p.resolveTextures(p.pos))
     }
 
     /** 使用已注册的动画描述符生成；供外部纹理适配层使用。 */
     fun spawn(p: CParticle, animationId: Int): Int {
         val validatedId = CParticleTextureDescriptors.requireBinding(animationId, textureBindingKey)
-        return spawnResolved(
-            p,
-            CParticleResolvedTexture(
+        val base = CParticleResolvedTexture(
                 textureBindingKey,
                 validatedId,
                 CParticleTextureDescriptors.firstFrame(validatedId),
                 validatedId,
                 Vector3f(1f),
+        )
+        val maskSource = p.textureSource
+        val mask = maskSource?.let { CParticleTextureResolver.resolve(it, p.pos) }
+        return spawnResolved(
+            p,
+            CParticleResolvedTextures(
+                base,
+                mask,
+                randomBaseQuarterUv = false,
+                randomMaskQuarterUv = (maskSource as? CParticleTextureSource.Block)?.randomCrop == true,
             ),
-            randomQuarterUv = false,
         )
     }
 
     /**
      * 使用已解析纹理生成粒子，供 manager 避免二次模型解析。
      *
-     * Example: 默认批次先按 [CParticleResolvedTexture.bindingKey] 选系统，再调用本方法。
-     * Forbidden: [resolved] 的 binding 必须和 [textureBindingKey] 相同。
+     * Example: 默认批次先按基础和蒙版 binding 选 system，再调用本方法。
+     * Forbidden: [resolved] 的任一 binding 都必须与当前 system 相同。
      *
      * @param p 粒子生成描述
-     * @param resolved 客户端统一纹理解析结果
-     * @param randomQuarterUv 是否启用实例 seed 的 1/4 裁剪
+     * @param resolved 客户端统一双纹理解析结果
      * @return 槽位；达到全局上限、其他失败或 binding 不匹配时返回 `-1`
      */
     internal fun spawnResolved(
         p: CParticle,
-        resolved: CParticleResolvedTexture,
-        randomQuarterUv: Boolean,
+        resolved: CParticleResolvedTextures,
     ): Int {
         if (released || !resolved.isValid) return -1
-        if (resolved.bindingKey != textureBindingKey) {
-            warnBindingMismatch(resolved.bindingKey)
+        if (resolved.base.bindingKey != textureBindingKey ||
+            resolved.mask?.bindingKey != maskTextureBindingKey
+        ) {
+            warnBindingMismatch(resolved.base.bindingKey, resolved.mask?.bindingKey)
             return -1
         }
         if (!CParticleSystemManager.hasAvailableParticleCapacity()) return -1
@@ -211,28 +255,37 @@ class CParticleSystem(
                 block = 15; sky = 15
             }
         }
-        return store.spawn(
+        return store.spawnWithMask(
             p,
             origin,
-            resolved.animationId ?: resolved.descriptorId,
+            resolved.base.animationId ?: resolved.base.descriptorId,
             block,
             sky,
-            tickCount,
-            randomSeed,
-            resolved.colorMultiplier,
-            randomQuarterUv,
-            textureBindingKey,
-            CParticleTextureResolver.generation,
+            epochTick = tickCount,
+            randomSeed = randomSeed,
+            colorMultiplier = resolved.base.colorMultiplier,
+            randomQuarterUv = resolved.randomBaseQuarterUv,
+            textureBindingKey = textureBindingKey,
+            textureGeneration = CParticleTextureResolver.generation,
+            maskAnimationId = resolved.mask?.let { it.animationId ?: it.descriptorId },
+            randomMaskQuarterUv = resolved.randomMaskQuarterUv,
+            maskTextureBindingKey = maskTextureBindingKey,
+            maskColorMultiplier = resolved.mask?.colorMultiplier,
         )
     }
 
-    private fun warnBindingMismatch(actual: CParticleTextureBindingKey) {
-        if (!warnedBindingMismatches.add(actual)) return
+    private fun warnBindingMismatch(
+        actual: CParticleTextureBindingKey,
+        actualMask: CParticleTextureBindingKey?,
+    ) {
+        if (!warnedBindingMismatches.add(actual to actualMask)) return
         CooParticlesConstants.logger.warn(
-            "CParticle system '{}' is bound to {}, rejected texture binding {}",
+            "CParticle system '{}' uses base {} and mask {}, rejected base {} and mask {}",
             name,
             textureBindingKey,
+            maskTextureBindingKey,
             actual,
+            actualMask,
         )
     }
 
@@ -765,14 +818,13 @@ class CParticleSystem(
     internal fun prepareDynamicVisuals(frameId: Long) {
         if (released || lastDynamicPrepareFrame == frameId) return
         lastDynamicPrepareFrame = frameId
-        val dirtyCount = store.prepareDynamicVisuals(
+        val dirtyCount = store.prepareDynamicTextures(
             tickCount,
             CParticleTextureResolver.generation,
             textureBindingKey,
-            resolveTexture = { particle ->
-                CParticleTextureResolver.resolve(particle.effectiveTextureSource(), particle.pos)
-            },
-            onBindingMismatch = { _, actual -> warnBindingMismatch(actual) },
+            maskTextureBindingKey,
+            resolveTextures = { particle -> particle.resolveTextures(particle.pos) },
+            onBindingMismatch = { _, actual, actualMask -> warnBindingMismatch(actual, actualMask) },
         )
         if (dirtyCount > 0) {
             glBuffer.patchDynamicVisuals(store.data, store.dynamicDirtySlots, dirtyCount)

@@ -1,7 +1,7 @@
 package cn.coostack.cooparticlesapi.cparticle
 
 /**
- * 描述主纹理中的矩形 UV 区域。
+ * 描述一张已绑定纹理中的矩形 UV 区域。
  *
  * Example: `CParticleUv(0f, 0f, 0.5f, 0.5f)` 选择左上四分之一区域。
  * Forbidden: 不要传入 `NaN` 或无穷值，这些值会让顶点着色器输出无效坐标。

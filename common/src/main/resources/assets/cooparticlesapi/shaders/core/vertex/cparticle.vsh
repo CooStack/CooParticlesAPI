@@ -12,7 +12,7 @@ in vec4 iAxisRoll;   // axis.xyz, roll
 in vec4 iAnimation;  // animationId, visualAgeBase, seedLow16, seedHigh16
 in vec4 iColor;      // r g b a
 in vec4 iAngularEpoch; // angularVelocity(pitch,yaw,roll), epochTick
-in vec4 iAppearance; // appearanceDescriptorId, speedLimit/systemSentinel, reserved...
+in vec4 iAppearance; // appearanceDescriptorId, speedLimit/systemSentinel, maskAnimationId, packedMaskRgb8
 
 uniform mat4 uProj;
 uniform mat4 uView;
@@ -24,6 +24,7 @@ uniform vec3 uCamLeft;       // 相机左向量 (q * X̂, 与原版粒子渲染�
 uniform vec3 uCamUp;         // 相机上向量
 uniform int uFogShape;       // 0=球 1=圆柱
 uniform int uSystemTick;
+uniform int uHasMask;
 uniform samplerBuffer uAnimationLookup;
 uniform samplerBuffer uAppearanceLookup;
 
@@ -47,6 +48,8 @@ uniform vec3 uTransitionColorTo;
 uniform float uAlphaTransitionScale;
 
 out vec2 vUv;
+out vec2 vMaskUv;
+out vec3 vMaskTint;
 out vec4 vColor;
 out vec2 vLightUv;
 out float vFogDistance;
@@ -55,6 +58,7 @@ const int FLAG_ALIVE = 1;
 const int FLAG_RANDOM_AGE = 1 << 11;
 const int FLAG_ROTATION_DIRECTION = 1 << 12;
 const int FLAG_RANDOM_QUARTER_UV = 1 << 13;
+const int FLAG_MASK_RANDOM_QUARTER_UV = 1 << 14;
 const float FRAME_PROGRESS_RESOLUTION = 4096.0;
 const float TAU = 6.28318530718;
 const int APPEARANCE_TEXELS = 17;
@@ -87,8 +91,16 @@ vec4 cropRandomQuarterUv(vec4 sourceUv) {
     );
 }
 
-vec4 resolveAnimationUv(int flags, float maxAge, float visualAge) {
-    int animationId = max(int(iAnimation.x + 0.5), 0);
+vec3 unpackRgb8(float packedValue) {
+    uint packedColor = uint(packedValue);
+    return vec3(
+        float(packedColor & 0xFFu),
+        float((packedColor >> 8u) & 0xFFu),
+        float((packedColor >> 16u) & 0xFFu)
+    ) / 255.0;
+}
+
+vec4 resolveAnimationUv(int animationId, int flags, float maxAge, float visualAge) {
     vec4 metadata = texelFetch(uAnimationLookup, animationId);
     int frameOffset = max(int(metadata.x + 0.5), 0);
     int frameCount = max(int(metadata.y + 0.5), 1);
@@ -233,6 +245,8 @@ void main() {
         // 死槽位: 输出被裁剪的退化位置
         gl_Position = vec4(0.0, 0.0, -2.0, 1.0);
         vUv = vec2(0.0);
+        vMaskUv = vec2(0.0);
+        vMaskTint = vec3(1.0);
         vColor = vec4(0.0);
         vLightUv = vec2(0.0);
         vFogDistance = 0.0;
@@ -309,7 +323,7 @@ void main() {
     // UV: x=+1 -> u1, y=+1 -> v0 (与 ControlableParticle.addDoubleSidedQuad 完全一致)
     float ut = 0.5 + corner.x * 0.5;
     float vt = 0.5 - corner.y * 0.5;
-    vec4 animationUv = resolveAnimationUv(flags, maxAge, visualAge);
+    vec4 animationUv = resolveAnimationUv(max(int(iAnimation.x + 0.5), 0), flags, maxAge, visualAge);
     if ((flags & FLAG_RANDOM_QUARTER_UV) != 0) {
         animationUv = cropRandomQuarterUv(animationUv);
     }
@@ -317,6 +331,20 @@ void main() {
         mix(animationUv.x, animationUv.z, ut),
         mix(animationUv.y, animationUv.w, vt)
     );
+    if (uHasMask != 0) {
+        vec4 maskAnimationUv = resolveAnimationUv(max(int(iAppearance.z + 0.5), 0), flags, maxAge, visualAge);
+        if ((flags & FLAG_MASK_RANDOM_QUARTER_UV) != 0) {
+            maskAnimationUv = cropRandomQuarterUv(maskAnimationUv);
+        }
+        vMaskUv = vec2(
+            mix(maskAnimationUv.x, maskAnimationUv.z, ut),
+            mix(maskAnimationUv.y, maskAnimationUv.w, vt)
+        );
+        vMaskTint = unpackRgb8(iAppearance.w);
+    } else {
+        vMaskUv = vec2(0.0);
+        vMaskTint = vec3(1.0);
+    }
 
     vec3 particleColor = iColor.rgb;
     if (uColorCycleTicks > 0.0) {

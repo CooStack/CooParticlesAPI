@@ -93,7 +93,7 @@ object CParticleTextureResolver {
      * Example: atlas key 通过 ModelManager 获取重载后的新纹理对象。
      * Forbidden: 不要缓存跨资源重载的 GL id。
      *
-     * @param bindingKey 系统主纹理绑定
+     * @param bindingKey 系统的基础或蒙版纹理绑定
      * @return 可传给 `RenderSystem.bindTexture` 的 GL id
      */
     internal fun textureId(bindingKey: CParticleTextureBindingKey): Int {
@@ -120,7 +120,7 @@ object CParticleTextureResolver {
      * Example: 已存在 atlas 中缺失的 sprite 使用该 atlas 的 missing sprite UV。
      * Forbidden: atlas missing UV 不能和另一张 atlas 的绑定混用。
      *
-     * @param bindingKey 目标主纹理绑定
+     * @param bindingKey 目标纹理绑定
      * @return atlas missing sprite UV 或独立纹理完整 UV
      */
     internal fun missingUv(bindingKey: CParticleTextureBindingKey): CParticleUv {

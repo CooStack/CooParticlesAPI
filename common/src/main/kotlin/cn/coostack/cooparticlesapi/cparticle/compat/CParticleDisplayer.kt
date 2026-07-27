@@ -4,13 +4,13 @@ import cn.coostack.cooparticlesapi.api.controler.Controlable
 import cn.coostack.cooparticlesapi.cparticle.CParticle
 import cn.coostack.cooparticlesapi.cparticle.CParticleCapabilities
 import cn.coostack.cooparticlesapi.cparticle.CParticleRenderLayer
+import cn.coostack.cooparticlesapi.cparticle.CParticleResolvedTextures
 import cn.coostack.cooparticlesapi.cparticle.CParticleSystem
 import cn.coostack.cooparticlesapi.cparticle.CParticleSystemManager
 import cn.coostack.cooparticlesapi.cparticle.CParticleSystemMode
 import cn.coostack.cooparticlesapi.cparticle.CParticleTextureBindingKey
-import cn.coostack.cooparticlesapi.cparticle.CParticleTextureResolver
-import cn.coostack.cooparticlesapi.cparticle.CParticleTextureSource
 import cn.coostack.cooparticlesapi.cparticle.CParticleUpdateMode
+import cn.coostack.cooparticlesapi.cparticle.resolveTextures
 import cn.coostack.cooparticlesapi.network.particle.composition.CompositionData
 import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
 import net.minecraft.client.multiplayer.ClientLevel
@@ -61,13 +61,16 @@ class CParticleDisplayer(
     ) {
         if (system != null) return
         val name = "$ownerName/${layer.name.lowercase()}"
-        val bindingKey = resolveTextureBindingKey(origin)
-        if (bindingKey == CParticleTextureBindingKey.MISSING) return
+        val resolved = template.resolveTextures(origin)
+        if (!resolved.isValid) return
+        val bindingKey = resolved.base.bindingKey
+        val maskBindingKey = resolved.mask?.bindingKey
         val existing = CParticleSystemManager.getSystem(
             name,
             CParticleSystemMode.SCRIPTED,
             layer,
             bindingKey,
+            maskBindingKey,
         )
         if (existing != null && existing.capacity < capacity) {
             CParticleSystemManager.removeSystem(
@@ -75,6 +78,7 @@ class CParticleDisplayer(
                 CParticleSystemMode.SCRIPTED,
                 layer,
                 bindingKey,
+                maskBindingKey,
             )
         }
         val target = CParticleSystemManager.getOrCreateSystem(
@@ -84,6 +88,7 @@ class CParticleDisplayer(
             CParticleSystemMode.SCRIPTED,
             bindingKey,
             autoReleaseWhenEmpty = true,
+            maskTextureBindingKey = maskBindingKey,
         )
         if (!bindSystemIfAbsent(target)) return
         target.setOriginIfEmpty(origin)
@@ -94,10 +99,16 @@ class CParticleDisplayer(
         init(template)
     }
 
-    /** 返回模板在指定生成位置使用的主纹理绑定。 */
-    internal fun resolveTextureBindingKey(position: Vec3): CParticleTextureBindingKey {
-        return CParticleTextureResolver.resolve(template.effectiveTextureSource(), position).bindingKey
-    }
+    /**
+     * 返回模板在指定位置使用的基础纹理和蒙版解析结果。
+     *
+     * Example: composition 在建池前用它取得两个 binding。
+     * Forbidden: 不要在每帧绘制时重新解析 STATIC 模板。
+     *
+     * @param position 粒子生成位置
+     * @return 模板的双纹理解析结果
+     */
+    internal fun resolveTexturesAt(position: Vec3): CParticleResolvedTextures = template.resolveTextures(position)
 
     /**
      * 在共享或已绑定的 CParticle system 中显示一个粒子。
@@ -115,17 +126,24 @@ class CParticleDisplayer(
         if (CParticleCapabilities.detectionComplete && !CParticleCapabilities.instancingSupported) return null
         val p = template.clone()
         p.pos = loc
-        val source = p.effectiveTextureSource()
-        val resolved = CParticleTextureResolver.resolve(source, loc)
+        val resolved = p.resolveTextures(loc)
         if (!resolved.isValid) return null
-        val randomQuarterUv = (source as? CParticleTextureSource.Block)?.randomCrop == true
-        var target = system ?: sharedScriptedSystem(layer, resolved.bindingKey)
-        var slot = target.spawnResolved(p, resolved, randomQuarterUv)
+        var target = system ?: sharedScriptedSystem(
+            layer,
+            resolved.base.bindingKey,
+            resolved.mask?.bindingKey,
+        )
+        var slot = target.spawnResolved(p, resolved)
         if (system == null) {
             var segment = 0
             while (slot < 0 && CParticleSystemManager.hasAvailableParticleCapacity()) {
-                target = sharedScriptedSystem(layer, resolved.bindingKey, ++segment)
-                slot = target.spawnResolved(p, resolved, randomQuarterUv)
+                target = sharedScriptedSystem(
+                    layer,
+                    resolved.base.bindingKey,
+                    resolved.mask?.bindingKey,
+                    ++segment,
+                )
+                slot = target.spawnResolved(p, resolved)
             }
         }
         if (slot < 0) return null
@@ -148,11 +166,13 @@ class CParticleDisplayer(
         fun sharedScriptedSystem(
             layer: CParticleRenderLayer,
             textureBindingKey: CParticleTextureBindingKey,
-        ): CParticleSystem = sharedScriptedSystem(layer, textureBindingKey, 0)
+            maskTextureBindingKey: CParticleTextureBindingKey? = null,
+        ): CParticleSystem = sharedScriptedSystem(layer, textureBindingKey, maskTextureBindingKey, 0)
 
         private fun sharedScriptedSystem(
             layer: CParticleRenderLayer,
             textureBindingKey: CParticleTextureBindingKey,
+            maskTextureBindingKey: CParticleTextureBindingKey?,
             segment: Int,
         ): CParticleSystem {
             val baseName = "composition/${layer.name.lowercase()}"
@@ -164,6 +184,7 @@ class CParticleDisplayer(
                 CParticleSystemMode.SCRIPTED,
                 textureBindingKey,
                 autoReleaseWhenEmpty = true,
+                maskTextureBindingKey = maskTextureBindingKey,
             ).also {
                 // 共享池会承载世界各处的 composition, 不能按 origin 距离整池剔除
                 // (composition 自身有 visibleRange 剔除逻辑)

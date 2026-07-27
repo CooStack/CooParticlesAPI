@@ -10,6 +10,26 @@ import net.minecraft.client.Minecraft
 import org.joml.Matrix4f
 
 /**
+ * Manager 内部使用的完整批次键。
+ *
+ * Example: 相同基础纹理配不同蒙版时会生成两个键。
+ * Forbidden: 不要把该内部键暴露为公共 API，旧 [CParticleSystemKey] 需要保持 JVM 兼容。
+ *
+ * @property name 调用方使用的逻辑系统名
+ * @property mode 系统更新模式
+ * @property layer 混合与深度状态
+ * @property textureBindingKey 基础纹理 binding
+ * @property maskTextureBindingKey 可选蒙版纹理 binding
+ */
+private data class ManagedCParticleSystemKey(
+    val name: String,
+    val mode: CParticleSystemMode,
+    val layer: CParticleRenderLayer,
+    val textureBindingKey: CParticleTextureBindingKey,
+    val maskTextureBindingKey: CParticleTextureBindingKey?,
+)
+
+/**
  * # CParticleSystemManager — GPU 粒子系统客户端总管
  *
  * 生命周期挂载点:
@@ -22,7 +42,7 @@ import org.joml.Matrix4f
  */
 object CParticleSystemManager {
 
-    private val systems = LinkedHashMap<CParticleSystemKey, CParticleSystem>()
+    private val systems = LinkedHashMap<ManagedCParticleSystemKey, CParticleSystem>()
 
     /** 全局开关 */
     @JvmStatic
@@ -55,8 +75,8 @@ object CParticleSystemManager {
     /** 空系统自动回收阈值 (tick) */
     private const val AUTO_RELEASE_IDLE_TICKS = 200
 
-    private val lastNonEmptyTick = HashMap<CParticleSystemKey, Int>()
-    private val autoRelease = HashSet<CParticleSystemKey>()
+    private val lastNonEmptyTick = HashMap<ManagedCParticleSystemKey, Int>()
+    private val autoRelease = HashSet<ManagedCParticleSystemKey>()
 
     // ------------------------------------------------------------ 系统管理
 
@@ -134,19 +154,20 @@ object CParticleSystemManager {
         mode,
         CParticleTextureBindingKey.PARTICLE_ATLAS,
         autoReleaseWhenEmpty,
+        null,
     )
 
     /**
-     * 获取或创建一个绑定到指定主纹理的系统。
+     * 获取或创建一个绑定到指定基础纹理的 system。
      *
-     * Example: 同一方块图集系统可以混合多种 BlockState descriptor。
-     * Forbidden: [textureBindingKey] 不同的系统不能共享实例槽位。
+     * Example: end rod 基础纹理可以按方块图集蒙版复用一个 system。
+     * Forbidden: 任一纹理 binding 不同的 system 都不能共享实例槽位。
      *
      * @param name 逻辑系统名
      * @param capacity 最大槽位数
      * @param layer 混合与深度状态
      * @param mode 更新模式
-     * @param textureBindingKey 主纹理或图集绑定
+     * @param textureBindingKey 基础纹理或图集 binding
      * @param autoReleaseWhenEmpty 空置后是否自动销毁
      * @return 完整 key 对应的系统
      */
@@ -158,13 +179,47 @@ object CParticleSystemManager {
         mode: CParticleSystemMode,
         textureBindingKey: CParticleTextureBindingKey,
         autoReleaseWhenEmpty: Boolean = false,
+    ): CParticleSystem = getOrCreateSystem(
+        name,
+        capacity,
+        layer,
+        mode,
+        textureBindingKey,
+        autoReleaseWhenEmpty,
+        null,
+    )
+
+    /**
+     * 获取或创建同时匹配基础纹理和蒙版纹理的 system。
+     *
+     * Example: `maskTextureBindingKey = BLOCK_ATLAS` 会与无蒙版批次分开。
+     * Forbidden: 不能省略 [maskTextureBindingKey] 后期待匹配已有蒙版批次。
+     *
+     * @param name 逻辑系统名
+     * @param capacity 最大槽位数
+     * @param layer 混合与深度状态
+     * @param mode 更新模式
+     * @param textureBindingKey 基础纹理 binding
+     * @param autoReleaseWhenEmpty 空置后是否自动销毁
+     * @param maskTextureBindingKey 可选蒙版纹理 binding
+     * @return 完整批次键对应的系统
+     */
+    @JvmStatic
+    fun getOrCreateSystem(
+        name: String,
+        capacity: Int,
+        layer: CParticleRenderLayer,
+        mode: CParticleSystemMode,
+        textureBindingKey: CParticleTextureBindingKey,
+        autoReleaseWhenEmpty: Boolean,
+        maskTextureBindingKey: CParticleTextureBindingKey?,
     ): CParticleSystem {
-        val key = CParticleSystemKey(name, mode, layer, textureBindingKey)
+        val key = ManagedCParticleSystemKey(name, mode, layer, textureBindingKey, maskTextureBindingKey)
         systems[key]?.let {
             if (autoReleaseWhenEmpty) autoRelease.add(key)
             return it
         }
-        val system = CParticleSystem(name, capacity, layer, mode, textureBindingKey)
+        val system = CParticleSystem(name, capacity, layer, mode, textureBindingKey, maskTextureBindingKey)
         systems[key] = system
         lastNonEmptyTick[key] = currentTick
         if (autoReleaseWhenEmpty) autoRelease.add(key)
@@ -189,7 +244,31 @@ object CParticleSystemManager {
         mode: CParticleSystemMode,
         layer: CParticleRenderLayer,
         textureBindingKey: CParticleTextureBindingKey,
-    ): CParticleSystem? = systems[CParticleSystemKey(name, mode, layer, textureBindingKey)]
+    ): CParticleSystem? = getSystem(name, mode, layer, textureBindingKey, null)
+
+    /**
+     * 按基础纹理和蒙版纹理的完整批次键查询系统。
+     *
+     * Example: `maskTextureBindingKey = null` 只查询无蒙版批次。
+     * Forbidden: 不要用另一张蒙版图集的 binding 查询当前批次。
+     *
+     * @param name 逻辑系统名
+     * @param mode 更新模式
+     * @param layer 混合与深度状态
+     * @param textureBindingKey 基础纹理 binding
+     * @param maskTextureBindingKey 可选蒙版纹理 binding
+     * @return 完整键匹配的系统，未创建时返回 `null`
+     */
+    @JvmStatic
+    fun getSystem(
+        name: String,
+        mode: CParticleSystemMode,
+        layer: CParticleRenderLayer,
+        textureBindingKey: CParticleTextureBindingKey,
+        maskTextureBindingKey: CParticleTextureBindingKey?,
+    ): CParticleSystem? = systems[
+        ManagedCParticleSystemKey(name, mode, layer, textureBindingKey, maskTextureBindingKey)
+    ]
 
     /**
      * 共享的默认 SIMULATED 系统 (按渲染层区分) — 散粒子直接往这里生成
@@ -199,19 +278,37 @@ object CParticleSystemManager {
         defaultSystem(layer, CParticleTextureBindingKey.PARTICLE_ATLAS)
 
     /**
-     * 返回指定渲染层和主纹理绑定的共享 SIMULATED 系统。
+     * 返回指定渲染层、基础纹理绑定和可选蒙版绑定的共享 SIMULATED 系统。
      *
      * Example: 所有方块图集散粒子共用一个默认系统。
      * Forbidden: 不要把独立纹理传入方块图集系统。
      *
      * @param layer 混合与深度状态
-     * @param textureBindingKey 主纹理绑定
+     * @param textureBindingKey 基础纹理绑定
      * @return 可直接接收已解析实例的共享系统
      */
     @JvmStatic
     fun defaultSystem(
         layer: CParticleRenderLayer,
         textureBindingKey: CParticleTextureBindingKey,
+    ): CParticleSystem = defaultSystem(layer, textureBindingKey, null)
+
+    /**
+     * 返回指定基础纹理和蒙版纹理 binding 的共享 SIMULATED 系统。
+     *
+     * Example: 粒子图集基础纹理和方块图集蒙版共用一个匹配批次。
+     * Forbidden: 不同蒙版 binding 不能返回同一个系统。
+     *
+     * @param layer 混合与深度状态
+     * @param textureBindingKey 基础纹理 binding
+     * @param maskTextureBindingKey 可选蒙版纹理 binding
+     * @return 可直接接收匹配实例的共享系统
+     */
+    @JvmStatic
+    fun defaultSystem(
+        layer: CParticleRenderLayer,
+        textureBindingKey: CParticleTextureBindingKey,
+        maskTextureBindingKey: CParticleTextureBindingKey?,
     ): CParticleSystem =
         getOrCreateSystem(
             "default/${layer.name.lowercase()}",
@@ -219,6 +316,8 @@ object CParticleSystemManager {
             layer,
             CParticleSystemMode.SIMULATED,
             textureBindingKey,
+            autoReleaseWhenEmpty = false,
+            maskTextureBindingKey = maskTextureBindingKey,
         )
             .also {
                 // 默认池承载任意位置的散粒子, 不做整池距离剔除
@@ -229,14 +328,10 @@ object CParticleSystemManager {
     @JvmStatic
     fun spawn(particle: CParticle, layer: CParticleRenderLayer = CParticleRenderLayer.TRANSLUCENT): Int {
         if (!ready()) return -1
-        val source = particle.effectiveTextureSource()
-        val resolved = CParticleTextureResolver.resolve(source, particle.pos)
+        val resolved = particle.resolveTextures(particle.pos)
         if (!resolved.isValid) return -1
-        return defaultSystem(layer, resolved.bindingKey).spawnResolved(
-            particle,
-            resolved,
-            randomQuarterUv = (source as? CParticleTextureSource.Block)?.randomCrop == true,
-        )
+        return defaultSystem(layer, resolved.base.bindingKey, resolved.mask?.bindingKey)
+            .spawnResolved(particle, resolved)
     }
 
     @JvmStatic
@@ -253,10 +348,33 @@ object CParticleSystemManager {
         layer: CParticleRenderLayer,
         textureBindingKey: CParticleTextureBindingKey,
     ) {
-        removeSystem(CParticleSystemKey(name, mode, layer, textureBindingKey))
+        removeSystem(name, mode, layer, textureBindingKey, null)
     }
 
-    private fun removeSystem(key: CParticleSystemKey) {
+    /**
+     * 删除一个基础纹理和蒙版纹理都匹配的系统。
+     *
+     * Example: 删除方块蒙版批次不会影响同名的无蒙版批次。
+     * Forbidden: 不要用模糊名称删除只应移除的单个批次。
+     *
+     * @param name 逻辑系统名
+     * @param mode 更新模式
+     * @param layer 混合与深度状态
+     * @param textureBindingKey 基础纹理 binding
+     * @param maskTextureBindingKey 可选蒙版纹理 binding
+     */
+    @JvmStatic
+    fun removeSystem(
+        name: String,
+        mode: CParticleSystemMode,
+        layer: CParticleRenderLayer,
+        textureBindingKey: CParticleTextureBindingKey,
+        maskTextureBindingKey: CParticleTextureBindingKey?,
+    ) {
+        removeSystem(ManagedCParticleSystemKey(name, mode, layer, textureBindingKey, maskTextureBindingKey))
+    }
+
+    private fun removeSystem(key: ManagedCParticleSystemKey) {
         systems.remove(key)?.release()
         lastNonEmptyTick.remove(key)
         autoRelease.remove(key)
@@ -328,7 +446,7 @@ object CParticleSystemManager {
         if (!ready()) return
         currentTick++
         if (systems.isEmpty()) return
-        val toRemove = ArrayList<CParticleSystemKey>(0)
+        val toRemove = ArrayList<ManagedCParticleSystemKey>(0)
         for ((key, system) in systems) {
             system.tick()
             if (system.store.aliveCount > 0) {

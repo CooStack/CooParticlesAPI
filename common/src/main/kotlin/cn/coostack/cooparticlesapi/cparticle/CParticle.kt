@@ -170,11 +170,12 @@ open class CParticle {
     private var cachedLegacyTextureSource: CParticleTextureSource? = null
 
     /**
-     * 显式通用纹理来源，优先于旧 [sprite] 和 [effect]。
+     * 叠在基础粒子纹理上的可选蒙版来源。
      *
-     * 粒子进入系统后，DYNAMIC 只允许把来源改成相同 bindingKey 的来源；跨 binding 会安全移除槽位。
-     * Example: `particle.textureSource = textureOfBlock(state)`。
-     * Forbidden: 不要在同一存活槽位中从方块图集切换到独立纹理。
+     * [sprite]、[effect] 或默认 end rod 仍提供基础轮廓；本来源的 RGB 和 alpha 会与基础采样相乘。
+     * 粒子进入系统后，DYNAMIC 只允许在相同蒙版 binding 内换来源，跨 binding 会移除槽位。
+     * Example: `particle.textureSource = textureOfBlock(state)` 会在原粒子上叠加方块纹理。
+     * Forbidden: 不要把本字段当成基础粒子纹理的替换入口。
      */
     var textureSource: CParticleTextureSource? = null
         set(value) {
@@ -192,12 +193,12 @@ open class CParticle {
         set(value) {
             if (field == value) return
             field = value
-            if (textureSource == null) textureRevisionCounter++
+            textureRevisionCounter++
         }
 
     /**
      * 原版粒子类型对应的 SpriteSet。未指定 [sprite] 时按 age/maxAge 选择帧。
-     * 实现 [CParticleTextureSourceProvider] 的 effect 会改用它声明的通用来源。
+     * 实现 [CParticleTextureSourceProvider] 的 effect 会改用它声明的基础来源。
      */
     var effect: ParticleOptions? = null
         set(value) {
@@ -210,7 +211,7 @@ open class CParticle {
             } else {
                 oldValue?.type != value?.type
             }
-            if (textureSource == null && sprite == null && sourceChanged) {
+            if (sprite == null && sourceChanged) {
                 textureRevisionCounter++
             }
         }
@@ -225,16 +226,15 @@ open class CParticle {
         get() = textureRevisionCounter
 
     /**
-     * 返回通用来源，同时保留旧 `sprite > effect > default` 规则。
+     * 返回基础纹理来源，并保留旧 `sprite > effect > default` 规则。
      *
      * 旧来源会按 [textureRevision] 缓存，普通 DYNAMIC 帧不会创建临时对象。
      * Example: 只设置 [effect] 时返回 [CParticleTextureSource.ParticleEffect]。
      * Forbidden: 调用方不得修改返回来源内部持有的 ItemStack 快照。
      *
-     * @return 当前实际纹理来源
+     * @return 当前基础纹理来源
      */
     internal fun effectiveTextureSource(): CParticleTextureSource {
-        textureSource?.let { return it }
         if (cachedLegacyTextureRevision == textureRevisionCounter) {
             cachedLegacyTextureSource?.let { return it }
         }
@@ -254,12 +254,12 @@ open class CParticle {
     }
 
     /**
-     * 设置通用纹理来源并返回当前粒子。
+     * 设置额外蒙版纹理并返回当前粒子。
      *
-     * Example: `CParticle().texture(textureOf(textureId))`。
-     * Forbidden: 存活 DYNAMIC 粒子不能用此方法切换到另一 binding。
+     * Example: `CParticle().texture(textureOfBlock(state))` 会保留基础粒子轮廓。
+     * Forbidden: 存活 DYNAMIC 粒子不能用此方法切换到另一蒙版 binding。
      *
-     * @param source 新纹理来源
+     * @param source 新蒙版纹理来源
      * @return 当前粒子，便于链式配置
      */
     fun texture(source: CParticleTextureSource): CParticle {

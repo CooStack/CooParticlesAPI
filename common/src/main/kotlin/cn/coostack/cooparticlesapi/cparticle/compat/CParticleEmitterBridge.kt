@@ -7,8 +7,7 @@ import cn.coostack.cooparticlesapi.cparticle.CParticleSystem
 import cn.coostack.cooparticlesapi.cparticle.CParticleSystemManager
 import cn.coostack.cooparticlesapi.cparticle.CParticleSystemMode
 import cn.coostack.cooparticlesapi.cparticle.CParticleTextureBindingKey
-import cn.coostack.cooparticlesapi.cparticle.CParticleTextureResolver
-import cn.coostack.cooparticlesapi.cparticle.CParticleTextureSource
+import cn.coostack.cooparticlesapi.cparticle.resolveTextures
 import cn.coostack.cooparticlesapi.cparticle.force.CParticleForce
 import cn.coostack.cooparticlesapi.network.particle.emitters.ClassParticleEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableCParticleData
@@ -21,12 +20,12 @@ import net.minecraft.world.phys.Vec3
  * # CParticleEmitterBridge
  *
  * 发射器在客户端生成粒子时，把当前 [ControlableParticleData] 转成独立的 GPU 实例：
- * - 同一 emitter、渲染层和纹理 binding 共享 SIMULATED 系统；不同 binding 自动拆分
+ * - 同一 emitter、渲染层、基础 binding 和蒙版 binding 共享 SIMULATED 系统；任一 binding 不同都会拆分
  * - 发射器内建物理 (gravity / airDensity / 全局风) 自动映射为 GPU 力场,
  *   与 `updatePhysics` 公式一致
  * - 附加运动通过 [ClassParticleEmitters.cparticleForces] 声明
  *   (内置 ParticleCommand 可用 [CParticleForce.fromCommand] 直接转换)
- * - 每份 data 自己决定显式纹理来源；未指定时使用它自己的 effect SpriteSet
+ * - 每份 data 使用自己的 effect SpriteSet，并可单独指定额外纹理蒙版
  *
  * 需要 singleParticleAction、碰撞与事件、singleParticleDeathAction 重生，
  * 或非全局/relative 风场的粒子，应继续使用普通 [ControlableParticleData]。
@@ -58,12 +57,16 @@ object CParticleEmitterBridge {
 
         val p = CParticle.from(data)
         p.pos = pos
-        val source = p.effectiveTextureSource()
-        val resolved = CParticleTextureResolver.resolve(source, pos)
+        val resolved = p.resolveTextures(pos)
         if (!resolved.isValid) return true
         if (!CParticleSystemManager.hasAvailableParticleCapacity()) return true
         val layer = CParticleRenderLayer.fromSheetName(data.getTextureSheet().toString())
-        val system = findAvailableSystem(emitter, layer, resolved.bindingKey)
+        val system = findAvailableSystem(
+            emitter,
+            layer,
+            resolved.base.bindingKey,
+            resolved.mask?.bindingKey,
+        )
         system.setOriginIfEmpty(emitter.pos)
 
         // 力场每 tick 与发射器状态同步一次
@@ -76,11 +79,7 @@ object CParticleEmitterBridge {
             system.visibleRange = data.visibleRange.toDouble()
         }
 
-        system.spawnResolved(
-            p,
-            resolved,
-            randomQuarterUv = (source as? CParticleTextureSource.Block)?.randomCrop == true,
-        )
+        system.spawnResolved(p, resolved)
         return true
     }
 
@@ -92,13 +91,15 @@ object CParticleEmitterBridge {
      *
      * @param emitter 当前客户端发射器
      * @param layer 粒子的渲染层
-     * @param textureBindingKey 本批次使用的主纹理绑定
+     * @param textureBindingKey 本批次使用的基础纹理绑定
+     * @param maskTextureBindingKey 本批次使用的可选蒙版纹理绑定
      * @return 一个仍可写入的 SIMULATED system
      */
     private fun findAvailableSystem(
         emitter: ClassParticleEmitters,
         layer: CParticleRenderLayer,
         textureBindingKey: CParticleTextureBindingKey,
+        maskTextureBindingKey: CParticleTextureBindingKey?,
     ): CParticleSystem {
         val baseName = "emitter/${emitter.uuid}/${layer.name.lowercase()}"
         val segmentCapacity = DEFAULT_SEGMENT_CAPACITY.coerceAtMost(CParticleSystemManager.particleCountLimit)
@@ -110,6 +111,7 @@ object CParticleEmitterBridge {
                 CParticleSystemMode.SIMULATED,
                 layer,
                 textureBindingKey,
+                maskTextureBindingKey,
             )
             if (existing == null || !existing.store.isFull()) {
                 return existing ?: CParticleSystemManager.getOrCreateSystem(
@@ -119,6 +121,7 @@ object CParticleEmitterBridge {
                     CParticleSystemMode.SIMULATED,
                     textureBindingKey,
                     autoReleaseWhenEmpty = true,
+                    maskTextureBindingKey = maskTextureBindingKey,
                 )
             }
             segment++

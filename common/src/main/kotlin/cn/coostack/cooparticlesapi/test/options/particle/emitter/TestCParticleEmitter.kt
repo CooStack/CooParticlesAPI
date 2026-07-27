@@ -6,13 +6,17 @@ import cn.coostack.cooparticlesapi.cparticle.CParticleColorCurve
 import cn.coostack.cooparticlesapi.cparticle.CParticleCurve
 import cn.coostack.cooparticlesapi.cparticle.CParticleUpdateMode
 import cn.coostack.cooparticlesapi.cparticle.force.CParticleForce
+import cn.coostack.cooparticlesapi.cparticle.textureOfBlock
+import cn.coostack.cooparticlesapi.cparticle.textureOfItem
 import cn.coostack.cooparticlesapi.network.particle.emitters.AutoParticleEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableCParticleData
 import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableParticleData
 import cn.coostack.cooparticlesapi.particles.CooParticleTextureSheet
 import cn.coostack.cooparticlesapi.particles.control.ParticleControler
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
+import net.minecraft.world.item.Items
 import net.minecraft.world.level.Level
+import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
 import kotlin.math.cos

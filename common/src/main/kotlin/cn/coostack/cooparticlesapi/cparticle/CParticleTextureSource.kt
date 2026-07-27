@@ -18,7 +18,8 @@ import org.joml.Vector3f
  * CParticle 的不可变纹理来源。
  *
  * 来源对象只在生成或 DYNAMIC 配置变化时解析；STATIC 槽位仅保存描述符 ID、flags 和最终颜色。
- * Example: `particle.textureSource = textureOfBlock(state)`。
+ * 赋给 [CParticle.textureSource] 时会作为额外蒙版；effect provider 也可用它声明基础纹理。
+ * Example: `particle.textureSource = textureOfBlock(state)` 会在基础粒子上叠加方块纹理。
  * Forbidden: 不要在服务端类加载路径中主动解析这些客户端纹理来源。
  */
 sealed interface CParticleTextureSource {
@@ -338,7 +339,7 @@ fun interface CParticleTextureSourceProvider {
  * Example: effect 可返回首帧 descriptor 和独立的动画 descriptor。
  * Forbidden: 不要在这里保存 CParticle、BlockState 或 ItemStack。
  *
- * @property bindingKey draw call 使用的主纹理绑定
+ * @property bindingKey 当前已解析来源使用的纹理绑定
  * @property descriptorId 静态 UV 描述符 ID
  * @property uv 静态描述符对应的基础 UV；随机裁剪在 shader 中完成
  * @property animationId 可选 GPU age 动画描述符 ID
@@ -362,9 +363,9 @@ data class CParticleResolvedTexture(
 }
 
 /**
- * 创建 BlockState 纹理来源。
+ * 创建 BlockState 纹理来源，赋给 [CParticle.textureSource] 时作为额外蒙版。
  *
- * Example: `particle.textureSource = textureOfBlock(state)`。
+ * Example: `particle.textureSource = textureOfBlock(state)` 会保留原有粒子纹理。
  * Forbidden: 世界相关 tint 不会在此函数中提前计算。
  *
  * @param state 方块状态
@@ -382,7 +383,7 @@ fun textureOfBlock(
 ): CParticleTextureSource = CParticleTextureSource.Block(state, randomCrop, applyTint, applyBrightness)
 
 /**
- * 创建 ItemStack 纹理来源，并立即复制 stack。
+ * 创建 ItemStack 纹理来源，并立即复制 stack；赋给 [CParticle.textureSource] 时作为额外蒙版。
  *
  * 默认 [tintIndex] 是 `0`，对应多数单层染色物品的第一层；多层物品可显式选择其他层。
  * Example: `particle.textureSource = textureOfItem(stack, modelSeed = 7, tintIndex = 1)`。

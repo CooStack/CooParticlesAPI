@@ -11,10 +11,11 @@ import org.joml.Vector3f
 /**
  * 单个 CParticle GPU 粒子的完整生成数据。
  *
- * 纹理、生命周期曲线、旋转和 GPU 更新方式都属于每份 data，且本类型只让当前 data
+ * 额外纹理蒙版、生命周期曲线、旋转和 GPU 更新方式都属于每份 data，且本类型只让当前 data
  * 进入 CParticle 路径。同一次
  * `genParticles()` 可以混合本类型与普通 [ControlableParticleData]：前者走 GPU，后者继续执行
- * `singleParticleAction` 和 [sign] 对应的 CPU 行为。未设置 [textureSource] 时仍使用父类 [effect]。
+ * `singleParticleAction` 和 [sign] 对应的 CPU 行为。基础纹理始终来自父类 [effect]，
+ * [textureSource] 只控制叠加在基础纹理上的可选蒙版。
  *
  * Example:
  * ```kotlin
@@ -45,9 +46,9 @@ open class ControlableCParticleData : ControlableParticleData() {
     var updateMode: CParticleUpdateMode = CParticleUpdateMode.STATIC
 
     /**
-     * 当前粒子数据的显式纹理来源；`null` 表示沿用 [effect]。
+     * 叠加在 [effect] 基础纹理上的可选蒙版；`null` 表示不叠加蒙版。
      *
-     * Example: 同一 emitter 的另一份 CParticle data 可以设置完全不同的 atlas binding。
+     * Example: 同一 emitter 的不同 CParticle data 可以叠加不同方块或物品纹理。
      * Forbidden: 生成后的 STATIC 粒子不会继续引用或观察此对象。
      */
     var textureSource: CParticleTextureSource? = null

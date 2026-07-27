@@ -795,13 +795,16 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
         if (displayer.hasBoundSystem) return
         val layerName = displayer.layer.name.lowercase()
         val name = "composition/$controlUUID/$layerName"
-        val bindingKey = displayer.resolveTextureBindingKey(position)
-        if (bindingKey == CParticleTextureBindingKey.MISSING) return
+        val resolvedTextures = displayer.resolveTexturesAt(position)
+        if (!resolvedTextures.isValid) return
+        val bindingKey = resolvedTextures.base.bindingKey
+        val maskBindingKey = resolvedTextures.mask?.bindingKey
         val existing = CParticleSystemManager.getSystem(
             name,
             CParticleSystemMode.SCRIPTED,
             displayer.layer,
             bindingKey,
+            maskBindingKey,
         )
         if (existing != null && existing.capacity < cParticleCapacityHint) {
             CParticleSystemManager.removeSystem(
@@ -809,6 +812,7 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
                 CParticleSystemMode.SCRIPTED,
                 displayer.layer,
                 bindingKey,
+                maskBindingKey,
             )
         }
         val target = CParticleSystemManager.getOrCreateSystem(
@@ -818,6 +822,7 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
             CParticleSystemMode.SCRIPTED,
             bindingKey,
             autoReleaseWhenEmpty = true,
+            maskTextureBindingKey = maskBindingKey,
         )
         if (!displayer.bindSystemIfAbsent(target)) return
         target.setOriginIfEmpty(position)
