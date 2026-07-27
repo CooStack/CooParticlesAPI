@@ -52,6 +52,12 @@ class CParticleControlable(
             if (value != null) system.scriptedSetVelocity(slot, generation, value)
         }
 
+    var age: Int
+        get() = system.scriptedGetAge(slot, generation) ?: 0
+        set(value) {
+            system.scriptedSetAge(slot, generation, value)
+        }
+
     override fun controlUUID(): UUID = uuid
 
     override fun teleportTo(to: Vec3) {

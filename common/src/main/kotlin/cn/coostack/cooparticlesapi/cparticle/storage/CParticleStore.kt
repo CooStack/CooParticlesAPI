@@ -253,6 +253,16 @@ class CParticleStore(val capacity: Int) {
         return anyDead
     }
 
+    fun getAge(slot: Int): Int = ages[slot]
+
+    fun setAge(slot: Int, age: Int) {
+        val safeAge = age.coerceIn(0, maxAges[slot])
+        ages[slot] = safeAge
+        data[slot * STRIDE + OFF_AGE] = safeAge.toFloat()
+        dynamicState?.sources?.get(slot)?.age = safeAge
+        markDirty(slot)
+    }
+
     /** 清空全部粒子 */
     fun clear() {
         java.util.Arrays.fill(aliveBits, 0L)

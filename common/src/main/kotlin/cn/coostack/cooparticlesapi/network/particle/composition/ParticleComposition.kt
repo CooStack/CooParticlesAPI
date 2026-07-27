@@ -695,7 +695,7 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
         this.position = pos
     }
 
-    fun applyRemoteRotation(to: RelativeLocation?, radian: Double) {
+    internal fun applyRemoteRotation(to: RelativeLocation?, radian: Double) {
         if (!client || !displayed) {
             to?.let { axis.copyFrom(it) }
             return
@@ -822,11 +822,20 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
 
     private fun applyGpuRotationTo(from: RelativeLocation, to: RelativeLocation, radian: Double) {
         val fromVector = normalizedAxis(from)
-        val toVector = normalizedAxis(to)
-        val align = Matrix4f().rotation(Quaternionf().rotationTo(fromVector, toVector))
+        val normalizedFrom = RelativeLocation.of(fromVector)
+        val normalizedTo = RelativeLocation.of(normalizedAxis(to))
+        val alignRotation = Quaternionf()
+            .rotateY(-Math3DUtil.getYawFromLocation(normalizedTo).toFloat())
+            .rotateX(-Math3DUtil.getPitchFromLocation(normalizedTo).toFloat())
+            .mul(
+                Quaternionf()
+                    .rotateY(Math3DUtil.getYawFromLocation(normalizedFrom).toFloat())
+                    .rotateLocalX(Math3DUtil.getPitchFromLocation(normalizedFrom).toFloat())
+            )
         if (radian != 0.0) {
-            align.mul(Matrix4f().rotate(radian.toFloat(), fromVector))
+            alignRotation.rotateAxis(radian.toFloat(), fromVector)
         }
+        val align = Matrix4f().rotation(alignRotation)
         align.mul(cParticleLinearTransform, cParticleLinearTransform)
         syncGpuTransform()
     }

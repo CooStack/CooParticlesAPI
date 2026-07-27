@@ -350,7 +350,7 @@ class CParticleSystem(
 
     fun scriptedSetAlpha(slot: Int, generation: Int, alpha: Float) {
         if (!checkHandle(slot, generation)) return
-        store.data[slot * CParticleStore.STRIDE + CParticleStore.OFF_COLOR + 3] = alpha
+        store.data[slot * CParticleStore.STRIDE + CParticleStore.OFF_COLOR + 3] = alpha.coerceIn(0f, 1f)
         store.markDirty(slot)
         settleTicks = 2
     }
@@ -360,6 +360,12 @@ class CParticleSystem(
         val base = slot * CParticleStore.STRIDE + CParticleStore.OFF_SIZE
         store.data[base] = w; store.data[base + 1] = h
         store.markDirty(slot)
+        settleTicks = 2
+    }
+
+    fun scriptedSetAge(slot: Int, generation: Int, age: Int) {
+        if (!checkHandle(slot, generation)) return
+        store.setAge(slot, age)
         settleTicks = 2
     }
 
@@ -429,6 +435,11 @@ class CParticleSystem(
             transformed.y.toDouble(),
             transformed.z.toDouble(),
         )
+    }
+
+    fun scriptedGetAge(slot: Int, generation: Int): Int? {
+        if (!checkHandle(slot, generation)) return null
+        return store.getAge(slot)
     }
 
     private fun inverseGroupTransform(): Matrix4f? {

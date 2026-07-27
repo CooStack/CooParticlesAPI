@@ -13,6 +13,7 @@ import cn.coostack.cooparticlesapi.test.api.ControlableParticleEffectTestOptionV
 import cn.coostack.cooparticlesapi.test.api.DoubleTestOptionValue
 import cn.coostack.cooparticlesapi.test.api.FloatTestOptionValue
 import cn.coostack.cooparticlesapi.test.api.IntTestOptionValue
+import cn.coostack.cooparticlesapi.test.api.RelativeLocationTestOptionValue
 import cn.coostack.cooparticlesapi.test.api.TestGroup
 import cn.coostack.cooparticlesapi.test.api.TestGroupBuilder
 import cn.coostack.cooparticlesapi.test.api.TextureSheetsEnumTestOptionValue
@@ -24,6 +25,7 @@ import cn.coostack.cooparticlesapi.test.options.display.TestBlockDisplayEntity
 import cn.coostack.cooparticlesapi.test.options.particle.composition.DynamicCParticleComposition
 import cn.coostack.cooparticlesapi.test.options.particle.composition.TestCParticleComposition
 import cn.coostack.cooparticlesapi.test.options.particle.composition.TestComposition
+import cn.coostack.cooparticlesapi.test.options.particle.composition.TestGPURotationComposition
 import cn.coostack.cooparticlesapi.test.options.particle.composition.TestSimpleParticleComposition
 import cn.coostack.cooparticlesapi.test.options.particle.composition.UsefulMagicTestComposition
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestAlphaShaderEmitter
@@ -38,6 +40,7 @@ import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
+import kotlin.math.PI
 
 class BlockAPITestGroupBuilder(player: Player) : TestGroupBuilder {
     private val player = player as? BlockTestPlayer ?: BlockTestPlayer(player)
@@ -133,6 +136,14 @@ class BlockAPITestGroupBuilder(player: Player) : TestGroupBuilder {
                         it.colorInner = getParam<Vector3f>("cpc_color_inner")!!
                         it.colorOuter = getParam<Vector3f>("cpc_color_outer")!!
                         it.rotateSpeed = getParam<Double>("cpc_rotate_speed")!!
+                    }
+            }
+            .appendOption {
+                SimpleCompositionOption(TestGPURotationComposition(player.position, player.level))
+                    .applyParam(RelativeLocationTestOptionValue("to", "相对向量"), RelativeLocation(0, 0, 1))
+                    .applyTo {
+                        it as TestGPURotationComposition
+                        it.to = getParamOrThrow("to")
                     }
             }
             .appendOption {

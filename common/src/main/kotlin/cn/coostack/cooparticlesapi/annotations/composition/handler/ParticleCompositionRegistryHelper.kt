@@ -24,7 +24,20 @@ object ParticleCompositionRegistryHelper {
     }
 
     fun generateCodec(type: Class<out ParticleComposition>): StreamCodec<FriendlyByteBuf, ParticleComposition> {
-        val constructor = type.getConstructor(Vec3::class.java, Level::class.java)
+//        val constructor = type.getConstructor(Vec3::class.java, Level::class.java)
+        val pw = runCatching { type.getConstructor(Vec3::class.java, Level::class.java) }.getOrNull()
+        val wp = if (pw == null) runCatching {
+            type.getConstructor(
+                Level::class.java,
+                Vec3::class.java
+            )
+        }.getOrNull() else null
+        val p =
+            if (pw == null && wp == null) runCatching { type.getConstructor(Vec3::class.java) }.getOrNull() else null
+        val w =
+            if (pw == null && wp == null && p == null) runCatching { type.getConstructor(Level::class.java) }.getOrNull() else null
+        val empty =
+            if (pw == null && wp == null && w == null && p == null) type.getConstructor() else null // 所有尝试都做过了，说明有问题，直接抛
         return StreamCodec.of(
             { buf, composition ->
                 if (composition is SequencedParticleComposition) {
@@ -49,7 +62,15 @@ object ParticleCompositionRegistryHelper {
                     codec.encode(buf, it.get(composition))
                 }
             }, { buf ->
-                constructor.newInstance(Vec3.ZERO, null).apply {
+                val instance = when {
+                    pw != null -> pw.newInstance(Vec3.ZERO, null)
+                    wp != null -> wp.newInstance(null, Vec3.ZERO)
+                    p != null -> p.newInstance(Vec3.ZERO)
+                    w != null -> w.newInstance(null)
+                    empty != null -> empty.newInstance()
+                    else -> throw NullPointerException("所有情况都错误")
+                }
+                instance.apply {
                     if (this is SequencedParticleComposition) {
                         SequencedParticleComposition.decodeBase(this, buf)
                     } else {
@@ -73,6 +94,7 @@ object ParticleCompositionRegistryHelper {
                         it.set(this, value)
                     }
                 }
+
             }
         )
     }

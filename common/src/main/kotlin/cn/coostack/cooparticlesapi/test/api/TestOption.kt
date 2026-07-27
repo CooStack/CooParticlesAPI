@@ -107,6 +107,8 @@ interface TestOption {
         return TestOptionParamSupport.getParam(this, id)
     }
 
+    fun <T: Any> getParamOrThrow(id: String) = getParam<T>(id)!!
+
     fun paramTarget(): Any {
         return this
     }
