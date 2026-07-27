@@ -31,8 +31,7 @@ class TestGPUEmitter(pos: Vec3, world: Level?) : AutoParticleEmitters(pos, world
 
     private val emitter1SizeX = BezierKeyframeFloatCurve(listOf(BezierFloatKeyframe(time = 0.0, value = 0.0, outX = 39.889, outY = 2.45, inX = -33.0, inY = 0.0), BezierFloatKeyframe(time = 1.0, value = 1.0, outX = 33.0, outY = 0.0, inX = -58.172, inY = 2.639)))
     private val emitter1SizeY = BezierKeyframeFloatCurve(listOf(BezierFloatKeyframe(time = 0.0, value = 0.972, outX = 65.097, outY = 0.925, inX = -33.0, inY = 0.0), BezierFloatKeyframe(time = 1.0, value = 1.0, outX = 33.0, outY = 0.0, inX = -44.875, inY = 5.717)))
-    private val emitter1Opacity = BezierKeyframeFloatCurve(listOf(BezierFloatKeyframe(time = 0.0, value = 0.0, outX = 81.003, outY = -0.01414, inX = -33.0, inY = 0.0), BezierFloatKeyframe(time = 1.0, value = 0.0, outX = 33.0, outY = 0.0, inX = -69.657, inY = 2.5097)))
-
+    private val emitter1Opacity = BezierKeyframeFloatCurve(listOf(BezierFloatKeyframe(time = 0.0, value = 0.0, outX = 66.755, outY = -1.80356, inX = -33.0, inY = 0.0), BezierFloatKeyframe(time = 1.0, value = 0.0, outX = 33.0, outY = 0.0, inX = -36.412, inY = 11.33474)))
     @CodecField
     var template = ControlableCParticleData().apply {
         velocity = Vec3(0.0, 0.12, 0.0)
