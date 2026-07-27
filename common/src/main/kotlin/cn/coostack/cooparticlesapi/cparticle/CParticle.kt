@@ -111,6 +111,14 @@ open class CParticle {
     var randomSeed: Int? = null
 
     /**
+     * 是否在 SIMULATED 模式使用共享方块占用网格处理位移碰撞。
+     *
+     * Example: emitter data 的 `blockCollision = true` 会复制到本字段。
+     * Forbidden: SCRIPTED 模式仍应通过 `CParticleControlable.moveWithPhysics()` 做精确碰撞。
+     */
+    var blockCollision = false
+
+    /**
      * 此粒子的模拟速度上限；`null` 表示使用所属 system 的 [CParticleSystem.speedLimit]。
      *
      * Example: emitter data 会把自己的 `speedLimit` 写入此字段，从而允许同池粒子使用不同限速。
@@ -132,8 +140,40 @@ open class CParticle {
             appearanceRevisionCounter++
         }
 
-    /** 按生命周期同时缩放 X/Y 尺寸的 GPU 曲线。 */
-    var sizeCurve: CParticleCurve? = null
+    /**
+     * 按生命周期同时缩放 X/Y 尺寸的等比 GPU 曲线。
+     *
+     * 最终会与 [scaleXCurve]、[scaleYCurve] 的对应轴倍率相乘。
+     * Example: `scaleCurve = CParticleCurve.fadeInOut()` 会保持当前宽高比例。
+     * Forbidden: 不要用它单独控制某一个轴。
+     */
+    var scaleCurve: CParticleCurve? = null
+        set(value) {
+            if (field === value) return
+            field = value
+            appearanceRevisionCounter++
+        }
+
+    /**
+     * 按生命周期只缩放 X 方向尺寸的 GPU 曲线。
+     *
+     * Example: `scaleXCurve = CParticleCurve.linear(0.2f, 1f)` 会横向展开粒子。
+     * Forbidden: 不要把本字段当成 Z 方向或等比缩放入口。
+     */
+    var scaleXCurve: CParticleCurve? = null
+        set(value) {
+            if (field === value) return
+            field = value
+            appearanceRevisionCounter++
+        }
+
+    /**
+     * 按生命周期只缩放 Y 方向尺寸的 GPU 曲线。
+     *
+     * Example: `scaleYCurve = CParticleCurve.linear(1f, 0f)` 会纵向收拢粒子。
+     * Forbidden: 不要把本字段当成 Z 方向或等比缩放入口。
+     */
+    var scaleYCurve: CParticleCurve? = null
         set(value) {
             if (field === value) return
             field = value
@@ -160,7 +200,13 @@ open class CParticle {
      */
     internal fun appearanceDescriptorId(): Int {
         if (cachedAppearanceRevision == appearanceRevisionCounter) return cachedAppearanceDescriptorId
-        cachedAppearanceDescriptorId = CParticleAppearanceDescriptors.register(alphaCurve, sizeCurve, colorCurve)
+        cachedAppearanceDescriptorId = CParticleAppearanceDescriptors.register(
+            alphaCurve,
+            scaleCurve,
+            scaleXCurve,
+            scaleYCurve,
+            colorCurve,
+        )
         cachedAppearanceRevision = appearanceRevisionCounter
         return cachedAppearanceDescriptorId
     }
@@ -292,9 +338,12 @@ open class CParticle {
         target.angularVelocity = Vector3f(angularVelocity)
         target.randomAgePreTick = randomAgePreTick
         target.randomSeed = randomSeed
+        target.blockCollision = blockCollision
         target.speedLimit = speedLimit
         target.alphaCurve = alphaCurve
-        target.sizeCurve = sizeCurve
+        target.scaleCurve = scaleCurve
+        target.scaleXCurve = scaleXCurve
+        target.scaleYCurve = scaleYCurve
         target.colorCurve = colorCurve
         target.sprite = sprite
         target.effect = effect
@@ -323,7 +372,9 @@ open class CParticle {
         effect = data.effect
         textureSource = data.textureSource
         alphaCurve = data.alphaCurve
-        sizeCurve = data.sizeCurve
+        scaleCurve = data.scaleCurve
+        scaleXCurve = data.scaleXCurve
+        scaleYCurve = data.scaleYCurve
         colorCurve = data.colorCurve
         val direction = data.rotationDirection
         if (direction == null) {
@@ -335,6 +386,7 @@ open class CParticle {
         angularVelocity.set(data.angularVelocity)
         randomAgePreTick = data.randomAgePreTick
         randomSeed = data.randomSeed
+        blockCollision = data.blockCollision
         speedLimit = data.speedLimit.toFloat().coerceAtLeast(0f)
     }
 
@@ -375,12 +427,15 @@ open class CParticle {
                     it.updateMode = data.updateMode
                     it.textureSource = data.textureSource
                     it.alphaCurve = data.alphaCurve
-                    it.sizeCurve = data.sizeCurve
+                    it.scaleCurve = data.scaleCurve
+                    it.scaleXCurve = data.scaleXCurve
+                    it.scaleYCurve = data.scaleYCurve
                     it.colorCurve = data.colorCurve
                     it.rotationDirection = data.rotationDirection?.let(::Vector3f)
                     it.angularVelocity = Vector3f(data.angularVelocity)
                     it.randomAgePreTick = data.randomAgePreTick
                     it.randomSeed = data.randomSeed
+                    it.blockCollision = data.blockCollision
                     it.speedLimit = data.speedLimit.toFloat().coerceAtLeast(0f)
                     if (data.updateMode == CParticleUpdateMode.DYNAMIC) {
                         it.dynamicDataSource = data

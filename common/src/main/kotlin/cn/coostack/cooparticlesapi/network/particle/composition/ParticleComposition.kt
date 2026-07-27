@@ -258,12 +258,25 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
         }
     }
 
-    /** 对当前 composition 创建的所有 CParticle systems 播放同一段 GPU 视觉过渡。 */
+    /**
+     * 对当前 composition 创建的所有 CParticle systems 播放同一段 GPU 视觉过渡。
+     *
+     * Example: `playCParticleVisualTransition(20f, scaleCurve = curve)` 会统一缩放当前 systems。
+     * Forbidden: 不要用它修改粒子生成时的基础尺寸。
+     *
+     * @param durationTicks 过渡时长，单位 tick
+     * @param alphaCurve 不透明度倍率曲线
+     * @param scaleCurve 等比缩放倍率曲线
+     * @param colorFrom 可选起始颜色
+     * @param colorTo 可选结束颜色
+     * @param mode 过渡结束后的行为
+     * @return 当前 composition
+     */
     @JvmOverloads
     fun playCParticleVisualTransition(
         durationTicks: Float,
         alphaCurve: CParticleCurve? = null,
-        sizeCurve: CParticleCurve? = null,
+        scaleCurve: CParticleCurve? = null,
         colorFrom: Vector3fc? = null,
         colorTo: Vector3fc? = null,
         mode: CParticleTransitionMode = CParticleTransitionMode.HOLD_END,
@@ -271,7 +284,7 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
         return playCParticleVisualTransitionInternal(
             durationTicks,
             alphaCurve,
-            sizeCurve,
+            scaleCurve,
             colorFrom,
             colorTo,
             mode,
@@ -279,13 +292,27 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
         )
     }
 
-    /** 与 [playCParticleVisualTransition] 相同；[restart] 为 true 时强制从头播放。 */
+    /**
+     * 播放 composition 级 GPU 视觉过渡，并允许强制重新开始相同配置。
+     *
+     * Example: `playCParticleVisualTransition(20f, true, scaleCurve = curve)` 会重置进度。
+     * Forbidden: 不要用它修改粒子生成时的基础尺寸。
+     *
+     * @param durationTicks 过渡时长，单位 tick
+     * @param restart 是否强制从头播放
+     * @param alphaCurve 不透明度倍率曲线
+     * @param scaleCurve 等比缩放倍率曲线
+     * @param colorFrom 可选起始颜色
+     * @param colorTo 可选结束颜色
+     * @param mode 过渡结束后的行为
+     * @return 当前 composition
+     */
     @JvmOverloads
     fun playCParticleVisualTransition(
         durationTicks: Float,
         restart: Boolean,
         alphaCurve: CParticleCurve? = null,
-        sizeCurve: CParticleCurve? = null,
+        scaleCurve: CParticleCurve? = null,
         colorFrom: Vector3fc? = null,
         colorTo: Vector3fc? = null,
         mode: CParticleTransitionMode = CParticleTransitionMode.HOLD_END,
@@ -293,7 +320,7 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
         return playCParticleVisualTransitionInternal(
             durationTicks,
             alphaCurve,
-            sizeCurve,
+            scaleCurve,
             colorFrom,
             colorTo,
             mode,
@@ -301,10 +328,25 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
         )
     }
 
+    /**
+     * 把同一组过渡参数分发给当前 composition 管理的 systems。
+     *
+     * Example: 公开重载通过本方法统一传递 [restart]。
+     * Forbidden: 不要在这里缓存已经释放的 system。
+     *
+     * @param durationTicks 过渡时长，单位 tick
+     * @param alphaCurve 不透明度倍率曲线
+     * @param scaleCurve 等比缩放倍率曲线
+     * @param colorFrom 可选起始颜色
+     * @param colorTo 可选结束颜色
+     * @param mode 过渡结束后的行为
+     * @param restart 是否强制从头播放
+     * @return 当前 composition
+     */
     private fun playCParticleVisualTransitionInternal(
         durationTicks: Float,
         alphaCurve: CParticleCurve?,
-        sizeCurve: CParticleCurve?,
+        scaleCurve: CParticleCurve?,
         colorFrom: Vector3fc?,
         colorTo: Vector3fc?,
         mode: CParticleTransitionMode,
@@ -315,7 +357,7 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
                 durationTicks = durationTicks,
                 restart = restart,
                 alphaCurve = alphaCurve,
-                sizeCurve = sizeCurve,
+                scaleCurve = scaleCurve,
                 colorFrom = colorFrom,
                 colorTo = colorTo,
                 mode = mode,

@@ -1,7 +1,8 @@
 package cn.coostack.cooparticlesapi.cparticle.render
 
-import cn.coostack.cooparticlesapi.cparticle.CParticleColorCurve
 import cn.coostack.cooparticlesapi.cparticle.CParticleAppearanceDescriptors
+import cn.coostack.cooparticlesapi.cparticle.CParticleColorCurve
+import cn.coostack.cooparticlesapi.cparticle.CParticleCurve
 import cn.coostack.cooparticlesapi.cparticle.CParticleRenderLayer
 import cn.coostack.cooparticlesapi.cparticle.CParticleRenderPass
 import cn.coostack.cooparticlesapi.cparticle.CParticleSprites
@@ -35,8 +36,10 @@ object CParticleRenderer {
     private val tmpOrigin = Vector3f()
     private val tmpVec4 = Vector4f()
     private val emptyCurve = FloatArray(16)
+    private val emptyCurveHandles = FloatArray(CParticleCurve.MAX_KEYS * 4)
     private val emptyColorTimes = FloatArray(CParticleColorCurve.MAX_KEYS)
     private val emptyColorValues = FloatArray(CParticleColorCurve.MAX_KEYS * 3)
+    private val emptyColorHandles = FloatArray(CParticleColorCurve.MAX_KEYS * 4)
     private val drawLayers = arrayOf(
         CParticleRenderLayer.OPAQUE,
         CParticleRenderLayer.TRANSLUCENT,
@@ -74,8 +77,8 @@ object CParticleRenderer {
     /**
      * 绘制所有系统 (渲染线程, 世界渲染阶段).
      *
-     * Example: 粒子引擎 pass 通过 [CParticleSystemManager.renderParticlePass] 调用此方法。
-     * Forbidden: 不要从非渲染线程调用，也不要绕过调用方提供的粒子 pass。
+     * 示例：粒子引擎 pass 通过 [CParticleSystemManager.renderParticlePass] 调用此方法。
+     * 禁止：不要从非渲染线程调用，也不要绕过调用方提供的粒子 pass。
      *
      * @param view LevelRenderer 的 frustum(model-view) 矩阵
      * @param proj 当前世界投影矩阵
@@ -286,16 +289,9 @@ object CParticleRenderer {
         shader.setMatrix4("uPrevGroupMat", system.previousGroupTransform)
         shader.setMatrix4("uGroupMat", system.currentGroupTransform)
 
-        val alphaCurve = system.alphaCurve
-        shader.setInt("uAlphaKeys", alphaCurve?.keyCount ?: 0)
-        shader.setFloatArray("uAlphaCurve", alphaCurve?.packed ?: emptyCurve)
-        val sizeCurve = system.sizeCurve
-        shader.setInt("uSizeKeys", sizeCurve?.keyCount ?: 0)
-        shader.setFloatArray("uSizeCurve", sizeCurve?.packed ?: emptyCurve)
-        val colorCurve = system.colorCurve
-        shader.setInt("uColorKeys", colorCurve?.keyCount ?: 0)
-        shader.setFloatArray("uColorCurveTimes", colorCurve?.packedTimes ?: emptyColorTimes)
-        shader.setFloat3Array("uColorCurveValues", colorCurve?.packedColors ?: emptyColorValues)
+        setScalarCurve(shader, "uAlpha", system.alphaCurve)
+        setScalarCurve(shader, "uScale", system.scaleCurve)
+        setColorCurve(shader, "uColor", system.colorCurve)
         val systemTime = system.tickCount + partial
         shader.setFloat("uSystemTime", systemTime)
         shader.setInt("uSystemTick", system.tickCount)
@@ -307,12 +303,14 @@ object CParticleRenderer {
         val transition = system.visualTransition
         val transitionProgress = transition?.progressAt(systemTime)
         shader.setInt("uTransitionEnabled", if (transitionProgress == null) 0 else 1)
+        setScalarCurve(shader, "uTransitionAlpha", transition?.alphaCurve)
+        setScalarCurve(shader, "uTransitionScale", transition?.scaleCurve)
         if (transition != null && transitionProgress != null) {
             shader.setFloat4(
                 "uTransitionParams",
                 tmpVec4.set(
-                    transition.alphaCurve?.sample(transitionProgress) ?: 1f,
-                    transition.sizeCurve?.sample(transitionProgress) ?: 1f,
+                    1f,
+                    1f,
                     transitionProgress,
                     if (transition.hasColor) 1f else 0f,
                 )
@@ -324,14 +322,48 @@ object CParticleRenderer {
         }
         val alphaTransition = system.alphaTransition
         val alphaTransitionProgress = alphaTransition?.progressAt(systemTime)
-        shader.setFloat(
-            "uAlphaTransitionScale",
-            if (alphaTransition != null && alphaTransitionProgress != null) {
-                alphaTransition.alphaCurve?.sample(alphaTransitionProgress) ?: 1f
-            } else {
-                1f
-            },
+        setScalarCurve(
+            shader,
+            "uAlphaTransition",
+            alphaTransition?.alphaCurve?.takeIf { alphaTransitionProgress != null },
         )
+        shader.setFloat("uAlphaTransitionProgress", alphaTransitionProgress ?: 0f)
+    }
+
+    /**
+     * 按系统与 transition 路径共用的 uniform 命名上传一条标量曲线。
+     *
+     * 示例：前缀 `uAlpha` 会写入 `uAlphaKeys`、`uAlphaCurveType` 和两组数据数组。
+     * 禁止：曲线缺失时必须上传 0 个关键帧，不能让旧 uniform 继续生效。
+     *
+     * @param shader 当前 CParticle shader
+     * @param prefix uniform 组的前缀
+     * @param curve 要上传的曲线；`null` 表示倍率恒为 1
+     */
+    private fun setScalarCurve(shader: CooShaderProgram, prefix: String, curve: CParticleCurve?) {
+        shader.setInt("${prefix}Keys", curve?.keyCount ?: 0)
+        shader.setInt("${prefix}CurveType", curve?.interpolation?.wireId ?: 0)
+        shader.setFloatArray("${prefix}Curve", curve?.packedData ?: emptyCurve)
+        shader.setFloat4Array("${prefix}CurveHandles", curve?.packedHandleData ?: emptyCurveHandles)
+    }
+
+    /**
+     * 上传一条 RGB 曲线及其两组值控制柄。
+     *
+     * 示例：前缀 `uColor` 会写入锚点以及独立的 RGB 出入控制柄。
+     * 禁止：曲线缺失时必须上传 0 个关键帧，让 shader 保留粒子原色。
+     *
+     * @param shader 当前 CParticle shader
+     * @param prefix uniform 组的前缀
+     * @param curve 要上传的曲线；`null` 表示 RGB 倍率恒为 1
+     */
+    private fun setColorCurve(shader: CooShaderProgram, prefix: String, curve: CParticleColorCurve?) {
+        shader.setInt("${prefix}Keys", curve?.keyCount ?: 0)
+        shader.setInt("${prefix}CurveType", curve?.interpolation?.wireId ?: 0)
+        shader.setFloatArray("${prefix}CurveTimes", curve?.packedTimeData ?: emptyColorTimes)
+        shader.setFloat3Array("${prefix}CurveValues", curve?.packedColorData ?: emptyColorValues)
+        shader.setFloat4Array("${prefix}CurveOutHandles", curve?.packedOutHandleData ?: emptyColorHandles)
+        shader.setFloat4Array("${prefix}CurveInHandles", curve?.packedInHandleData ?: emptyColorHandles)
     }
 
     fun release() {

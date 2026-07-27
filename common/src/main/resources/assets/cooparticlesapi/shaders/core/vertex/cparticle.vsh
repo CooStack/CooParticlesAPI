@@ -30,22 +30,41 @@ uniform samplerBuffer uAppearanceLookup;
 
 // 生命周期曲线: [t0..t7, v0..v7]
 uniform int uAlphaKeys;
+uniform int uAlphaCurveType;
 uniform float uAlphaCurve[16];
-uniform int uSizeKeys;
-uniform float uSizeCurve[16];
+uniform vec4 uAlphaCurveHandles[8];
+uniform int uScaleKeys;
+uniform int uScaleCurveType;
+uniform float uScaleCurve[16];
+uniform vec4 uScaleCurveHandles[8];
 uniform int uColorKeys;
+uniform int uColorCurveType;
 uniform float uColorCurveTimes[8];
 uniform vec3 uColorCurveValues[8];
+uniform vec4 uColorCurveOutHandles[8];
+uniform vec4 uColorCurveInHandles[8];
 uniform float uSystemTime;
 uniform float uCurveCycleTicks;
 uniform float uColorCycleTicks;
 uniform float uColorCycleSpatialScale;
 
 uniform int uTransitionEnabled;
-uniform vec4 uTransitionParams; // alphaScale, sizeScale, colorProgress, hasColor
+uniform vec4 uTransitionParams; // reserved, reserved, progress, hasColor
+uniform int uTransitionAlphaKeys;
+uniform int uTransitionAlphaCurveType;
+uniform float uTransitionAlphaCurve[16];
+uniform vec4 uTransitionAlphaCurveHandles[8];
+uniform int uTransitionScaleKeys;
+uniform int uTransitionScaleCurveType;
+uniform float uTransitionScaleCurve[16];
+uniform vec4 uTransitionScaleCurveHandles[8];
 uniform vec3 uTransitionColorFrom;
 uniform vec3 uTransitionColorTo;
-uniform float uAlphaTransitionScale;
+uniform int uAlphaTransitionKeys;
+uniform int uAlphaTransitionCurveType;
+uniform float uAlphaTransitionCurve[16];
+uniform vec4 uAlphaTransitionCurveHandles[8];
+uniform float uAlphaTransitionProgress;
 
 out vec2 vUv;
 out vec2 vMaskUv;
@@ -61,7 +80,11 @@ const int FLAG_RANDOM_QUARTER_UV = 1 << 13;
 const int FLAG_MASK_RANDOM_QUARTER_UV = 1 << 14;
 const float FRAME_PROGRESS_RESOLUTION = 4096.0;
 const float TAU = 6.28318530718;
-const int APPEARANCE_TEXELS = 17;
+const int APPEARANCE_TEXELS = 73;
+const int CURVE_TYPE_RADIX = 16;
+const int PACKED_CURVE_RADIX = 32;
+const int CURVE_TYPE_BEZIER = 1;
+const int BEZIER_SOLVE_ITERATIONS = 10;
 
 uint hash32(uint value) {
     uint x = value;
@@ -120,47 +143,110 @@ int appearanceBase() {
     return max(int(iAppearance.x + 0.5), 0) * APPEARANCE_TEXELS;
 }
 
-float sampleParticleAlphaCurve(float t) {
-    int base = appearanceBase();
-    int keyCount = int(texelFetch(uAppearanceLookup, base).x + 0.5);
-    if (keyCount <= 0) return 1.0;
-    vec4 first = texelFetch(uAppearanceLookup, base + 1);
-    if (t <= first.x) return first.y;
-    for (int i = 1; i < 8; i++) {
-        if (i >= keyCount) break;
-        vec4 previous = texelFetch(uAppearanceLookup, base + i);
-        vec4 current = texelFetch(uAppearanceLookup, base + 1 + i);
-        if (t <= current.x) {
-            float f = current.x > previous.x ? (t - previous.x) / (current.x - previous.x) : 0.0;
-            return mix(previous.y, current.y, f);
-        }
-    }
-    return texelFetch(uAppearanceLookup, base + keyCount).y;
+float cubicBezierComponent(float parameter, float first, float firstControl, float secondControl, float second) {
+    float inverse = 1.0 - parameter;
+    float inverseSquared = inverse * inverse;
+    float parameterSquared = parameter * parameter;
+    return inverseSquared * inverse * first
+        + 3.0 * inverseSquared * parameter * firstControl
+        + 3.0 * inverse * parameterSquared * secondControl
+        + parameterSquared * parameter * second;
 }
 
-float sampleParticleSizeCurve(float t) {
-    int base = appearanceBase();
-    int keyCount = int(texelFetch(uAppearanceLookup, base).y + 0.5);
-    if (keyCount <= 0) return 1.0;
-    vec4 first = texelFetch(uAppearanceLookup, base + 1);
-    if (t <= first.z) return first.w;
-    for (int i = 1; i < 8; i++) {
-        if (i >= keyCount) break;
-        vec4 previous = texelFetch(uAppearanceLookup, base + i);
-        vec4 current = texelFetch(uAppearanceLookup, base + 1 + i);
-        if (t <= current.z) {
-            float f = current.z > previous.z ? (t - previous.z) / (current.z - previous.z) : 0.0;
-            return mix(previous.w, current.w, f);
+float sampleBezierParameter(float t, float first, float firstControl, float secondControl, float second) {
+    if (t <= first) return 0.0;
+    if (t >= second) return 1.0;
+    float low = 0.0;
+    float high = 1.0;
+    for (int iteration = 0; iteration < BEZIER_SOLVE_ITERATIONS; iteration++) {
+        float middle = (low + high) * 0.5;
+        if (cubicBezierComponent(middle, first, firstControl, secondControl, second) < t) {
+            low = middle;
+        } else {
+            high = middle;
         }
     }
-    return texelFetch(uAppearanceLookup, base + keyCount).w;
+    return (low + high) * 0.5;
+}
+
+int curveKeyCount(int encoded) {
+    return encoded % CURVE_TYPE_RADIX;
+}
+
+int curveType(int encoded) {
+    return encoded / CURVE_TYPE_RADIX;
+}
+
+float sampleParticleScalarCurve(
+    float t,
+    int encoded,
+    int anchorOffset,
+    int handleOffset,
+    int timeComponent,
+    int valueComponent
+) {
+    int keyCount = curveKeyCount(encoded);
+    if (keyCount <= 0) return 1.0;
+    int base = appearanceBase();
+    vec4 first = texelFetch(uAppearanceLookup, base + anchorOffset);
+    if (t <= first[timeComponent]) return first[valueComponent];
+    for (int i = 1; i < 8; i++) {
+        if (i >= keyCount) break;
+        vec4 previous = texelFetch(uAppearanceLookup, base + anchorOffset + i - 1);
+        vec4 current = texelFetch(uAppearanceLookup, base + anchorOffset + i);
+        if (t <= current[timeComponent]) {
+            if (curveType(encoded) != CURVE_TYPE_BEZIER) {
+                float progress = (t - previous[timeComponent]) / (current[timeComponent] - previous[timeComponent]);
+                return mix(previous[valueComponent], current[valueComponent], progress);
+            }
+            vec4 previousHandle = texelFetch(uAppearanceLookup, base + handleOffset + i - 1);
+            vec4 currentHandle = texelFetch(uAppearanceLookup, base + handleOffset + i);
+            float parameter = sampleBezierParameter(
+                t,
+                previous[timeComponent],
+                previous[timeComponent] + previousHandle.x / 100.0,
+                current[timeComponent] + currentHandle.z / 100.0,
+                current[timeComponent]
+            );
+            return cubicBezierComponent(
+                parameter,
+                previous[valueComponent],
+                previous[valueComponent] + previousHandle.y,
+                current[valueComponent] + currentHandle.w,
+                current[valueComponent]
+            );
+        }
+    }
+    return texelFetch(uAppearanceLookup, base + anchorOffset + keyCount - 1)[valueComponent];
+}
+
+float sampleParticleAlphaCurve(float t) {
+    int encoded = int(texelFetch(uAppearanceLookup, appearanceBase()).x + 0.5);
+    return sampleParticleScalarCurve(t, encoded, 1, 25, 0, 1);
+}
+
+float sampleParticleScaleCurve(float t) {
+    int encoded = int(texelFetch(uAppearanceLookup, appearanceBase()).y + 0.5);
+    return sampleParticleScalarCurve(t, encoded, 1, 33, 2, 3);
+}
+
+float sampleParticleScaleXCurve(float t) {
+    int encoded = int(texelFetch(uAppearanceLookup, appearanceBase()).z + 0.5);
+    return sampleParticleScalarCurve(t, encoded, 9, 41, 0, 1);
+}
+
+float sampleParticleScaleYCurve(float t) {
+    int packedMetadata = int(texelFetch(uAppearanceLookup, appearanceBase()).w + 0.5);
+    return sampleParticleScalarCurve(t, packedMetadata % PACKED_CURVE_RADIX, 9, 49, 2, 3);
 }
 
 vec3 sampleParticleColorCurve(float t) {
     int base = appearanceBase();
-    int keyCount = int(texelFetch(uAppearanceLookup, base).z + 0.5);
+    int packedMetadata = int(texelFetch(uAppearanceLookup, base).w + 0.5);
+    int encoded = packedMetadata / PACKED_CURVE_RADIX;
+    int keyCount = curveKeyCount(encoded);
     if (keyCount <= 0) return vec3(1.0);
-    int colorBase = base + 9;
+    int colorBase = base + 17;
     vec4 first = texelFetch(uAppearanceLookup, colorBase);
     if (t <= first.x) return first.yzw;
     for (int i = 1; i < 8; i++) {
@@ -168,53 +254,117 @@ vec3 sampleParticleColorCurve(float t) {
         vec4 previous = texelFetch(uAppearanceLookup, colorBase + i - 1);
         vec4 current = texelFetch(uAppearanceLookup, colorBase + i);
         if (t <= current.x) {
-            float f = current.x > previous.x ? (t - previous.x) / (current.x - previous.x) : 0.0;
-            return mix(previous.yzw, current.yzw, f);
+            if (curveType(encoded) != CURVE_TYPE_BEZIER) {
+                float progress = (t - previous.x) / (current.x - previous.x);
+                return mix(previous.yzw, current.yzw, progress);
+            }
+            vec4 previousHandle = texelFetch(uAppearanceLookup, base + 57 + i - 1);
+            vec4 currentHandle = texelFetch(uAppearanceLookup, base + 65 + i);
+            float parameter = sampleBezierParameter(
+                t,
+                previous.x,
+                previous.x + previousHandle.x / 100.0,
+                current.x + currentHandle.x / 100.0,
+                current.x
+            );
+            return vec3(
+                cubicBezierComponent(parameter, previous.y, previous.y + previousHandle.y, current.y + currentHandle.y, current.y),
+                cubicBezierComponent(parameter, previous.z, previous.z + previousHandle.z, current.z + currentHandle.z, current.z),
+                cubicBezierComponent(parameter, previous.w, previous.w + previousHandle.w, current.w + currentHandle.w, current.w)
+            );
         }
     }
     return texelFetch(uAppearanceLookup, colorBase + keyCount - 1).yzw;
 }
 
-float sampleAlphaCurve(float t) {
-    if (uAlphaKeys <= 0) return 1.0;
-    if (t <= uAlphaCurve[0]) return uAlphaCurve[8];
-    for (int i = 1; i < uAlphaKeys; i++) {
-        if (t <= uAlphaCurve[i]) {
-            float t0 = uAlphaCurve[i - 1];
-            float t1 = uAlphaCurve[i];
-            float f = t1 > t0 ? (t - t0) / (t1 - t0) : 0.0;
-            return mix(uAlphaCurve[8 + i - 1], uAlphaCurve[8 + i], f);
+float sampleScalarCurve(
+    float t,
+    int keyCount,
+    int interpolation,
+    float anchors[16],
+    vec4 handles[8]
+) {
+    if (keyCount <= 0) return 1.0;
+    if (t <= anchors[0]) return anchors[8];
+    for (int i = 1; i < 8; i++) {
+        if (i >= keyCount) break;
+        if (t <= anchors[i]) {
+            if (interpolation != CURVE_TYPE_BEZIER) {
+                float progress = (t - anchors[i - 1]) / (anchors[i] - anchors[i - 1]);
+                return mix(anchors[8 + i - 1], anchors[8 + i], progress);
+            }
+            float parameter = sampleBezierParameter(
+                t,
+                anchors[i - 1],
+                anchors[i - 1] + handles[i - 1].x / 100.0,
+                anchors[i] + handles[i].z / 100.0,
+                anchors[i]
+            );
+            return cubicBezierComponent(
+                parameter,
+                anchors[8 + i - 1],
+                anchors[8 + i - 1] + handles[i - 1].y,
+                anchors[8 + i] + handles[i].w,
+                anchors[8 + i]
+            );
         }
     }
-    return uAlphaCurve[8 + uAlphaKeys - 1];
+    return anchors[8 + keyCount - 1];
 }
 
-float sampleSizeCurve(float t) {
-    if (uSizeKeys <= 0) return 1.0;
-    if (t <= uSizeCurve[0]) return uSizeCurve[8];
-    for (int i = 1; i < uSizeKeys; i++) {
-        if (t <= uSizeCurve[i]) {
-            float t0 = uSizeCurve[i - 1];
-            float t1 = uSizeCurve[i];
-            float f = t1 > t0 ? (t - t0) / (t1 - t0) : 0.0;
-            return mix(uSizeCurve[8 + i - 1], uSizeCurve[8 + i], f);
+vec3 sampleRgbCurve(
+    float t,
+    int keyCount,
+    int interpolation,
+    float times[8],
+    vec3 values[8],
+    vec4 outHandles[8],
+    vec4 inHandles[8]
+) {
+    if (keyCount <= 0) return vec3(1.0);
+    if (t <= times[0]) return values[0];
+    for (int i = 1; i < 8; i++) {
+        if (i >= keyCount) break;
+        if (t <= times[i]) {
+            if (interpolation != CURVE_TYPE_BEZIER) {
+                float progress = (t - times[i - 1]) / (times[i] - times[i - 1]);
+                return mix(values[i - 1], values[i], progress);
+            }
+            float parameter = sampleBezierParameter(
+                t,
+                times[i - 1],
+                times[i - 1] + outHandles[i - 1].x / 100.0,
+                times[i] + inHandles[i].x / 100.0,
+                times[i]
+            );
+            return vec3(
+                cubicBezierComponent(parameter, values[i - 1].x, values[i - 1].x + outHandles[i - 1].y, values[i].x + inHandles[i].y, values[i].x),
+                cubicBezierComponent(parameter, values[i - 1].y, values[i - 1].y + outHandles[i - 1].z, values[i].y + inHandles[i].z, values[i].y),
+                cubicBezierComponent(parameter, values[i - 1].z, values[i - 1].z + outHandles[i - 1].w, values[i].z + inHandles[i].w, values[i].z)
+            );
         }
     }
-    return uSizeCurve[8 + uSizeKeys - 1];
+    return values[keyCount - 1];
+}
+
+float sampleAlphaCurve(float t) {
+    return sampleScalarCurve(t, uAlphaKeys, uAlphaCurveType, uAlphaCurve, uAlphaCurveHandles);
+}
+
+float sampleScaleCurve(float t) {
+    return sampleScalarCurve(t, uScaleKeys, uScaleCurveType, uScaleCurve, uScaleCurveHandles);
 }
 
 vec3 sampleColorCurve(float t) {
-    if (uColorKeys <= 0) return vec3(1.0);
-    if (t <= uColorCurveTimes[0]) return uColorCurveValues[0];
-    for (int i = 1; i < uColorKeys; i++) {
-        if (t <= uColorCurveTimes[i]) {
-            float t0 = uColorCurveTimes[i - 1];
-            float t1 = uColorCurveTimes[i];
-            float f = t1 > t0 ? (t - t0) / (t1 - t0) : 0.0;
-            return mix(uColorCurveValues[i - 1], uColorCurveValues[i], f);
-        }
-    }
-    return uColorCurveValues[uColorKeys - 1];
+    return sampleRgbCurve(
+        t,
+        uColorKeys,
+        uColorCurveType,
+        uColorCurveTimes,
+        uColorCurveValues,
+        uColorCurveOutHandles,
+        uColorCurveInHandles
+    );
 }
 
 mat3 rotXYZ(float pitch, float yaw, float roll) {
@@ -270,11 +420,21 @@ void main() {
 
     // 四角: (-1,-1) (1,-1) (-1,1) (1,1) — 与原版 ±1 * size 的半径语义一致
     vec2 corner = vec2(float(gl_VertexID & 1), float((gl_VertexID >> 1) & 1)) * 2.0 - 1.0;
-    float sizeScale = sampleParticleSizeCurve(lifeT) * sampleSizeCurve(curveT);
+    float uniformScale = sampleParticleScaleCurve(lifeT) * sampleScaleCurve(curveT);
+    vec2 scale = uniformScale * vec2(
+        sampleParticleScaleXCurve(lifeT),
+        sampleParticleScaleYCurve(lifeT)
+    );
     if (applyTransition) {
-        sizeScale *= uTransitionParams.y;
+        scale *= sampleScalarCurve(
+            uTransitionParams.z,
+            uTransitionScaleKeys,
+            uTransitionScaleCurveType,
+            uTransitionScaleCurve,
+            uTransitionScaleCurveHandles
+        );
     }
-    vec2 size = iSizeRot.xy * sizeScale;
+    vec2 size = iSizeRot.xy * scale;
     vec2 local = corner * size;
 
     int mode = (flags >> 1) & 3;
@@ -360,9 +520,21 @@ void main() {
     }
     float alphaScale = sampleParticleAlphaCurve(lifeT) * sampleAlphaCurve(curveT);
     if (applyTransition) {
-        alphaScale *= uTransitionParams.x;
+        alphaScale *= sampleScalarCurve(
+            uTransitionParams.z,
+            uTransitionAlphaKeys,
+            uTransitionAlphaCurveType,
+            uTransitionAlphaCurve,
+            uTransitionAlphaCurveHandles
+        );
     }
-    alphaScale *= uAlphaTransitionScale;
+    alphaScale *= sampleScalarCurve(
+        uAlphaTransitionProgress,
+        uAlphaTransitionKeys,
+        uAlphaTransitionCurveType,
+        uAlphaTransitionCurve,
+        uAlphaTransitionCurveHandles
+    );
     vColor = vec4(particleColor, iColor.a * alphaScale);
 
     int blockLight = (flags >> 3) & 15;

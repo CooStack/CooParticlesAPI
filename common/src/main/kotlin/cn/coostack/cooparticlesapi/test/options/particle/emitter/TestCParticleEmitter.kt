@@ -6,17 +6,15 @@ import cn.coostack.cooparticlesapi.cparticle.CParticleColorCurve
 import cn.coostack.cooparticlesapi.cparticle.CParticleCurve
 import cn.coostack.cooparticlesapi.cparticle.CParticleUpdateMode
 import cn.coostack.cooparticlesapi.cparticle.force.CParticleForce
-import cn.coostack.cooparticlesapi.cparticle.textureOfBlock
-import cn.coostack.cooparticlesapi.cparticle.textureOfItem
+import cn.coostack.cooparticlesapi.extend.PIF
 import cn.coostack.cooparticlesapi.network.particle.emitters.AutoParticleEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableCParticleData
 import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableParticleData
-import cn.coostack.cooparticlesapi.particles.CooParticleTextureSheet
+import cn.coostack.cooparticlesapi.particles.ParticleCameraOption
 import cn.coostack.cooparticlesapi.particles.control.ParticleControler
+import cn.coostack.cooparticlesapi.supports.TextureSheetsEnum
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
-import net.minecraft.world.item.Items
 import net.minecraft.world.level.Level
-import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
 import kotlin.math.cos
@@ -38,7 +36,7 @@ import kotlin.random.Random
  *
  * ## GPU 模式下的语义差异 (与普通 emitter 相比)
  * - 不执行 [singleParticleAction] 的逐粒子 tick 回调
- * - 不做方块/实体碰撞, 不派发 ParticleEvent
+ * - [ControlableCParticleData.blockCollision] 可启用近似方块碰撞，但不派发 ParticleEvent
  * - 不执行 `singleParticleDeathAction` 粒子重生
  *
  * 发射器自身的 `gravity` / `airDensity` / 全局风会被桥接层自动映射为 GPU 力场,
@@ -50,7 +48,7 @@ class TestCParticleEmitter(pos: Vec3, world: Level?) : AutoParticleEmitters(pos,
     /** 粒子外观模板 (贴图/透明度/限速等一次性属性) */
     @CodecField
     var template = ControlableCParticleData().apply {
-        setTextureSheet(CooParticleTextureSheet.ADDITION_BLEND_TRANSLUCENT)
+        setTextureSheet(TextureSheetsEnum.PARTICLE_SHEET_TRANSLUCENT)
         size = 0.10f
         alpha = 0.85f
         maxAge = 170
@@ -58,8 +56,15 @@ class TestCParticleEmitter(pos: Vec3, world: Level?) : AutoParticleEmitters(pos,
         speedLimit = 2.0
         visibleRange = 192f
         updateMode = CParticleUpdateMode.STATIC
+        blockCollision = true
         alphaCurve = LIFETIME_ALPHA
-        sizeCurve = LIFETIME_SIZE
+        scaleCurve = LIFETIME_SCALE
+        cameraOption = ParticleCameraOption.ROTATION
+        angularVelocity = Vector3f(
+            PIF / 64,
+            PIF / 32,
+            PIF / 72,
+        )
     }
 
     /** 每 tick 生成的粒子数 (稳态数量 = 本值 × [particleMaxAge]) */
@@ -187,6 +192,10 @@ class TestCParticleEmitter(pos: Vec3, world: Level?) : AutoParticleEmitters(pos,
                 color = Vector3f(1f)
                 this.colorCurve = colorCurve
                 size = particleSize
+                yaw = Random.nextFloat() * PIF * 2
+                pitch = Random.nextFloat() * PIF * 2
+                roll = Random.nextFloat() * PIF * 2
+
                 maxAge = particleMaxAge
                 velocity = Vec3(
                     cosA * spreadSpeed * 0.35,
@@ -211,8 +220,8 @@ class TestCParticleEmitter(pos: Vec3, world: Level?) : AutoParticleEmitters(pos,
     }
 
     companion object {
-        private val LIFETIME_ALPHA = CParticleCurve.fadeInOut(fadeIn = 0.08f, fadeOut = 1f)
-        private val LIFETIME_SIZE = CParticleCurve.of(
+        private val LIFETIME_ALPHA = CParticleCurve.fadeInOut(fadeIn = 0.12f, fadeOut = 0.82f)
+        private val LIFETIME_SCALE = CParticleCurve.of(
             0f to 0.35f,
             0.12f to 1f,
             0.82f to 1f,

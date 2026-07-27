@@ -49,6 +49,16 @@ class BezierKeyframeFloatCurve(
         keyframes.sortBy { it.time }
     }
 
+    /**
+     * 返回当前锚点和控制柄的不可变快照。
+     *
+     * 示例：`CParticleCurve.fromFloatCurve(curve)` 使用此快照保留 GPU 控制柄。
+     * 禁止：修改返回列表不会改变此曲线；需要修改时应调用 [setFrames]。
+     *
+     * @return 按时间升序排列的当前关键帧
+     */
+    fun frames(): List<BezierFloatKeyframe> = keyframes.toList()
+
     override fun sample(t: Double): Double {
         val clamped = t.coerceIn(0.0, 1.0)
         if (keyframes.size == 1) {

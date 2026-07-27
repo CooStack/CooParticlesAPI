@@ -42,9 +42,45 @@ object CParticleTextureResolver {
 
     private data class CustomKey(val bindingKey: CParticleTextureBindingKey, val uv: CParticleUv)
 
+    /**
+     * 按 ItemStack 内容和 model seed 复用的模型描述符键。
+     *
+     * 键只在共享 descriptor 表中保存一份 stack 快照，资源重载后可再次调用 ItemRenderer。
+     * Example: 十万份相同钻石 stack 只注册一个模型描述符。
+     * Forbidden: 不能用 ItemStack 引用相等，否则会把 descriptor 数量放大到粒子数量。
+     *
+     * @param sourceStack 创建纹理来源时保存的 stack 快照
+     * @property modelSeed 传给 ItemRenderer 的模型随机种子
+     * @property bindingKey 首次解析模型时得到的图集绑定
+     */
+    internal class ItemDescriptorKey(
+        sourceStack: ItemStack,
+        val modelSeed: Int,
+        val bindingKey: CParticleTextureBindingKey,
+    ) {
+        /** 供资源重载重新解析模型使用的共享快照。 */
+        val stack: ItemStack = sourceStack.copy()
+
+        /** 按 item、components、count 和 model seed 判断模型输入是否相同。 */
+        override fun equals(other: Any?): Boolean {
+            return other is ItemDescriptorKey &&
+                    modelSeed == other.modelSeed &&
+                    bindingKey == other.bindingKey &&
+                    stack.count == other.stack.count &&
+                    ItemStack.isSameItemSameComponents(stack, other.stack)
+        }
+
+        /** 返回与 [equals] 相同字段组成的稳定哈希。 */
+        override fun hashCode(): Int {
+            var result = ItemStack.hashItemAndComponents(stack)
+            result = 31 * result + stack.count
+            result = 31 * result + modelSeed
+            return 31 * result + bindingKey.hashCode()
+        }
+    }
+
     private data class ItemSprite(
         val bindingKey: CParticleTextureBindingKey,
-        val spriteLocation: ResourceLocation,
         val sprite: TextureAtlasSprite,
     )
 
@@ -249,12 +285,16 @@ object CParticleTextureResolver {
         val stack = source.resolveStack()
         val itemSprite = resolveItemSprite(stack, source.modelSeed) ?: return missingTexture()
         val binding = itemSprite.bindingKey
-        val spriteLocation = itemSprite.spriteLocation
+        val descriptorKey = ItemDescriptorKey(stack, source.modelSeed, binding)
         val descriptorId = CParticleTextureDescriptors.register(
-            AtlasSpriteKey(binding, spriteLocation),
+            descriptorKey,
             binding,
         ) {
-            listOf(atlasUv(binding.location, spriteLocation))
+            val refreshed = resolveItemSprite(descriptorKey.stack, descriptorKey.modelSeed)
+            listOf(
+                if (refreshed?.bindingKey == descriptorKey.bindingKey) uv(refreshed.sprite)
+                else missingUv(descriptorKey.bindingKey)
+            )
         }
         val color = if (source.applyTint) {
             val renderer = Minecraft.getInstance().itemRenderer as ItemRendererInvoker
@@ -308,7 +348,6 @@ object CParticleTextureResolver {
         val sprite = model.particleIcon
         return ItemSprite(
             CParticleTextureBindingKey(CParticleTextureBindingKind.ATLAS, sprite.atlasLocation()),
-            sprite.contents().name(),
             sprite,
         )
     }

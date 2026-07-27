@@ -26,6 +26,15 @@ import kotlin.math.roundToInt
 import kotlin.math.pow
 import kotlin.math.round
 
+/**
+ * 编辑测试控制器状态并提供分组、参数补全。
+ *
+ * 示例：由 [TestControllerClientScreens.openController] 使用服务端状态创建。
+ * 禁止在服务端加载此界面或用客户端字段替代服务端状态。
+ *
+ * @property packet 服务端发送的控制器状态
+ * @param openParamPage 是否在初始化后直接显示参数页
+ */
 class TestControllerScreen(
     private val packet: PacketOpenTestControllerScreenS2C,
     openParamPage: Boolean = false
@@ -532,11 +541,15 @@ class TestControllerScreen(
         }
     }
 
+    /**
+     * 根据分组输入刷新补全项，并同步依赖当前分组的参数状态。
+     *
+     * 示例：输入分组 ID 的中间片段时仍会显示包含匹配，前缀项排在最前。
+     * 禁止在这里按字母重排同级候选；注册顺序用于打破同优先级平局。
+     */
     private fun updateSuggestions() {
         val input = groupBox.value.trim()
-        suggestions = packet.registeredIds
-            .filter { id -> input.isBlank() || id.startsWith(input, ignoreCase = true) }
-            .filter { id -> input.isBlank() || !id.equals(input, ignoreCase = true) }
+        suggestions = searchTestControllerSuggestions(packet.registeredIds, input)
         selectedSuggestionIndex = if (suggestions.isEmpty()) -1 else 0
         suggestionScroll = 0
         val first = suggestions.firstOrNull()
@@ -805,6 +818,12 @@ class TestControllerScreen(
         return if (label.length > 12) label.take(11) + "..." else label
     }
 
+    /**
+     * 刷新当前枚举参数的补全列表和行内前缀提示。
+     *
+     * 示例：输入 `leaf` 时同时显示 `LeafBurst` 与 `SmokeLeaf`，前者优先。
+     * 禁止给非枚举参数生成候选或把包含匹配写入行内后缀。
+     */
     private fun updateParamSuggestion() {
         if (page != ControllerPage.PARAMS) {
             paramBoxes.forEach { it.setSuggestion(null) }
@@ -830,9 +849,7 @@ class TestControllerScreen(
         if (usesComponentBoxes(spec)) return
         val box = paramBoxes[focusedRow]
         val input = box.value.trim()
-        paramSuggestions = spec.suggestions
-            .filter { candidate -> input.isBlank() || candidate.startsWith(input, ignoreCase = true) }
-            .filter { candidate -> input.isBlank() || !candidate.equals(input, ignoreCase = true) }
+        paramSuggestions = searchTestControllerSuggestions(spec.suggestions, input)
         selectedParamSuggestionIndex = if (paramSuggestions.isEmpty()) -1 else 0
         paramSuggestionScroll = 0
         val first = paramSuggestions.firstOrNull()

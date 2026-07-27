@@ -27,8 +27,9 @@ import net.minecraft.world.phys.Vec3
  *   (内置 ParticleCommand 可用 [CParticleForce.fromCommand] 直接转换)
  * - 每份 data 使用自己的 effect SpriteSet，并可单独指定额外纹理蒙版
  *
- * 需要 singleParticleAction、碰撞与事件、singleParticleDeathAction 重生，
+ * 需要 singleParticleAction、精确碰撞或碰撞事件、singleParticleDeathAction 重生，
  * 或非全局/relative 风场的粒子，应继续使用普通 [ControlableParticleData]。
+ * 仅需近似完整方块碰撞时，可使用 [ControlableCParticleData.blockCollision]。
  */
 object CParticleEmitterBridge {
 

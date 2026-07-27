@@ -1,6 +1,9 @@
 package cn.coostack.cooparticlesapi.cparticle.simulate
 
 import cn.coostack.cooparticlesapi.cparticle.force.CParticleForce
+import cn.coostack.cooparticlesapi.cparticle.CParticleInstanceFlags
+import cn.coostack.cooparticlesapi.cparticle.collision.CParticleBlockCollisionGrid
+import cn.coostack.cooparticlesapi.cparticle.collision.CParticleVoxelCollision
 import cn.coostack.cooparticlesapi.cparticle.storage.CParticleStore
 import cn.coostack.cooparticlesapi.cparticle.storage.CParticleStore.Companion.OFF_AGE
 import cn.coostack.cooparticlesapi.cparticle.storage.CParticleStore.Companion.OFF_MAX_AGE
@@ -41,10 +44,39 @@ object CParticleCpuSimulator {
         originX: Double, originY: Double, originZ: Double,
         speedLimit: Float,
     ) {
+        simulate(store, packed, forceCount, originX, originY, originZ, speedLimit, null)
+    }
+
+    /**
+     * 推进一个可选读取共享方块占用网格的 tick。
+     *
+     * Example: SIMULATED system 只在存在碰撞实例时传入网格。
+     * Forbidden: 外部 API 调用方不应持有内部网格类型，应使用无网格公开重载。
+     *
+     * @param store 粒子槽位存储
+     * @param packed 力场打包数据
+     * @param forceCount 有效力场数量
+     * @param originX system 原点世界 X
+     * @param originY system 原点世界 Y
+     * @param originZ system 原点世界 Z
+     * @param speedLimit system 默认速度上限
+     * @param collisionGrid 可选共享方块占用网格
+     */
+    internal fun simulate(
+        store: CParticleStore,
+        packed: FloatArray,
+        forceCount: Int,
+        originX: Double, originY: Double, originZ: Double,
+        speedLimit: Float,
+        collisionGrid: CParticleBlockCollisionGrid?,
+    ) {
         val high = store.highWater
         if (high <= 0) return
         if (store.aliveCount < PARALLEL_THRESHOLD) {
-            simulateRange(store, packed, forceCount, originX, originY, originZ, speedLimit, 0, high)
+            simulateRange(
+                store, packed, forceCount, originX, originY, originZ, speedLimit,
+                collisionGrid, 0, high,
+            )
         } else {
             val tasks = ArrayList<ForkJoinTask<*>>()
             var start = 0
@@ -52,7 +84,10 @@ object CParticleCpuSimulator {
                 val s = start
                 val e = minOf(start + CHUNK, high)
                 tasks.add(ForkJoinPool.commonPool().submit {
-                    simulateRange(store, packed, forceCount, originX, originY, originZ, speedLimit, s, e)
+                    simulateRange(
+                        store, packed, forceCount, originX, originY, originZ, speedLimit,
+                        collisionGrid, s, e,
+                    )
                 })
                 start = e
             }
@@ -67,6 +102,7 @@ object CParticleCpuSimulator {
         forceCount: Int,
         originX: Double, originY: Double, originZ: Double,
         speedLimit: Float,
+        collisionGrid: CParticleBlockCollisionGrid?,
         from: Int, to: Int,
     ) {
         val data = store.data
@@ -74,6 +110,10 @@ object CParticleCpuSimulator {
         val ox = originX.toFloat()
         val oy = originY.toFloat()
         val oz = originZ.toFloat()
+        val collisionOffsetX = collisionGrid?.let { (originX - it.minX).toFloat() } ?: 0f
+        val collisionOffsetY = collisionGrid?.let { (originY - it.minY).toFloat() } ?: 0f
+        val collisionOffsetZ = collisionGrid?.let { (originZ - it.minZ).toFloat() } ?: 0f
+        val collisionResult = collisionGrid?.let { FloatArray(CParticleVoxelCollision.RESULT_SIZE) }
         for (slot in from until to) {
             if ((bits[slot ushr 6] and (1L shl (slot and 63))) == 0L) continue
             val base = slot * STRIDE
@@ -272,10 +312,42 @@ object CParticleCpuSimulator {
                 vx *= m; vy *= m; vz *= m
             }
 
-            // 积分
-            data[base] = px + vx
-            data[base + 1] = py + vy
-            data[base + 2] = pz + vz
+            // 积分；碰撞只为当前 worker 分配一个复用结果数组，不产生逐粒子对象。
+            val collided = collisionGrid != null && collisionResult != null &&
+                    data[base + CParticleStore.OFF_FLAGS].toInt() and
+                    CParticleInstanceFlags.BLOCK_COLLISION != 0 &&
+                    CParticleVoxelCollision.trace(
+                        collisionGrid,
+                        px + collisionOffsetX,
+                        py + collisionOffsetY,
+                        pz + collisionOffsetZ,
+                        vx,
+                        vy,
+                        vz,
+                        collisionResult,
+                    )
+            if (collided) {
+                val hitTime = collisionResult[CParticleVoxelCollision.RESULT_TIME]
+                val normal = collisionResult[CParticleVoxelCollision.RESULT_NORMAL].toInt()
+                px += vx * hitTime
+                py += vy * hitTime
+                pz += vz * hitTime
+                when (normal) {
+                    -1 -> { px -= CParticleVoxelCollision.SURFACE_OFFSET; vx = 0f }
+                    1 -> { px += CParticleVoxelCollision.SURFACE_OFFSET; vx = 0f }
+                    -2 -> { py -= CParticleVoxelCollision.SURFACE_OFFSET; vy = 0f }
+                    2 -> { py += CParticleVoxelCollision.SURFACE_OFFSET; vy = 0f }
+                    -3 -> { pz -= CParticleVoxelCollision.SURFACE_OFFSET; vz = 0f }
+                    3 -> { pz += CParticleVoxelCollision.SURFACE_OFFSET; vz = 0f }
+                }
+            } else {
+                px += vx
+                py += vy
+                pz += vz
+            }
+            data[base] = px
+            data[base + 1] = py
+            data[base + 2] = pz
             data[base + OFF_VEL] = vx
             data[base + OFF_VEL + 1] = vy
             data[base + OFF_VEL + 2] = vz

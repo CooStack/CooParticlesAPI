@@ -22,11 +22,18 @@ layout(std430, binding = 0) buffer ParticleBuffer {
     Particle particles[];
 };
 
+layout(std430, binding = 1) readonly buffer CollisionGridBuffer {
+    uint collisionWords[];
+};
+
 uniform int uCount;
 uniform int uForceCount;
 uniform float uSpeedLimit;
 uniform vec3 uOrigin;     // 系统原点世界坐标 (噪声/流场用绝对坐标)
 uniform vec4 uForces[64]; // MAX_FORCES(16) * 4 vec4
+uniform int uCollisionEnabled;
+uniform int uCollisionSize;
+uniform vec3 uCollisionOffset; // system 相对位置 + 此值 = 网格局部位置
 
 const int TYPE_GRAVITY = 1;
 const int TYPE_ENV_DRAG = 2;
@@ -37,6 +44,86 @@ const int TYPE_ATTRACT = 6;
 const int TYPE_ROTATION = 7;
 const int TYPE_NOISE = 8;
 const int TYPE_FLOW_FIELD = 9;
+const int FLAG_BLOCK_COLLISION = 32768;
+const int MAX_COLLISION_STEPS = 192;
+const float COLLISION_SURFACE_OFFSET = 0.07;
+
+bool collisionOccupied(ivec3 cell) {
+    if (any(lessThan(cell, ivec3(0))) || any(greaterThanEqual(cell, ivec3(uCollisionSize)))) {
+        return false;
+    }
+    int index = (cell.y * uCollisionSize + cell.z) * uCollisionSize + cell.x;
+    uint mask = 1u << uint(index & 31);
+    return (collisionWords[index >> 5] & mask) != 0u;
+}
+
+float collisionBoundaryTime(float start, int cell, float velocity, int stepDirection) {
+    if (stepDirection > 0) {
+        return (float(cell) + 1.0 - start) / velocity;
+    }
+    if (stepDirection < 0) {
+        return (start - float(cell)) / -velocity;
+    }
+    return 3.402823466e+38;
+}
+
+float collisionTraversalDelta(float velocity) {
+    return velocity == 0.0 ? 3.402823466e+38 : 1.0 / abs(velocity);
+}
+
+bool traceCollisionGrid(vec3 start, vec3 velocity, out float hitTime, out vec3 hitNormal) {
+    if (any(lessThan(start, vec3(0.0))) || any(greaterThanEqual(start, vec3(float(uCollisionSize))))) {
+        return false;
+    }
+    if (all(equal(velocity, vec3(0.0)))) {
+        return false;
+    }
+
+    ivec3 cell = ivec3(floor(start));
+    if (collisionOccupied(cell)) {
+        return false;
+    }
+    ivec3 stepDirection = ivec3(sign(velocity));
+    vec3 boundaryTime = vec3(
+        collisionBoundaryTime(start.x, cell.x, velocity.x, stepDirection.x),
+        collisionBoundaryTime(start.y, cell.y, velocity.y, stepDirection.y),
+        collisionBoundaryTime(start.z, cell.z, velocity.z, stepDirection.z)
+    );
+    vec3 traversalDelta = vec3(
+        collisionTraversalDelta(velocity.x),
+        collisionTraversalDelta(velocity.y),
+        collisionTraversalDelta(velocity.z)
+    );
+
+    for (int traversal = 0; traversal < MAX_COLLISION_STEPS; traversal++) {
+        if (boundaryTime.x <= boundaryTime.y && boundaryTime.x <= boundaryTime.z) {
+            hitTime = boundaryTime.x;
+            if (hitTime > 1.0) return false;
+            cell.x += stepDirection.x;
+            hitNormal = vec3(-stepDirection.x, 0.0, 0.0);
+            boundaryTime.x += traversalDelta.x;
+        } else if (boundaryTime.y <= boundaryTime.z) {
+            hitTime = boundaryTime.y;
+            if (hitTime > 1.0) return false;
+            cell.y += stepDirection.y;
+            hitNormal = vec3(0.0, -stepDirection.y, 0.0);
+            boundaryTime.y += traversalDelta.y;
+        } else {
+            hitTime = boundaryTime.z;
+            if (hitTime > 1.0) return false;
+            cell.z += stepDirection.z;
+            hitNormal = vec3(0.0, 0.0, -stepDirection.z);
+            boundaryTime.z += traversalDelta.z;
+        }
+        if (any(lessThan(cell, ivec3(0))) || any(greaterThanEqual(cell, ivec3(uCollisionSize)))) {
+            return false;
+        }
+        if (collisionOccupied(cell)) {
+            return true;
+        }
+    }
+    return false;
+}
 
 // 1 / (1 + (d/scale)^power) — GraphMathHelper.inversePowerFalloff
 float inversePowerFalloff(float distance, float scale, float power) {
@@ -214,7 +301,17 @@ void main() {
         vel *= effectiveSpeedLimit / sp;
     }
 
-    pos += vel;
+    float collisionTime;
+    vec3 collisionNormal;
+    if (uCollisionEnabled != 0 &&
+        (flags & FLAG_BLOCK_COLLISION) != 0 &&
+        traceCollisionGrid(pos + uCollisionOffset, vel, collisionTime, collisionNormal)
+    ) {
+        pos += vel * collisionTime + collisionNormal * COLLISION_SURFACE_OFFSET;
+        vel -= collisionNormal * dot(vel, collisionNormal);
+    } else {
+        pos += vel;
+    }
     age += 1.0;
     if (age >= maxAge) {
         flags &= ~1; // 到期隐藏 (槽位回收由 CPU 账本同步完成)

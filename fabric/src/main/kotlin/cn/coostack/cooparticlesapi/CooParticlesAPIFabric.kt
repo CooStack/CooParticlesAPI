@@ -44,11 +44,9 @@ import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents
 import net.fabricmc.fabric.api.event.player.UseBlockCallback
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry
-import net.fabricmc.fabric.api.resource.ResourceManagerHelper
 import net.minecraft.core.Registry
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.server.MinecraftServer
-import net.minecraft.server.packs.PackType
 import net.minecraft.world.InteractionResult
 
 object CooParticlesAPIFabric : ModInitializer {
@@ -100,9 +98,6 @@ object CooParticlesAPIFabric : ModInitializer {
         CooModParticles.particleTypes.forEach {
             Registry.register(it.type, it.id, it.get())
         }
-        ResourceManagerHelper.get(PackType.CLIENT_RESOURCES)
-            .registerReloadListener(CooShaderReloadListener)
-
     }
 
     private fun initEvents() {

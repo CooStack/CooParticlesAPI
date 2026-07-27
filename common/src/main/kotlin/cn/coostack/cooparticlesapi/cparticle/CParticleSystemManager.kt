@@ -2,6 +2,7 @@ package cn.coostack.cooparticlesapi.cparticle
 
 import cn.coostack.cooparticlesapi.cparticle.render.CParticleRenderer
 import cn.coostack.cooparticlesapi.cparticle.simulate.CParticleGpuSimulator
+import cn.coostack.cooparticlesapi.cparticle.collision.CParticleBlockCollisionGridManager
 import cn.coostack.cooparticlesapi.compat.IrisCompat
 import com.mojang.blaze3d.systems.RenderSystem
 import net.minecraft.client.Camera
@@ -445,19 +446,24 @@ object CParticleSystemManager {
     fun tick() {
         if (!ready()) return
         currentTick++
-        if (systems.isEmpty()) return
-        val toRemove = ArrayList<ManagedCParticleSystemKey>(0)
-        for ((key, system) in systems) {
-            system.tick()
-            if (system.store.aliveCount > 0) {
-                lastNonEmptyTick[key] = currentTick
-            } else if (key in autoRelease &&
-                currentTick - (lastNonEmptyTick[key] ?: currentTick) > AUTO_RELEASE_IDLE_TICKS
-            ) {
-                toRemove.add(key)
+        CParticleBlockCollisionGridManager.beginTick(Minecraft.getInstance().level, currentTick)
+        try {
+            if (systems.isEmpty()) return
+            val toRemove = ArrayList<ManagedCParticleSystemKey>(0)
+            for ((key, system) in systems) {
+                system.tick()
+                if (system.store.aliveCount > 0) {
+                    lastNonEmptyTick[key] = currentTick
+                } else if (key in autoRelease &&
+                    currentTick - (lastNonEmptyTick[key] ?: currentTick) > AUTO_RELEASE_IDLE_TICKS
+                ) {
+                    toRemove.add(key)
+                }
             }
+            toRemove.forEach(::removeSystem)
+        } finally {
+            CParticleBlockCollisionGridManager.endTick()
         }
-        toRemove.forEach(::removeSystem)
     }
 
     /** 保留给手动世界渲染调用；平台默认路径使用 [renderParticlePass]。 */
@@ -473,6 +479,7 @@ object CParticleSystemManager {
     /** 断线 / 换世界: 清空所有粒子与动态系统 */
     @JvmStatic
     fun clear() {
+        CParticleBlockCollisionGridManager.clear()
         val it = systems.entries.iterator()
         while (it.hasNext()) {
             val (key, system) = it.next()
@@ -502,6 +509,7 @@ object CParticleSystemManager {
         autoRelease.clear()
         CParticleRenderer.release()
         CParticleGpuSimulator.release()
+        CParticleBlockCollisionGridManager.clear()
         CParticleSprites.release()
     }
 }

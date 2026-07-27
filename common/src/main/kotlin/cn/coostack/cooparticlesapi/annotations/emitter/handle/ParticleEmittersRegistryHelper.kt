@@ -5,7 +5,6 @@ import cn.coostack.cooparticlesapi.annotations.codec.CodecHelper
 import cn.coostack.cooparticlesapi.network.particle.emitters.ClassEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.ClassParticleEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmitters
-import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.level.Level
@@ -108,7 +107,7 @@ object ParticleEmittersRegistryHelper {
     }
 
     @Suppress("UNCHECKED_CAST")
-    private fun codecByField(field: Field): StreamCodec<FriendlyByteBuf, Any> {
-        return CodecHelper.codecOf(field.genericType) as StreamCodec<FriendlyByteBuf, Any>
+    private fun codecByField(field: Field): StreamCodec<RegistryFriendlyByteBuf, Any> {
+        return CodecHelper.registryCodecOf(field.genericType) as StreamCodec<RegistryFriendlyByteBuf, Any>
     }
 }

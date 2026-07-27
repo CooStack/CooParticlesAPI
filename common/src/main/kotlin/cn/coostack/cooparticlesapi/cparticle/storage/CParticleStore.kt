@@ -37,7 +37,7 @@ import kotlin.math.roundToInt
  *
  * flags 位: bit0 alive; bit1..2 cameraMode(0=BILLBOARD 1=AXIS 2=ROTATION);
  * bit3..6 blockLight; bit7..10 skyLight; bit11 randomAge; bit12 rotationDirection;
- * bit13 randomQuarterUv; bit14 randomMaskQuarterUv
+ * bit13 randomQuarterUv; bit14 randomMaskQuarterUv; bit15 blockCollision
  *
  * 槽位管理: 空闲栈 + 存活位图 + 世代计数(句柄失效检测).
  * 死槽位不压缩 — 渲染端对非 alive 实例输出退化三角形, 代价可忽略.
@@ -89,6 +89,7 @@ class CParticleStore(val capacity: Int) {
         const val FLAG_ROTATION_DIRECTION = CParticleInstanceFlags.ROTATION_DIRECTION
         const val FLAG_RANDOM_QUARTER_UV = CParticleInstanceFlags.RANDOM_QUARTER_UV
         const val FLAG_MASK_RANDOM_QUARTER_UV = CParticleInstanceFlags.MASK_RANDOM_QUARTER_UV
+        const val FLAG_BLOCK_COLLISION = CParticleInstanceFlags.BLOCK_COLLISION
 
         private const val SNAP_SIZE_W = 0
         private const val SNAP_SIZE_H = 1
@@ -124,6 +125,7 @@ class CParticleStore(val capacity: Int) {
             randomAge: Boolean = false,
             rotationDirection: Boolean = false,
             randomQuarterUv: Boolean = false,
+            blockCollision: Boolean = false,
         ): Int = CParticleInstanceFlags.pack(
             alive,
             cameraMode,
@@ -132,6 +134,7 @@ class CParticleStore(val capacity: Int) {
             randomAge,
             rotationDirection,
             randomQuarterUv,
+            blockCollision,
         )
 
         /**
@@ -149,6 +152,7 @@ class CParticleStore(val capacity: Int) {
             rotationDirection: Boolean,
             randomQuarterUv: Boolean,
             randomMaskQuarterUv: Boolean,
+            blockCollision: Boolean = false,
         ): Int = CParticleInstanceFlags.packWithMask(
             alive,
             cameraMode,
@@ -158,6 +162,7 @@ class CParticleStore(val capacity: Int) {
             rotationDirection,
             randomQuarterUv,
             randomMaskQuarterUv,
+            blockCollision,
         )
 
         /**
@@ -179,6 +184,15 @@ class CParticleStore(val capacity: Int) {
 
     /** 交错主数据 (与 GPU 缓冲 1:1) */
     val data = FloatArray(capacity * STRIDE)
+
+    /**
+     * 当前开启方块占用网格碰撞的存活粒子数。
+     *
+     * Example: system 只在本值大于零时构建和绑定碰撞网格。
+     * Forbidden: 调用方不能直接修改；spawn、DYNAMIC 更新和 kill 会维护计数。
+     */
+    var blockCollisionCount = 0
+        private set
 
     /** CPU 侧生命周期账本 (槽位回收依据; GPU 模式下缓冲内 age 由 kernel 自增) */
     val ages = IntArray(capacity)
@@ -365,7 +379,9 @@ class CParticleStore(val capacity: Int) {
             hasDirection,
             randomQuarterUv,
             randomMaskQuarterUv,
+            p.blockCollision,
         ).toFloat()
+        if (p.blockCollision) blockCollisionCount++
         data[base + OFF_SIZE] = p.weightSize
         data[base + OFF_SIZE + 1] = p.heightSize
         data[base + OFF_SIZE + 2] = if (hasDirection) 0f else p.yaw
@@ -461,6 +477,7 @@ class CParticleStore(val capacity: Int) {
         // 缓冲内清掉 alive 位, 让渲染端隐藏
         val base = slot * STRIDE
         val flags = data[base + OFF_FLAGS].toInt()
+        if (flags and FLAG_BLOCK_COLLISION != 0) blockCollisionCount--
         data[base + OFF_FLAGS] = (flags and FLAG_ALIVE.inv()).toFloat()
         if (queueGpuFlag) queueKilled(slot)
         markDirty(slot)
@@ -655,6 +672,7 @@ class CParticleStore(val capacity: Int) {
         }
         freeTop = capacity
         aliveCount = 0
+        blockCollisionCount = 0
         agingCount = 0
         highWater = 0
         spawnedCount = 0
@@ -940,6 +958,18 @@ class CParticleStore(val capacity: Int) {
                 flags = if (source.randomAgePreTick) flags or FLAG_RANDOM_AGE else flags and FLAG_RANDOM_AGE.inv()
                 data[base + OFF_FLAGS] = flags.toFloat()
                 state.randomModes[slot] = source.randomAgePreTick
+                changed = true
+            }
+            val flagsBeforeCollision = data[base + OFF_FLAGS].toInt()
+            val blockCollisionBefore = flagsBeforeCollision and FLAG_BLOCK_COLLISION != 0
+            if (source.blockCollision != blockCollisionBefore) {
+                data[base + OFF_FLAGS] = if (source.blockCollision) {
+                    blockCollisionCount++
+                    (flagsBeforeCollision or FLAG_BLOCK_COLLISION).toFloat()
+                } else {
+                    blockCollisionCount--
+                    (flagsBeforeCollision and FLAG_BLOCK_COLLISION.inv()).toFloat()
+                }
                 changed = true
             }
             if (source.appearanceRevision != state.appearanceRevisions[slot]) {

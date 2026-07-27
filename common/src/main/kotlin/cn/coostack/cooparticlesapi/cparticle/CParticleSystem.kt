@@ -2,6 +2,7 @@ package cn.coostack.cooparticlesapi.cparticle
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.cparticle.force.CParticleForce
+import cn.coostack.cooparticlesapi.cparticle.collision.CParticleBlockCollisionGridManager
 import cn.coostack.cooparticlesapi.cparticle.render.CParticleGlBuffer
 import cn.coostack.cooparticlesapi.cparticle.simulate.CParticleCpuSimulator
 import cn.coostack.cooparticlesapi.cparticle.simulate.CParticleGpuSimulator
@@ -106,13 +107,18 @@ class CParticleSystem(
     /** 透明度生命周期曲线 (null = 恒定) */
     var alphaCurve: CParticleCurve? = null
 
-    /** 尺寸生命周期曲线 (null = 恒定) */
-    var sizeCurve: CParticleCurve? = null
+    /**
+     * 系统内所有粒子的生命周期等比缩放倍率曲线。
+     *
+     * Example: `scaleCurve = CParticleCurve.linear(1f, 0f)` 会让粒子逐渐缩小。
+     * Forbidden: 不要用它设置粒子生成时的基础宽高。
+     */
+    var scaleCurve: CParticleCurve? = null
 
     /** 颜色生命周期倍率曲线 (null = 保持实例颜色) */
     var colorCurve: CParticleColorCurve? = null
 
-    /** 大于 0 时，alpha/size/color 曲线按系统 tick 循环，不再使用粒子生命周期进度。 */
+    /** 大于 0 时，alpha/scale/color 曲线按系统 tick 循环，不再使用粒子生命周期进度。 */
     var curveCycleTicks = 0f
 
     /** 大于 0 时，颜色在指定 tick 周期内完成一次色相循环。 */
@@ -303,15 +309,26 @@ class CParticleSystem(
     /**
      * 从当前 system tick 开始播放一次 GPU 视觉过渡。
      *
-     * alpha 和 size 曲线作为粒子原始值的倍率；同时提供 [colorFrom]、[colorTo]
+     * alpha 和 scale 曲线作为粒子原始值的倍率；同时提供 [colorFrom]、[colorTo]
      * 时，颜色在两者之间插值。相同配置的重复调用不会重置进度；需要重播时传入 [restart]。
      * 该操作不会改写粒子实例缓冲。
+     * Example: `playVisualTransition(20f, scaleCurve = CParticleCurve.linear(1f, 0f))`。
+     * Forbidden: 不要传入非正数或非有限的 [durationTicks]。
+     *
+     * @param durationTicks 过渡时长，单位 tick
+     * @param alphaCurve 不透明度倍率曲线
+     * @param scaleCurve 等比缩放倍率曲线
+     * @param colorFrom 可选起始颜色，必须与 [colorTo] 同时设置
+     * @param colorTo 可选结束颜色，必须与 [colorFrom] 同时设置
+     * @param mode 过渡结束后的行为
+     * @return 当前系统
+     * @throws IllegalArgumentException 参数组合无效时抛出
      */
     @JvmOverloads
     fun playVisualTransition(
         durationTicks: Float,
         alphaCurve: CParticleCurve? = null,
-        sizeCurve: CParticleCurve? = null,
+        scaleCurve: CParticleCurve? = null,
         colorFrom: Vector3fc? = null,
         colorTo: Vector3fc? = null,
         mode: CParticleTransitionMode = CParticleTransitionMode.HOLD_END,
@@ -319,7 +336,7 @@ class CParticleSystem(
         return playVisualTransitionInternal(
             durationTicks,
             alphaCurve,
-            sizeCurve,
+            scaleCurve,
             colorFrom,
             colorTo,
             mode,
@@ -327,13 +344,28 @@ class CParticleSystem(
         )
     }
 
-    /** 与 [playVisualTransition] 相同；[restart] 为 true 时强制从头播放。 */
+    /**
+     * 播放 GPU 视觉过渡，并允许强制重新开始相同配置。
+     *
+     * Example: `playVisualTransition(20f, true, scaleCurve = curve)` 会重置进度。
+     * Forbidden: 不要传入非正数或非有限的 [durationTicks]。
+     *
+     * @param durationTicks 过渡时长，单位 tick
+     * @param restart 是否强制从头播放
+     * @param alphaCurve 不透明度倍率曲线
+     * @param scaleCurve 等比缩放倍率曲线
+     * @param colorFrom 可选起始颜色，必须与 [colorTo] 同时设置
+     * @param colorTo 可选结束颜色，必须与 [colorFrom] 同时设置
+     * @param mode 过渡结束后的行为
+     * @return 当前系统
+     * @throws IllegalArgumentException 参数组合无效时抛出
+     */
     @JvmOverloads
     fun playVisualTransition(
         durationTicks: Float,
         restart: Boolean,
         alphaCurve: CParticleCurve? = null,
-        sizeCurve: CParticleCurve? = null,
+        scaleCurve: CParticleCurve? = null,
         colorFrom: Vector3fc? = null,
         colorTo: Vector3fc? = null,
         mode: CParticleTransitionMode = CParticleTransitionMode.HOLD_END,
@@ -341,7 +373,7 @@ class CParticleSystem(
         return playVisualTransitionInternal(
             durationTicks,
             alphaCurve,
-            sizeCurve,
+            scaleCurve,
             colorFrom,
             colorTo,
             mode,
@@ -349,10 +381,26 @@ class CParticleSystem(
         )
     }
 
+    /**
+     * 校验并保存一段系统级视觉过渡。
+     *
+     * Example: 两个公开重载都通过本方法统一处理 [restart]。
+     * Forbidden: 不要绕过这里的时长和颜色参数校验。
+     *
+     * @param durationTicks 过渡时长，单位 tick
+     * @param alphaCurve 不透明度倍率曲线
+     * @param scaleCurve 等比缩放倍率曲线
+     * @param colorFrom 可选起始颜色
+     * @param colorTo 可选结束颜色
+     * @param mode 过渡结束后的行为
+     * @param restart 是否强制替换相同配置
+     * @return 当前系统
+     * @throws IllegalArgumentException 参数组合无效时抛出
+     */
     private fun playVisualTransitionInternal(
         durationTicks: Float,
         alphaCurve: CParticleCurve?,
-        sizeCurve: CParticleCurve?,
+        scaleCurve: CParticleCurve?,
         colorFrom: Vector3fc?,
         colorTo: Vector3fc?,
         mode: CParticleTransitionMode,
@@ -364,13 +412,13 @@ class CParticleSystem(
         require((colorFrom == null) == (colorTo == null)) {
             "colorFrom and colorTo must both be set or both be null"
         }
-        require(alphaCurve != null || sizeCurve != null || colorFrom != null) {
-            "visual transition requires an alpha curve, size curve, or color range"
+        require(alphaCurve != null || scaleCurve != null || colorFrom != null) {
+            "visual transition requires an alpha curve, scale curve, or color range"
         }
         if (!restart && visualTransition?.matches(
                 durationTicks,
                 alphaCurve,
-                sizeCurve,
+                scaleCurve,
                 colorFrom,
                 colorTo,
                 mode,
@@ -382,7 +430,7 @@ class CParticleSystem(
             startTick = tickCount.toFloat(),
             durationTicks = durationTicks,
             alphaCurve = alphaCurve,
-            sizeCurve = sizeCurve,
+            scaleCurve = scaleCurve,
             colorFrom = colorFrom,
             colorTo = colorTo,
             mode = mode,
@@ -418,7 +466,7 @@ class CParticleSystem(
             startTick = tickCount.toFloat(),
             durationTicks = durationTicks,
             alphaCurve = alphaCurve,
-            sizeCurve = null,
+            scaleCurve = null,
             colorFrom = null,
             colorTo = null,
             mode = mode,
@@ -439,7 +487,7 @@ class CParticleSystem(
                 startTick = tickCount.toFloat() - current.durationTicks,
                 durationTicks = current.durationTicks,
                 alphaCurve = current.alphaCurve,
-                sizeCurve = current.sizeCurve,
+                scaleCurve = current.scaleCurve,
                 colorFrom = current.colorFrom.takeIf { current.hasColor },
                 colorTo = current.colorTo.takeIf { current.hasColor },
                 mode = CParticleTransitionMode.HOLD_END,
@@ -459,7 +507,7 @@ class CParticleSystem(
                 startTick = tickCount.toFloat() - current.durationTicks,
                 durationTicks = current.durationTicks,
                 alphaCurve = current.alphaCurve,
-                sizeCurve = null,
+                scaleCurve = null,
                 colorFrom = null,
                 colorTo = null,
                 mode = CParticleTransitionMode.HOLD_END,
@@ -741,6 +789,11 @@ class CParticleSystem(
 
     private fun tickSimulated() {
         val forceCount = packForces()
+        val collisionGrid = if (store.blockCollisionCount > 0) {
+            CParticleBlockCollisionGridManager.gridFor(origin)
+        } else {
+            null
+        }
         val useGpu = CParticleCapabilities.useGpuSimulation()
         if (useGpu) {
             // compute 必须先看到本 tick 的死亡和新生成槽位，否则 CPU age 会领先 GPU 一 tick。
@@ -752,7 +805,7 @@ class CParticleSystem(
             }
         }
         if (useGpu &&
-            CParticleGpuSimulator.simulate(this, packedForces, forceCount)
+            CParticleGpuSimulator.simulate(this, packedForces, forceCount, collisionGrid)
         ) {
             store.tickAges(writeBufferAge = false)
             store.publishDynamicAges()
@@ -763,7 +816,7 @@ class CParticleSystem(
             // CPU: 模拟写回 SoA → 整段上传
             CParticleCpuSimulator.simulate(
                 store, packedForces, forceCount,
-                origin.x, origin.y, origin.z, speedLimit
+                origin.x, origin.y, origin.z, speedLimit, collisionGrid
             )
             store.tickAges(writeBufferAge = true)
             store.publishDynamicAges()

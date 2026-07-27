@@ -32,8 +32,11 @@ object CParticleInstanceFlags {
     /** 蒙版使用稳定随机 1/4 UV 裁剪，bit 14。Example: 方块蒙版开启 randomCrop 时置位。Forbidden: 不要裁剪基础纹理两次。 */
     const val MASK_RANDOM_QUARTER_UV = 1 shl 14
 
+    /** 方块占用网格碰撞，bit 15。Example: emitter data 开启 blockCollision 时置位。Forbidden: SCRIPTED 句柄不读取此位。 */
+    const val BLOCK_COLLISION = 1 shl 15
+
     /** 当前已分配位形成的最大值。Example: 可用于 float 精确性测试。Forbidden: 不要把它当成 descriptor 上限。 */
-    const val MAX_PACKED_VALUE = (1 shl 15) - 1
+    const val MAX_PACKED_VALUE = (1 shl 16) - 1
 
     /** float 能精确表示的整数边界。Example: flags 必须小于此值。Forbidden: 不要分配 bit 24。 */
     const val FLOAT_EXACT_INTEGER_LIMIT = 1 shl 24
@@ -51,6 +54,7 @@ object CParticleInstanceFlags {
      * @param randomAge 是否每 tick 随机选动画帧
      * @param rotationDirection 是否使用方向向量
      * @param randomQuarterUv 是否随机裁剪 1/4 UV
+     * @param blockCollision 是否使用方块占用网格碰撞
      * @return 可无损存进 float 的整数 flags
      */
     @JvmStatic
@@ -63,6 +67,7 @@ object CParticleInstanceFlags {
         randomAge: Boolean = false,
         rotationDirection: Boolean = false,
         randomQuarterUv: Boolean = false,
+        blockCollision: Boolean = false,
     ): Int = packWithMask(
         alive,
         cameraMode,
@@ -72,9 +77,15 @@ object CParticleInstanceFlags {
         rotationDirection,
         randomQuarterUv,
         false,
+        blockCollision,
     )
 
-    /** 打包包含蒙版随机裁剪位的内部实例 flags。 */
+    /**
+     * 打包包含蒙版随机裁剪和方块碰撞位的内部实例 flags。
+     *
+     * Example: store 生成实例时一次写入所有功能位。
+     * Forbidden: 新功能不能在调用方绕开本入口自行分配位。
+     */
     internal fun packWithMask(
         alive: Boolean,
         cameraMode: Int,
@@ -84,6 +95,7 @@ object CParticleInstanceFlags {
         rotationDirection: Boolean,
         randomQuarterUv: Boolean,
         randomMaskQuarterUv: Boolean,
+        blockCollision: Boolean = false,
     ): Int {
         var flags = if (alive) ALIVE else 0
         flags = flags or ((cameraMode and 3) shl CAMERA_SHIFT)
@@ -93,6 +105,7 @@ object CParticleInstanceFlags {
         if (rotationDirection) flags = flags or ROTATION_DIRECTION
         if (randomQuarterUv) flags = flags or RANDOM_QUARTER_UV
         if (randomMaskQuarterUv) flags = flags or MASK_RANDOM_QUARTER_UV
+        if (blockCollision) flags = flags or BLOCK_COLLISION
         return flags
     }
 

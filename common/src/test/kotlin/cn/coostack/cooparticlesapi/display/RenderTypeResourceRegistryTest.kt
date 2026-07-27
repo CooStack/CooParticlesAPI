@@ -3,6 +3,7 @@ package cn.coostack.cooparticlesapi.display
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class RenderTypeResourceRegistryTest {
@@ -22,6 +23,9 @@ class RenderTypeResourceRegistryTest {
         )
         val fabricClientSource = readProjectFile(
             "fabric/src/main/kotlin/cn/coostack/cooparticlesapi/CooParticlesAPIFabricClient.kt"
+        )
+        val fabricMainSource = readProjectFile(
+            "fabric/src/main/kotlin/cn/coostack/cooparticlesapi/CooParticlesAPIFabric.kt"
         )
         val fabricListenerSource = readProjectFile(
             "fabric/src/main/kotlin/cn/coostack/cooparticlesapi/CooShaderReloadListenerFabric.kt"
@@ -48,6 +52,7 @@ class RenderTypeResourceRegistryTest {
         assertTrue("object CooShaderReloadListenerFabric" in fabricListenerSource)
         assertTrue("ResourceManagerHelper.get(PackType.CLIENT_RESOURCES).registerReloadListener(this)" in fabricListenerSource)
         assertTrue("CooShaderReloadListenerFabric.register()" in fabricClientSource)
+        assertFalse("registerReloadListener(CooShaderReloadListener)" in fabricMainSource)
         assertTrue("return IrisCompat.wrapEntityRenderType(renderType)" in fabricRenderTypesProvider)
         assertTrue("return IrisCompat.wrapEntityRenderType(renderType)" in neoRenderTypesProvider)
 

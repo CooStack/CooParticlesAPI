@@ -39,6 +39,7 @@ import com.mojang.serialization.Codec
 import net.minecraft.core.BlockPos
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.network.FriendlyByteBuf
+import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.ByteBufCodecs
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.item.ItemStack
@@ -61,6 +62,14 @@ import java.util.concurrent.ConcurrentHashMap
 object CodecHelper {
     val supposedTypes = ConcurrentHashMap<String, StreamCodec<out FriendlyByteBuf, *>>()
 
+    /**
+     * 记录只能由 [RegistryFriendlyByteBuf] 驱动的 codec 类型。
+     *
+     * Example: emitter 的 `ControlableCParticleData` 字段会通过 [registryCodecOf] 查询。
+     * Forbidden: 普通 packet 或 RenderEntity codec 不能把这些类型当成 [FriendlyByteBuf] codec。
+     */
+    private val registryRequiredTypes = ConcurrentHashMap.newKeySet<String>()
+
     init {
         CodecHelperJava.init()
         register(Short::class.java, StreamCodec.of({ buf, i -> buf.writeShort(i.toInt()) }, { it.readShort() }))
@@ -75,9 +84,9 @@ object CodecHelper {
         register(ByteArray::class.java, StreamCodec.of({ buf, i -> buf.writeByteArray(i) }, { it.readByteArray() }))
         register(Char::class.java, StreamCodec.of({ buf, i -> buf.writeChar(i.code) }, { it.readChar() }))
         register(UUID::class.java, StreamCodec.of({ buf, i -> buf.writeUUID(i) }, { it.readUUID() }))
-        register(ControlableParticleData::class.java, ControlableParticleData.PACKET_CODEC)
-        register(ControlableCParticleData::class.java, ControlableCParticleData.PACKET_CODEC)
-        register(CParticleTextureSource::class.java, CParticleTextureSource.STREAM_CODEC)
+        registerRegistry(ControlableParticleData::class.java, ControlableParticleData.PACKET_CODEC)
+        registerRegistry(ControlableCParticleData::class.java, ControlableCParticleData.PACKET_CODEC)
+        registerRegistry(CParticleTextureSource::class.java, CParticleTextureSource.STREAM_CODEC)
         register(CParticleCurve::class.java, CParticleCurve.STREAM_CODEC)
         register(CParticleColorCurve::class.java, CParticleColorCurve.STREAM_CODEC)
         register(
@@ -93,8 +102,8 @@ object CodecHelper {
                 },
             ),
         )
-        register(CompositionEmittersData::class.java, CompositionEmittersData.PACKET_CODEC)
-        register(DisplayEntityEmittersData::class.java, DisplayEntityEmittersData.PACKET_CODEC)
+        registerRegistry(CompositionEmittersData::class.java, CompositionEmittersData.PACKET_CODEC)
+        registerRegistry(DisplayEntityEmittersData::class.java, DisplayEntityEmittersData.PACKET_CODEC)
         register(Vector3f::class.java, StreamCodec.of({ buf, i -> buf.writeVector3f(i) }, { it.readVector3f() }))
         register(Vector4f::class.java, StreamCodec.of({ buf, v ->
             buf.writeFloat(v.x)
@@ -132,7 +141,7 @@ object CodecHelper {
         }, {
             HitBox(it.readDouble(), it.readDouble(), it.readDouble(), it.readDouble(), it.readDouble(), it.readDouble())
         }))
-        register(ItemStack::class.java, ItemStack.OPTIONAL_STREAM_CODEC)
+        registerRegistry(ItemStack::class.java, ItemStack.OPTIONAL_STREAM_CODEC)
         register(SimpleRandomParticleData::class.java, SimpleRandomParticleData.PACKET_CODEC)
         register(RelativeLocation::class.java, StreamCodec.of({ buf, r ->
             buf.apply {
@@ -373,6 +382,26 @@ object CodecHelper {
     @JvmStatic
     fun <T> register(type: Class<T>, codec: StreamCodec<out FriendlyByteBuf, T>) {
         supposedTypes[type.name] = codec
+        registryRequiredTypes.remove(type.name)
+    }
+
+    /**
+     * 注册依赖注册表上下文的字段 codec。
+     *
+     * Example: `ControlableCParticleData.PACKET_CODEC` 由 emitter 自动 codec 使用。
+     * Forbidden: 不要把只调用基础 `writeInt` 等操作的普通 codec 注册到这里。
+     *
+     * @param T 要编码的类型
+     * @param type 类型对应的类
+     * @param codec 需要 [RegistryFriendlyByteBuf] 的 codec
+     */
+    @JvmStatic
+    fun <T> registerRegistry(
+        type: Class<T>,
+        codec: StreamCodec<RegistryFriendlyByteBuf, T>,
+    ) {
+        supposedTypes[type.name] = codec
+        registryRequiredTypes.add(type.name)
     }
 
     /**
@@ -385,6 +414,9 @@ object CodecHelper {
         val codecType = normalizeCodecType(type)
 
         if (codecType is Class<*>) {
+            require(codecType.name !in registryRequiredTypes) {
+                "类型 ${codecType.name} 需要 RegistryFriendlyByteBuf；请使用 registryCodecOf"
+            }
             return supposedTypes[codecType.name]
                 ?: throw IllegalArgumentException("不支持的类型: ${codecType.name}")
         }
@@ -403,6 +435,35 @@ object CodecHelper {
             if (Map::class.java.isAssignableFrom(raw)) {
                 return codecMap(codecType)
             }
+        }
+
+        throw IllegalArgumentException("不支持的字段类型: $type")
+    }
+
+    /**
+     * 返回可在注册表网络上下文中使用的字段 codec。
+     *
+     * 普通 [FriendlyByteBuf] codec 也可安全用于其子类 [RegistryFriendlyByteBuf]；集合会递归保持该约束。
+     * Example: emitter 的 `@CodecField var template = ControlableCParticleData()` 使用本入口。
+     * Forbidden: 调用方不能把返回值降级后传入普通 [FriendlyByteBuf]。
+     *
+     * @param type 字段的反射类型
+     * @return 接受 [RegistryFriendlyByteBuf] 的字段 codec
+     */
+    @Suppress("UNCHECKED_CAST")
+    fun registryCodecOf(type: Type): StreamCodec<RegistryFriendlyByteBuf, *> {
+        val codecType = normalizeCodecType(type)
+
+        if (codecType is Class<*>) {
+            return supposedTypes[codecType.name] as? StreamCodec<RegistryFriendlyByteBuf, *>
+                ?: throw IllegalArgumentException("不支持的类型: ${codecType.name}")
+        }
+
+        if (codecType is ParameterizedType) {
+            val raw = codecType.rawType as Class<*>
+            if (List::class.java.isAssignableFrom(raw)) return registryCodecList(codecType)
+            if (Set::class.java.isAssignableFrom(raw)) return registryCodecSet(codecType)
+            if (Map::class.java.isAssignableFrom(raw)) return registryCodecMap(codecType)
         }
 
         throw IllegalArgumentException("不支持的字段类型: $type")
@@ -499,6 +560,94 @@ object CodecHelper {
                 }
                 map
             }
+        )
+    }
+
+    /**
+     * 创建 registry-aware 的 List 字段 codec。
+     *
+     * Example: emitter 可声明 `List<ControlableCParticleData>`。
+     * Forbidden: List 必须声明具体元素类型，且不支持 `null` 元素。
+     *
+     * @param type 带具体元素类型的 List 反射类型
+     * @return registry-aware List codec
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun registryCodecList(type: ParameterizedType): StreamCodec<RegistryFriendlyByteBuf, *> {
+        val elementCodec = registryCodecOf(type.actualTypeArguments[0]) as
+                StreamCodec<RegistryFriendlyByteBuf, Any>
+        return StreamCodec.of<RegistryFriendlyByteBuf, List<*>>(
+            { buf, value ->
+                buf.writeVarInt(value.size)
+                value.forEach { element ->
+                    elementCodec.encode(buf, element ?: error("List字段不支持null元素: $type"))
+                }
+            },
+            { buf ->
+                val size = buf.readVarInt()
+                List(size) { elementCodec.decode(buf) }
+            },
+        )
+    }
+
+    /**
+     * 创建 registry-aware 的 Set 字段 codec。
+     *
+     * Example: emitter 可声明 `Set<CParticleTextureSource>`。
+     * Forbidden: Set 必须声明具体元素类型，且不支持 `null` 元素。
+     *
+     * @param type 带具体元素类型的 Set 反射类型
+     * @return registry-aware Set codec
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun registryCodecSet(type: ParameterizedType): StreamCodec<RegistryFriendlyByteBuf, *> {
+        val elementCodec = registryCodecOf(type.actualTypeArguments[0]) as
+                StreamCodec<RegistryFriendlyByteBuf, Any>
+        return StreamCodec.of<RegistryFriendlyByteBuf, Set<*>>(
+            { buf, value ->
+                buf.writeVarInt(value.size)
+                value.forEach { element ->
+                    elementCodec.encode(buf, element ?: error("Set字段不支持null元素: $type"))
+                }
+            },
+            { buf ->
+                val size = buf.readVarInt()
+                LinkedHashSet<Any>(size).apply {
+                    repeat(size) { add(elementCodec.decode(buf)) }
+                }
+            },
+        )
+    }
+
+    /**
+     * 创建 registry-aware 的 Map 字段 codec。
+     *
+     * Example: emitter 可声明 `Map<String, CParticleTextureSource>`。
+     * Forbidden: Map 必须声明具体键值类型，且不支持 `null` 键或值。
+     *
+     * @param type 带具体键值类型的 Map 反射类型
+     * @return registry-aware Map codec
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun registryCodecMap(type: ParameterizedType): StreamCodec<RegistryFriendlyByteBuf, *> {
+        val keyCodec = registryCodecOf(type.actualTypeArguments[0]) as
+                StreamCodec<RegistryFriendlyByteBuf, Any>
+        val valueCodec = registryCodecOf(type.actualTypeArguments[1]) as
+                StreamCodec<RegistryFriendlyByteBuf, Any>
+        return StreamCodec.of<RegistryFriendlyByteBuf, Map<*, *>>(
+            { buf, value ->
+                buf.writeVarInt(value.size)
+                value.forEach { (key, mapValue) ->
+                    keyCodec.encode(buf, key ?: error("Map字段不支持null键: $type"))
+                    valueCodec.encode(buf, mapValue ?: error("Map字段不支持null值: $type"))
+                }
+            },
+            { buf ->
+                val size = buf.readVarInt()
+                LinkedHashMap<Any, Any>(size).apply {
+                    repeat(size) { put(keyCodec.decode(buf), valueCodec.decode(buf)) }
+                }
+            },
         )
     }
 

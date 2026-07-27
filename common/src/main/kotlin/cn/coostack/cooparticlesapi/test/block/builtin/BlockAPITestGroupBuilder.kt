@@ -32,6 +32,7 @@ import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestAlphaShader
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestCParticleEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestCommandEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestEventEmitter
+import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestGPUEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestSpreadPointEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.event.TestCollideEventHandler
 import cn.coostack.cooparticlesapi.test.options.particle.style.RomaMagicTestStyle
@@ -51,6 +52,11 @@ class BlockAPITestGroupBuilder(player: Player) : TestGroupBuilder {
 
     override fun build(): TestGroup {
         return BlockTestGroup(player, groupID())
+            .appendOption {
+                SimpleEmitterOption(
+                    TestGPUEmitter(player.position, player.level)
+                )
+            }
             .appendOption {
                 // GPU 粒子发射器: 默认稳态 ≈ 600 × 170 ≈ 10.2 万粒子
                 SimpleEmitterOption(

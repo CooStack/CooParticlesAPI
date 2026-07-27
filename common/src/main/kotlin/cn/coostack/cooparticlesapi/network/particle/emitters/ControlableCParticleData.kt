@@ -39,7 +39,7 @@ open class ControlableCParticleData : ControlableParticleData() {
      * 不建议使用DYNAMIC，因为GPU粒子不支持singleAction，
      * 这会导致你必须得额外存储每一个粒子的Data，并且按照对应的方式自己修改
      * 非常浪费性能的同时，也不是这个API希望的做法，
-     * 一般 颜色渐变，生命周期的 不透明度，大小等曲线都有做兼容 改为STATIC即可
+     * 颜色、生命周期透明度和缩放都已有 STATIC 曲线，不需要为这类变化使用 DYNAMIC。
      *
      * 按照GPU粒子的设定一般使用STATIC
      * */
@@ -56,8 +56,30 @@ open class ControlableCParticleData : ControlableParticleData() {
     /** 按 `age / maxAge` 在 GPU 中采样的不透明度乘数曲线。 */
     var alphaCurve: CParticleCurve? = null
 
-    /** 按 `age / maxAge` 同时缩放 X/Y 尺寸的 GPU 曲线。 */
-    var sizeCurve: CParticleCurve? = null
+    /**
+     * 按 `age / maxAge` 同时缩放 X/Y 尺寸的等比 GPU 曲线。
+     *
+     * 最终会与 [scaleXCurve]、[scaleYCurve] 的对应轴倍率相乘。
+     * Example: `scaleCurve = CParticleCurve.fadeInOut()` 会保持当前宽高比例。
+     * Forbidden: 不要用它单独控制某一个轴。
+     */
+    var scaleCurve: CParticleCurve? = null
+
+    /**
+     * 按 `age / maxAge` 只缩放 X 方向尺寸的 GPU 曲线。
+     *
+     * Example: 从 `0.2f` 变化到 `1f` 可以让粒子横向展开。
+     * Forbidden: 不要把本字段当成 Z 方向或等比缩放入口。
+     */
+    var scaleXCurve: CParticleCurve? = null
+
+    /**
+     * 按 `age / maxAge` 只缩放 Y 方向尺寸的 GPU 曲线。
+     *
+     * Example: 从 `1f` 变化到 `0f` 可以让粒子纵向收拢。
+     * Forbidden: 不要把本字段当成 Z 方向或等比缩放入口。
+     */
+    var scaleYCurve: CParticleCurve? = null
 
     /** 按 `age / maxAge` 与基础颜色相乘的 GPU RGB 曲线。 */
     var colorCurve: CParticleColorCurve? = null
@@ -73,6 +95,17 @@ open class ControlableCParticleData : ControlableParticleData() {
 
     /** GPU 随机帧和随机 UV 的种子；`null` 表示生成时自动分配。 */
     var randomSeed: Int? = null
+
+    /**
+     * 是否使用 CParticle 共享方块占用网格处理本粒子的位移碰撞。
+     *
+     * 碰撞响应与 `moveSingleParticleWithVelocity` 的常用实现一致：命中后停在表面前，
+     * 并移除速度的法线分量。复杂 `VoxelShape` 会按完整方块近似。
+     * 共享缓存覆盖 system 原点附近的 `64³` 方块，分桶边缘至少保留 24 格；缓存外按未命中处理。
+     * Example: 同一次 `genParticles()` 可以只给落尘 data 设置为 `true`。
+     * Forbidden: 不要用它代替需要台阶、栅栏或实体精确形状的 CPU 碰撞。
+     */
+    var blockCollision: Boolean = false
 
     /**
      * 保存专用 data 的网络编解码器。
@@ -109,7 +142,9 @@ open class ControlableCParticleData : ControlableParticleData() {
             }
             buf.writeByte(data.updateMode.ordinal)
             writeNullable(buf, data.alphaCurve, CParticleCurve.STREAM_CODEC)
-            writeNullable(buf, data.sizeCurve, CParticleCurve.STREAM_CODEC)
+            writeNullable(buf, data.scaleCurve, CParticleCurve.STREAM_CODEC)
+            writeNullable(buf, data.scaleXCurve, CParticleCurve.STREAM_CODEC)
+            writeNullable(buf, data.scaleYCurve, CParticleCurve.STREAM_CODEC)
             writeNullable(buf, data.colorCurve, CParticleColorCurve.STREAM_CODEC)
             val direction = data.rotationDirection
             buf.writeBoolean(direction != null)
@@ -119,6 +154,7 @@ open class ControlableCParticleData : ControlableParticleData() {
             val seed = data.randomSeed
             buf.writeBoolean(seed != null)
             if (seed != null) buf.writeInt(seed)
+            buf.writeBoolean(data.blockCollision)
         }
 
         /**
@@ -141,12 +177,15 @@ open class ControlableCParticleData : ControlableParticleData() {
             }
             data.updateMode = CParticleUpdateMode.entries[updateModeOrdinal]
             data.alphaCurve = readNullable(buf, CParticleCurve.STREAM_CODEC)
-            data.sizeCurve = readNullable(buf, CParticleCurve.STREAM_CODEC)
+            data.scaleCurve = readNullable(buf, CParticleCurve.STREAM_CODEC)
+            data.scaleXCurve = readNullable(buf, CParticleCurve.STREAM_CODEC)
+            data.scaleYCurve = readNullable(buf, CParticleCurve.STREAM_CODEC)
             data.colorCurve = readNullable(buf, CParticleColorCurve.STREAM_CODEC)
             if (buf.readBoolean()) data.rotationDirection = buf.readVector3f()
             data.angularVelocity = buf.readVector3f()
             data.randomAgePreTick = buf.readBoolean()
             if (buf.readBoolean()) data.randomSeed = buf.readInt()
+            data.blockCollision = buf.readBoolean()
             return data
         }
 
@@ -189,12 +228,15 @@ open class ControlableCParticleData : ControlableParticleData() {
             it.updateMode = updateMode
             it.textureSource = textureSource
             it.alphaCurve = alphaCurve
-            it.sizeCurve = sizeCurve
+            it.scaleCurve = scaleCurve
+            it.scaleXCurve = scaleXCurve
+            it.scaleYCurve = scaleYCurve
             it.colorCurve = colorCurve
             it.rotationDirection = rotationDirection?.let(::Vector3f)
             it.angularVelocity = Vector3f(angularVelocity)
             it.randomAgePreTick = randomAgePreTick
             it.randomSeed = randomSeed
+            it.blockCollision = blockCollision
         }
     }
 }
