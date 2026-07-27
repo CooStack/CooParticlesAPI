@@ -85,6 +85,8 @@ object CParticleCpuSimulator {
             var vz = data[base + OFF_VEL + 2]
             val age = data[base + OFF_AGE]
             val maxAge = data[base + OFF_MAX_AGE]
+            val instanceSpeedLimit = data[base + CParticleStore.OFF_SPEED_LIMIT]
+            val effectiveSpeedLimit = if (instanceSpeedLimit >= 0f) instanceSpeedLimit else speedLimit
 
             // prev = cur
             data[base + OFF_PREV] = px
@@ -263,10 +265,10 @@ object CParticleCpuSimulator {
                 }
             }
 
-            // 限速 (对应 data.velocity.lengthCoerceAtMost(speedLimit))
+            // 每粒子限速优先；负数哨兵沿用 system 限速
             val sp2 = vx * vx + vy * vy + vz * vz
-            if (sp2 > speedLimit * speedLimit && sp2 > 1e-12f) {
-                val m = speedLimit / sqrt(sp2)
+            if (sp2 > effectiveSpeedLimit * effectiveSpeedLimit && sp2 > 1e-12f) {
+                val m = effectiveSpeedLimit / sqrt(sp2)
                 vx *= m; vy *= m; vz *= m
             }
 

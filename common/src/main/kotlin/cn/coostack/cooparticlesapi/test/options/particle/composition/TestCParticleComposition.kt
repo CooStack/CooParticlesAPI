@@ -5,7 +5,6 @@ import cn.coostack.cooparticlesapi.annotations.CodecField
 import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
 import cn.coostack.cooparticlesapi.cparticle.CParticleCurve
 import cn.coostack.cooparticlesapi.cparticle.CParticleRenderLayer
-import cn.coostack.cooparticlesapi.cparticle.compat.CParticleCompositions
 import cn.coostack.cooparticlesapi.cparticle.compat.CParticleDisplayer
 import cn.coostack.cooparticlesapi.network.particle.composition.AutoParticleComposition
 import cn.coostack.cooparticlesapi.network.particle.composition.CompositionData
@@ -28,7 +27,7 @@ import kotlin.math.sin
  *
  * 演示 "Composition = 特定的 display": composition 依旧负责**形状与层级控制**
  * (每个槽位一个 [CompositionData] + 相对坐标), 只是把槽位的 displayer 换成
- * [CParticleCompositions.data] — 该槽位便渲染为 GPU 粒子.
+ * `ParticleDisplayer.withCParticle` 并添加 CParticle 初始化，该槽位便渲染为 GPU 粒子.
  *
  * 关键点: composition 的控制语义**完整保留**.
  * [onDisplay] 里挂的 `rotateAsAxis` 每 tick 旋转整个法阵, 旋转经

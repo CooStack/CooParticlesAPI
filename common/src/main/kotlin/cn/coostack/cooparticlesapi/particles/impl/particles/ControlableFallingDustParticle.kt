@@ -1,20 +1,24 @@
 package cn.coostack.cooparticlesapi.particles.impl.particles
 
+import cn.coostack.cooparticlesapi.cparticle.CParticleBlockAppearanceResolver
 import cn.coostack.cooparticlesapi.particles.ControlableParticle
 import cn.coostack.cooparticlesapi.particles.impl.ControlableFallingDustEffect
-import net.minecraft.client.Minecraft
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.client.particle.Particle
 import net.minecraft.client.particle.ParticleProvider
 import net.minecraft.client.particle.ParticleRenderType
 import net.minecraft.core.BlockPos
-import net.minecraft.world.level.block.Blocks
-import net.minecraft.world.level.block.RenderShape
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.Vec3
-import org.joml.Vector3f
 import java.util.*
 
+/**
+ * 使用方块模型 particle icon 的可控制 FallingDust 粒子。
+ *
+ * 方块外观由 CParticle 通用解析器共用的 helper 计算。
+ * Example: [Factory] 会为普通可见 BlockState 创建实例。
+ * Forbidden: 空气和不可见模型不会由 [Factory] 创建。
+ */
 class ControlableFallingDustParticle(
     world: ClientLevel,
     pos: Vec3,
@@ -29,17 +33,19 @@ class ControlableFallingDustParticle(
 
     init {
         val pos = BlockPos.containing(x, y, z)
-        val sprite = Minecraft.getInstance().blockRenderer.blockModelShaper.getParticleIcon(state)
-        var finalColor = Vector3f(0.6f)
-        if (!state.`is`(Blocks.GRASS_BLOCK)) {
-            val i = Minecraft.getInstance().blockColors.getColor(state, world, pos, 0)
-            val x = 0.6f * (i shr 16 and 255).toFloat() / 255.0f
-            val y = 0.6f * (i shr 8 and 255).toFloat() / 255.0f
-            val z = 0.6f * (i and 255).toFloat() / 255.0f
-            finalColor = Vector3f(x, y, z)
+        val appearance = requireNotNull(
+            CParticleBlockAppearanceResolver.resolve(
+                state,
+                world,
+                pos,
+                applyTint = true,
+                applyBrightness = true,
+            )
+        ) {
+            "ControlableFallingDustParticle requires a visible, non-air BlockState"
         }
-        setSprite(sprite)
-        this.color = finalColor
+        setSprite(appearance.sprite)
+        this.color = appearance.colorMultiplier
         this.quadSize /= 2
         this.uo = this.random.nextFloat() * 3.0f
         this.vo = this.random.nextFloat() * 3.0f
@@ -77,7 +83,7 @@ class ControlableFallingDustParticle(
             velocityZ: Double
         ): Particle? {
             val state = parameters.state
-            if (!state.isAir && state.renderShape == RenderShape.INVISIBLE) return null
+            if (!CParticleBlockAppearanceResolver.isRenderable(state)) return null
             return ControlableFallingDustParticle(
                 world,
                 Vec3(x, y, z),

@@ -15,7 +15,7 @@ import java.nio.ByteOrder
  * - std430 SSBO (GL43 compute 模拟, 同一 buffer 名字绑定到 GL_SHADER_STORAGE_BUFFER)
  *
  * 顶点布局: 无 per-vertex 属性, 四个角由 gl_VertexID 生成;
- * 7 个 vec4 实例属性 (divisor=1), stride = [CParticleStore.BYTE_STRIDE].
+ * 9 个 vec4 实例属性 (divisor=1), stride = [CParticleStore.BYTE_STRIDE].
  */
 class CParticleGlBuffer(val capacity: Int) {
     private companion object {
@@ -42,7 +42,7 @@ class CParticleGlBuffer(val capacity: Int) {
         glBindVertexArray(vao)
         glBindBuffer(GL_ARRAY_BUFFER, vbo)
         glBufferData(GL_ARRAY_BUFFER, capacity.toLong() * CParticleStore.BYTE_STRIDE, GL_DYNAMIC_DRAW)
-        for (loc in 0 until 7) {
+        for (loc in 0 until 9) {
             glVertexAttribPointer(loc, 4, GL_FLOAT, false, CParticleStore.BYTE_STRIDE, loc * 16L)
             glEnableVertexAttribArray(loc)
             CParticleCapabilities.setVertexAttribDivisor(loc, 1)

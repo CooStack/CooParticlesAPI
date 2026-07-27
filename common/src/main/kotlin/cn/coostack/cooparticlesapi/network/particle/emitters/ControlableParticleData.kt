@@ -29,10 +29,20 @@ open class ControlableParticleData : SerializableData {
         @JvmStatic
         val PACKET_CODEC: StreamCodec<RegistryFriendlyByteBuf, ControlableParticleData> =
             StreamCodec.of(
-                ::encode, ::decode
+                ::encodeBase,
+                { buf -> decodeBase(buf, ControlableParticleData()) },
             )
 
-        private fun encode(buf: RegistryFriendlyByteBuf, data: ControlableParticleData) {
+        /**
+         * 编码所有基础粒子字段，供父类和扩展 data 共用。
+         *
+         * Example: `ControlableCParticleData` 先调用此方法，再写入自己的纹理来源。
+         * Forbidden: 子类不能改变这些字段的顺序，否则旧的基础 data 无法解码。
+         *
+         * @param buf 目标网络缓冲区
+         * @param data 要编码的基础粒子数据
+         */
+        internal fun encodeBase(buf: RegistryFriendlyByteBuf, data: ControlableParticleData) {
             buf.writeUUID(data.uuid)
             buf.writeVec3(data.velocity)
             buf.writeFloat(data.weightSize)
@@ -59,9 +69,20 @@ open class ControlableParticleData : SerializableData {
             buf.writeFloat(data.depthSize)
         }
 
-        private fun decode(
+        /**
+         * 从缓冲区读取基础字段并写入指定实例。
+         *
+         * Example: 子类传入自己的新实例，解码后仍保留实际运行时类型。
+         * Forbidden: 不要在这里固定构造 `ControlableParticleData`，否则子类字段会丢失。
+         *
+         * @param buf 来源网络缓冲区
+         * @param target 接收基础字段的实例
+         * @return 赋值完成的 [target]
+         */
+        internal fun <T : ControlableParticleData> decodeBase(
             buf: RegistryFriendlyByteBuf,
-        ): ControlableParticleData {
+            target: T,
+        ): T {
             val uuid = buf.readUUID()
             val velocity = buf.readVec3()
             val weightSize = buf.readFloat()
@@ -85,7 +106,7 @@ open class ControlableParticleData : SerializableData {
             val pitch = buf.readFloat()
             val roll = buf.readFloat()
             val depthSize = buf.readFloat()
-            return ControlableParticleData().apply {
+            return target.apply {
                 this.uuid = uuid
                 this.velocity = velocity
                 this.color = color
@@ -399,29 +420,39 @@ open class ControlableParticleData : SerializableData {
     }
 
     override fun clone(): ControlableParticleData {
-        return ControlableParticleData().also {
-            it.uuid = UUID.randomUUID()
-            it.velocity = this.velocity
-            it.uniformSize = this.uniformSize
-            it.weightSize = this.weightSize
-            it.heightSize = this.heightSize
-            it.depthSize = this.depthSize
-            it.color = this.color
-            it.alpha = this.alpha
-            it.visibleRange = this.visibleRange
-            it.age = this.age
-            it.maxAge = this.maxAge
-            it.effect = this.effect.clone()
-            it.textureSheet = this.textureSheet
-            it.speed = this.speed
-            it.sign = this.sign
-            it.speedLimit = this.speedLimit
-            it.light = this.light
-            it.yaw = this.yaw
-            it.pitch = this.pitch
-            it.roll = this.roll
-            it.cameraOption = this.cameraOption
-            it.axis = this.axis
-        }
+        return ControlableParticleData().also(::copyTo)
+    }
+
+    /**
+     * 把可克隆的基础字段复制到另一个 data，并为目标生成新 UUID。
+     *
+     * Example: 扩展类可调用 `super.copyTo(target)` 后补充自己的字段。
+     * Forbidden: 网络解码不能调用此方法，因为网络中的 UUID 必须原样保留。
+     *
+     * @param target 接收当前基础字段的实例
+     */
+    protected fun copyTo(target: ControlableParticleData) {
+        target.uuid = UUID.randomUUID()
+        target.velocity = velocity
+        target.uniformSize = uniformSize
+        target.weightSize = weightSize
+        target.heightSize = heightSize
+        target.depthSize = depthSize
+        target.color = color
+        target.alpha = alpha
+        target.visibleRange = visibleRange
+        target.age = age
+        target.maxAge = maxAge
+        target.effect = effect.clone()
+        target.textureSheet = textureSheet
+        target.speed = speed
+        target.sign = sign
+        target.speedLimit = speedLimit
+        target.light = light
+        target.yaw = yaw
+        target.pitch = pitch
+        target.roll = roll
+        target.cameraOption = cameraOption
+        target.axis = axis
     }
 }

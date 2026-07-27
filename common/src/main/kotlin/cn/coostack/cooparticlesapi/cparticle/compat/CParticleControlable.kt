@@ -2,9 +2,10 @@ package cn.coostack.cooparticlesapi.cparticle.compat
 
 import cn.coostack.cooparticlesapi.api.controler.Controlable
 import cn.coostack.cooparticlesapi.api.controler.Tickable
+import cn.coostack.cooparticlesapi.cparticle.CParticle
 import cn.coostack.cooparticlesapi.cparticle.CParticleSystem
+import cn.coostack.cooparticlesapi.cparticle.storage.CParticleStore
 import cn.coostack.cooparticlesapi.particles.control.RemoveReason
-import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.PhysicsUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import net.minecraft.client.multiplayer.ClientLevel
@@ -27,15 +28,25 @@ class CParticleControlable(
     val slot: Int,
     val generation: Int,
     private val uuid: UUID,
-    private val world: ClientLevel,
+    private val world: ClientLevel?,
     initialYaw: Float = 0f,
     initialPitch: Float = 0f,
     initialRoll: Float = 0f,
+    initialAxis: Vec3? = null,
 ) : Controlable<CParticleControlable>, Tickable<CParticleControlable> {
 
-    private var yaw = initialYaw
-    private var pitch = initialPitch
-    private var roll = initialRoll
+    private val snapshotYaw = initialYaw
+    private val snapshotPitch = initialPitch
+    private val snapshotRoll = initialRoll
+    private val snapshotAxis = initialAxis ?: run {
+        val base = slot * CParticleStore.STRIDE
+        val offset = CParticleStore.OFF_AXIS
+        Vec3(
+            system.store.data[base + offset].toDouble(),
+            system.store.data[base + offset + 1].toDouble(),
+            system.store.data[base + offset + 2].toDouble(),
+        )
+    }
     private var invokeQueue: MutableList<CParticleControlable.() -> Unit>? = null
     private var postInvokeQueue: MutableList<CParticleControlable.() -> Unit>? = null
 
@@ -58,6 +69,35 @@ class CParticleControlable(
             system.scriptedSetAge(slot, generation, value)
         }
 
+    var pitch: Float
+        get() = system.scriptedGetRotation(slot, generation)?.x ?: snapshotPitch
+        set(value) {
+            val current = system.scriptedGetRotation(slot, generation) ?: return
+            setEulerAngles(value, current.y, current.z)
+        }
+
+    var yaw: Float
+        get() = system.scriptedGetRotation(slot, generation)?.y ?: snapshotYaw
+        set(value) {
+            val current = system.scriptedGetRotation(slot, generation) ?: return
+            setEulerAngles(current.x, value, current.z)
+        }
+
+    var roll: Float
+        get() = system.scriptedGetRotation(slot, generation)?.z ?: snapshotRoll
+        set(value) {
+            val current = system.scriptedGetRotation(slot, generation) ?: return
+            system.scriptedAddRoll(slot, generation, value - current.z)
+        }
+
+    /**
+     * 读取当前粒子的状态副本。句柄失效时返回 null，修改副本不会影响当前粒子。
+     *
+     * 副本固定为 STATIC。系统只保存解析后的 UV，无法还原 sprite 和 effect，
+     * 因此这两个字段为 null。
+     */
+    fun snapshot(): CParticle? = system.snapshot(slot, generation)?.also { it.axis = snapshotAxis }
+
     override fun controlUUID(): UUID = uuid
 
     override fun teleportTo(to: Vec3) {
@@ -69,28 +109,38 @@ class CParticleControlable(
     }
 
     override fun rotateToPoint(to: RelativeLocation) {
-        // 与 ControlableParticleData.setRotationTo 相同的欧拉角推导
-        val (x, y, _) = Math3DUtil.calculateEulerAnglesToPoint(to.toVector3f())
-        pitch = x
-        yaw = y
-        pushRotation()
+        setRotationDirection(to.toVector3f())
     }
 
     override fun rotateToWithAngle(to: RelativeLocation, radian: Double) {
-        val (x, y, _) = Math3DUtil.calculateEulerAnglesToPoint(to.toVector3f())
-        pitch = x
-        yaw = y
-        roll += radian.toFloat()
-        pushRotation()
+        setRotationDirection(to.toVector3f())
+        system.scriptedAddRoll(slot, generation, radian.toFloat())
     }
 
     override fun rotateAsAxis(radian: Double) {
-        roll += radian.toFloat()
-        pushRotation()
+        system.scriptedAddRoll(slot, generation, radian.toFloat())
     }
 
-    private fun pushRotation() {
+    /** 设置基础欧拉角，分量顺序为 pitch、yaw、roll。 */
+    fun setEulerAngles(pitch: Float, yaw: Float, roll: Float) {
         system.scriptedSetRotation(slot, generation, yaw, pitch, roll)
+    }
+
+    fun setRotationDirection(direction: Vector3f?) {
+        system.scriptedSetRotationDirection(slot, generation, direction?.let(::Vector3f))
+    }
+
+    fun setRotationDirection(direction: Vec3) {
+        setRotationDirection(Vector3f(direction.x.toFloat(), direction.y.toFloat(), direction.z.toFloat()))
+    }
+
+    /** 设置角速度，单位 rad/tick；分量顺序为 pitch、yaw、roll。 */
+    fun setAngularVelocity(pitch: Float, yaw: Float, roll: Float) {
+        system.scriptedSetAngularVelocity(slot, generation, Vector3f(pitch, yaw, roll))
+    }
+
+    fun setAngularVelocity(velocity: Vector3f) {
+        system.scriptedSetAngularVelocity(slot, generation, Vector3f(velocity))
     }
 
     fun setColor(r: Float, g: Float, b: Float) {
@@ -137,7 +187,8 @@ class CParticleControlable(
 
     fun moveToWithPhysics(to: Vec3): BlockHitResult? {
         val current = pos ?: return null
-        val result = PhysicsUtil.collide(current, to.subtract(current), world)
+        val activeWorld = world ?: return null
+        val result = PhysicsUtil.collide(current, to.subtract(current), activeWorld)
         teleportTo(
             if (result.type == HitResult.Type.MISS) to
             else PhysicsUtil.fixBeforeCollidePosition(result)

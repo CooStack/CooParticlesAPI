@@ -18,6 +18,15 @@ class APIConfig {
         get() = max(field, 1)
 
     /**
+     * 客户端允许同时存活的 CParticle 总数。
+     *
+     * Example: `3_000_000` 允许所有 GPU 粒子系统合计存活三百万个粒子。
+     * Forbidden: 小于 `1` 的配置会按 `1` 处理，不能用该值关闭 CParticle。
+     */
+    var cparticleCountLimit = 3_000_000
+        get() = max(field, 1)
+
+    /**
      * Math3DUtil的 threadPool最大线程数
      */
     var calculateThreadCount = 16

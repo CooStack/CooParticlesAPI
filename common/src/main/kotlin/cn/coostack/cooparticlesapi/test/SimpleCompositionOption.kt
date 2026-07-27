@@ -28,7 +28,7 @@ class SimpleCompositionOption(val composition: ParticleComposition, var testingT
     }
 
     override fun optionID(): String {
-        return "composition: ${composition.controlUUID()} : ${composition::class.java.name}"
+        return "composition: ${composition::class.java.name}"
     }
 
     override fun doTick() {

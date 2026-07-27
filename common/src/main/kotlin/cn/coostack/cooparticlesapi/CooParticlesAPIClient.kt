@@ -56,8 +56,17 @@ object CooParticlesAPIClient {
     private var selectedRenderBackend: RenderBackend = VanillaSafeRenderBackend
     lateinit var access: RegistryAccess
 
+    /**
+     * 初始化客户端注册项，并应用当前配置中的 CParticle 总量上限。
+     *
+     * Example: 客户端入口在 common 初始化完成后调用一次 `init()`。
+     * Forbidden: 专用服务端不能调用该方法或加载其中的客户端类型。
+     */
     @JvmStatic
     fun init() {
+        CParticleSystemManager.configureParticleCountLimit(
+            CooParticlesServices.API_CONFIG_MANAGER.getConfig().cparticleCountLimit
+        )
         TestControlKeyBindings.register()
         initGroup()
         initStyle()

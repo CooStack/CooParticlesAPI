@@ -13,6 +13,7 @@ import cn.coostack.cooparticlesapi.cparticle.CParticleSystemMode
 import cn.coostack.cooparticlesapi.cparticle.CParticleRenderLayer
 import cn.coostack.cooparticlesapi.cparticle.CParticleCurve
 import cn.coostack.cooparticlesapi.cparticle.CParticleTransitionMode
+import cn.coostack.cooparticlesapi.cparticle.CParticleTextureBindingKey
 import cn.coostack.cooparticlesapi.cparticle.compat.CParticleControlable
 import cn.coostack.cooparticlesapi.cparticle.compat.CParticleDisplayer
 import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
@@ -794,15 +795,28 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
         if (displayer.hasBoundSystem) return
         val layerName = displayer.layer.name.lowercase()
         val name = "composition/$controlUUID/$layerName"
-        val existing = CParticleSystemManager.getSystem(name)
+        val bindingKey = displayer.resolveTextureBindingKey(position)
+        if (bindingKey == CParticleTextureBindingKey.MISSING) return
+        val existing = CParticleSystemManager.getSystem(
+            name,
+            CParticleSystemMode.SCRIPTED,
+            displayer.layer,
+            bindingKey,
+        )
         if (existing != null && existing.capacity < cParticleCapacityHint) {
-            CParticleSystemManager.removeSystem(name)
+            CParticleSystemManager.removeSystem(
+                name,
+                CParticleSystemMode.SCRIPTED,
+                displayer.layer,
+                bindingKey,
+            )
         }
         val target = CParticleSystemManager.getOrCreateSystem(
             name,
             cParticleCapacityHint,
             displayer.layer,
             CParticleSystemMode.SCRIPTED,
+            bindingKey,
             autoReleaseWhenEmpty = true,
         )
         if (!displayer.bindSystemIfAbsent(target)) return

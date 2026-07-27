@@ -2,9 +2,12 @@ package cn.coostack.cooparticlesapi.test.options.particle.emitter
 
 import cn.coostack.cooparticlesapi.annotations.CodecField
 import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
+import cn.coostack.cooparticlesapi.cparticle.CParticleColorCurve
+import cn.coostack.cooparticlesapi.cparticle.CParticleCurve
 import cn.coostack.cooparticlesapi.cparticle.CParticleUpdateMode
 import cn.coostack.cooparticlesapi.cparticle.force.CParticleForce
 import cn.coostack.cooparticlesapi.network.particle.emitters.AutoParticleEmitters
+import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableCParticleData
 import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableParticleData
 import cn.coostack.cooparticlesapi.particles.CooParticleTextureSheet
 import cn.coostack.cooparticlesapi.particles.control.ParticleControler
@@ -20,8 +23,9 @@ import kotlin.random.Random
 /**
  * # GPU 粒子发射器测试 (cparticle 压力测试用例)
  *
- * 演示 "Emitter = 特定的 Data": 发射器只负责**产出 [ControlableParticleData]**,
- * 打开 [useCParticleSystem] 后这些数据不再变成逐个 `ControlableParticle` 对象,
+ * 发射器只负责产出彼此独立的 [ControlableParticleData]。这个压测使用同一个模板，
+ * 普通 emitter 也可以在一次 `genParticles()` 中按 [ControlableParticleData.sign] 混合不同 data。
+ * [ControlableCParticleData] 不再变成逐个 `ControlableParticle` 对象,
  * 而是直接写入 GPU 粒子系统的 SoA 缓冲 — 运动由 [cparticleForces] 声明的力场
  * 在 compute shader (或 CPU 并行回退) 中统一驱动, 渲染坍缩为单次 instanced draw.
  *
@@ -39,21 +43,9 @@ import kotlin.random.Random
 @CooAutoRegister
 class TestCParticleEmitter(pos: Vec3, world: Level?) : AutoParticleEmitters(pos, world) {
 
-    /** 打开 GPU 粒子路径 */
-    override val useCParticleSystem: Boolean
-        get() = true
-
-    /** 池容量要 ≥ 稳态粒子数，否则溢出粒子会回退 CPU，影响压测结果 */
-    override val cparticleCapacity: Int
-        get() = 262144
-
-    /** 压测粒子不需要逐粒子外观更新，避免保留十万个源对象。 */
-    override fun cparticleUpdateMode(data: ControlableParticleData): CParticleUpdateMode =
-        CParticleUpdateMode.STATIC
-
     /** 粒子外观模板 (贴图/透明度/限速等一次性属性) */
     @CodecField
-    var template = ControlableParticleData().apply {
+    var template = ControlableCParticleData().apply {
         setTextureSheet(CooParticleTextureSheet.ADDITION_BLEND_TRANSLUCENT)
         size = 0.10f
         alpha = 0.85f
@@ -61,6 +53,9 @@ class TestCParticleEmitter(pos: Vec3, world: Level?) : AutoParticleEmitters(pos,
         light = 15
         speedLimit = 2.0
         visibleRange = 192f
+        updateMode = CParticleUpdateMode.STATIC
+        alphaCurve = LIFETIME_ALPHA
+        sizeCurve = LIFETIME_SIZE
     }
 
     /** 每 tick 生成的粒子数 (稳态数量 = 本值 × [particleMaxAge]) */
@@ -83,11 +78,11 @@ class TestCParticleEmitter(pos: Vec3, world: Level?) : AutoParticleEmitters(pos,
     @CodecField
     var spreadSpeed = 0.10
 
-    /** 渐变起点颜色 */
+    /** 粒子出生时的颜色 */
     @CodecField
     var colorStart = Vector3f(0.20f, 0.72f, 1.00f)
 
-    /** 渐变终点颜色 */
+    /** 粒子死亡前的颜色 */
     @CodecField
     var colorEnd = Vector3f(1.00f, 0.36f, 0.12f)
 
@@ -116,6 +111,18 @@ class TestCParticleEmitter(pos: Vec3, world: Level?) : AutoParticleEmitters(pos,
     var dragDamping = 0.045
 
     private val random = Random(System.nanoTime())
+    private val cachedColorStart = Vector3f(colorStart)
+    private val cachedColorEnd = Vector3f(colorEnd)
+    private var cachedColorCurve = CParticleColorCurve.linear(colorStart, colorEnd)
+
+    private fun lifetimeColorCurve(): CParticleColorCurve {
+        if (cachedColorStart != colorStart || cachedColorEnd != colorEnd) {
+            cachedColorStart.set(colorStart)
+            cachedColorEnd.set(colorEnd)
+            cachedColorCurve = CParticleColorCurve.linear(cachedColorStart, cachedColorEnd)
+        }
+        return cachedColorCurve
+    }
 
     override fun doTick() {
     }
@@ -160,12 +167,12 @@ class TestCParticleEmitter(pos: Vec3, world: Level?) : AutoParticleEmitters(pos,
      * 这些 clone 是接入旧 API 的固定开销, 与粒子存活数量无关.
      */
     override fun genParticles(lerpProgress: Float): List<Pair<ControlableParticleData, RelativeLocation>> {
-        val count = spawnPerTick.coerceIn(0, MAX_SPAWN_PER_TICK)
+        val count = spawnPerTick
         if (count <= 0) return emptyList()
 
         val result = ArrayList<Pair<ControlableParticleData, RelativeLocation>>(count)
-        for (index in 0 until count) {
-            val progress = if (count <= 1) 0f else index.toFloat() / (count - 1).toFloat()
+        val colorCurve = lifetimeColorCurve()
+        repeat(count) {
             val angle = random.nextDouble(0.0, TAU)
             // sqrt 采样保证圆盘内均匀分布 (否则会向圆心聚集)
             val radius = emitRadius * sqrt(random.nextDouble())
@@ -173,7 +180,8 @@ class TestCParticleEmitter(pos: Vec3, world: Level?) : AutoParticleEmitters(pos,
             val sinA = sin(angle)
 
             val data = template.clone().apply {
-                color = gradientColor(progress)
+                color = Vector3f(1f)
+                this.colorCurve = colorCurve
                 size = particleSize
                 maxAge = particleMaxAge
                 velocity = Vec3(
@@ -198,19 +206,14 @@ class TestCParticleEmitter(pos: Vec3, world: Level?) : AutoParticleEmitters(pos,
     ) {
     }
 
-    private fun gradientColor(progress: Float): Vector3f {
-        val t = progress.coerceIn(0f, 1f)
-        return Vector3f(
-            colorStart.x + (colorEnd.x - colorStart.x) * t,
-            colorStart.y + (colorEnd.y - colorStart.y) * t,
-            colorStart.z + (colorEnd.z - colorStart.z) * t
-        )
-    }
-
     companion object {
-        /** 单 tick 生成上限, 防止参数误填导致瞬间打满粒子池 */
-        const val MAX_SPAWN_PER_TICK = 4096
-
+        private val LIFETIME_ALPHA = CParticleCurve.fadeInOut(fadeIn = 0.08f, fadeOut = 1f)
+        private val LIFETIME_SIZE = CParticleCurve.of(
+            0f to 0.35f,
+            0.12f to 1f,
+            0.82f to 1f,
+            1f to 0.2f,
+        )
         private const val TAU = Math.PI * 2.0
     }
 }

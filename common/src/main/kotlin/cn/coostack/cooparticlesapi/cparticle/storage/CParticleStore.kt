@@ -1,14 +1,25 @@
 package cn.coostack.cooparticlesapi.cparticle.storage
 
 import cn.coostack.cooparticlesapi.cparticle.CParticle
+import cn.coostack.cooparticlesapi.cparticle.CParticleAppearanceDescriptors
+import cn.coostack.cooparticlesapi.cparticle.CParticleGpuMath
+import cn.coostack.cooparticlesapi.cparticle.CParticleInstanceFlags
+import cn.coostack.cooparticlesapi.cparticle.CParticleResolvedTexture
 import cn.coostack.cooparticlesapi.cparticle.CParticleSprites
+import cn.coostack.cooparticlesapi.cparticle.CParticleSystemManager
+import cn.coostack.cooparticlesapi.cparticle.CParticleTextureBindingKey
+import cn.coostack.cooparticlesapi.cparticle.CParticleTextureDescriptors
+import cn.coostack.cooparticlesapi.cparticle.CParticleTextureSource
 import cn.coostack.cooparticlesapi.cparticle.CParticleUpdateMode
+import cn.coostack.cooparticlesapi.particles.ParticleCameraOption
+import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.phys.Vec3
+import org.joml.Vector3f
 
 /**
  * # SoA 粒子存储
  *
- * 每个粒子占 [STRIDE] = 28 个 float (112 字节, 7 x vec4), 布局与 GPU 端
+ * 每个粒子占 [STRIDE] = 36 个 float (144 字节, 9 x vec4), 布局与 GPU 端
  * (instanced attribute / std430 SSBO) 完全一致, 上传时整段 memcpy:
  *
  * ```
@@ -17,19 +28,34 @@ import net.minecraft.world.phys.Vec3
  * vec4 2: velocity.xyz    flags(位打包整数, 以精确 float 值存储)
  * vec4 3: sizeW sizeH     yaw   pitch
  * vec4 4: axis.xyz        roll
- * vec4 5: u0 v0 u1 v1
+ * vec4 5: animationId visualAgeBase seedLow16 seedHigh16
  * vec4 6: r g b a
+ * vec4 7: angularVelocity(pitch,yaw,roll) epochTick
+ * vec4 8: appearanceDescriptorId speedLimit/systemSentinel reserved reserved
  * ```
  *
  * flags 位: bit0 alive; bit1..2 cameraMode(0=BILLBOARD 1=AXIS 2=ROTATION);
- * bit3..6 blockLight; bit7..10 skyLight
+ * bit3..6 blockLight; bit7..10 skyLight; bit11 randomAge; bit12 rotationDirection;
+ * bit13 randomQuarterUv
  *
  * 槽位管理: 空闲栈 + 存活位图 + 世代计数(句柄失效检测).
  * 死槽位不压缩 — 渲染端对非 alive 实例输出退化三角形, 代价可忽略.
  */
 class CParticleStore(val capacity: Int) {
     companion object {
-        const val STRIDE = 28
+        /**
+         * 创建受 CParticle 全局数量上限约束的存储。
+         *
+         * Example: [cn.coostack.cooparticlesapi.cparticle.CParticleSystem] 用它创建 GPU 粒子池。
+         * Forbidden: 独立的 CPU 数据测试不应使用该入口占用全局额度。
+         *
+         * @param capacity 槽位容量
+         * @return 接入全局数量统计的存储
+         */
+        internal fun globallyCounted(capacity: Int): CParticleStore =
+            CParticleStore(capacity).also { it.countsTowardGlobalLimit = true }
+
+        const val STRIDE = 36
         const val BYTE_STRIDE = STRIDE * 4
 
         const val OFF_AGE = 3
@@ -40,13 +66,23 @@ class CParticleStore(val capacity: Int) {
         const val OFF_SIZE = 12
         const val OFF_AXIS = 16
         const val OFF_ROLL = 19
-        const val OFF_UV = 20
+        const val OFF_ANIMATION = 20
+        @Deprecated("The UV slot now stores GPU animation metadata")
+        const val OFF_UV = OFF_ANIMATION
         const val OFF_COLOR = 24
+        const val OFF_ANGULAR_VELOCITY = 28
+        const val OFF_EPOCH_TICK = 31
+        const val OFF_APPEARANCE = 32
+        const val OFF_SPEED_LIMIT = OFF_APPEARANCE + 1
+        private const val SYSTEM_SPEED_LIMIT_SENTINEL = -1f
 
-        const val FLAG_ALIVE = 1
-        const val CAMERA_SHIFT = 1
-        const val BLOCK_LIGHT_SHIFT = 3
-        const val SKY_LIGHT_SHIFT = 7
+        const val FLAG_ALIVE = CParticleInstanceFlags.ALIVE
+        const val CAMERA_SHIFT = CParticleInstanceFlags.CAMERA_SHIFT
+        const val BLOCK_LIGHT_SHIFT = CParticleInstanceFlags.BLOCK_LIGHT_SHIFT
+        const val SKY_LIGHT_SHIFT = CParticleInstanceFlags.SKY_LIGHT_SHIFT
+        const val FLAG_RANDOM_AGE = CParticleInstanceFlags.RANDOM_AGE
+        const val FLAG_ROTATION_DIRECTION = CParticleInstanceFlags.ROTATION_DIRECTION
+        const val FLAG_RANDOM_QUARTER_UV = CParticleInstanceFlags.RANDOM_QUARTER_UV
 
         private const val SNAP_SIZE_W = 0
         private const val SNAP_SIZE_H = 1
@@ -60,17 +96,31 @@ class CParticleStore(val capacity: Int) {
         private const val SNAP_COLOR_G = 9
         private const val SNAP_COLOR_B = 10
         private const val SNAP_ALPHA = 11
-        private const val SNAPSHOT_STRIDE = 12
+        private const val SNAP_ANGULAR_PITCH = 12
+        private const val SNAP_ANGULAR_YAW = 13
+        private const val SNAP_ANGULAR_ROLL = 14
+        private const val SNAP_SPEED_LIMIT = 15
+        private const val SNAPSHOT_STRIDE = 16
         private val EMPTY_SLOTS = IntArray(0)
 
         @JvmStatic
-        fun packFlags(alive: Boolean, cameraMode: Int, blockLight: Int, skyLight: Int): Int {
-            var f = if (alive) FLAG_ALIVE else 0
-            f = f or ((cameraMode and 3) shl CAMERA_SHIFT)
-            f = f or ((blockLight and 15) shl BLOCK_LIGHT_SHIFT)
-            f = f or ((skyLight and 15) shl SKY_LIGHT_SHIFT)
-            return f
-        }
+        fun packFlags(
+            alive: Boolean,
+            cameraMode: Int,
+            blockLight: Int,
+            skyLight: Int,
+            randomAge: Boolean = false,
+            rotationDirection: Boolean = false,
+            randomQuarterUv: Boolean = false,
+        ): Int = CParticleInstanceFlags.pack(
+            alive,
+            cameraMode,
+            blockLight,
+            skyLight,
+            randomAge,
+            rotationDirection,
+            randomQuarterUv,
+        )
     }
 
     /** 交错主数据 (与 GPU 缓冲 1:1) */
@@ -117,6 +167,14 @@ class CParticleStore(val capacity: Int) {
     private var dynamicState: DynamicState? = null
     private var killedState: KilledState? = null
 
+    /**
+     * 该存储中的存活槽位是否计入 CParticle 全局上限。
+     *
+     * Example: CParticleSystem 创建的 store 将该值设为 `true`。
+     * Forbidden: 普通 [CParticleStore] 数据容器不能占用 GPU 粒子额度。
+     */
+    private var countsTowardGlobalLimit = false
+
     internal val dynamicDirtySlots: IntArray
         get() = dynamicState?.dirtySlots ?: EMPTY_SLOTS
     internal val dynamicSourceCount: Int
@@ -136,11 +194,41 @@ class CParticleStore(val capacity: Int) {
     /**
      * 生成一个粒子, 返回槽位 (-1 = 池满).
      *
+     * Example: `spawn(particle, origin, animationId, 15, 15)` 占用一个空槽位。
+     * Forbidden: 受全局限制的 store 达到共享上限后不能继续生成。
+     *
+     * @param p 粒子数据
      * @param origin 系统原点 (位置写入为原点相对 float)
+     * @param animationId GPU 动画描述符
      * @param blockLight 0..15 (light==-1 时由调用方先采样世界光照)
+     * @param skyLight 0..15
+     * @param epochTick 粒子生成时的 system tick
+     * @param randomSeed GPU 随机种子
+     * @param colorMultiplier 纹理颜色倍率
+     * @param randomQuarterUv 是否随机裁剪到四分之一 UV
+     * @param textureBindingKey 粒子所属的主纹理绑定
+     * @param textureGeneration 纹理缓存代数
+     * @param appearanceDescriptorId GPU 外观描述符
+     * @return 分配的槽位；本地池或全局额度已满时返回 `-1`
      */
-    fun spawn(p: CParticle, origin: Vec3, uv: CParticleSprites.UvRect, blockLight: Int, skyLight: Int): Int {
+    fun spawn(
+        p: CParticle,
+        origin: Vec3,
+        animationId: Int,
+        blockLight: Int,
+        skyLight: Int,
+        epochTick: Int = 0,
+        randomSeed: Int = p.randomSeed ?: CParticleGpuMath.nextAutomaticSeed(),
+        colorMultiplier: Vector3f = Vector3f(1f),
+        randomQuarterUv: Boolean = false,
+        textureBindingKey: CParticleTextureBindingKey = CParticleTextureBindingKey.PARTICLE_ATLAS,
+        textureGeneration: Int = 0,
+        appearanceDescriptorId: Int = p.appearanceDescriptorId(),
+    ): Int {
+        CParticleTextureDescriptors.requireValidDescriptorId(animationId)
+        CParticleAppearanceDescriptors.requireValidDescriptorId(appearanceDescriptorId)
         if (freeTop <= 0) return -1
+        if (countsTowardGlobalLimit && !CParticleSystemManager.tryAcquireParticleSlot()) return -1
         val slot = freeStack[--freeTop]
         val base = slot * STRIDE
 
@@ -156,21 +244,41 @@ class CParticleStore(val capacity: Int) {
         data[base + OFF_VEL] = p.velocity.x.toFloat()
         data[base + OFF_VEL + 1] = p.velocity.y.toFloat()
         data[base + OFF_VEL + 2] = p.velocity.z.toFloat()
-        data[base + OFF_FLAGS] = packFlags(true, p.cameraOption.ordinal, blockLight, skyLight).toFloat()
+        val hasDirection = p.cameraOption == ParticleCameraOption.ROTATION && p.rotationDirection != null
+        data[base + OFF_FLAGS] = packFlags(
+            true,
+            p.cameraOption.ordinal,
+            blockLight,
+            skyLight,
+            p.randomAgePreTick,
+            hasDirection,
+            randomQuarterUv,
+        ).toFloat()
         data[base + OFF_SIZE] = p.weightSize
         data[base + OFF_SIZE + 1] = p.heightSize
-        data[base + OFF_SIZE + 2] = p.yaw
-        data[base + OFF_SIZE + 3] = p.pitch
-        data[base + OFF_AXIS] = p.axis.x.toFloat()
-        data[base + OFF_AXIS + 1] = p.axis.y.toFloat()
-        data[base + OFF_AXIS + 2] = p.axis.z.toFloat()
+        data[base + OFF_SIZE + 2] = if (hasDirection) 0f else p.yaw
+        data[base + OFF_SIZE + 3] = if (hasDirection) 0f else p.pitch
+        val orientation = p.rotationDirection.takeIf { hasDirection }
+        data[base + OFF_AXIS] = orientation?.x ?: p.axis.x.toFloat()
+        data[base + OFF_AXIS + 1] = orientation?.y ?: p.axis.y.toFloat()
+        data[base + OFF_AXIS + 2] = orientation?.z ?: p.axis.z.toFloat()
         data[base + OFF_ROLL] = p.roll
-        data[base + OFF_UV] = uv.u0; data[base + OFF_UV + 1] = uv.v0
-        data[base + OFF_UV + 2] = uv.u1; data[base + OFF_UV + 3] = uv.v1
-        data[base + OFF_COLOR] = p.color.x
-        data[base + OFF_COLOR + 1] = p.color.y
-        data[base + OFF_COLOR + 2] = p.color.z
+        data[base + OFF_ANIMATION] = animationId.toFloat()
+        data[base + OFF_ANIMATION + 1] = p.age.toFloat()
+        data[base + OFF_ANIMATION + 2] = CParticleGpuMath.seedLow(randomSeed).toFloat()
+        data[base + OFF_ANIMATION + 3] = CParticleGpuMath.seedHigh(randomSeed).toFloat()
+        data[base + OFF_COLOR] = p.color.x * colorMultiplier.x
+        data[base + OFF_COLOR + 1] = p.color.y * colorMultiplier.y
+        data[base + OFF_COLOR + 2] = p.color.z * colorMultiplier.z
         data[base + OFF_COLOR + 3] = p.alpha
+        data[base + OFF_ANGULAR_VELOCITY] = p.angularVelocity.x
+        data[base + OFF_ANGULAR_VELOCITY + 1] = p.angularVelocity.y
+        data[base + OFF_ANGULAR_VELOCITY + 2] = p.angularVelocity.z
+        data[base + OFF_EPOCH_TICK] = epochTick.toFloat()
+        data[base + OFF_APPEARANCE] = appearanceDescriptorId.toFloat()
+        data[base + OFF_SPEED_LIMIT] = p.speedLimit ?: SYSTEM_SPEED_LIMIT_SENTINEL
+        data[base + OFF_APPEARANCE + 2] = 0f
+        data[base + OFF_APPEARANCE + 3] = 0f
 
         ages[slot] = p.age
         maxAges[slot] = maxAge
@@ -190,13 +298,38 @@ class CParticleStore(val capacity: Int) {
             val state = dynamicState ?: DynamicState(capacity).also { dynamicState = it }
             state.sources[slot] = p
             state.sourceCount++
-            snapshotDynamicSource(state, slot, p)
+            snapshotDynamicSource(
+                state,
+                slot,
+                p,
+                colorMultiplier,
+                randomQuarterUv,
+                textureBindingKey,
+                textureGeneration,
+            )
         }
         markDirty(slot)
         return slot
     }
 
-    /** 释放槽位 (清 alive 位, 世代自增, 渲染端立即隐藏) */
+    /** 兼容原有低层固定 UV 入口。 */
+    fun spawn(
+        p: CParticle,
+        origin: Vec3,
+        uv: CParticleSprites.UvRect,
+        blockLight: Int,
+        skyLight: Int,
+    ): Int = spawn(p, origin, CParticleSprites.animationId(uv), blockLight, skyLight)
+
+    /**
+     * 释放槽位，清除 alive 位并让旧句柄失效。
+     *
+     * Example: `kill(slot)` 立即隐藏粒子并归还一份全局额度。
+     * Forbidden: 重复释放同一槽位不能再次归还额度。
+     *
+     * @param slot 待释放的槽位
+     * @param queueGpuFlag 是否排队补写 GPU alive 标记
+     */
     fun kill(slot: Int, queueGpuFlag: Boolean = true) {
         if (!isAlive(slot)) return
         aliveBits[slot ushr 6] = aliveBits[slot ushr 6] and (1L shl (slot and 63)).inv()
@@ -210,6 +343,7 @@ class CParticleStore(val capacity: Int) {
         generations[slot]++
         freeStack[freeTop++] = slot
         aliveCount--
+        if (countsTowardGlobalLimit) CParticleSystemManager.releaseParticleSlots(1)
         // 缓冲内清掉 alive 位, 让渲染端隐藏
         val base = slot * STRIDE
         val flags = data[base + OFF_FLAGS].toInt()
@@ -255,16 +389,149 @@ class CParticleStore(val capacity: Int) {
 
     fun getAge(slot: Int): Int = ages[slot]
 
-    fun setAge(slot: Int, age: Int) {
+    fun setAge(slot: Int, age: Int, epochTick: Int = 0) {
         val safeAge = age.coerceIn(0, maxAges[slot])
         ages[slot] = safeAge
         data[slot * STRIDE + OFF_AGE] = safeAge.toFloat()
+        rebaseEpoch(slot, epochTick)
         dynamicState?.sources?.get(slot)?.age = safeAge
         markDirty(slot)
     }
 
-    /** 清空全部粒子 */
+    /** 当前整数 tick 实际显示的欧拉角，分量为 x=pitch、y=yaw、z=roll。 */
+    fun currentRotation(slot: Int, tick: Int): Vector3f {
+        val base = slot * STRIDE
+        val flags = data[base + OFF_FLAGS].toInt()
+        val mode = (flags ushr CAMERA_SHIFT) and 3
+        val elapsed = (tick - data[base + OFF_EPOCH_TICK].toInt()).coerceAtLeast(0).toFloat()
+        val pitch = data[base + OFF_SIZE + 3]
+        val yaw = data[base + OFF_SIZE + 2]
+        val roll = data[base + OFF_ROLL]
+        val rollVelocity = data[base + OFF_ANGULAR_VELOCITY + 2]
+        if (mode != ParticleCameraOption.ROTATION.ordinal) {
+            return Vector3f(pitch, yaw, roll + rollVelocity * elapsed)
+        }
+        val direction = if (flags and FLAG_ROTATION_DIRECTION != 0) {
+            Vector3f(data[base + OFF_AXIS], data[base + OFF_AXIS + 1], data[base + OFF_AXIS + 2])
+        } else {
+            null
+        }
+        return CParticleGpuMath.accumulateAngles(
+            Vector3f(pitch, yaw, roll),
+            Vector3f(
+                data[base + OFF_ANGULAR_VELOCITY],
+                data[base + OFF_ANGULAR_VELOCITY + 1],
+                rollVelocity,
+            ),
+            elapsed,
+            direction,
+        )
+    }
+
+    fun rotationDirection(slot: Int): Vector3f? {
+        val base = slot * STRIDE
+        val flags = data[base + OFF_FLAGS].toInt()
+        if (flags and FLAG_ROTATION_DIRECTION == 0) return null
+        return Vector3f(data[base + OFF_AXIS], data[base + OFF_AXIS + 1], data[base + OFF_AXIS + 2])
+    }
+
+    fun angularVelocity(slot: Int): Vector3f {
+        val base = slot * STRIDE + OFF_ANGULAR_VELOCITY
+        return Vector3f(data[base], data[base + 1], data[base + 2])
+    }
+
+    fun setBaseRotation(slot: Int, pitch: Float, yaw: Float, roll: Float, tick: Int) {
+        val base = slot * STRIDE
+        data[base + OFF_ANIMATION + 1] = ages[slot].toFloat()
+        data[base + OFF_EPOCH_TICK] = tick.toFloat()
+        data[base + OFF_SIZE + 2] = yaw
+        data[base + OFF_SIZE + 3] = pitch
+        data[base + OFF_ROLL] = roll
+        val flags = data[base + OFF_FLAGS].toInt() and FLAG_ROTATION_DIRECTION.inv()
+        data[base + OFF_FLAGS] = flags.toFloat()
+        markDirty(slot)
+    }
+
+    fun setRotationDirection(slot: Int, direction: Vector3f?, tick: Int) {
+        val base = slot * STRIDE
+        val flags = data[base + OFF_FLAGS].toInt()
+        val mode = (flags ushr CAMERA_SHIFT) and 3
+        if (mode != ParticleCameraOption.ROTATION.ordinal) return
+        val current = currentRotation(slot, tick)
+        val elapsed = (tick - data[base + OFF_EPOCH_TICK].toInt()).coerceAtLeast(0).toFloat()
+        val oldDirection = if (flags and FLAG_ROTATION_DIRECTION != 0) {
+            Vector3f(data[base + OFF_AXIS], data[base + OFF_AXIS + 1], data[base + OFF_AXIS + 2])
+        } else {
+            null
+        }
+        val oldPointed = CParticleGpuMath.directionAngles(oldDirection)
+        data[base + OFF_ANIMATION + 1] = ages[slot].toFloat()
+        data[base + OFF_EPOCH_TICK] = tick.toFloat()
+        data[base + OFF_ROLL] = current.z
+        if (direction == null) {
+            data[base + OFF_SIZE + 2] = current.y
+            data[base + OFF_SIZE + 3] = current.x
+            data[base + OFF_FLAGS] = (flags and FLAG_ROTATION_DIRECTION.inv()).toFloat()
+        } else {
+            data[base + OFF_SIZE + 2] = if (oldDirection != null) {
+                current.y - oldPointed.y
+            } else {
+                data[base + OFF_ANGULAR_VELOCITY + 1] * elapsed
+            }
+            data[base + OFF_SIZE + 3] = if (oldDirection != null) {
+                current.x - oldPointed.x
+            } else {
+                data[base + OFF_ANGULAR_VELOCITY] * elapsed
+            }
+            data[base + OFF_AXIS] = direction.x
+            data[base + OFF_AXIS + 1] = direction.y
+            data[base + OFF_AXIS + 2] = direction.z
+            data[base + OFF_FLAGS] = (flags or FLAG_ROTATION_DIRECTION).toFloat()
+        }
+        markDirty(slot)
+    }
+
+    fun setAngularVelocity(slot: Int, velocity: Vector3f, tick: Int, markSlotDirty: Boolean = true) {
+        rebaseEpoch(slot, tick)
+        val base = slot * STRIDE + OFF_ANGULAR_VELOCITY
+        data[base] = velocity.x
+        data[base + 1] = velocity.y
+        data[base + 2] = velocity.z
+        if (markSlotDirty) markDirty(slot)
+    }
+
+    fun addRoll(slot: Int, radians: Float, tick: Int) {
+        rebaseEpoch(slot, tick)
+        data[slot * STRIDE + OFF_ROLL] += radians
+        markDirty(slot)
+    }
+
+    private fun rebaseEpoch(slot: Int, tick: Int) {
+        val base = slot * STRIDE
+        val current = currentRotation(slot, tick)
+        val flags = data[base + OFF_FLAGS].toInt()
+        if (flags and FLAG_ROTATION_DIRECTION != 0) {
+            val direction = Vector3f(data[base + OFF_AXIS], data[base + OFF_AXIS + 1], data[base + OFF_AXIS + 2])
+            val pointed = CParticleGpuMath.directionAngles(direction)
+            data[base + OFF_SIZE + 2] = current.y - pointed.y
+            data[base + OFF_SIZE + 3] = current.x - pointed.x
+        } else {
+            data[base + OFF_SIZE + 2] = current.y
+            data[base + OFF_SIZE + 3] = current.x
+        }
+        data[base + OFF_ROLL] = current.z
+        data[base + OFF_ANIMATION + 1] = ages[slot].toFloat()
+        data[base + OFF_EPOCH_TICK] = tick.toFloat()
+    }
+
+    /**
+     * 清空全部粒子并一次性归还它们占用的全局额度。
+     *
+     * Example: system 换世界时调用 `store.clear()` 复位整个池。
+     * Forbidden: 对空池重复调用不能减少其他 system 的全局计数。
+     */
     fun clear() {
+        val releasedCount = aliveCount
         java.util.Arrays.fill(aliveBits, 0L)
         java.util.Arrays.fill(agingBits, 0L)
         for (i in 0 until capacity) {
@@ -287,6 +554,7 @@ class CParticleStore(val capacity: Int) {
             data[base] = 0f
             base += STRIDE
         }
+        if (countsTowardGlobalLimit) CParticleSystemManager.releaseParticleSlots(releasedCount)
     }
 
     fun markDirty(slot: Int) {
@@ -327,6 +595,7 @@ class CParticleStore(val capacity: Int) {
         if (state.sourceCount == 0) return
         for (slot in 0 until highWater) {
             state.sources[slot]?.age = ages[slot]
+            state.sources[slot]?.publishAgeToDynamicData()
         }
     }
 
@@ -335,7 +604,48 @@ class CParticleStore(val capacity: Int) {
      * 位置、速度和 age 不在这里同步，避免覆盖模拟器的状态。
      */
     internal fun prepareDynamicVisuals(
-        resolveUv: (CParticle, age: Int, maxAge: Int) -> CParticleSprites.UvRect,
+        tick: Int,
+        resolveAnimation: (ResourceLocation?, ResourceLocation?) -> Int,
+    ): Int = prepareDynamicVisuals(
+        tick,
+        textureGeneration = 0,
+        expectedBindingKey = CParticleTextureBindingKey.PARTICLE_ATLAS,
+        resolveTexture = { particle ->
+            val descriptorId = resolveAnimation(
+                particle.sprite,
+                CParticleSprites.effectTypeId(particle.effect),
+            )
+            CParticleResolvedTexture(
+                CParticleTextureBindingKey.PARTICLE_ATLAS,
+                descriptorId,
+                cn.coostack.cooparticlesapi.cparticle.CParticleUv.FULL,
+                null,
+                Vector3f(1f),
+            )
+        },
+        onBindingMismatch = { _, _ -> },
+    )
+
+    /**
+     * 把 DYNAMIC 来源中变化的视觉字段和纹理描述符写回 CPU 镜像。
+     *
+     * 纹理只在 revision 或资源代数变化时解析；跨 binding 的槽位会被移除。
+     * Example: 同一方块图集内从石头切到泥土只更新 descriptor。
+     * Forbidden: age 变化不能触发 [resolveTexture]。
+     *
+     * @param tick 当前系统 tick
+     * @param textureGeneration 资源解析缓存代数
+     * @param expectedBindingKey 当前系统固定绑定
+     * @param resolveTexture 来源变化时调用的客户端解析函数
+     * @param onBindingMismatch 跨 binding 被移除前的通知
+     * @return 本帧需要补写 GPU 视觉区的槽位数量
+     */
+    internal fun prepareDynamicVisuals(
+        tick: Int,
+        textureGeneration: Int,
+        expectedBindingKey: CParticleTextureBindingKey,
+        resolveTexture: (CParticle) -> CParticleResolvedTexture,
+        onBindingMismatch: (Int, CParticleTextureBindingKey) -> Unit,
     ): Int {
         val state = dynamicState ?: return 0
         if (state.sourceCount == 0) return 0
@@ -343,31 +653,75 @@ class CParticleStore(val capacity: Int) {
         for (slot in 0 until highWater) {
             val source = state.sources[slot] ?: continue
             if (!isAlive(slot)) continue
+            source.refreshDynamicDataSource()
             val base = slot * STRIDE
             val snapshot = slot * SNAPSHOT_STRIDE
             var changed = false
 
             changed = syncDynamicFloat(state, base + OFF_SIZE, snapshot + SNAP_SIZE_W, source.weightSize) || changed
             changed = syncDynamicFloat(state, base + OFF_SIZE + 1, snapshot + SNAP_SIZE_H, source.heightSize) || changed
-            changed = syncDynamicFloat(state, base + OFF_SIZE + 2, snapshot + SNAP_YAW, source.yaw) || changed
-            changed = syncDynamicFloat(state, base + OFF_SIZE + 3, snapshot + SNAP_PITCH, source.pitch) || changed
-            changed = syncDynamicFloat(state, base + OFF_AXIS, snapshot + SNAP_AXIS_X, source.axis.x.toFloat()) || changed
-            changed = syncDynamicFloat(state, base + OFF_AXIS + 1, snapshot + SNAP_AXIS_Y, source.axis.y.toFloat()) || changed
-            changed = syncDynamicFloat(state, base + OFF_AXIS + 2, snapshot + SNAP_AXIS_Z, source.axis.z.toFloat()) || changed
-            changed = syncDynamicFloat(state, base + OFF_ROLL, snapshot + SNAP_ROLL, source.roll) || changed
-            changed = syncDynamicFloat(state, base + OFF_COLOR, snapshot + SNAP_COLOR_R, source.color.x) || changed
-            changed = syncDynamicFloat(state, base + OFF_COLOR + 1, snapshot + SNAP_COLOR_G, source.color.y) || changed
-            changed = syncDynamicFloat(state, base + OFF_COLOR + 2, snapshot + SNAP_COLOR_B, source.color.z) || changed
+            val colorBase = slot * 3
+            changed = syncDynamicFloat(
+                state,
+                base + OFF_COLOR,
+                snapshot + SNAP_COLOR_R,
+                source.color.x,
+                state.colorMultipliers[colorBase],
+            ) || changed
+            changed = syncDynamicFloat(
+                state,
+                base + OFF_COLOR + 1,
+                snapshot + SNAP_COLOR_G,
+                source.color.y,
+                state.colorMultipliers[colorBase + 1],
+            ) || changed
+            changed = syncDynamicFloat(
+                state,
+                base + OFF_COLOR + 2,
+                snapshot + SNAP_COLOR_B,
+                source.color.z,
+                state.colorMultipliers[colorBase + 2],
+            ) || changed
             changed = syncDynamicFloat(state, base + OFF_COLOR + 3, snapshot + SNAP_ALPHA, source.alpha) || changed
+            changed = syncDynamicFloat(
+                state,
+                base + OFF_SPEED_LIMIT,
+                snapshot + SNAP_SPEED_LIMIT,
+                source.speedLimit ?: SYSTEM_SPEED_LIMIT_SENTINEL,
+            ) || changed
 
+            val previousCameraMode = state.cameraModes[slot]
             val cameraMode = source.cameraOption.ordinal
             val light = source.light
-            if (cameraMode != state.cameraModes[slot]) {
+            val cameraChanged = cameraMode != previousCameraMode
+
+            val hasDirection = cameraMode == ParticleCameraOption.ROTATION.ordinal && source.rotationDirection != null
+            val orientation = source.rotationDirection.takeIf { hasDirection }
+            val orientationX = orientation?.x ?: source.axis.x.toFloat()
+            val orientationY = orientation?.y ?: source.axis.y.toFloat()
+            val orientationZ = orientation?.z ?: source.axis.z.toFloat()
+            val yawChanged = source.yaw != state.snapshots[snapshot + SNAP_YAW]
+            val pitchChanged = source.pitch != state.snapshots[snapshot + SNAP_PITCH]
+            val rollChanged = source.roll != state.snapshots[snapshot + SNAP_ROLL]
+            val orientationXChanged = orientationX != state.snapshots[snapshot + SNAP_AXIS_X]
+            val orientationYChanged = orientationY != state.snapshots[snapshot + SNAP_AXIS_Y]
+            val orientationZChanged = orientationZ != state.snapshots[snapshot + SNAP_AXIS_Z]
+            val directionModeChanged = hasDirection != state.directionModes[slot]
+            val angularChanged = source.angularVelocity.x != state.snapshots[snapshot + SNAP_ANGULAR_PITCH] ||
+                    source.angularVelocity.y != state.snapshots[snapshot + SNAP_ANGULAR_YAW] ||
+                    source.angularVelocity.z != state.snapshots[snapshot + SNAP_ANGULAR_ROLL]
+            val rotationComponentChanged = yawChanged || pitchChanged || rollChanged ||
+                    orientationXChanged || orientationYChanged || orientationZChanged
+            if (cameraChanged || directionModeChanged || rotationComponentChanged || angularChanged) {
+                writeDynamicRotation(state, slot, source, tick, previousCameraMode, cameraMode, hasDirection)
+                snapshotRotation(state, slot, source, orientationX, orientationY, orientationZ, hasDirection)
+                changed = true
+            }
+            if (cameraChanged) {
                 var flags = data[base + OFF_FLAGS].toInt()
                 flags = (flags and (3 shl CAMERA_SHIFT).inv()) or ((cameraMode and 3) shl CAMERA_SHIFT)
                 data[base + OFF_FLAGS] = flags.toFloat()
                 state.cameraModes[slot] = cameraMode
-                changed = true
             }
             if (light != state.lights[slot]) {
                 var flags = data[base + OFF_FLAGS].toInt()
@@ -382,14 +736,60 @@ class CParticleStore(val capacity: Int) {
                 changed = true
             }
 
-            val uv = resolveUv(source, ages[slot], maxAges[slot])
-            if (data[base + OFF_UV] != uv.u0 || data[base + OFF_UV + 1] != uv.v0 ||
-                data[base + OFF_UV + 2] != uv.u1 || data[base + OFF_UV + 3] != uv.v1
+            if (source.textureRevision != state.textureRevisions[slot] ||
+                textureGeneration != state.textureGenerations[slot]
             ) {
-                data[base + OFF_UV] = uv.u0
-                data[base + OFF_UV + 1] = uv.v0
-                data[base + OFF_UV + 2] = uv.u1
-                data[base + OFF_UV + 3] = uv.v1
+                val resolved = resolveTexture(source)
+                if (resolved.bindingKey != expectedBindingKey) {
+                    onBindingMismatch(slot, resolved.bindingKey)
+                    kill(slot)
+                    state.dirtySlots[dirtyCount++] = slot
+                    continue
+                }
+                data[base + OFF_ANIMATION] = (resolved.animationId ?: resolved.descriptorId).toFloat()
+                state.textureRevisions[slot] = source.textureRevision
+                state.textureGenerations[slot] = textureGeneration
+                state.bindingKeys[slot] = resolved.bindingKey
+                state.colorMultipliers[colorBase] = resolved.colorMultiplier.x
+                state.colorMultipliers[colorBase + 1] = resolved.colorMultiplier.y
+                state.colorMultipliers[colorBase + 2] = resolved.colorMultiplier.z
+                data[base + OFF_COLOR] = source.color.x * resolved.colorMultiplier.x
+                data[base + OFF_COLOR + 1] = source.color.y * resolved.colorMultiplier.y
+                data[base + OFF_COLOR + 2] = source.color.z * resolved.colorMultiplier.z
+                val randomQuarterUv =
+                    (source.effectiveTextureSource() as? CParticleTextureSource.Block)?.randomCrop == true
+                var flags = data[base + OFF_FLAGS].toInt()
+                flags = if (randomQuarterUv) {
+                    flags or FLAG_RANDOM_QUARTER_UV
+                } else {
+                    flags and FLAG_RANDOM_QUARTER_UV.inv()
+                }
+                data[base + OFF_FLAGS] = flags.toFloat()
+                state.randomCropModes[slot] = randomQuarterUv
+                changed = true
+            }
+
+            if (source.randomAgePreTick != state.randomModes[slot]) {
+                var flags = data[base + OFF_FLAGS].toInt()
+                flags = if (source.randomAgePreTick) flags or FLAG_RANDOM_AGE else flags and FLAG_RANDOM_AGE.inv()
+                data[base + OFF_FLAGS] = flags.toFloat()
+                state.randomModes[slot] = source.randomAgePreTick
+                changed = true
+            }
+            if (source.appearanceRevision != state.appearanceRevisions[slot]) {
+                data[base + OFF_APPEARANCE] = source.appearanceDescriptorId().toFloat()
+                state.appearanceRevisions[slot] = source.appearanceRevision
+                changed = true
+            }
+            val explicitSeed = source.randomSeed
+            val explicitSeedChanged = (explicitSeed != null) != state.explicitSeedModes[slot] ||
+                    (explicitSeed != null && explicitSeed != state.explicitSeeds[slot])
+            if (explicitSeedChanged) {
+                val seed = explicitSeed ?: CParticleGpuMath.nextAutomaticSeed()
+                data[base + OFF_ANIMATION + 2] = CParticleGpuMath.seedLow(seed).toFloat()
+                data[base + OFF_ANIMATION + 3] = CParticleGpuMath.seedHigh(seed).toFloat()
+                state.explicitSeedModes[slot] = explicitSeed != null
+                state.explicitSeeds[slot] = explicitSeed ?: 0
                 changed = true
             }
 
@@ -403,29 +803,153 @@ class CParticleStore(val capacity: Int) {
         dataOffset: Int,
         snapshotOffset: Int,
         value: Float,
+        multiplier: Float = 1f,
     ): Boolean {
         if (value == state.snapshots[snapshotOffset]) return false
-        data[dataOffset] = value
+        data[dataOffset] = value * multiplier
         state.snapshots[snapshotOffset] = value
         return true
     }
 
-    private fun snapshotDynamicSource(state: DynamicState, slot: Int, source: CParticle) {
+    private fun snapshotDynamicSource(
+        state: DynamicState,
+        slot: Int,
+        source: CParticle,
+        colorMultiplier: Vector3f,
+        randomQuarterUv: Boolean,
+        textureBindingKey: CParticleTextureBindingKey,
+        textureGeneration: Int,
+    ) {
         val snapshot = slot * SNAPSHOT_STRIDE
         state.snapshots[snapshot + SNAP_SIZE_W] = source.weightSize
         state.snapshots[snapshot + SNAP_SIZE_H] = source.heightSize
-        state.snapshots[snapshot + SNAP_YAW] = source.yaw
-        state.snapshots[snapshot + SNAP_PITCH] = source.pitch
-        state.snapshots[snapshot + SNAP_AXIS_X] = source.axis.x.toFloat()
-        state.snapshots[snapshot + SNAP_AXIS_Y] = source.axis.y.toFloat()
-        state.snapshots[snapshot + SNAP_AXIS_Z] = source.axis.z.toFloat()
-        state.snapshots[snapshot + SNAP_ROLL] = source.roll
+        val hasDirection = source.cameraOption == ParticleCameraOption.ROTATION && source.rotationDirection != null
+        val orientation = source.rotationDirection.takeIf { hasDirection }
+        snapshotRotation(
+            state,
+            slot,
+            source,
+            orientation?.x ?: source.axis.x.toFloat(),
+            orientation?.y ?: source.axis.y.toFloat(),
+            orientation?.z ?: source.axis.z.toFloat(),
+            hasDirection,
+        )
         state.snapshots[snapshot + SNAP_COLOR_R] = source.color.x
         state.snapshots[snapshot + SNAP_COLOR_G] = source.color.y
         state.snapshots[snapshot + SNAP_COLOR_B] = source.color.z
         state.snapshots[snapshot + SNAP_ALPHA] = source.alpha
+        state.snapshots[snapshot + SNAP_SPEED_LIMIT] = source.speedLimit ?: SYSTEM_SPEED_LIMIT_SENTINEL
         state.cameraModes[slot] = source.cameraOption.ordinal
         state.lights[slot] = source.light
+        state.textureRevisions[slot] = source.textureRevision
+        state.textureGenerations[slot] = textureGeneration
+        state.bindingKeys[slot] = textureBindingKey
+        val colorBase = slot * 3
+        state.colorMultipliers[colorBase] = colorMultiplier.x
+        state.colorMultipliers[colorBase + 1] = colorMultiplier.y
+        state.colorMultipliers[colorBase + 2] = colorMultiplier.z
+        state.randomCropModes[slot] = randomQuarterUv
+        state.randomModes[slot] = source.randomAgePreTick
+        state.appearanceRevisions[slot] = source.appearanceRevision
+        state.explicitSeedModes[slot] = source.randomSeed != null
+        state.explicitSeeds[slot] = source.randomSeed ?: 0
+    }
+
+    private fun snapshotRotation(
+        state: DynamicState,
+        slot: Int,
+        source: CParticle,
+        orientationX: Float,
+        orientationY: Float,
+        orientationZ: Float,
+        hasDirection: Boolean,
+    ) {
+        val snapshot = slot * SNAPSHOT_STRIDE
+        state.snapshots[snapshot + SNAP_YAW] = source.yaw
+        state.snapshots[snapshot + SNAP_PITCH] = source.pitch
+        state.snapshots[snapshot + SNAP_AXIS_X] = orientationX
+        state.snapshots[snapshot + SNAP_AXIS_Y] = orientationY
+        state.snapshots[snapshot + SNAP_AXIS_Z] = orientationZ
+        state.snapshots[snapshot + SNAP_ROLL] = source.roll
+        state.snapshots[snapshot + SNAP_ANGULAR_PITCH] = source.angularVelocity.x
+        state.snapshots[snapshot + SNAP_ANGULAR_YAW] = source.angularVelocity.y
+        state.snapshots[snapshot + SNAP_ANGULAR_ROLL] = source.angularVelocity.z
+        state.directionModes[slot] = hasDirection
+    }
+
+    private fun writeDynamicRotation(
+        state: DynamicState,
+        slot: Int,
+        source: CParticle,
+        tick: Int,
+        previousCameraMode: Int,
+        cameraMode: Int,
+        hasDirection: Boolean,
+    ) {
+        val base = slot * STRIDE
+        val snapshot = slot * SNAPSHOT_STRIDE
+        val current = currentRotation(slot, tick)
+        val oldFlags = data[base + OFF_FLAGS].toInt()
+        val oldHasDirection = previousCameraMode == ParticleCameraOption.ROTATION.ordinal &&
+                oldFlags and FLAG_ROTATION_DIRECTION != 0
+        val oldDirection = if (oldHasDirection) {
+            Vector3f(data[base + OFF_AXIS], data[base + OFF_AXIS + 1], data[base + OFF_AXIS + 2])
+        } else {
+            null
+        }
+        val oldPointed = CParticleGpuMath.directionAngles(oldDirection)
+        val definitionChanged = previousCameraMode != cameraMode || state.directionModes[slot] != hasDirection
+        val yawChanged = source.yaw != state.snapshots[snapshot + SNAP_YAW]
+        val pitchChanged = source.pitch != state.snapshots[snapshot + SNAP_PITCH]
+        val orientation = source.rotationDirection.takeIf { hasDirection }
+        val sourceOrientationX = orientation?.x ?: source.axis.x.toFloat()
+        val sourceOrientationY = orientation?.y ?: source.axis.y.toFloat()
+        val sourceOrientationZ = orientation?.z ?: source.axis.z.toFloat()
+        val nextOrientationX = if (definitionChanged ||
+            sourceOrientationX != state.snapshots[snapshot + SNAP_AXIS_X]
+        ) sourceOrientationX else data[base + OFF_AXIS]
+        val nextOrientationY = if (definitionChanged ||
+            sourceOrientationY != state.snapshots[snapshot + SNAP_AXIS_Y]
+        ) sourceOrientationY else data[base + OFF_AXIS + 1]
+        val nextOrientationZ = if (definitionChanged ||
+            sourceOrientationZ != state.snapshots[snapshot + SNAP_AXIS_Z]
+        ) sourceOrientationZ else data[base + OFF_AXIS + 2]
+        val preserveEulerPhase = previousCameraMode == ParticleCameraOption.ROTATION.ordinal
+        val pitchPhase = if (preserveEulerPhase) {
+            current.x - if (oldHasDirection) oldPointed.x else state.snapshots[snapshot + SNAP_PITCH]
+        } else {
+            0f
+        }
+        val yawPhase = if (preserveEulerPhase) {
+            current.y - if (oldHasDirection) oldPointed.y else state.snapshots[snapshot + SNAP_YAW]
+        } else {
+            0f
+        }
+        val rollPhase = current.z - state.snapshots[snapshot + SNAP_ROLL]
+        data[base + OFF_SIZE + 2] = when {
+            cameraMode != ParticleCameraOption.ROTATION.ordinal ->
+                if (definitionChanged || yawChanged) source.yaw else data[base + OFF_SIZE + 2]
+            hasDirection -> yawPhase
+            else -> source.yaw + yawPhase
+        }
+        data[base + OFF_SIZE + 3] = when {
+            cameraMode != ParticleCameraOption.ROTATION.ordinal ->
+                if (definitionChanged || pitchChanged) source.pitch else data[base + OFF_SIZE + 3]
+            hasDirection -> pitchPhase
+            else -> source.pitch + pitchPhase
+        }
+        data[base + OFF_AXIS] = nextOrientationX
+        data[base + OFF_AXIS + 1] = nextOrientationY
+        data[base + OFF_AXIS + 2] = nextOrientationZ
+        data[base + OFF_ROLL] = source.roll + rollPhase
+        data[base + OFF_ANGULAR_VELOCITY] = source.angularVelocity.x
+        data[base + OFF_ANGULAR_VELOCITY + 1] = source.angularVelocity.y
+        data[base + OFF_ANGULAR_VELOCITY + 2] = source.angularVelocity.z
+        data[base + OFF_ANIMATION + 1] = ages[slot].toFloat()
+        data[base + OFF_EPOCH_TICK] = tick.toFloat()
+        var flags = data[base + OFF_FLAGS].toInt()
+        flags = if (hasDirection) flags or FLAG_ROTATION_DIRECTION else flags and FLAG_ROTATION_DIRECTION.inv()
+        data[base + OFF_FLAGS] = flags.toFloat()
     }
 
     private fun releaseDynamicSource(slot: Int) {
@@ -450,6 +974,16 @@ class CParticleStore(val capacity: Int) {
         val snapshots = FloatArray(capacity * SNAPSHOT_STRIDE)
         val cameraModes = IntArray(capacity)
         val lights = IntArray(capacity)
+        val directionModes = BooleanArray(capacity)
+        val textureRevisions = IntArray(capacity)
+        val textureGenerations = IntArray(capacity)
+        val bindingKeys = arrayOfNulls<CParticleTextureBindingKey>(capacity)
+        val colorMultipliers = FloatArray(capacity * 3)
+        val randomCropModes = BooleanArray(capacity)
+        val randomModes = BooleanArray(capacity)
+        val appearanceRevisions = IntArray(capacity)
+        val explicitSeedModes = BooleanArray(capacity)
+        val explicitSeeds = IntArray(capacity)
         val dirtySlots = IntArray(capacity)
         var sourceCount = 0
     }
@@ -459,4 +993,5 @@ class CParticleStore(val capacity: Int) {
         val queuedBits = LongArray((capacity + 63) ushr 6)
         var count = 0
     }
+
 }

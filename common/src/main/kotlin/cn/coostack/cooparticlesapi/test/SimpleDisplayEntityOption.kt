@@ -28,7 +28,7 @@ class SimpleDisplayEntityOption(val testDisplayEntity: DisplayEntity, var testin
     }
 
     override fun optionID(): String {
-        return "displayer: ${testDisplayEntity.controlUUID()} : ${testDisplayEntity::class.java.name}"
+        return "displayer:  ${testDisplayEntity::class.java.name}"
     }
 
     override fun doTick() {

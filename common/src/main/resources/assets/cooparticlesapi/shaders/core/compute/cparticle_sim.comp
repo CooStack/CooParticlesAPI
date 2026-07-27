@@ -12,8 +12,10 @@ struct Particle {
     vec4 velFlags;   // vel.xyz, flags(bit-cast)
     vec4 sizeRot;
     vec4 axisRoll;
-    vec4 uv;
+    vec4 animation;
     vec4 color;
+    vec4 angularEpoch;
+    vec4 appearance;
 };
 
 layout(std430, binding = 0) buffer ParticleBuffer {
@@ -204,10 +206,12 @@ void main() {
         }
     }
 
-    // 限速 (对应 speedLimit clamp)
+    // 每粒子限速优先；负数哨兵沿用 system 限速
+    float particleSpeedLimit = particles[i].appearance.y;
+    float effectiveSpeedLimit = particleSpeedLimit >= 0.0 ? particleSpeedLimit : uSpeedLimit;
     float sp = length(vel);
-    if (sp > uSpeedLimit && sp > 1e-6) {
-        vel *= uSpeedLimit / sp;
+    if (sp > effectiveSpeedLimit && sp > 1e-6) {
+        vel *= effectiveSpeedLimit / sp;
     }
 
     pos += vel;

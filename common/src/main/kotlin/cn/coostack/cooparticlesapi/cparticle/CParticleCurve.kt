@@ -1,6 +1,8 @@
 package cn.coostack.cooparticlesapi.cparticle
 
 import cn.coostack.cooparticlesapi.network.particle.emitters.command.curve.FloatCurve
+import net.minecraft.network.FriendlyByteBuf
+import net.minecraft.network.codec.StreamCodec
 
 /**
  * 生命周期标量曲线 (GPU 求值).
@@ -32,15 +34,45 @@ class CParticleCurve private constructor(
     companion object {
         const val MAX_KEYS = 8
 
+        /**
+         * 生命周期标量曲线的网络 codec。
+         *
+         * Example: `@CodecField var alphaCurve = CParticleCurve.fadeInOut()`。
+         * Forbidden: 解码端不会接受空曲线或超过 [MAX_KEYS] 的关键帧。
+         */
+        @JvmField
+        val STREAM_CODEC: StreamCodec<FriendlyByteBuf, CParticleCurve> = StreamCodec.of(
+            { buf, curve ->
+                buf.writeByte(curve.keyCount)
+                for (i in 0 until curve.keyCount) {
+                    buf.writeFloat(curve.packed[i])
+                    buf.writeFloat(curve.packed[MAX_KEYS + i])
+                }
+            },
+            { buf ->
+                val count = buf.readUnsignedByte().toInt()
+                require(count in 1..MAX_KEYS) { "curve key count must be in 1..$MAX_KEYS: $count" }
+                of(*Array(count) { buf.readFloat() to buf.readFloat() })
+            },
+        )
+
         /** 关键帧: (time 0..1, value) 需按 time 升序 */
         @JvmStatic
         fun of(vararg keys: Pair<Float, Float>): CParticleCurve {
             require(keys.isNotEmpty()) { "curve requires at least 1 key" }
             val count = keys.size.coerceAtMost(MAX_KEYS)
             val packed = FloatArray(MAX_KEYS * 2)
+            var previousTime = Float.NEGATIVE_INFINITY
             for (i in 0 until count) {
-                packed[i] = keys[i].first
-                packed[MAX_KEYS + i] = keys[i].second
+                val (time, value) = keys[i]
+                require(time.isFinite() && time in 0f..1f) {
+                    "curve time must be finite and in 0..1"
+                }
+                require(time >= previousTime) { "curve keys must be sorted by time" }
+                require(value.isFinite()) { "curve value must be finite" }
+                packed[i] = time
+                packed[MAX_KEYS + i] = value
+                previousTime = time
             }
             return CParticleCurve(packed, count)
         }

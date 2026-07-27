@@ -7,6 +7,9 @@ import cn.coostack.cooparticlesapi.cparticle.CParticleRenderLayer
 import cn.coostack.cooparticlesapi.cparticle.CParticleSystem
 import cn.coostack.cooparticlesapi.cparticle.CParticleSystemManager
 import cn.coostack.cooparticlesapi.cparticle.CParticleSystemMode
+import cn.coostack.cooparticlesapi.cparticle.CParticleTextureBindingKey
+import cn.coostack.cooparticlesapi.cparticle.CParticleTextureResolver
+import cn.coostack.cooparticlesapi.cparticle.CParticleTextureSource
 import cn.coostack.cooparticlesapi.cparticle.CParticleUpdateMode
 import cn.coostack.cooparticlesapi.network.particle.composition.CompositionData
 import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
@@ -58,15 +61,28 @@ class CParticleDisplayer(
     ) {
         if (system != null) return
         val name = "$ownerName/${layer.name.lowercase()}"
-        val existing = CParticleSystemManager.getSystem(name)
+        val bindingKey = resolveTextureBindingKey(origin)
+        if (bindingKey == CParticleTextureBindingKey.MISSING) return
+        val existing = CParticleSystemManager.getSystem(
+            name,
+            CParticleSystemMode.SCRIPTED,
+            layer,
+            bindingKey,
+        )
         if (existing != null && existing.capacity < capacity) {
-            CParticleSystemManager.removeSystem(name)
+            CParticleSystemManager.removeSystem(
+                name,
+                CParticleSystemMode.SCRIPTED,
+                layer,
+                bindingKey,
+            )
         }
         val target = CParticleSystemManager.getOrCreateSystem(
             name,
             capacity.coerceAtLeast(1),
             layer,
             CParticleSystemMode.SCRIPTED,
+            bindingKey,
             autoReleaseWhenEmpty = true,
         )
         if (!bindSystemIfAbsent(target)) return
@@ -78,26 +94,45 @@ class CParticleDisplayer(
         init(template)
     }
 
+    /** 返回模板在指定生成位置使用的主纹理绑定。 */
+    internal fun resolveTextureBindingKey(position: Vec3): CParticleTextureBindingKey {
+        return CParticleTextureResolver.resolve(template.effectiveTextureSource(), position).bindingKey
+    }
+
+    /**
+     * 在共享或已绑定的 CParticle system 中显示一个粒子。
+     *
+     * Example: composition 调用 `display(loc, world)` 后持有返回的控制句柄。
+     * Forbidden: 达到全局上限后不能继续创建分段 system。
+     *
+     * @param loc 粒子的世界坐标
+     * @param world 当前客户端世界
+     * @return 控制句柄；GPU 不可用、纹理无效或达到上限时返回 `null`
+     */
     override fun display(loc: Vec3, world: ClientLevel): Controlable<*>? {
         if (!CParticleSystemManager.enabled) return null
         CParticleCapabilities.detect()
         if (CParticleCapabilities.detectionComplete && !CParticleCapabilities.instancingSupported) return null
         val p = template.clone()
         p.pos = loc
-        var target = system ?: sharedScriptedSystem(layer)
-        var slot = target.spawn(p)
+        val source = p.effectiveTextureSource()
+        val resolved = CParticleTextureResolver.resolve(source, loc)
+        if (!resolved.isValid) return null
+        val randomQuarterUv = (source as? CParticleTextureSource.Block)?.randomCrop == true
+        var target = system ?: sharedScriptedSystem(layer, resolved.bindingKey)
+        var slot = target.spawnResolved(p, resolved, randomQuarterUv)
         if (system == null) {
             var segment = 0
-            while (slot < 0) {
-                target = sharedScriptedSystem(layer, ++segment)
-                slot = target.spawn(p)
+            while (slot < 0 && CParticleSystemManager.hasAvailableParticleCapacity()) {
+                target = sharedScriptedSystem(layer, resolved.bindingKey, ++segment)
+                slot = target.spawnResolved(p, resolved, randomQuarterUv)
             }
         }
         if (slot < 0) return null
         return CParticleControlable(
             target, slot, target.store.generations[slot], uuid,
             world,
-            p.yaw, p.pitch, p.roll
+            p.yaw, p.pitch, p.roll, p.axis
         )
     }
 
@@ -106,13 +141,28 @@ class CParticleDisplayer(
 
         @JvmStatic
         fun sharedScriptedSystem(layer: CParticleRenderLayer): CParticleSystem =
-            sharedScriptedSystem(layer, 0)
+            sharedScriptedSystem(layer, CParticleTextureBindingKey.PARTICLE_ATLAS)
 
-        private fun sharedScriptedSystem(layer: CParticleRenderLayer, segment: Int): CParticleSystem {
+        /** 返回指定纹理绑定的共享 scripted 系统。 */
+        @JvmStatic
+        fun sharedScriptedSystem(
+            layer: CParticleRenderLayer,
+            textureBindingKey: CParticleTextureBindingKey,
+        ): CParticleSystem = sharedScriptedSystem(layer, textureBindingKey, 0)
+
+        private fun sharedScriptedSystem(
+            layer: CParticleRenderLayer,
+            textureBindingKey: CParticleTextureBindingKey,
+            segment: Int,
+        ): CParticleSystem {
             val baseName = "composition/${layer.name.lowercase()}"
             val name = if (segment == 0) baseName else "$baseName/$segment"
             return CParticleSystemManager.getOrCreateSystem(
-                name, SHARED_CAPACITY, layer, CParticleSystemMode.SCRIPTED,
+                name,
+                SHARED_CAPACITY,
+                layer,
+                CParticleSystemMode.SCRIPTED,
+                textureBindingKey,
                 autoReleaseWhenEmpty = true,
             ).also {
                 // 共享池会承载世界各处的 composition, 不能按 origin 距离整池剔除
@@ -156,24 +206,5 @@ class CParticleDisplayer(
                 maxAge = Int.MAX_VALUE
             }.apply(builder)
         }
-    }
-}
-
-/**
- * composition 快捷工具: 一行生成 GPU 粒子槽位数据
- */
-object CParticleCompositions {
-    /**
-     * 生成 displayer 已接好 GPU 粒子的 [CompositionData]:
-     * `getParticles()` 里直接 `CParticleCompositions.data { size = 0.2f } to RelativeLocation(...)`
-     */
-    @JvmStatic
-    fun data(
-        layer: CParticleRenderLayer = CParticleRenderLayer.ADDITION_BLEND_TRANSLUCENT,
-        builder: CParticle.() -> Unit = {},
-    ): CompositionData {
-        return CompositionData()
-            .setDisplayerSupplier { uuid -> ParticleDisplayer.withCParticle(uuid, layer) }
-            .addCParticleInstanceInit(builder)
     }
 }

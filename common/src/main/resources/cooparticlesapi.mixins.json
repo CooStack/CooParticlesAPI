@@ -16,6 +16,7 @@
     "CooParticleCameraMixin",
     "LevelRendererMixin",
     "MainTargetMixin",
+    "MutableSpriteSetAccessor",
     "ParticleEngineAccessor",
     "ParticleEngineDebugMixin",
     "ParticleEngineMixin",

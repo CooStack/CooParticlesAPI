@@ -1,10 +1,12 @@
 package cn.coostack.cooparticlesapi.cparticle
 
+import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.cparticle.force.CParticleForce
 import cn.coostack.cooparticlesapi.cparticle.render.CParticleGlBuffer
 import cn.coostack.cooparticlesapi.cparticle.simulate.CParticleCpuSimulator
 import cn.coostack.cooparticlesapi.cparticle.simulate.CParticleGpuSimulator
 import cn.coostack.cooparticlesapi.cparticle.storage.CParticleStore
+import cn.coostack.cooparticlesapi.particles.ParticleCameraOption
 import net.minecraft.client.Minecraft
 import net.minecraft.client.renderer.LevelRenderer
 import net.minecraft.core.BlockPos
@@ -32,8 +34,21 @@ class CParticleSystem(
     val capacity: Int,
     val layer: CParticleRenderLayer,
     val mode: CParticleSystemMode,
+    /**
+     * 本系统所有实例共用的主纹理绑定。
+     *
+     * Example: 同一方块图集系统可混合多种 BlockState。
+     * Forbidden: 粒子生成后不能把槽位改到另一 binding。
+     */
+    val textureBindingKey: CParticleTextureBindingKey = CParticleTextureBindingKey.PARTICLE_ATLAS,
 ) {
-    val store = CParticleStore(capacity)
+    /**
+     * 该 system 的 CPU 槽位存储，所有存活槽位计入全局 GPU 粒子上限。
+     *
+     * Example: `store.spawn(...)` 仍会申请全局额度。
+     * Forbidden: 不能用公开 store 入口绕过 [CParticleSystemManager.particleCountLimit]。
+     */
+    val store = CParticleStore.globallyCounted(capacity)
     val glBuffer = CParticleGlBuffer(capacity)
 
     /**
@@ -46,7 +61,7 @@ class CParticleSystem(
     /** 力场列表 (SIMULATED 模式生效) */
     val forces = ArrayList<CParticleForce>()
 
-    /** emitter 桥接: 上次力场同步的 emitter tick (避免同 tick 重复重建) */
+    /** emitter 桥接: 上次同步力场和视觉配置的 emitter tick (避免同 tick 重复重建) */
     var forcesSyncTick = Int.MIN_VALUE
 
     /** 速度上限 (对应 ControlableParticleData.speedLimit) */
@@ -58,7 +73,10 @@ class CParticleSystem(
     /** 尺寸生命周期曲线 (null = 恒定) */
     var sizeCurve: CParticleCurve? = null
 
-    /** 大于 0 时，alpha/size 曲线按系统 tick 循环，不再使用粒子生命周期进度。 */
+    /** 颜色生命周期倍率曲线 (null = 保持实例颜色) */
+    var colorCurve: CParticleColorCurve? = null
+
+    /** 大于 0 时，alpha/size/color 曲线按系统 tick 循环，不再使用粒子生命周期进度。 */
     var curveCycleTicks = 0f
 
     /** 大于 0 时，颜色在指定 tick 周期内完成一次色相循环。 */
@@ -94,6 +112,7 @@ class CParticleSystem(
     private var settleTicks = 0
 
     private val packedForces = FloatArray(CParticleGpuSimulator.PACKED_SIZE)
+    private val warnedBindingMismatches = HashSet<CParticleTextureBindingKey>()
 
     internal var lastDynamicPrepareFrame = Long.MIN_VALUE
         private set
@@ -105,14 +124,80 @@ class CParticleSystem(
 
     /**
      * 生成一个粒子 (客户端渲染线程).
-     * @param uvOverride 指定 UV (为 null 时按 [CParticle.sprite] 解析)
+     * @param uvOverride 指定固定 UV；为 null 时注册 sprite/effect 动画描述符
      * @return 槽位, -1 = 池满
      */
     fun spawn(p: CParticle, uvOverride: CParticleSprites.UvRect? = null): Int {
-        if (released) return -1
+        if (uvOverride != null) {
+            val uv = uvOverride.toUv()
+            val descriptorId = CParticleTextureDescriptors.register(
+                textureBindingKey to uv,
+                textureBindingKey,
+            ) {
+                listOf(uv)
+            }
+            return spawnResolved(
+                p,
+                CParticleResolvedTexture(
+                    textureBindingKey,
+                    descriptorId,
+                    uv,
+                    null,
+                    Vector3f(1f),
+                ),
+                randomQuarterUv = false,
+            )
+        }
+        val source = p.effectiveTextureSource()
+        val resolved = CParticleTextureResolver.resolve(source, p.pos)
+        return spawnResolved(
+            p,
+            resolved,
+            randomQuarterUv = (source as? CParticleTextureSource.Block)?.randomCrop == true,
+        )
+    }
+
+    /** 使用已注册的动画描述符生成；供外部纹理适配层使用。 */
+    fun spawn(p: CParticle, animationId: Int): Int {
+        val validatedId = CParticleTextureDescriptors.requireBinding(animationId, textureBindingKey)
+        return spawnResolved(
+            p,
+            CParticleResolvedTexture(
+                textureBindingKey,
+                validatedId,
+                CParticleTextureDescriptors.firstFrame(validatedId),
+                validatedId,
+                Vector3f(1f),
+            ),
+            randomQuarterUv = false,
+        )
+    }
+
+    /**
+     * 使用已解析纹理生成粒子，供 manager 避免二次模型解析。
+     *
+     * Example: 默认批次先按 [CParticleResolvedTexture.bindingKey] 选系统，再调用本方法。
+     * Forbidden: [resolved] 的 binding 必须和 [textureBindingKey] 相同。
+     *
+     * @param p 粒子生成描述
+     * @param resolved 客户端统一纹理解析结果
+     * @param randomQuarterUv 是否启用实例 seed 的 1/4 裁剪
+     * @return 槽位；达到全局上限、其他失败或 binding 不匹配时返回 `-1`
+     */
+    internal fun spawnResolved(
+        p: CParticle,
+        resolved: CParticleResolvedTexture,
+        randomQuarterUv: Boolean,
+    ): Int {
+        if (released || !resolved.isValid) return -1
+        if (resolved.bindingKey != textureBindingKey) {
+            warnBindingMismatch(resolved.bindingKey)
+            return -1
+        }
+        if (!CParticleSystemManager.hasAvailableParticleCapacity()) return -1
         if (store.aliveCount == 0) snapGroupTransform()
         rebaseIfNeeded(p.pos)
-        val uv = uvOverride ?: CParticleSprites.resolve(p, p.age, p.maxAge)
+        val randomSeed = p.randomSeed ?: CParticleGpuMath.nextAutomaticSeed()
         var block = p.light
         var sky = p.light
         if (p.light < 0) {
@@ -126,7 +211,29 @@ class CParticleSystem(
                 block = 15; sky = 15
             }
         }
-        return store.spawn(p, origin, uv, block, sky)
+        return store.spawn(
+            p,
+            origin,
+            resolved.animationId ?: resolved.descriptorId,
+            block,
+            sky,
+            tickCount,
+            randomSeed,
+            resolved.colorMultiplier,
+            randomQuarterUv,
+            textureBindingKey,
+            CParticleTextureResolver.generation,
+        )
+    }
+
+    private fun warnBindingMismatch(actual: CParticleTextureBindingKey) {
+        if (!warnedBindingMismatches.add(actual)) return
+        CooParticlesConstants.logger.warn(
+            "CParticle system '{}' is bound to {}, rejected texture binding {}",
+            name,
+            textureBindingKey,
+            actual,
+        )
     }
 
     private fun rebaseIfNeeded(pos: Vec3) {
@@ -345,14 +452,12 @@ class CParticleSystem(
         val base = slot * CParticleStore.STRIDE + CParticleStore.OFF_COLOR
         store.data[base] = r; store.data[base + 1] = g; store.data[base + 2] = b
         store.markDirty(slot)
-        settleTicks = 2
     }
 
     fun scriptedSetAlpha(slot: Int, generation: Int, alpha: Float) {
         if (!checkHandle(slot, generation)) return
         store.data[slot * CParticleStore.STRIDE + CParticleStore.OFF_COLOR + 3] = alpha.coerceIn(0f, 1f)
         store.markDirty(slot)
-        settleTicks = 2
     }
 
     fun scriptedSetSize(slot: Int, generation: Int, w: Float, h: Float) {
@@ -360,23 +465,46 @@ class CParticleSystem(
         val base = slot * CParticleStore.STRIDE + CParticleStore.OFF_SIZE
         store.data[base] = w; store.data[base + 1] = h
         store.markDirty(slot)
-        settleTicks = 2
     }
 
     fun scriptedSetAge(slot: Int, generation: Int, age: Int) {
         if (!checkHandle(slot, generation)) return
-        store.setAge(slot, age)
-        settleTicks = 2
+        store.setAge(slot, age, tickCount)
     }
 
     fun scriptedSetRotation(slot: Int, generation: Int, yaw: Float, pitch: Float, roll: Float) {
         if (!checkHandle(slot, generation)) return
-        val base = slot * CParticleStore.STRIDE
-        store.data[base + CParticleStore.OFF_SIZE + 2] = yaw
-        store.data[base + CParticleStore.OFF_SIZE + 3] = pitch
-        store.data[base + CParticleStore.OFF_ROLL] = roll
-        store.markDirty(slot)
-        settleTicks = 2
+        store.setBaseRotation(slot, pitch, yaw, roll, tickCount)
+    }
+
+    fun scriptedSetRotationDirection(slot: Int, generation: Int, direction: Vector3f?) {
+        if (!checkHandle(slot, generation)) return
+        store.setRotationDirection(slot, direction, tickCount)
+    }
+
+    fun scriptedSetAngularVelocity(slot: Int, generation: Int, velocity: Vector3f) {
+        if (!checkHandle(slot, generation)) return
+        store.setAngularVelocity(slot, velocity, tickCount)
+    }
+
+    fun scriptedAddRoll(slot: Int, generation: Int, radians: Float) {
+        if (!checkHandle(slot, generation)) return
+        store.addRoll(slot, radians, tickCount)
+    }
+
+    fun scriptedGetRotation(slot: Int, generation: Int): Vector3f? {
+        if (!checkHandle(slot, generation)) return null
+        return store.currentRotation(slot, tickCount)
+    }
+
+    fun scriptedGetRotationDirection(slot: Int, generation: Int): Vector3f? {
+        if (!checkHandle(slot, generation)) return null
+        return store.rotationDirection(slot)
+    }
+
+    fun scriptedGetAngularVelocity(slot: Int, generation: Int): Vector3f? {
+        if (!checkHandle(slot, generation)) return null
+        return store.angularVelocity(slot)
     }
 
     fun scriptedSetVelocity(slot: Int, generation: Int, velocity: Vec3) {
@@ -440,6 +568,65 @@ class CParticleSystem(
     fun scriptedGetAge(slot: Int, generation: Int): Int? {
         if (!checkHandle(slot, generation)) return null
         return store.getAge(slot)
+    }
+
+    /**
+     * 读取 scripted 槽位的状态副本。句柄失效或系统不是 scripted 模式时返回 null。
+     */
+    internal fun snapshot(slot: Int, generation: Int): CParticle? {
+        if (mode != CParticleSystemMode.SCRIPTED || !checkHandle(slot, generation)) return null
+        val pos = scriptedGetPos(slot, generation) ?: return null
+        val velocity = scriptedGetVelocity(slot, generation) ?: return null
+        val base = slot * CParticleStore.STRIDE
+        val data = store.data
+        val flags = data[base + CParticleStore.OFF_FLAGS].toInt()
+        val cameraMode = (flags ushr CParticleStore.CAMERA_SHIFT) and 3
+        val blockLight = (flags ushr CParticleStore.BLOCK_LIGHT_SHIFT) and 15
+        val skyLight = (flags ushr CParticleStore.SKY_LIGHT_SHIFT) and 15
+
+        return CParticle().apply {
+            updateMode = CParticleUpdateMode.STATIC
+            this.pos = pos
+            this.velocity = velocity
+            uniformSize = false
+            weightSize = data[base + CParticleStore.OFF_SIZE]
+            heightSize = data[base + CParticleStore.OFF_SIZE + 1]
+            uniformSize = weightSize == heightSize
+            color = Vector3f(
+                data[base + CParticleStore.OFF_COLOR],
+                data[base + CParticleStore.OFF_COLOR + 1],
+                data[base + CParticleStore.OFF_COLOR + 2],
+            )
+            alpha = data[base + CParticleStore.OFF_COLOR + 3]
+            age = store.ages[slot]
+            maxAge = store.maxAges[slot]
+            light = if (blockLight == skyLight) blockLight else -1
+            cameraOption = ParticleCameraOption.entries.getOrElse(cameraMode) {
+                ParticleCameraOption.BILLBOARD
+            }
+            val direction = store.rotationDirection(slot)
+            if (direction == null) {
+                axis = Vec3(
+                    data[base + CParticleStore.OFF_AXIS].toDouble(),
+                    data[base + CParticleStore.OFF_AXIS + 1].toDouble(),
+                    data[base + CParticleStore.OFF_AXIS + 2].toDouble(),
+                )
+            }
+            angularVelocity = store.angularVelocity(slot)
+            val rotation = store.currentRotation(slot, tickCount)
+            pitch = rotation.x
+            yaw = rotation.y
+            roll = rotation.z
+            randomAgePreTick = flags and CParticleStore.FLAG_RANDOM_AGE != 0
+            randomSeed = CParticleGpuMath.joinSeed(
+                data[base + CParticleStore.OFF_ANIMATION + 2].toInt(),
+                data[base + CParticleStore.OFF_ANIMATION + 3].toInt(),
+            )
+            CParticleAppearanceDescriptors.applyTo(
+                this,
+                data[base + CParticleStore.OFF_APPEARANCE].toInt(),
+            )
+        }
     }
 
     private fun inverseGroupTransform(): Matrix4f? {
@@ -534,16 +721,14 @@ class CParticleSystem(
     }
 
     private fun tickScripted() {
-        val hasLifecycleCurves = curveCycleTicks <= 0f && (alphaCurve != null || sizeCurve != null)
         // 未被写入的槽位滚动 prev=cur (静止粒子收敛, 避免重复插值)
         if (settleTicks > 0) {
             rollPrevForUnwritten()
             settleTicks--
             store.markAllAliveDirty()
         }
-        store.tickAges(writeBufferAge = hasLifecycleCurves)
+        store.tickAges(writeBufferAge = false)
         store.publishDynamicAges()
-        if (hasLifecycleCurves) store.markAllAliveDirty()
         uploadDirty()
         store.clearSpawned()
         store.clearKilled()
@@ -580,7 +765,15 @@ class CParticleSystem(
     internal fun prepareDynamicVisuals(frameId: Long) {
         if (released || lastDynamicPrepareFrame == frameId) return
         lastDynamicPrepareFrame = frameId
-        val dirtyCount = store.prepareDynamicVisuals(CParticleSprites::resolve)
+        val dirtyCount = store.prepareDynamicVisuals(
+            tickCount,
+            CParticleTextureResolver.generation,
+            textureBindingKey,
+            resolveTexture = { particle ->
+                CParticleTextureResolver.resolve(particle.effectiveTextureSource(), particle.pos)
+            },
+            onBindingMismatch = { _, actual -> warnBindingMismatch(actual) },
+        )
         if (dirtyCount > 0) {
             glBuffer.patchDynamicVisuals(store.data, store.dynamicDirtySlots, dirtyCount)
         }

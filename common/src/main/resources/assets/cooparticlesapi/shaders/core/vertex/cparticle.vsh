@@ -2,15 +2,17 @@
 
 // ================= cparticle GPU 粒子渲染 - 顶点着色器 =================
 // 无 per-vertex 属性: 四个角由 gl_VertexID 生成 (TRIANGLE_STRIP x4)
-// 7 个 vec4 实例属性 (divisor=1), 布局与 CParticleStore 一致
+// 9 个 vec4 实例属性 (divisor=1), 布局与 CParticleStore 一致
 
 in vec4 iPosAge;     // pos.xyz (系统原点相对), age
 in vec4 iPrevMaxAge; // prevPos.xyz, maxAge
 in vec4 iVelFlags;   // vel.xyz, flags(整数 float)
 in vec4 iSizeRot;    // sizeW, sizeH, yaw, pitch
 in vec4 iAxisRoll;   // axis.xyz, roll
-in vec4 iUv;         // u0 v0 u1 v1
+in vec4 iAnimation;  // animationId, visualAgeBase, seedLow16, seedHigh16
 in vec4 iColor;      // r g b a
+in vec4 iAngularEpoch; // angularVelocity(pitch,yaw,roll), epochTick
+in vec4 iAppearance; // appearanceDescriptorId, speedLimit/systemSentinel, reserved...
 
 uniform mat4 uProj;
 uniform mat4 uView;
@@ -21,12 +23,18 @@ uniform float uPartial;      // tick 插值
 uniform vec3 uCamLeft;       // 相机左向量 (q * X̂, 与原版粒子渲染基一致)
 uniform vec3 uCamUp;         // 相机上向量
 uniform int uFogShape;       // 0=球 1=圆柱
+uniform int uSystemTick;
+uniform samplerBuffer uAnimationLookup;
+uniform samplerBuffer uAppearanceLookup;
 
 // 生命周期曲线: [t0..t7, v0..v7]
 uniform int uAlphaKeys;
 uniform float uAlphaCurve[16];
 uniform int uSizeKeys;
 uniform float uSizeCurve[16];
+uniform int uColorKeys;
+uniform float uColorCurveTimes[8];
+uniform vec3 uColorCurveValues[8];
 uniform float uSystemTime;
 uniform float uCurveCycleTicks;
 uniform float uColorCycleTicks;
@@ -44,7 +52,116 @@ out vec2 vLightUv;
 out float vFogDistance;
 
 const int FLAG_ALIVE = 1;
+const int FLAG_RANDOM_AGE = 1 << 11;
+const int FLAG_ROTATION_DIRECTION = 1 << 12;
+const int FLAG_RANDOM_QUARTER_UV = 1 << 13;
+const float FRAME_PROGRESS_RESOLUTION = 4096.0;
 const float TAU = 6.28318530718;
+const int APPEARANCE_TEXELS = 17;
+
+uint hash32(uint value) {
+    uint x = value;
+    x = (x ^ (x >> 16u)) * 0x7FEB352Du;
+    x = (x ^ (x >> 15u)) * 0x846CA68Bu;
+    return x ^ (x >> 16u);
+}
+
+uint instanceSeed() {
+    return uint(iAnimation.z + 0.5) | (uint(iAnimation.w + 0.5) << 16u);
+}
+
+float hashUnitFloat(uint value) {
+    return float(hash32(value) & 0x00FFFFFFu) / 16777216.0;
+}
+
+vec4 cropRandomQuarterUv(vec4 sourceUv) {
+    uint seed = instanceSeed();
+    float uOffset = hashUnitFloat(seed ^ 0xA511E9B3u) * 3.0;
+    float vOffset = hashUnitFloat(seed ^ 0x63D83595u) * 3.0;
+    vec2 span = sourceUv.zw - sourceUv.xy;
+    return vec4(
+        sourceUv.x + span.x * (uOffset + 1.0) * 0.25,
+        sourceUv.y + span.y * vOffset * 0.25,
+        sourceUv.x + span.x * uOffset * 0.25,
+        sourceUv.y + span.y * (vOffset + 1.0) * 0.25
+    );
+}
+
+vec4 resolveAnimationUv(int flags, float maxAge, float visualAge) {
+    int animationId = max(int(iAnimation.x + 0.5), 0);
+    vec4 metadata = texelFetch(uAnimationLookup, animationId);
+    int frameOffset = max(int(metadata.x + 0.5), 0);
+    int frameCount = max(int(metadata.y + 0.5), 1);
+    int frameIndex;
+    if ((flags & FLAG_RANDOM_AGE) != 0) {
+        uint seed = instanceSeed();
+        uint randomValue = hash32(seed ^ uint(uSystemTick) * 0x9E3779B9u);
+        frameIndex = int(randomValue % uint(frameCount));
+    } else {
+        float frameAge = floor(clamp(visualAge, 0.0, maxAge) * FRAME_PROGRESS_RESOLUTION / maxAge);
+        frameIndex = int(floor(frameAge * float(frameCount - 1) / FRAME_PROGRESS_RESOLUTION));
+    }
+    return texelFetch(uAnimationLookup, frameOffset + frameIndex);
+}
+
+int appearanceBase() {
+    return max(int(iAppearance.x + 0.5), 0) * APPEARANCE_TEXELS;
+}
+
+float sampleParticleAlphaCurve(float t) {
+    int base = appearanceBase();
+    int keyCount = int(texelFetch(uAppearanceLookup, base).x + 0.5);
+    if (keyCount <= 0) return 1.0;
+    vec4 first = texelFetch(uAppearanceLookup, base + 1);
+    if (t <= first.x) return first.y;
+    for (int i = 1; i < 8; i++) {
+        if (i >= keyCount) break;
+        vec4 previous = texelFetch(uAppearanceLookup, base + i);
+        vec4 current = texelFetch(uAppearanceLookup, base + 1 + i);
+        if (t <= current.x) {
+            float f = current.x > previous.x ? (t - previous.x) / (current.x - previous.x) : 0.0;
+            return mix(previous.y, current.y, f);
+        }
+    }
+    return texelFetch(uAppearanceLookup, base + keyCount).y;
+}
+
+float sampleParticleSizeCurve(float t) {
+    int base = appearanceBase();
+    int keyCount = int(texelFetch(uAppearanceLookup, base).y + 0.5);
+    if (keyCount <= 0) return 1.0;
+    vec4 first = texelFetch(uAppearanceLookup, base + 1);
+    if (t <= first.z) return first.w;
+    for (int i = 1; i < 8; i++) {
+        if (i >= keyCount) break;
+        vec4 previous = texelFetch(uAppearanceLookup, base + i);
+        vec4 current = texelFetch(uAppearanceLookup, base + 1 + i);
+        if (t <= current.z) {
+            float f = current.z > previous.z ? (t - previous.z) / (current.z - previous.z) : 0.0;
+            return mix(previous.w, current.w, f);
+        }
+    }
+    return texelFetch(uAppearanceLookup, base + keyCount).w;
+}
+
+vec3 sampleParticleColorCurve(float t) {
+    int base = appearanceBase();
+    int keyCount = int(texelFetch(uAppearanceLookup, base).z + 0.5);
+    if (keyCount <= 0) return vec3(1.0);
+    int colorBase = base + 9;
+    vec4 first = texelFetch(uAppearanceLookup, colorBase);
+    if (t <= first.x) return first.yzw;
+    for (int i = 1; i < 8; i++) {
+        if (i >= keyCount) break;
+        vec4 previous = texelFetch(uAppearanceLookup, colorBase + i - 1);
+        vec4 current = texelFetch(uAppearanceLookup, colorBase + i);
+        if (t <= current.x) {
+            float f = current.x > previous.x ? (t - previous.x) / (current.x - previous.x) : 0.0;
+            return mix(previous.yzw, current.yzw, f);
+        }
+    }
+    return texelFetch(uAppearanceLookup, colorBase + keyCount - 1).yzw;
+}
 
 float sampleAlphaCurve(float t) {
     if (uAlphaKeys <= 0) return 1.0;
@@ -72,6 +189,20 @@ float sampleSizeCurve(float t) {
         }
     }
     return uSizeCurve[8 + uSizeKeys - 1];
+}
+
+vec3 sampleColorCurve(float t) {
+    if (uColorKeys <= 0) return vec3(1.0);
+    if (t <= uColorCurveTimes[0]) return uColorCurveValues[0];
+    for (int i = 1; i < uColorKeys; i++) {
+        if (t <= uColorCurveTimes[i]) {
+            float t0 = uColorCurveTimes[i - 1];
+            float t1 = uColorCurveTimes[i];
+            float f = t1 > t0 ? (t - t0) / (t1 - t0) : 0.0;
+            return mix(uColorCurveValues[i - 1], uColorCurveValues[i], f);
+        }
+    }
+    return uColorCurveValues[uColorKeys - 1];
 }
 
 mat3 rotXYZ(float pitch, float yaw, float roll) {
@@ -109,7 +240,9 @@ void main() {
     }
 
     float maxAge = max(iPrevMaxAge.w, 1.0);
-    float age = clamp(iPosAge.w + uPartial, 0.0, maxAge);
+    float epochElapsed = max(float(uSystemTick) - iAngularEpoch.w, 0.0);
+    float visualAge = iAnimation.y + epochElapsed;
+    float age = clamp(visualAge + uPartial, 0.0, maxAge);
     float lifeT = clamp(age / maxAge, 0.0, 1.0);
     float curveT = uCurveCycleTicks > 0.0
         ? fract(uSystemTime / uCurveCycleTicks)
@@ -123,7 +256,7 @@ void main() {
 
     // 四角: (-1,-1) (1,-1) (-1,1) (1,1) — 与原版 ±1 * size 的半径语义一致
     vec2 corner = vec2(float(gl_VertexID & 1), float((gl_VertexID >> 1) & 1)) * 2.0 - 1.0;
-    float sizeScale = sampleSizeCurve(curveT);
+    float sizeScale = sampleParticleSizeCurve(lifeT) * sampleSizeCurve(curveT);
     if (applyTransition) {
         sizeScale *= uTransitionParams.y;
     }
@@ -131,7 +264,8 @@ void main() {
     vec2 local = corner * size;
 
     int mode = (flags >> 1) & 3;
-    float roll = iAxisRoll.w;
+    float rotationElapsed = epochElapsed + uPartial;
+    float roll = iAxisRoll.w + iAngularEpoch.z * rotationElapsed;
     vec3 offset;
     if (mode == 0) {
         // BILLBOARD: 相机平面 + 平面内 roll (基向量与原版 q*X̂/q*Ŷ 一致)
@@ -154,7 +288,19 @@ void main() {
         offset = right * local.x + axis * local.y;
     } else {
         // ROTATION: 自由欧拉角 (对齐 Quaternionf.rotateXYZ(pitch, yaw, roll))
-        offset = rotXYZ(iSizeRot.w, iSizeRot.z, roll) * vec3(local, 0.0);
+        float pitch = iSizeRot.w;
+        float yaw = iSizeRot.z;
+        if ((flags & FLAG_ROTATION_DIRECTION) != 0) {
+            vec3 direction = iAxisRoll.xyz;
+            float horizontalLength = length(direction.xz);
+            if (horizontalLength > 0.0 || abs(direction.y) > 0.0) {
+                pitch += atan(direction.y, horizontalLength);
+                yaw += -atan(direction.z, direction.x);
+            }
+        }
+        pitch += iAngularEpoch.x * rotationElapsed;
+        yaw += iAngularEpoch.y * rotationElapsed;
+        offset = rotXYZ(pitch, yaw, roll) * vec3(local, 0.0);
     }
 
     vec3 posRelCam = rel + offset;
@@ -163,7 +309,14 @@ void main() {
     // UV: x=+1 -> u1, y=+1 -> v0 (与 ControlableParticle.addDoubleSidedQuad 完全一致)
     float ut = 0.5 + corner.x * 0.5;
     float vt = 0.5 - corner.y * 0.5;
-    vUv = vec2(mix(iUv.x, iUv.z, ut), mix(iUv.y, iUv.w, vt));
+    vec4 animationUv = resolveAnimationUv(flags, maxAge, visualAge);
+    if ((flags & FLAG_RANDOM_QUARTER_UV) != 0) {
+        animationUv = cropRandomQuarterUv(animationUv);
+    }
+    vUv = vec2(
+        mix(animationUv.x, animationUv.z, ut),
+        mix(animationUv.y, animationUv.w, vt)
+    );
 
     vec3 particleColor = iColor.rgb;
     if (uColorCycleTicks > 0.0) {
@@ -173,10 +326,11 @@ void main() {
         );
         particleColor = 0.5 + 0.5 * cos(TAU * (colorT + vec3(0.0, 0.3333333, 0.6666667)));
     }
+    particleColor *= sampleParticleColorCurve(lifeT) * sampleColorCurve(curveT);
     if (applyTransition && uTransitionParams.w > 0.5) {
         particleColor = mix(uTransitionColorFrom, uTransitionColorTo, uTransitionParams.z);
     }
-    float alphaScale = sampleAlphaCurve(curveT);
+    float alphaScale = sampleParticleAlphaCurve(lifeT) * sampleAlphaCurve(curveT);
     if (applyTransition) {
         alphaScale *= uTransitionParams.x;
     }

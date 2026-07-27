@@ -17,6 +17,11 @@ import cn.coostack.cooparticlesapi.animation.timeline.Vector3fConstSpeedAnimator
 import cn.coostack.cooparticlesapi.animation.timeline.Vector3fConstTimeAnimator
 import cn.coostack.cooparticlesapi.annotations.CodecField
 import cn.coostack.cooparticlesapi.barrages.HitBox
+import cn.coostack.cooparticlesapi.cparticle.CParticleTextureSource
+import cn.coostack.cooparticlesapi.cparticle.CParticleColorCurve
+import cn.coostack.cooparticlesapi.cparticle.CParticleCurve
+import cn.coostack.cooparticlesapi.cparticle.CParticleUpdateMode
+import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableCParticleData
 import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableParticleData
 import cn.coostack.cooparticlesapi.network.particle.emitters.CompositionEmittersData
 import cn.coostack.cooparticlesapi.network.particle.emitters.DisplayEntityEmittersData
@@ -71,6 +76,23 @@ object CodecHelper {
         register(Char::class.java, StreamCodec.of({ buf, i -> buf.writeChar(i.code) }, { it.readChar() }))
         register(UUID::class.java, StreamCodec.of({ buf, i -> buf.writeUUID(i) }, { it.readUUID() }))
         register(ControlableParticleData::class.java, ControlableParticleData.PACKET_CODEC)
+        register(ControlableCParticleData::class.java, ControlableCParticleData.PACKET_CODEC)
+        register(CParticleTextureSource::class.java, CParticleTextureSource.STREAM_CODEC)
+        register(CParticleCurve::class.java, CParticleCurve.STREAM_CODEC)
+        register(CParticleColorCurve::class.java, CParticleColorCurve.STREAM_CODEC)
+        register(
+            CParticleUpdateMode::class.java,
+            StreamCodec.of(
+                { buf, mode -> buf.writeByte(mode.ordinal) },
+                { buf ->
+                    val ordinal = buf.readUnsignedByte().toInt()
+                    require(ordinal < CParticleUpdateMode.entries.size) {
+                        "unknown CParticle update mode: $ordinal"
+                    }
+                    CParticleUpdateMode.entries[ordinal]
+                },
+            ),
+        )
         register(CompositionEmittersData::class.java, CompositionEmittersData.PACKET_CODEC)
         register(DisplayEntityEmittersData::class.java, DisplayEntityEmittersData.PACKET_CODEC)
         register(Vector3f::class.java, StreamCodec.of({ buf, i -> buf.writeVector3f(i) }, { it.readVector3f() }))
