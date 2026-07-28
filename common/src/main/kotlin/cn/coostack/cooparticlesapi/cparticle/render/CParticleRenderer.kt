@@ -1,8 +1,11 @@
 package cn.coostack.cooparticlesapi.cparticle.render
 
+import cn.coostack.cooparticlesapi.CooParticlesAPIClient
+import cn.coostack.cooparticlesapi.compat.IrisCompat
 import cn.coostack.cooparticlesapi.cparticle.CParticleAppearanceDescriptors
 import cn.coostack.cooparticlesapi.cparticle.CParticleColorCurve
 import cn.coostack.cooparticlesapi.cparticle.CParticleCurve
+import cn.coostack.cooparticlesapi.cparticle.CParticleIndexedBlendState
 import cn.coostack.cooparticlesapi.cparticle.CParticleRenderLayer
 import cn.coostack.cooparticlesapi.cparticle.CParticleRenderPass
 import cn.coostack.cooparticlesapi.cparticle.CParticleSprites
@@ -19,14 +22,14 @@ import net.minecraft.world.phys.Vec3
 import org.joml.Matrix4f
 import org.joml.Vector3f
 import org.joml.Vector4f
+import org.lwjgl.opengl.GL30
 import org.lwjgl.opengl.GL33.*
 
 /**
  * GPU 粒子渲染器: 每个系统一次 instanced draw，同层系统按基础纹理和蒙版纹理连续绘制。
  *
- * 融入 Minecraft 帧: 使用 LevelRenderer 传入的 view/projection 矩阵,
- * 相机相对坐标 (双精度 CPU 侧相减), 基础纹理 + 可选蒙版 + 光照贴图 + 原版雾效.
- * 调用方先应用当前粒子 ShaderInstance，使 Iris 绑定正确的 gbuffer framebuffer。
+ * 无光影时直接使用 CParticle shader。Iris 光影启用后，常规层展开为原版粒子顶点，
+ * 需要完整片元 Alpha 的有界 Screen 层只写 Iris framebuffer 的主颜色附件。
  */
 object CParticleRenderer {
 
@@ -43,6 +46,11 @@ object CParticleRenderer {
     private val drawLayers = arrayOf(
         CParticleRenderLayer.OPAQUE,
         CParticleRenderLayer.TRANSLUCENT,
+        CParticleRenderLayer.PARTICLE_SHEET_TRANSLUCENT_NO_DEPTH_WRITE,
+        CParticleRenderLayer.ADDITION_BLEND_TRANSLUCENT_NOT_HDR,
+        CParticleRenderLayer.ADDITION_BLEND_TRANSLUCENT_NOT_HDR_NO_DEPTH_WRITE,
+        CParticleRenderLayer.ADDITION_BLEND_NOT_HDR,
+        CParticleRenderLayer.ADDITION_BLEND_NOT_HDR_NO_DEPTH_WRITE,
         CParticleRenderLayer.ADDITION_BLEND_TRANSLUCENT,
         CParticleRenderLayer.ADDITION_BLEND,
         CParticleRenderLayer.ADDITION_BLEND_TRANSLUCENT_NO_DEPTH_WRITE,
@@ -66,6 +74,7 @@ object CParticleRenderer {
             .attributeLocation("iColor", 6)
             .attributeLocation("iAngularEpoch", 7)
             .attributeLocation("iAppearance", 8)
+            .transformFeedbackVaryings("tfPosition", "tfUv", "tfPacked")
             .managedId("cparticle/render")
             .build()
             .also {
@@ -104,9 +113,11 @@ object CParticleRenderer {
         val shader = ensureProgram()
         if (shader.program == 0) return
         val frameId = CParticleSystemManager.currentRenderFrameId
+        val irisShaderPackActive = CooParticlesAPIClient.checkIrisShaderPackUsed()
 
         // ---- 状态快照 ----
         val prevProgram = glGetInteger(GL_CURRENT_PROGRAM)
+        val prevShaderTexture0 = RenderSystem.getShaderTexture(0)
         val prevActiveTexture = glGetInteger(GL_ACTIVE_TEXTURE)
         RenderSystem.activeTexture(GL_TEXTURE0)
         val prevTex0 = glGetInteger(GL_TEXTURE_BINDING_2D)
@@ -126,6 +137,14 @@ object CParticleRenderer {
         val blendDstAlpha = glGetInteger(GL_BLEND_DST_ALPHA)
         val blendEquationRgb = glGetInteger(GL_BLEND_EQUATION_RGB)
         val blendEquationAlpha = glGetInteger(GL_BLEND_EQUATION_ALPHA)
+        val indexedBlendStateAvailable = irisShaderPackActive && CParticleIndexedBlendState.isAvailable()
+        val indexedBlendEnabled = indexedBlendStateAvailable && GL30.glIsEnabledi(GL_BLEND, 0)
+        val indexedBlendSrcRgb = if (indexedBlendStateAvailable) GL30.glGetIntegeri(GL_BLEND_SRC_RGB, 0) else 0
+        val indexedBlendDstRgb = if (indexedBlendStateAvailable) GL30.glGetIntegeri(GL_BLEND_DST_RGB, 0) else 0
+        val indexedBlendSrcAlpha = if (indexedBlendStateAvailable) GL30.glGetIntegeri(GL_BLEND_SRC_ALPHA, 0) else 0
+        val indexedBlendDstAlpha = if (indexedBlendStateAvailable) GL30.glGetIntegeri(GL_BLEND_DST_ALPHA, 0) else 0
+        val indexedBlendEquationRgb = if (indexedBlendStateAvailable) GL30.glGetIntegeri(GL_BLEND_EQUATION_RGB, 0) else 0
+        val indexedBlendEquationAlpha = if (indexedBlendStateAvailable) GL30.glGetIntegeri(GL_BLEND_EQUATION_ALPHA, 0) else 0
         val depthEnabled = glIsEnabled(GL_DEPTH_TEST)
         val depthMask = glGetBoolean(GL_DEPTH_WRITEMASK)
         val depthFunc = glGetInteger(GL_DEPTH_FUNC)
@@ -162,6 +181,7 @@ object CParticleRenderer {
             shader.setInt("uAppearanceLookup", 3)
             shader.setInt("uMaskTexture", 4)
             shader.setInt("uDepthOnly", 0)
+            shader.setInt("uPremultiplyRgbByAlpha", 0)
 
             // 相机朝向基 (BILLBOARD 用; 与原版粒子 q*X̂=left / q*Ŷ=up 一致)
             val left = camera.leftVector
@@ -180,65 +200,71 @@ object CParticleRenderer {
             glDepthFunc(GL_LEQUAL)
             glDisable(GL_CULL_FACE)
 
-            // ---- 分层后按 binding 连续绘制；纹理绑定次数只随批次数增长 ----
-            val deferredDepthSystems = ArrayList<CParticleSystem>()
-            for (layer in drawLayers) {
-                if (!pass.accepts(layer)) continue
-                val layerSystems = visibleSystems.asSequence()
-                    .filter { it.layer == layer }
-                    .sortedWith(compareBy(CParticleSystem::textureBindingKey)
-                        .thenBy(CParticleSystem::maskTextureBindingKey))
-                    .toList()
-                if (layerSystems.isEmpty()) continue
-                layer.applyState()
-                if (layer.requiresDeferredDepthWrite) {
-                    glDepthMask(false)
-                    deferredDepthSystems.addAll(layerSystems)
+            if (irisShaderPackActive) {
+                renderWithIrisParticleShader(shader, visibleSystems, view, proj, cameraPos, partial, pass)
+            } else {
+                shader.setInt("uIrisExpansion", 0)
+                // ---- 分层后按 binding 连续绘制；纹理绑定次数只随批次数增长 ----
+                val deferredDepthSystems = ArrayList<CParticleSystem>()
+                for (layer in drawLayers) {
+                    if (!pass.accepts(layer)) continue
+                    val layerSystems = visibleSystems.asSequence()
+                        .filter { it.layer == layer }
+                        .sortedWith(compareBy(CParticleSystem::textureBindingKey)
+                            .thenBy(CParticleSystem::maskTextureBindingKey))
+                        .toList()
+                    if (layerSystems.isEmpty()) continue
+                    layer.applyState()
+                    shader.setInt("uPremultiplyRgbByAlpha", if (layer.premultiplyRgbByAlpha) 1 else 0)
+                    if (layer.requiresDeferredDepthWrite) {
+                        glDepthMask(false)
+                        deferredDepthSystems.addAll(layerSystems)
+                    }
+                    var boundMainTexture: CParticleTextureBindingKey? = null
+                    var boundMaskTexture: CParticleTextureBindingKey? = null
+
+                    for (system in layerSystems) {
+                        if (system.textureBindingKey != boundMainTexture) {
+                            RenderSystem.activeTexture(GL_TEXTURE0)
+                            RenderSystem.bindTexture(CParticleTextureResolver.textureId(system.textureBindingKey))
+                            boundMainTexture = system.textureBindingKey
+                        }
+                        val maskBinding = system.maskTextureBindingKey
+                        if (maskBinding != null && maskBinding != boundMaskTexture) {
+                            RenderSystem.activeTexture(GL_TEXTURE4)
+                            RenderSystem.bindTexture(CParticleTextureResolver.textureId(maskBinding))
+                            boundMaskTexture = maskBinding
+                        }
+
+                        applySystemUniforms(shader, system, cameraPos, partial)
+                        system.glBuffer.draw(system.store.highWater)
+                    }
                 }
-                var boundMainTexture: CParticleTextureBindingKey? = null
-                var boundMaskTexture: CParticleTextureBindingKey? = null
 
-                for (system in layerSystems) {
-                    if (system.textureBindingKey != boundMainTexture) {
-                        RenderSystem.activeTexture(GL_TEXTURE0)
-                        RenderSystem.bindTexture(CParticleTextureResolver.textureId(system.textureBindingKey))
-                        boundMainTexture = system.textureBindingKey
+                if (deferredDepthSystems.isNotEmpty()) {
+                    shader.setInt("uDepthOnly", 1)
+                    glColorMaski(0, false, false, false, false)
+                    glDepthMask(true)
+                    var boundMainTexture: CParticleTextureBindingKey? = null
+                    var boundMaskTexture: CParticleTextureBindingKey? = null
+                    for (system in deferredDepthSystems.sortedWith(
+                        compareBy(CParticleSystem::textureBindingKey)
+                            .thenBy(CParticleSystem::maskTextureBindingKey)
+                    )) {
+                        if (system.textureBindingKey != boundMainTexture) {
+                            RenderSystem.activeTexture(GL_TEXTURE0)
+                            RenderSystem.bindTexture(CParticleTextureResolver.textureId(system.textureBindingKey))
+                            boundMainTexture = system.textureBindingKey
+                        }
+                        val maskBinding = system.maskTextureBindingKey
+                        if (maskBinding != null && maskBinding != boundMaskTexture) {
+                            RenderSystem.activeTexture(GL_TEXTURE4)
+                            RenderSystem.bindTexture(CParticleTextureResolver.textureId(maskBinding))
+                            boundMaskTexture = maskBinding
+                        }
+                        applySystemUniforms(shader, system, cameraPos, partial)
+                        system.glBuffer.draw(system.store.highWater)
                     }
-                    val maskBinding = system.maskTextureBindingKey
-                    if (maskBinding != null && maskBinding != boundMaskTexture) {
-                        RenderSystem.activeTexture(GL_TEXTURE4)
-                        RenderSystem.bindTexture(CParticleTextureResolver.textureId(maskBinding))
-                        boundMaskTexture = maskBinding
-                    }
-
-                    applySystemUniforms(shader, system, cameraPos, partial)
-                    system.glBuffer.draw(system.store.highWater)
-                }
-            }
-
-            if (deferredDepthSystems.isNotEmpty()) {
-                shader.setInt("uDepthOnly", 1)
-                glColorMaski(0, false, false, false, false)
-                glDepthMask(true)
-                var boundMainTexture: CParticleTextureBindingKey? = null
-                var boundMaskTexture: CParticleTextureBindingKey? = null
-                for (system in deferredDepthSystems.sortedWith(
-                    compareBy(CParticleSystem::textureBindingKey)
-                        .thenBy(CParticleSystem::maskTextureBindingKey)
-                )) {
-                    if (system.textureBindingKey != boundMainTexture) {
-                        RenderSystem.activeTexture(GL_TEXTURE0)
-                        RenderSystem.bindTexture(CParticleTextureResolver.textureId(system.textureBindingKey))
-                        boundMainTexture = system.textureBindingKey
-                    }
-                    val maskBinding = system.maskTextureBindingKey
-                    if (maskBinding != null && maskBinding != boundMaskTexture) {
-                        RenderSystem.activeTexture(GL_TEXTURE4)
-                        RenderSystem.bindTexture(CParticleTextureResolver.textureId(maskBinding))
-                        boundMaskTexture = maskBinding
-                    }
-                    applySystemUniforms(shader, system, cameraPos, partial)
-                    system.glBuffer.draw(system.store.highWater)
                 }
             }
         } finally {
@@ -254,10 +280,25 @@ object CParticleRenderer {
             RenderSystem.bindTexture(prevTex1)
             RenderSystem.activeTexture(GL_TEXTURE0)
             RenderSystem.bindTexture(prevTex0)
+            RenderSystem.setShaderTexture(0, prevShaderTexture0)
             RenderSystem.activeTexture(prevActiveTexture)
-            if (blendEnabled) glEnable(GL_BLEND) else glDisable(GL_BLEND)
-            glBlendFuncSeparate(blendSrcRgb, blendDstRgb, blendSrcAlpha, blendDstAlpha)
-            glBlendEquationSeparate(blendEquationRgb, blendEquationAlpha)
+            if (indexedBlendStateAvailable) {
+                if (indexedBlendEnabled) glEnablei(GL_BLEND, 0) else glDisablei(GL_BLEND, 0)
+                CParticleIndexedBlendState.setFactors(
+                    0,
+                    indexedBlendSrcRgb,
+                    indexedBlendDstRgb,
+                    indexedBlendSrcAlpha,
+                    indexedBlendDstAlpha,
+                )
+                CParticleIndexedBlendState.setEquation(
+                    0, indexedBlendEquationRgb, indexedBlendEquationAlpha,
+                )
+            } else {
+                if (blendEnabled) glEnable(GL_BLEND) else glDisable(GL_BLEND)
+                glBlendFuncSeparate(blendSrcRgb, blendDstRgb, blendSrcAlpha, blendDstAlpha)
+                glBlendEquationSeparate(blendEquationRgb, blendEquationAlpha)
+            }
             if (depthEnabled) glEnable(GL_DEPTH_TEST) else glDisable(GL_DEPTH_TEST)
             glDepthMask(depthMask)
             glDepthFunc(depthFunc)
@@ -270,6 +311,181 @@ object CParticleRenderer {
             )
             if (cullEnabled) glEnable(GL_CULL_FACE) else glDisable(GL_CULL_FACE)
             if (prevProgram > 0 && glIsProgram(prevProgram)) glUseProgram(prevProgram) else glUseProgram(0)
+        }
+    }
+
+    /**
+     * 在 Iris 粒子 framebuffer 中按渲染层选择兼容绘制路径。
+     *
+     * 示例：常规层使用 `PARTICLES_TRANS` 处理展开顶点；有界透明 Screen 层直接采样纹理和 mask。
+     * 禁止让直接绘制写入主颜色之外的 shaderpack 附件。
+     *
+     * @param shader 用于 transform feedback 和有界透明 Screen 层直接绘制的 CParticle program
+     * @param systems 当前 pass 中可见且已准备好的系统
+     * @param view 原版粒子 model-view 矩阵
+     * @param proj 当前世界投影矩阵
+     * @param cameraPos 当前相机世界坐标
+     * @param partial tick 插值
+     * @param pass 当前 Iris 粒子分流 pass
+     */
+    private fun renderWithIrisParticleShader(
+        shader: CooShaderProgram,
+        systems: List<CParticleSystem>,
+        view: Matrix4f,
+        proj: Matrix4f,
+        cameraPos: Vec3,
+        partial: Float,
+        pass: CParticleRenderPass,
+    ) {
+        shader.setInt("uIrisExpansion", 1)
+        shader.setInt("uPremultiplyRgbByAlpha", 0)
+        for (system in systems) {
+            if (system.layer.premultiplyRgbByAlpha) continue
+            applySystemUniforms(shader, system, cameraPos, partial)
+            system.glBuffer.expandForParticleShader(system.store.highWater)
+        }
+        shader.setInt("uIrisExpansion", 0)
+
+        val firstTexture = systems.firstOrNull()?.textureBindingKey ?: return
+        RenderSystem.setShaderTexture(0, CParticleTextureResolver.textureId(firstTexture))
+        IrisCompat.runWithParticleShader(pass, view, proj) {
+            val irisParticleProgram = glGetInteger(GL_CURRENT_PROGRAM)
+            val deferredExpandedSystems = ArrayList<CParticleSystem>()
+            val deferredDirectSystems = ArrayList<CParticleSystem>()
+            for (layer in drawLayers) {
+                if (!pass.accepts(layer)) continue
+                val layerSystems = systems.asSequence()
+                    .filter { it.layer == layer }
+                    .sortedWith(compareBy(CParticleSystem::textureBindingKey)
+                        .thenBy(CParticleSystem::maskTextureBindingKey))
+                    .toList()
+                if (layerSystems.isEmpty()) continue
+
+                layer.applyIndexedState(0)
+                if (layer.requiresDeferredDepthWrite) {
+                    glDepthMask(false)
+                    if (layer.premultiplyRgbByAlpha) {
+                        deferredDirectSystems.addAll(layerSystems)
+                    } else {
+                        deferredExpandedSystems.addAll(layerSystems)
+                    }
+                }
+
+                if (layer.premultiplyRgbByAlpha) {
+                    glUseProgram(shader.program)
+                    try {
+                        // Iris apply 会按 ShaderInstance 的槽位重绑纹理，切回本 program 后恢复其 GPU 资源。
+                        RenderSystem.activeTexture(GL_TEXTURE1)
+                        RenderSystem.bindTexture(RenderSystem.getShaderTexture(2))
+                        CParticleSprites.bindLookup(2)
+                        CParticleAppearanceDescriptors.bindLookup(3)
+                        shader.setInt("uPremultiplyRgbByAlpha", 1)
+                        withPrimaryColorWriteOnly {
+                            drawInstancedSystems(shader, layerSystems, cameraPos, partial)
+                        }
+                    } finally {
+                        shader.setInt("uPremultiplyRgbByAlpha", 0)
+                        glUseProgram(irisParticleProgram)
+                    }
+                } else {
+                    drawExpandedSystems(layerSystems)
+                }
+            }
+
+            if (deferredExpandedSystems.isNotEmpty() || deferredDirectSystems.isNotEmpty()) {
+                withAllColorWritesDisabled {
+                    glDepthMask(true)
+                    if (deferredExpandedSystems.isNotEmpty()) {
+                        glUseProgram(irisParticleProgram)
+                        drawExpandedSystems(deferredExpandedSystems)
+                    }
+                    if (deferredDirectSystems.isNotEmpty()) {
+                        glUseProgram(shader.program)
+                        try {
+                            shader.setInt("uDepthOnly", 1)
+                            drawInstancedSystems(shader, deferredDirectSystems, cameraPos, partial)
+                        } finally {
+                            shader.setInt("uDepthOnly", 0)
+                            glUseProgram(irisParticleProgram)
+                        }
+                    }
+                }
+            }
+            glUseProgram(irisParticleProgram)
+        }
+    }
+
+    private fun drawInstancedSystems(
+        shader: CooShaderProgram,
+        systems: Collection<CParticleSystem>,
+        cameraPos: Vec3,
+        partial: Float,
+    ) {
+        var boundMainTexture: CParticleTextureBindingKey? = null
+        var boundMaskTexture: CParticleTextureBindingKey? = null
+        for (system in systems.sortedWith(
+            compareBy(CParticleSystem::textureBindingKey)
+                .thenBy(CParticleSystem::maskTextureBindingKey)
+        )) {
+            if (system.textureBindingKey != boundMainTexture) {
+                RenderSystem.activeTexture(GL_TEXTURE0)
+                RenderSystem.bindTexture(CParticleTextureResolver.textureId(system.textureBindingKey))
+                boundMainTexture = system.textureBindingKey
+            }
+            val maskBinding = system.maskTextureBindingKey
+            if (maskBinding != null && maskBinding != boundMaskTexture) {
+                RenderSystem.activeTexture(GL_TEXTURE4)
+                RenderSystem.bindTexture(CParticleTextureResolver.textureId(maskBinding))
+                boundMaskTexture = maskBinding
+            }
+            applySystemUniforms(shader, system, cameraPos, partial)
+            system.glBuffer.draw(system.store.highWater)
+        }
+    }
+
+    private fun drawExpandedSystems(systems: Collection<CParticleSystem>) {
+        var boundMainTexture: CParticleTextureBindingKey? = null
+        for (system in systems.sortedBy(CParticleSystem::textureBindingKey)) {
+            if (system.textureBindingKey != boundMainTexture) {
+                val textureId = CParticleTextureResolver.textureId(system.textureBindingKey)
+                RenderSystem.setShaderTexture(0, textureId)
+                RenderSystem.activeTexture(GL_TEXTURE0)
+                RenderSystem.bindTexture(textureId)
+                boundMainTexture = system.textureBindingKey
+            }
+            system.glBuffer.drawExpanded(system.store.highWater)
+        }
+    }
+
+    private fun withPrimaryColorWriteOnly(draw: () -> Unit) {
+        withColorMasks({ drawBuffer -> drawBuffer == 0 }, draw)
+    }
+
+    private fun withAllColorWritesDisabled(draw: () -> Unit) {
+        withColorMasks({ false }, draw)
+    }
+
+    private fun withColorMasks(enabled: (Int) -> Boolean, draw: () -> Unit) {
+        val colorMasks = Array(glGetInteger(GL_MAX_DRAW_BUFFERS)) { drawBuffer ->
+            IntArray(4).also { glGetIntegeri_v(GL_COLOR_WRITEMASK, drawBuffer, it) }
+        }
+        try {
+            colorMasks.indices.forEach { drawBuffer ->
+                if (!enabled(drawBuffer)) {
+                    glColorMaski(drawBuffer, false, false, false, false)
+                }
+            }
+            draw()
+        } finally {
+            colorMasks.forEachIndexed { drawBuffer, mask ->
+                glColorMaski(
+                    drawBuffer,
+                    mask[0] != 0,
+                    mask[1] != 0,
+                    mask[2] != 0,
+                    mask[3] != 0,
+                )
+            }
         }
     }
 

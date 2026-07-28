@@ -17,6 +17,7 @@ uniform float uFogStart;
 uniform float uFogEnd;
 uniform vec4 uFogColor;
 uniform int uDepthOnly;
+uniform int uPremultiplyRgbByAlpha;
 
 out vec4 fragColor;
 
@@ -29,7 +30,7 @@ void main() {
         tex.a *= mask.a;
     }
     // 与本项目覆盖的 particle.fsh 一致: 极低 alpha 才丢弃
-    if (tex.a * vColor.a <= 0.001) {
+    if (tex.a * vColor.a < 0.001) {
         discard;
     }
     if (uDepthOnly != 0) {
@@ -45,6 +46,10 @@ void main() {
         ? 0.0
         : (vFogDistance > uFogEnd ? 1.0 : (vFogDistance - uFogStart) / (uFogEnd - uFogStart));
     color.rgb = mix(color.rgb, uFogColor.rgb, fogValue * uFogColor.a);
+    if (uPremultiplyRgbByAlpha != 0) {
+        color.a = clamp(color.a, 0.0, 1.0);
+        color.rgb = clamp(color.rgb, 0.0, 1.0) * color.a;
+    }
 
     fragColor = color;
 }

@@ -3,10 +3,18 @@ package cn.coostack.cooparticlesapi.compat
 import cn.coostack.cooparticlesapi.CooParticlesAPIClient
 import cn.coostack.cooparticlesapi.cparticle.CParticleRenderPass
 import cn.coostack.cooparticlesapi.renderer.runtime.IrisWorldPassMode
+import com.mojang.blaze3d.systems.RenderSystem
+import com.mojang.blaze3d.vertex.VertexFormat
+import net.minecraft.client.Minecraft
 import net.minecraft.client.renderer.GameRenderer
 import net.minecraft.client.renderer.RenderStateShard
 import net.minecraft.client.renderer.RenderType
 import net.minecraft.client.renderer.ShaderInstance
+import org.joml.Matrix4f
+import org.lwjgl.opengl.GL11
+import org.lwjgl.opengl.GL13
+import org.lwjgl.opengl.GL20
+import org.lwjgl.opengl.GL30
 import org.slf4j.LoggerFactory
 import java.lang.invoke.MethodHandle
 import java.lang.invoke.MethodHandles
@@ -30,6 +38,9 @@ import java.util.Optional
  */
 object IrisCompat {
     private val LOGGER = LoggerFactory.getLogger("CooParticlesAPI/IrisCompat")
+
+    @Volatile
+    private var particleShaderStateLogged = false
 
     /** 反射缓存：ShaderInstance.setShouldSkip(MethodHandle) → 由 IRIS mixin 注入。 */
     @Volatile
@@ -117,34 +128,117 @@ object IrisCompat {
     }
 
     /**
-     * 在 Iris 粒子 shader 的 writing framebuffer 中执行 GPU 粒子绘制。
+     * 使用 Iris 当前粒子 program 绘制已经展开为原版 PARTICLE 格式的 GPU 顶点。
      *
-     * 原版粒子批次结束后 Iris 已通过 ShaderInstance.clear() 切回主目标，不能依赖
-     * RenderSystem 中残留的 shader。TRANSLUCENT pass 使用 Iris 的公开 ShaderAccess 入口。
+     * 示例：常规层通过此入口执行 `drawExpanded(...)`；需要完整纹理 Alpha 的有界 Screen 层
+     * 可在回调内临时切换 program，但只能写主颜色附件，并且返回前必须恢复 Iris program。
+     *
+     * @param pass 当前 Iris 粒子分流 pass
+     * @param view 原版粒子顶点使用的 model-view 矩阵
+     * @param projection 当前世界投影矩阵
+     * @param draw 在 Iris 粒子 framebuffer 中提交绘制的回调
      */
     @JvmStatic
-    fun runWithParticleShader(pass: CParticleRenderPass, draw: () -> Unit) {
-        if (!CooParticlesAPIClient.checkIrisShaderPackUsed()) {
-            draw()
-            return
-        }
-
+    fun runWithParticleShader(
+        pass: CParticleRenderPass,
+        view: Matrix4f,
+        projection: Matrix4f,
+        draw: () -> Unit,
+    ) {
         val particleShader = when (pass) {
             CParticleRenderPass.TRANSLUCENT -> getParticleTranslucentShader()
             CParticleRenderPass.ALL, CParticleRenderPass.OPAQUE -> GameRenderer.getParticleShader()
             CParticleRenderPass.NONE -> null
         }
-        if (particleShader == null) {
-            draw()
-            return
-        }
+        if (particleShader == null) return
 
+        particleShader.setDefaultUniforms(
+            VertexFormat.Mode.TRIANGLES,
+            view,
+            projection,
+            Minecraft.getInstance().window,
+        )
         particleShader.apply()
+        logParticleShaderStateOnce(pass, particleShader)
         try {
             draw()
         } finally {
             particleShader.clear()
         }
+    }
+
+    private fun logParticleShaderStateOnce(pass: CParticleRenderPass, shader: ShaderInstance) {
+        if (particleShaderStateLogged) return
+        synchronized(this) {
+            if (particleShaderStateLogged) return
+            particleShaderStateLogged = true
+
+            val program = GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM)
+            val framebuffer = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING)
+            val framebufferStatus = GL30.glCheckFramebufferStatus(GL30.GL_DRAW_FRAMEBUFFER)
+            val drawBuffers = (0 until GL11.glGetInteger(GL20.GL_MAX_DRAW_BUFFERS).coerceAtMost(8))
+                .joinToString(prefix = "[", postfix = "]") { index ->
+                    "0x${GL11.glGetInteger(GL30.GL_DRAW_BUFFER0 + index).toString(16)}"
+                }
+            val colorMask = IntArray(4).also {
+                GL30.glGetIntegeri_v(GL11.GL_COLOR_WRITEMASK, 0, it)
+            }.joinToString(prefix = "[", postfix = "]")
+            val attributes = listOf(
+                "iris_Position",
+                "iris_UV0",
+                "iris_Color",
+                "iris_UV2",
+                "Position",
+                "UV0",
+                "Color",
+                "UV2",
+            )
+                .joinToString(prefix = "[", postfix = "]") { name ->
+                    "$name=${GL20.glGetAttribLocation(program, name)}"
+                }
+            val samplers = listOf("Sampler0", "Sampler1", "Sampler2", "texture", "gtexture", "lightmap", "tex")
+                .mapNotNull { name -> samplerState(program, name) }
+                .joinToString(prefix = "[", postfix = "]")
+
+            LOGGER.info(
+                "[DEBUG-cparticle-iris] pass={}, shader={} ({}) packActive={}, program={}, framebuffer={} status=0x{}, " +
+                    "drawBuffers={}, colorMask0={}, depthTest={} depthMask={} depthFunc=0x{}, blend0={} cull={} " +
+                    "shaderTextures=[{},{},{}], attributes={}, samplers={}",
+                pass,
+                shader.name,
+                shader.javaClass.name,
+                CooParticlesAPIClient.checkIrisShaderPackUsed(),
+                program,
+                framebuffer,
+                framebufferStatus.toString(16),
+                drawBuffers,
+                colorMask,
+                GL11.glIsEnabled(GL11.GL_DEPTH_TEST),
+                GL11.glGetBoolean(GL11.GL_DEPTH_WRITEMASK),
+                GL11.glGetInteger(GL11.GL_DEPTH_FUNC).toString(16),
+                GL30.glIsEnabledi(GL11.GL_BLEND, 0),
+                GL11.glIsEnabled(GL11.GL_CULL_FACE),
+                RenderSystem.getShaderTexture(0),
+                RenderSystem.getShaderTexture(1),
+                RenderSystem.getShaderTexture(2),
+                attributes,
+                samplers,
+            )
+        }
+    }
+
+    private fun samplerState(program: Int, name: String): String? {
+        val location = GL20.glGetUniformLocation(program, name)
+        if (location < 0) return null
+        val unit = GL20.glGetUniformi(program, location)
+        val maxUnits = GL11.glGetInteger(GL20.GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS)
+        if (unit !in 0 until maxUnits) return "$name(loc=$location,unit=$unit,invalid)"
+
+        val previousActiveTexture = GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE)
+        GL13.glActiveTexture(GL13.GL_TEXTURE0 + unit)
+        val texture2d = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D)
+        GL13.glActiveTexture(previousActiveTexture)
+        return "$name(loc=$location,unit=$unit,tex2D=$texture2d)"
     }
 
     /** 在 Iris 对应的 entity framebuffer 中执行 RenderEntity 的本地 world pass。 */
@@ -243,7 +337,7 @@ object IrisCompat {
                 ParticleRenderingMethods(
                     irisClass.getMethod("getPipelineManager"),
                     pipelineManagerClass.getMethod("getPipeline"),
-                    worldPipelineClass.getMethod("getParticleRenderingSettings")
+                    worldPipelineClass.getMethod("getParticleRenderingSettings"),
                 )
             } catch (_: ClassNotFoundException) {
                 null
@@ -258,12 +352,12 @@ object IrisCompat {
     }
 
     private fun getParticleTranslucentShader(): ShaderInstance? {
-        val method = resolveParticleTranslucentShaderMethod() ?: return null
+        val method = resolveParticleTranslucentShaderMethod() ?: return GameRenderer.getParticleShader()
         return try {
-            method.invoke(null) as? ShaderInstance
+            method.invoke(null) as? ShaderInstance ?: GameRenderer.getParticleShader()
         } catch (t: Throwable) {
             LOGGER.warn("Failed to get Iris translucent particle shader", t)
-            null
+            GameRenderer.getParticleShader()
         }
     }
 

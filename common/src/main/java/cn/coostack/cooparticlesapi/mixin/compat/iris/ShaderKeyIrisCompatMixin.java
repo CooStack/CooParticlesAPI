@@ -13,8 +13,14 @@ import java.lang.reflect.Method;
 @Pseudo
 @Mixin(targets = "net.irisshaders.iris.pipeline.programs.ShaderKey", remap = false)
 public abstract class ShaderKeyIrisCompatMixin {
+    /**
+     * Iris 的 {@code GREATER} Alpha Test 使用的参考值。
+     *
+     * <p>示例：{@code alpha == 0.001F} 时比较成立并保留片元。
+     * 禁止直接改成 {@code 0.001F}，否则等于阈值的片元也会被丢弃。
+     */
     @Unique
-    private static final float cooparticlesapi$PARTICLE_ALPHA_THRESHOLD = 0.001F;
+    private static final float cooparticlesapi$PARTICLE_ALPHA_THRESHOLD = Math.nextDown(0.001F);
     @Unique
     private static volatile boolean cooparticlesapi$particleAlphaTestResolved;
     @Unique

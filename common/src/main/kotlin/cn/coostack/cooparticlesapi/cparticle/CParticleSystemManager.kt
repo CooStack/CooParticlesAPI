@@ -420,25 +420,32 @@ object CParticleSystemManager {
                 else -> CParticleRenderPass.NONE
             }
         } else {
-            CParticleRenderPass.ALL
+            if (fabricParticlePassIndex++ == 0) CParticleRenderPass.ALL else CParticleRenderPass.NONE
         }
         renderParticlePass(camera, partial, pass)
     }
 
-    /** Iris 下重新应用对应粒子 shader 后绘制，使 raw GPU draw 进入其 gbuffer FBO。 */
+    /**
+     * 在原版粒子阶段绘制当前 pass 覆盖的 GPU 粒子。
+     *
+     * 示例：Iris MIXED 的第二次回调传入 [CParticleRenderPass.TRANSLUCENT]。
+     * 禁止从世界渲染事件重复调用，否则同一帧会绘制两次。
+     *
+     * @param camera 当前渲染相机
+     * @param partial tick 插值
+     * @param pass 本次允许绘制的粒子层范围
+     */
     @JvmStatic
     fun renderParticlePass(camera: Camera, partial: Float, pass: CParticleRenderPass) {
         if (!ready() || systems.isEmpty() || pass == CParticleRenderPass.NONE) return
-        IrisCompat.runWithParticleShader(pass) {
-            CParticleRenderer.render(
-                systems.values,
-                RenderSystem.getModelViewMatrix(),
-                RenderSystem.getProjectionMatrix(),
-                camera,
-                partial,
-                pass
-            )
-        }
+        CParticleRenderer.render(
+            systems.values,
+            RenderSystem.getModelViewMatrix(),
+            RenderSystem.getProjectionMatrix(),
+            camera,
+            partial,
+            pass
+        )
     }
 
     /** 每客户端 tick 调用 (渲染线程) */

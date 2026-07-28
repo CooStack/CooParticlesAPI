@@ -73,6 +73,20 @@ class ShaderProgramBuilder {
         return this
     }
 
+    /**
+     * 声明链接前需要捕获的交错 transform-feedback 输出。
+     *
+     * 示例：`transformFeedbackVaryings("position", "uv")`。
+     * 禁止传入 shader 未声明的变量名。
+     *
+     * @param names vertex/geometry shader 输出变量名
+     * @return 当前 builder
+     */
+    fun transformFeedbackVaryings(vararg names: String): ShaderProgramBuilder {
+        delegate.transformFeedbackVaryings(*names)
+        return this
+    }
+
     fun build(): CooShaderProgram {
         return delegate.build()
     }

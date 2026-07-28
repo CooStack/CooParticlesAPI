@@ -25,6 +25,7 @@ uniform vec3 uCamUp;         // 相机上向量
 uniform int uFogShape;       // 0=球 1=圆柱
 uniform int uSystemTick;
 uniform int uHasMask;
+uniform int uIrisExpansion;
 uniform samplerBuffer uAnimationLookup;
 uniform samplerBuffer uAppearanceLookup;
 
@@ -72,6 +73,9 @@ out vec3 vMaskTint;
 out vec4 vColor;
 out vec2 vLightUv;
 out float vFogDistance;
+out vec3 tfPosition;
+out vec2 tfUv;
+flat out uvec2 tfPacked;
 
 const int FLAG_ALIVE = 1;
 const int FLAG_RANDOM_AGE = 1 << 11;
@@ -85,6 +89,11 @@ const int CURVE_TYPE_RADIX = 16;
 const int PACKED_CURVE_RADIX = 32;
 const int CURVE_TYPE_BEZIER = 1;
 const int BEZIER_SOLVE_ITERATIONS = 10;
+
+uint packUnormColor(vec4 color) {
+    uvec4 bytes = uvec4(round(clamp(color, 0.0, 1.0) * 255.0));
+    return bytes.r | (bytes.g << 8u) | (bytes.b << 16u) | (bytes.a << 24u);
+}
 
 uint hash32(uint value) {
     uint x = value;
@@ -400,6 +409,9 @@ void main() {
         vColor = vec4(0.0);
         vLightUv = vec2(0.0);
         vFogDistance = 0.0;
+        tfPosition = vec3(0.0, 0.0, -2.0);
+        tfUv = vec2(0.0);
+        tfPacked = uvec2(0u);
         return;
     }
 
@@ -418,8 +430,16 @@ void main() {
     vec3 currentRel = (uGroupMat * vec4(iPosAge.xyz, 1.0)).xyz;
     vec3 rel = mix(previousRel, currentRel, uPartial) + uOriginRelCam;
 
-    // 四角: (-1,-1) (1,-1) (-1,1) (1,1) — 与原版 ±1 * size 的半径语义一致
-    vec2 corner = vec2(float(gl_VertexID & 1), float((gl_VertexID >> 1) & 1)) * 2.0 - 1.0;
+    // Iris 展开使用两个三角形: 0,1,2 / 2,1,3；普通实例绘制仍使用四点 TRIANGLE_STRIP。
+    int cornerIndex = gl_VertexID;
+    if (uIrisExpansion != 0) {
+        int expandedIndex = gl_VertexID % 6;
+        cornerIndex = expandedIndex == 0 ? 0
+            : (expandedIndex == 1 ? 1
+            : (expandedIndex == 2 || expandedIndex == 3 ? 2
+            : (expandedIndex == 4 ? 1 : 3)));
+    }
+    vec2 corner = vec2(float(cornerIndex & 1), float((cornerIndex >> 1) & 1)) * 2.0 - 1.0;
     float uniformScale = sampleParticleScaleCurve(lifeT) * sampleScaleCurve(curveT);
     vec2 scale = uniformScale * vec2(
         sampleParticleScaleXCurve(lifeT),
@@ -542,6 +562,12 @@ void main() {
     vLightUv = vec2(
         (float(blockLight) * 16.0 + 8.0) / 256.0,
         (float(skyLight) * 16.0 + 8.0) / 256.0
+    );
+    tfPosition = posRelCam;
+    tfUv = vUv;
+    tfPacked = uvec2(
+        packUnormColor(vColor),
+        uint(blockLight * 16) | (uint(skyLight * 16) << 16u)
     );
 
     // 原版雾距离

@@ -41,14 +41,14 @@ class TestGPUEmitter(pos: Vec3, world: Level?) : AutoParticleEmitters(pos, world
         visibleRange = 128.0f
         color = Vector3f(1f, 1f, 1f)
         alpha = (100.0 / 100.0).toFloat()
-        light = 15
-        setTextureSheet(TextureSheetsEnum.ADDITION_BLEND_TRANSLUCENT_NO_DEPTH_WRITE)
+        light = -1
+        setTextureSheet(TextureSheetsEnum.ADDITION_BLEND_TRANSLUCENT)
         cameraOption = ParticleCameraOption.AXIS_BILLBOARD
         axis = Vec3(0.0, 1.0, 0.0)
         roll = (0.0 * PI / 180.0).toFloat()
         speedLimit = 32.0
         sign = 0
-        effect = ControlableFlashEffect(uuid)
+        effect = ControlableEndRodEffect(uuid)
         updateMode = CParticleUpdateMode.STATIC
         blockCollision = true
         alphaCurve = CParticleCurve.fromFloatCurve(emitter1Opacity)

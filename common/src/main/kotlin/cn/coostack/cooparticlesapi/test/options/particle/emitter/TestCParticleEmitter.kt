@@ -14,9 +14,11 @@ import cn.coostack.cooparticlesapi.particles.ParticleCameraOption
 import cn.coostack.cooparticlesapi.particles.control.ParticleControler
 import cn.coostack.cooparticlesapi.supports.TextureSheetsEnum
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
+import cn.coostack.cooparticlesapi.utils.builder.PointsBuilder
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
+import cn.coostack.cooparticlesapi.extend.times
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
@@ -179,33 +181,51 @@ class TestCParticleEmitter(pos: Vec3, world: Level?) : AutoParticleEmitters(pos,
         val count = spawnPerTick
         if (count <= 0) return emptyList()
 
-        val result = ArrayList<Pair<ControlableParticleData, RelativeLocation>>(count)
+//        val result = ArrayList<Pair<ControlableParticleData, RelativeLocation>>(count)
+//        repeat(count) {
+//            val angle = random.nextDouble(0.0, TAU)
+//            // sqrt 采样保证圆盘内均匀分布 (否则会向圆心聚集)
+//            val radius = emitRadius * sqrt(random.nextDouble())
+//            val cosA = cos(angle)
+//            val sinA = sin(angle)
+//
+//            val data = template.clone().apply {
+//                color = Vector3f(1f)
+//                this.colorCurve = colorCurve
+//                size = particleSize
+//                yaw = Random.nextFloat() * PIF * 2
+//                pitch = Random.nextFloat() * PIF * 2
+//                roll = Random.nextFloat() * PIF * 2
+//
+//                maxAge = particleMaxAge
+//                velocity = Vec3(
+//                    cosA * spreadSpeed * 0.35,
+//                    spreadSpeed,
+//                    sinA * spreadSpeed * 0.35
+//                )
+//            }
+//            result += data to RelativeLocation(cosA * radius, 0.0, sinA * radius)
+//        }
+
         val colorCurve = lifetimeColorCurve()
-        repeat(count) {
-            val angle = random.nextDouble(0.0, TAU)
-            // sqrt 采样保证圆盘内均匀分布 (否则会向圆心聚集)
-            val radius = emitRadius * sqrt(random.nextDouble())
-            val cosA = cos(angle)
-            val sinA = sin(angle)
+        return PointsBuilder()
+            .addDiscreteCircleXZ(emitRadius, count, 1.0)
+            .createWithoutClone().map {
+                template.clone().apply {
+                    color = Vector3f(1f)
+                    this.colorCurve = colorCurve
+                    size = particleSize
+                    yaw = Random.nextFloat() * PIF * 2
+                    pitch = Random.nextFloat() * PIF * 2
+                    roll = Random.nextFloat() * PIF * 2
 
-            val data = template.clone().apply {
-                color = Vector3f(1f)
-                this.colorCurve = colorCurve
-                size = particleSize
-                yaw = Random.nextFloat() * PIF * 2
-                pitch = Random.nextFloat() * PIF * 2
-                roll = Random.nextFloat() * PIF * 2
-
-                maxAge = particleMaxAge
-                velocity = Vec3(
-                    cosA * spreadSpeed * 0.35,
-                    spreadSpeed,
-                    sinA * spreadSpeed * 0.35
-                )
+                    maxAge = particleMaxAge
+                    velocity = it.toVector().normalize() * spreadSpeed
+                } to it
             }
-            result += data to RelativeLocation(cosA * radius, 0.0, sinA * radius)
-        }
-        return result
+
+
+//        return result
     }
 
     /** GPU 入池成功时不会被调用；选择性回退或满池回退时仍走这里 */

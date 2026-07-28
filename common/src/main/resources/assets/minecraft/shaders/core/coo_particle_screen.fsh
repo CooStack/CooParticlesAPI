@@ -12,15 +12,16 @@ uniform vec4 FogColor;
 in float vertexDistance;
 in vec2 texCoord0;
 in vec4 vertexColor;
+
 out vec4 fragColor;
 
 void main() {
     vec4 color = texture(Sampler0, texCoord0) * vertexColor * ColorModulator;
-
-    // 只剔除数值上接近空白的片元，保留低 Alpha 粒子。
     if (color.a < 0.001) {
         discard;
     }
-
-    fragColor = linear_fog(color, vertexDistance, FogStart, FogEnd, FogColor);
+    color = linear_fog(color, vertexDistance, FogStart, FogEnd, FogColor);
+    color.a = clamp(color.a, 0.0, 1.0);
+    color.rgb = clamp(color.rgb, 0.0, 1.0) * color.a;
+    fragColor = color;
 }

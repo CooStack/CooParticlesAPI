@@ -2,6 +2,7 @@ package cn.coostack.cooparticlesapi.renderer.shader
 
 import cn.coostack.cooparticlesapi.CooParticlesAPIClient
 import cn.coostack.cooparticlesapi.display.CooRenderTypeResourceRegistry
+import cn.coostack.cooparticlesapi.particles.CooParticleTextureSheet
 import cn.coostack.cooparticlesapi.renderer.shader.buffer.ShaderBufferCache
 import cn.coostack.cooparticlesapi.test.options.display.MCShaders
 import net.minecraft.server.packs.resources.ResourceManager
@@ -131,6 +132,7 @@ object ShaderReloadBus {
          */
         private fun handleFullReload(resourceManager: ResourceManager): ShaderReloadDispatchResult {
             MCShaders.init(resourceManager)
+            CooParticleTextureSheet.reloadShader(resourceManager)
             CooRenderTypeResourceRegistry.reload(resourceManager)
             ShaderProgramRegistry.invalidateAll()
             ShaderBufferCache.releaseAll()

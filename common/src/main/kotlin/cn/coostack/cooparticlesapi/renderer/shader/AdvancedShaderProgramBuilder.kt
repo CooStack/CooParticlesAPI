@@ -18,6 +18,7 @@ class AdvancedShaderProgramBuilder {
     private var compute: GlShader? = null
     private val shaderBufferLayouts = mutableListOf<ShaderBufferLayout<*>>()
     private val attributeLocations = linkedMapOf<String, Int>()
+    private val transformFeedbackVaryings = mutableListOf<String>()
     private var managedProgramId: ResourceLocation? = null
 
     fun vertex(path: String): AdvancedShaderProgramBuilder {
@@ -101,6 +102,21 @@ class AdvancedShaderProgramBuilder {
         return this
     }
 
+    /**
+     * 在链接前声明交错存储的 transform-feedback 输出。
+     *
+     * 示例：`transformFeedbackVaryings("position", "uv")` 按声明顺序写入同一缓冲。
+     * 禁止在 shader 中不存在对应输出时调用，否则 program 链接会失败。
+     *
+     * @param names vertex/geometry shader 中的输出变量名
+     * @return 当前 builder
+     */
+    fun transformFeedbackVaryings(vararg names: String): AdvancedShaderProgramBuilder {
+        require(names.all { it.isNotBlank() }) { "transform feedback varying name must not be blank" }
+        transformFeedbackVaryings += names
+        return this
+    }
+
     fun build(): CooShaderProgram {
         require(compute == null) { "compute shader must be built with buildCompute()" }
         check(vertex != null && fragment != null) { "vertex and fragment can not be null" }
@@ -113,6 +129,7 @@ class AdvancedShaderProgramBuilder {
             tessellationEvaluationShaderInternal = tessellationEvaluation,
             shaderBufferLayoutsInternal = shaderBufferLayouts.toList(),
             attributeLocationsInternal = attributeLocations.toMap(),
+            transformFeedbackVaryingsInternal = transformFeedbackVaryings.toList(),
             managedProgramIdInternal = managedProgramId
             )
         )

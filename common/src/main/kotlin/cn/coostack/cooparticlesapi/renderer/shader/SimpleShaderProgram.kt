@@ -15,6 +15,7 @@ class SimpleShaderProgram(
     private val tessellationEvaluationShaderInternal: GlShader? = null,
     private val shaderBufferLayoutsInternal: List<ShaderBufferLayout<*>> = emptyList(),
     private val attributeLocationsInternal: Map<String, Int> = emptyMap(),
+    private val transformFeedbackVaryingsInternal: List<String> = emptyList(),
     private val managedProgramIdInternal: ResourceLocation? = null
 ) : CooShaderProgram {
     override var program: Int = 0
@@ -38,6 +39,13 @@ class SimpleShaderProgram(
         }
         attributeLocationsInternal.forEach { (name, location) ->
             glBindAttribLocation(program, location, name)
+        }
+        if (transformFeedbackVaryingsInternal.isNotEmpty()) {
+            glTransformFeedbackVaryings(
+                program,
+                transformFeedbackVaryingsInternal.toTypedArray(),
+                GL_INTERLEAVED_ATTRIBS,
+            )
         }
         glLinkProgram(program)
         assertProgram()

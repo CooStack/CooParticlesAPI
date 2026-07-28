@@ -2,10 +2,12 @@ package cn.coostack.cooparticlesapi.cparticle.render
 
 import cn.coostack.cooparticlesapi.cparticle.CParticleCapabilities
 import cn.coostack.cooparticlesapi.cparticle.storage.CParticleStore
+import com.mojang.blaze3d.vertex.DefaultVertexFormat
 import org.lwjgl.BufferUtils
 import org.lwjgl.opengl.GL31
 import org.lwjgl.opengl.GL33.*
 import org.lwjgl.opengl.GL43
+import org.slf4j.LoggerFactory
 import java.nio.FloatBuffer
 import java.nio.ByteOrder
 
@@ -19,14 +21,25 @@ import java.nio.ByteOrder
  */
 class CParticleGlBuffer(val capacity: Int) {
     private companion object {
+        val LOGGER = LoggerFactory.getLogger("CooParticlesAPI/CParticleGlBuffer")
         const val SPARSE_PATCH_THRESHOLD = 64
         const val VISUAL_FLOAT_COUNT = CParticleStore.STRIDE - CParticleStore.OFF_FLAGS
+        const val EXPANDED_VERTICES_PER_PARTICLE = 6
+        const val EXPANDED_VERTEX_STRIDE = 28
+
+        @Volatile
+        var expandedDrawStateLogged = false
     }
 
     var vao = 0
         private set
     var vbo = 0
         private set
+
+    private var expandedVao = 0
+    private var expandedVbo = 0
+    private var expandedCapacity = 0
+    private var expandedInstances = 0
 
     private var scratch: FloatBuffer? = null
     private var smallPatchScratch: FloatBuffer? = null
@@ -192,6 +205,151 @@ class CParticleGlBuffer(val capacity: Int) {
         glBindVertexArray(prevVao)
     }
 
+    /**
+     * 在 GPU 上把实例展开为原版 `DefaultVertexFormat.PARTICLE` 顶点。
+     *
+     * 示例：Iris 粒子 program 绘制前调用 `expandForParticleShader(highWater)`。
+     * 禁止在未绑定带 transform-feedback 输出的 CParticle program 时调用。
+     *
+     * @param instances 需要展开的实例槽位数量
+     */
+    fun expandForParticleShader(instances: Int) {
+        if (!initialized || instances <= 0) {
+            expandedInstances = 0
+            return
+        }
+        ensureExpandedCapacity(instances)
+
+        val previousVao = glGetInteger(GL_VERTEX_ARRAY_BINDING)
+        val previousFeedbackBuffer = glGetInteger(GL_TRANSFORM_FEEDBACK_BUFFER_BINDING)
+        val previousFeedbackBase = IntArray(1)
+        glGetIntegeri_v(GL_TRANSFORM_FEEDBACK_BUFFER_BINDING, 0, previousFeedbackBase)
+        val rasterizerDiscardEnabled = glIsEnabled(GL_RASTERIZER_DISCARD)
+        var feedbackActive = false
+        try {
+            glBindVertexArray(vao)
+            glBindBufferBase(GL_TRANSFORM_FEEDBACK_BUFFER, 0, expandedVbo)
+            glEnable(GL_RASTERIZER_DISCARD)
+            glBeginTransformFeedback(GL_TRIANGLES)
+            feedbackActive = true
+            GL31.glDrawArraysInstanced(
+                GL_TRIANGLES,
+                0,
+                EXPANDED_VERTICES_PER_PARTICLE,
+                instances,
+            )
+            glEndTransformFeedback()
+            feedbackActive = false
+            expandedInstances = instances
+        } finally {
+            if (feedbackActive) glEndTransformFeedback()
+            if (rasterizerDiscardEnabled) glEnable(GL_RASTERIZER_DISCARD) else glDisable(GL_RASTERIZER_DISCARD)
+            glBindBufferBase(GL_TRANSFORM_FEEDBACK_BUFFER, 0, previousFeedbackBase[0])
+            glBindBuffer(GL_TRANSFORM_FEEDBACK_BUFFER, previousFeedbackBuffer)
+            glBindVertexArray(previousVao)
+        }
+    }
+
+    /**
+     * 使用当前 Iris/vanilla 粒子 program 绘制最近一次 GPU 展开的顶点。
+     *
+     * 示例：`expandForParticleShader(count)` 后调用 `drawExpanded(count)`。
+     * 禁止传入大于最近展开数量的值，未初始化部分没有有效顶点。
+     *
+     * @param instances 要绘制的已展开实例数量
+     */
+    fun drawExpanded(instances: Int) {
+        if (expandedVao == 0 || instances <= 0 || instances > expandedInstances) return
+        val previousVao = glGetInteger(GL_VERTEX_ARRAY_BINDING)
+        val errorBeforeDraw = glGetError()
+        glBindVertexArray(expandedVao)
+        if (!expandedDrawStateLogged) {
+            synchronized(CParticleGlBuffer::class.java) {
+                if (!expandedDrawStateLogged) {
+                    expandedDrawStateLogged = true
+                    val program = glGetInteger(GL_CURRENT_PROGRAM)
+                    val locations = listOf(
+                        "iris_Position",
+                        "iris_UV0",
+                        "iris_Color",
+                        "iris_UV2",
+                        "Position",
+                        "UV0",
+                        "Color",
+                        "UV2",
+                    )
+                        .joinToString(prefix = "[", postfix = "]") { name ->
+                            "$name=${glGetAttribLocation(program, name)}"
+                        }
+                    val arrays = (0..3).joinToString(prefix = "[", postfix = "]") { location ->
+                        "$location:{enabled=${glGetVertexAttribi(location, GL_VERTEX_ATTRIB_ARRAY_ENABLED)}," +
+                            "size=${glGetVertexAttribi(location, GL_VERTEX_ATTRIB_ARRAY_SIZE)}," +
+                            "type=0x${glGetVertexAttribi(location, GL_VERTEX_ATTRIB_ARRAY_TYPE).toString(16)}," +
+                            "normalized=${glGetVertexAttribi(location, GL_VERTEX_ATTRIB_ARRAY_NORMALIZED)}," +
+                            "stride=${glGetVertexAttribi(location, GL_VERTEX_ATTRIB_ARRAY_STRIDE)}," +
+                            "buffer=${glGetVertexAttribi(location, GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING)}}"
+                    }
+                    LOGGER.info(
+                        "[DEBUG-cparticle-iris] expandedDraw program={} vao={} vbo={} instances={} expandedInstances={} " +
+                            "errorBefore=0x{} locations={} arrays={}",
+                        program,
+                        expandedVao,
+                        expandedVbo,
+                        instances,
+                        expandedInstances,
+                        errorBeforeDraw.toString(16),
+                        locations,
+                        arrays,
+                    )
+                }
+            }
+        }
+        glDrawArrays(GL_TRIANGLES, 0, instances * EXPANDED_VERTICES_PER_PARTICLE)
+        val errorAfterDraw = glGetError()
+        if (errorAfterDraw != GL_NO_ERROR) {
+            LOGGER.warn("[DEBUG-cparticle-iris] expandedDraw errorAfter=0x{}", errorAfterDraw.toString(16))
+        }
+        glBindVertexArray(previousVao)
+    }
+
+    /**
+     * 按实例高水位增长 Iris 展开缓冲，并初始化原版粒子 VAO。
+     *
+     * 示例：首次展开 300 个实例时分配能容纳至少 300 个实例的缓冲。
+     * 禁止按系统最大容量预分配，空闲系统不应长期占用展开缓冲。
+     *
+     * @param requiredInstances 本次展开所需的实例槽位数
+     */
+    private fun ensureExpandedCapacity(requiredInstances: Int) {
+        if (expandedVao == 0 || expandedVbo == 0) {
+            val previousVao = glGetInteger(GL_VERTEX_ARRAY_BINDING)
+            val previousVbo = glGetInteger(GL_ARRAY_BUFFER_BINDING)
+            expandedVao = glGenVertexArrays()
+            expandedVbo = glGenBuffers()
+            glBindVertexArray(expandedVao)
+            glBindBuffer(GL_ARRAY_BUFFER, expandedVbo)
+            DefaultVertexFormat.PARTICLE.setupBufferState()
+            glBindVertexArray(previousVao)
+            glBindBuffer(GL_ARRAY_BUFFER, previousVbo)
+        }
+        if (requiredInstances <= expandedCapacity) return
+
+        var nextCapacity = expandedCapacity.coerceAtLeast(1)
+        while (nextCapacity < requiredInstances) {
+            nextCapacity = (nextCapacity * 2).coerceAtMost(capacity)
+            if (nextCapacity == capacity) break
+        }
+        val previousVbo = glGetInteger(GL_ARRAY_BUFFER_BINDING)
+        glBindBuffer(GL_ARRAY_BUFFER, expandedVbo)
+        glBufferData(
+            GL_ARRAY_BUFFER,
+            nextCapacity.toLong() * EXPANDED_VERTICES_PER_PARTICLE * EXPANDED_VERTEX_STRIDE,
+            GL_STREAM_DRAW,
+        )
+        glBindBuffer(GL_ARRAY_BUFFER, previousVbo)
+        expandedCapacity = nextCapacity
+    }
+
     fun release() {
         if (vbo != 0) {
             glDeleteBuffers(vbo)
@@ -201,6 +359,16 @@ class CParticleGlBuffer(val capacity: Int) {
             glDeleteVertexArrays(vao)
             vao = 0
         }
+        if (expandedVbo != 0) {
+            glDeleteBuffers(expandedVbo)
+            expandedVbo = 0
+        }
+        if (expandedVao != 0) {
+            glDeleteVertexArrays(expandedVao)
+            expandedVao = 0
+        }
+        expandedCapacity = 0
+        expandedInstances = 0
         scratch = null
         smallPatchScratch = null
     }
