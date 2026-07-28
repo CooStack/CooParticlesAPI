@@ -2,10 +2,10 @@ package cn.coostack.cooparticlesapi.cparticle.collision
 
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.core.BlockPos
-import org.lwjgl.BufferUtils
 import org.lwjgl.opengl.GL11
 import org.lwjgl.opengl.GL15
 import org.lwjgl.opengl.GL43
+import org.lwjgl.system.MemoryUtil
 import java.nio.IntBuffer
 import java.util.Arrays
 
@@ -19,17 +19,32 @@ import java.util.Arrays
  * @property minX 网格最小世界 X
  * @property minY 网格最小世界 Y
  * @property minZ 网格最小世界 Z
+ * @property size 每个轴的方块数
  */
 internal class CParticleBlockCollisionGrid(
     val minX: Int,
     val minY: Int,
     val minZ: Int,
+    val size: Int = SIZE,
 ) {
-    /** CPU 与 GPU 共用的 32-bit 占用位图。 */
-    private val words = IntArray(WORD_COUNT)
+    init {
+        require(size > 0) { "Collision grid size must be positive: $size" }
+        require(size.toLong() * size <= Int.MAX_VALUE.toLong() / size) {
+            "Collision grid is too large: $size^3"
+        }
+    }
 
-    /** 上传位图时复用的直接缓冲，大小不随粒子数量变化。 */
-    private val uploadBuffer: IntBuffer = BufferUtils.createIntBuffer(WORD_COUNT)
+    /** 当前实例的网格单元总数。 */
+    private val cellCount = size * size * size
+
+    /** 当前实例的 32-bit 占用字数量。 */
+    private val wordCount = ((cellCount.toLong() + 31) / 32).toInt()
+
+    /** CPU 与 GPU 共用的 32-bit 占用位图。 */
+    private val words = IntArray(wordCount)
+
+    /** 上传位图时按需创建的直接缓冲；网格淘汰时显式释放。 */
+    private var uploadBuffer: IntBuffer? = null
 
     /** 当前网格的 SSBO；仅在 GPU 模拟实际使用时创建。 */
     private var glBuffer = 0
@@ -75,7 +90,7 @@ internal class CParticleBlockCollisionGrid(
      * @return 对应单元在网格内且被占用时为 `true`
      */
     fun isOccupied(x: Int, y: Int, z: Int): Boolean {
-        if (x !in 0 until SIZE || y !in 0 until SIZE || z !in 0 until SIZE) return false
+        if (x !in 0 until size || y !in 0 until size || z !in 0 until size) return false
         val index = indexOf(x, y, z)
         return words[index ushr 5] and (1 shl (index and 31)) != 0
     }
@@ -93,10 +108,11 @@ internal class CParticleBlockCollisionGrid(
         val previous = GL11.glGetInteger(GL43.GL_SHADER_STORAGE_BUFFER_BINDING)
         GL15.glBindBuffer(GL43.GL_SHADER_STORAGE_BUFFER, glBuffer)
         if (gpuDirty) {
-            uploadBuffer.clear()
-            uploadBuffer.put(words)
-            uploadBuffer.flip()
-            GL15.glBufferData(GL43.GL_SHADER_STORAGE_BUFFER, uploadBuffer, GL15.GL_DYNAMIC_DRAW)
+            val buffer = uploadBuffer ?: MemoryUtil.memAllocInt(wordCount).also { uploadBuffer = it }
+            buffer.clear()
+            buffer.put(words)
+            buffer.flip()
+            GL15.glBufferData(GL43.GL_SHADER_STORAGE_BUFFER, buffer, GL15.GL_DYNAMIC_DRAW)
             gpuDirty = false
         }
         GL15.glBindBuffer(GL43.GL_SHADER_STORAGE_BUFFER, previous)
@@ -104,7 +120,7 @@ internal class CParticleBlockCollisionGrid(
     }
 
     /**
-     * 释放网格的 GPU 缓冲。
+     * 释放网格的 GPU 缓冲和上传缓冲。
      *
      * Example: 世界切换或网格闲置后由 manager 调用。
      * Forbidden: 只能在渲染线程销毁 OpenGL 资源。
@@ -114,6 +130,8 @@ internal class CParticleBlockCollisionGrid(
             GL15.glDeleteBuffers(glBuffer)
             glBuffer = 0
         }
+        uploadBuffer?.let { MemoryUtil.memFree(it) }
+        uploadBuffer = null
         gpuDirty = true
     }
 
@@ -129,7 +147,7 @@ internal class CParticleBlockCollisionGrid(
      * @param occupied 是否占用
      */
     internal fun setOccupiedForTest(x: Int, y: Int, z: Int, occupied: Boolean) {
-        require(x in 0 until SIZE && y in 0 until SIZE && z in 0 until SIZE)
+        require(x in 0 until size && y in 0 until size && z in 0 until size)
         val index = indexOf(x, y, z)
         val word = index ushr 5
         val mask = 1 shl (index and 31)
@@ -141,9 +159,9 @@ internal class CParticleBlockCollisionGrid(
     private fun rebuild(level: ClientLevel) {
         Arrays.fill(words, 0)
         val mutablePos = BlockPos.MutableBlockPos()
-        val maxX = minX + SIZE
-        val maxY = minY + SIZE
-        val maxZ = minZ + SIZE
+        val maxX = minX + size
+        val maxY = minY + size
+        val maxZ = minZ + size
         val firstChunkX = minX shr 4
         val lastChunkX = (maxX - 1) shr 4
         val firstChunkZ = minZ shr 4
@@ -183,18 +201,21 @@ internal class CParticleBlockCollisionGrid(
     }
 
     /** 返回 X 最快、随后 Z、最后 Y 的线性单元索引。 */
-    private fun indexOf(x: Int, y: Int, z: Int): Int = (y * SIZE + z) * SIZE + x
+    private fun indexOf(x: Int, y: Int, z: Int): Int = (y * size + z) * size + x
 
-    /** 保存 CPU/GPU 必须一致的固定网格参数。 */
+    /** 保存 CPU/GPU 必须一致的默认网格参数。 */
     companion object {
-        /** 每个轴的方块数。Example: `64` 表示 64³ 单元。Forbidden: 修改后必须同步 shader 穿越上限。 */
-        const val SIZE = 64
-
-        /** 相邻共享网格中心的间隔。Example: 同一 16³ 原点分区共享网格。Forbidden: 不能大于 [SIZE]。 */
+        /** 相邻共享网格中心的间隔。Example: 同一 16³ 原点分区共享网格。 */
         const val ORIGIN_BUCKET_SIZE = 16
 
-        /** 原点分区到网格边缘的最小方块余量。 */
-        const val EDGE_MARGIN = (SIZE - ORIGIN_BUCKET_SIZE) / 2
+        /** 未声明范围时，原点分区到网格边缘的最小方块余量。 */
+        const val DEFAULT_RANGE = 24
+
+        /** 默认每个轴的方块数。Example: `64` 表示 64³ 单元。 */
+        const val SIZE = ORIGIN_BUCKET_SIZE + DEFAULT_RANGE * 2
+
+        /** 旧名称保留为默认范围别名。 */
+        const val EDGE_MARGIN = DEFAULT_RANGE
 
         /** 方块状态变化反映到 GPU 网格的最大常规延迟，单位 tick。 */
         const val REFRESH_INTERVAL_TICKS = 5L

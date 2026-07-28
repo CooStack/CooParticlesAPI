@@ -17,8 +17,8 @@ internal object CParticleBlockCollisionGridManager {
     /** 当前 CParticle manager tick。 */
     private var tick = Int.MIN_VALUE
 
-    /** 以对齐后的最小坐标为键的共享网格。 */
-    private val grids = HashMap<Triple<Int, Int, Int>, CParticleBlockCollisionGrid>()
+    /** 以对齐后的边界和尺寸为键的共享网格。 */
+    private val grids = HashMap<CParticleBlockCollisionGridSpec, CParticleBlockCollisionGrid>()
 
     /**
      * 开始一次 CParticle system 更新。
@@ -44,15 +44,14 @@ internal object CParticleBlockCollisionGridManager {
      * Forbidden: [beginTick] 未提供世界时返回 `null`，不会构造空占位资源。
      *
      * @param origin CParticle system 世界原点
+     * @param collisionRange emitter 声明的最大碰撞范围
      * @return 可供本 tick CPU/GPU 模拟读取的网格
      */
-    fun gridFor(origin: Vec3): CParticleBlockCollisionGrid? {
+    fun gridFor(origin: Vec3, collisionRange: Int): CParticleBlockCollisionGrid? {
         val activeLevel = level ?: return null
-        val minX = alignedMin(origin.x)
-        val minY = alignedMin(origin.y)
-        val minZ = alignedMin(origin.z)
-        val grid = grids.getOrPut(Triple(minX, minY, minZ)) {
-            CParticleBlockCollisionGrid(minX, minY, minZ)
+        val spec = gridSpecFor(origin, collisionRange)
+        val grid = grids.getOrPut(spec) {
+            CParticleBlockCollisionGrid(spec.minX, spec.minY, spec.minZ, spec.size)
         }
         grid.lastUsedTick = tick
         grid.refreshIfNeeded(activeLevel)
@@ -88,11 +87,33 @@ internal object CParticleBlockCollisionGridManager {
         level = null
     }
 
-    /** 把世界坐标映射到带边缘余量的共享网格最小坐标。 */
-    private fun alignedMin(value: Double): Int {
+    /** 根据 system 原点和声明范围计算可复用网格的完整规格。 */
+    internal fun gridSpecFor(origin: Vec3, collisionRange: Int): CParticleBlockCollisionGridSpec {
+        require(collisionRange >= 0) { "Collision range must not be negative: $collisionRange" }
+        val size = Math.addExact(
+            CParticleBlockCollisionGrid.ORIGIN_BUCKET_SIZE,
+            Math.multiplyExact(collisionRange, 2),
+        )
+        return CParticleBlockCollisionGridSpec(
+            alignedBucketMin(origin.x) - collisionRange,
+            alignedBucketMin(origin.y) - collisionRange,
+            alignedBucketMin(origin.z) - collisionRange,
+            size,
+        )
+    }
+
+    /** 把世界坐标映射到共享网格原点分桶的最小坐标。 */
+    private fun alignedBucketMin(value: Double): Int {
         val block = floor(value).toInt()
         val bucket = Math.floorDiv(block, CParticleBlockCollisionGrid.ORIGIN_BUCKET_SIZE)
-        return bucket * CParticleBlockCollisionGrid.ORIGIN_BUCKET_SIZE -
-                CParticleBlockCollisionGrid.EDGE_MARGIN
+        return bucket * CParticleBlockCollisionGrid.ORIGIN_BUCKET_SIZE
     }
 }
+
+/** 唯一标识一个共享碰撞网格的世界边界和实例尺寸。 */
+internal data class CParticleBlockCollisionGridSpec(
+    val minX: Int,
+    val minY: Int,
+    val minZ: Int,
+    val size: Int,
+)

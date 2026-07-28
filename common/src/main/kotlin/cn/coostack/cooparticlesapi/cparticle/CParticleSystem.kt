@@ -104,6 +104,12 @@ class CParticleSystem(
     /** 速度上限 (对应 ControlableParticleData.speedLimit) */
     var speedLimit = 32f
 
+    /** Emitter 粒子相对 system 原点的方块碰撞保证范围。 */
+    internal var blockCollisionRange = CParticleSystemManager.DEFAULT_BLOCK_COLLISION_RANGE
+        set(value) {
+            field = CParticleSystemManager.normalizeBlockCollisionRange(value)
+        }
+
     /** 透明度生命周期曲线 (null = 恒定) */
     var alphaCurve: CParticleCurve? = null
 
@@ -790,7 +796,7 @@ class CParticleSystem(
     private fun tickSimulated() {
         val forceCount = packForces()
         val collisionGrid = if (store.blockCollisionCount > 0) {
-            CParticleBlockCollisionGridManager.gridFor(origin)
+            CParticleBlockCollisionGridManager.gridFor(origin, blockCollisionRange)
         } else {
             null
         }

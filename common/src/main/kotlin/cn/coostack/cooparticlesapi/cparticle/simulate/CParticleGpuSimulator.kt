@@ -105,7 +105,7 @@ object CParticleGpuSimulator {
                 )
             )
             setInt("uCollisionEnabled", if (collisionGrid != null) 1 else 0)
-            setInt("uCollisionSize", CParticleBlockCollisionGrid.SIZE)
+            setInt("uCollisionSize", collisionGrid?.size ?: CParticleBlockCollisionGrid.SIZE)
             if (collisionGrid != null) {
                 setFloat3(
                     "uCollisionOffset",

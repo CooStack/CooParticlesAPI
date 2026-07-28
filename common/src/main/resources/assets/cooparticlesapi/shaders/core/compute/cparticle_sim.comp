@@ -45,7 +45,6 @@ const int TYPE_ROTATION = 7;
 const int TYPE_NOISE = 8;
 const int TYPE_FLOW_FIELD = 9;
 const int FLAG_BLOCK_COLLISION = 32768;
-const int MAX_COLLISION_STEPS = 192;
 const float COLLISION_SURFACE_OFFSET = 0.07;
 
 bool collisionOccupied(ivec3 cell) {
@@ -95,7 +94,7 @@ bool traceCollisionGrid(vec3 start, vec3 velocity, out float hitTime, out vec3 h
         collisionTraversalDelta(velocity.z)
     );
 
-    for (int traversal = 0; traversal < MAX_COLLISION_STEPS; traversal++) {
+    for (int traversal = 0; traversal < uCollisionSize * 3; traversal++) {
         if (boundaryTime.x <= boundaryTime.y && boundaryTime.x <= boundaryTime.z) {
             hitTime = boundaryTime.x;
             if (hitTime > 1.0) return false;

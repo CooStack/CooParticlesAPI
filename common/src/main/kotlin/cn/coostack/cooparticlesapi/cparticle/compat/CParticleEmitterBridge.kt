@@ -26,6 +26,7 @@ import java.util.UUID
  *   与 `updatePhysics` 公式一致
  * - 附加运动通过 [ClassParticleEmitters.cparticleForces] 声明
  *   (内置 ParticleCommand 可用 [CParticleForce.fromCommand] 直接转换)
+ * - 方块碰撞窗口通过 [ClassParticleEmitters.cparticleBlockCollisionRange] 声明
  * - 每份 data 使用自己的 effect SpriteSet，并可单独指定额外纹理蒙版
  *
  * 需要 singleParticleAction、精确碰撞或碰撞事件、singleParticleDeathAction 重生，
@@ -44,7 +45,7 @@ object CParticleEmitterBridge {
      * @param world 当前客户端世界
      * @param pos 粒子的生成坐标
      * @param data 粒子数据
-     * @param segmentCapacityHint 当前批次的 CParticle 数量，用于首次创建时确定 segment 容量
+     * @param segmentCapacityHint 调用方确认可进入同一 system 的粒子数量
      * @return GPU 路径已处理时返回 `true`；能力或纹理不支持时返回 `false`
      */
     @JvmStatic
@@ -74,9 +75,10 @@ object CParticleEmitterBridge {
         )
         system.setOriginIfEmpty(emitter.pos)
 
-        // 力场每 tick 与发射器状态同步一次
+        // system 级模拟配置每 tick 与发射器状态同步一次
         if (system.forcesSyncTick != emitter.tick) {
             system.forcesSyncTick = emitter.tick
+            system.blockCollisionRange = emitter.cparticleBlockCollisionRange()
             syncForces(system.forces, emitter)
         }
         // 粒子生成时已按 data.visibleRange 逐粒子剔除过; 整池剔除范围取最大见过的值
@@ -89,7 +91,7 @@ object CParticleEmitterBridge {
     }
 
     /**
-     * 兼容直接调用桥接器的旧入口；没有批次信息时使用最小 segment 容量。
+     * 默认桥接入口；没有精确分组信息时使用最小 segment 容量。
      *
      * @param emitter 当前客户端发射器
      * @param world 当前客户端世界
@@ -115,7 +117,7 @@ object CParticleEmitterBridge {
      * @param layer 粒子的渲染层
      * @param textureBindingKey 本批次使用的基础纹理绑定
      * @param maskTextureBindingKey 本批次使用的可选蒙版纹理绑定
-     * @param segmentCapacityHint 首次创建 segment 时使用的本批次容量提示
+     * @param segmentCapacityHint 首次创建 segment 时使用的同 system 容量提示
      * @return 一个仍可写入的 SIMULATED system
      */
     private fun findAvailableSystem(
@@ -167,7 +169,7 @@ object CParticleEmitterBridge {
 
     /**
      * 根据已生成批次选择首次 segment 容量。
-     * 小批次保留 16384 个槽位，大批次直接按实际数量创建，单段最多 32767。
+     * 小批次保留 4096 个槽位，大批次直接按实际数量创建，单段最多 32767。
      *
      * @param batchParticleCount 当前批次的 CParticle 数量
      * @param globalLimit 当前全局存活数量上限
@@ -198,6 +200,6 @@ object CParticleEmitterBridge {
         }
     }
 
-    private const val MIN_SEGMENT_CAPACITY = 16_384
+    private const val MIN_SEGMENT_CAPACITY = 4_096
     private const val MAX_SEGMENT_CAPACITY = 32_767
 }

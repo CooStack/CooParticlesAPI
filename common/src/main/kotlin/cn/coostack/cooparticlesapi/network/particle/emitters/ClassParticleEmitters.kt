@@ -1,6 +1,7 @@
 package cn.coostack.cooparticlesapi.network.particle.emitters
 
 import cn.coostack.cooparticlesapi.annotations.emitter.handle.ParticleEmittersRegistryHelper
+import cn.coostack.cooparticlesapi.cparticle.CParticleSystemManager
 import cn.coostack.cooparticlesapi.cparticle.compat.CParticleEmitterBridge
 import cn.coostack.cooparticlesapi.cparticle.force.CParticleForce
 import cn.coostack.cooparticlesapi.extend.asVec3
@@ -185,6 +186,14 @@ abstract class ClassParticleEmitters(
      */
     open fun cparticleForces(): List<CParticleForce> = emptyList()
 
+    /**
+     * CParticle 方块碰撞相对 system 原点的最大保证范围，单位为方块。
+     *
+     * Example: 粒子最远会离开 system 原点 40 格时返回 `40`。
+     * Forbidden: 返回值会被限制在 `0..96`；范围越大，网格刷新成本按立方增长。
+     */
+    open fun cparticleBlockCollisionRange(): Int = CParticleSystemManager.DEFAULT_BLOCK_COLLISION_RANGE
+
     /** 质量 单位 g */
     var mass: Double = 1.0
     override fun start() {
@@ -259,7 +268,6 @@ abstract class ClassParticleEmitters(
         var spawnedCount = 0f
         val particles = genParticles(lerpProgress)
         val total = particles.size
-        val cparticleBatchSize = particles.count { it.first is ControlableCParticleData }
         particles.forEach {
             spawnedCount++
             spawnParticle(
@@ -268,7 +276,6 @@ abstract class ClassParticleEmitters(
                 it.first,
                 spawnedCount / total,
                 lerpProgress,
-                cparticleBatchSize,
             )
         }
     }
@@ -334,9 +341,16 @@ abstract class ClassParticleEmitters(
     }
 
     /**
-     * 生成单个粒子；GPU 路径会用本批次总量直接确定首次 system 容量。
+     * 生成一个已通过发射器插值定位的粒子。
      *
-     * @param cparticleBatchSize 本次 [genParticles] 返回的 CParticle 数量
+     * Example: [ControlableCParticleData] 从 4096 槽的 segment 起步，写满后再增加分段。
+     * Forbidden: 不能把整个 [genParticles] 的数量当作每个纹理 system 的容量。
+     *
+     * @param world 当前客户端世界
+     * @param pos 粒子的世界坐标
+     * @param data 本次生成使用的粒子数据
+     * @param particleLerpProgress 当前粒子在生成列表内的进度
+     * @param posLerpProgress 发射器位置插值进度
      */
     private fun spawnParticle(
         world: ClientLevel,
@@ -344,7 +358,6 @@ abstract class ClassParticleEmitters(
         data: ControlableParticleData,
         particleLerpProgress: Float,
         posLerpProgress: Float,
-        cparticleBatchSize: Int,
     ) {
 
         val player = Minecraft.getInstance().player ?: return
@@ -353,7 +366,7 @@ abstract class ClassParticleEmitters(
         }
         // cparticle GPU 路径: 数据直接进 GPU 粒子系统, 跳过 controler/事件/碰撞
         if (data is ControlableCParticleData &&
-            CParticleEmitterBridge.trySpawn(this, world, pos, data, cparticleBatchSize)
+            CParticleEmitterBridge.trySpawn(this, world, pos, data)
         ) {
             return
         }
@@ -420,9 +433,6 @@ abstract class ClassParticleEmitters(
             // 生成新粒子
             val newParticles =
                 singleParticleDeathAction(control, data, data.respawnCount + 1, it)
-            val respawnCParticleBatchSize = newParticles.count { (newData, _) ->
-                newData is ControlableCParticleData
-            }
             newParticles.forEach { (newData, rel) ->
                 newData.respawnCount = data.respawnCount + 1
                 spawnParticle(
@@ -431,7 +441,6 @@ abstract class ClassParticleEmitters(
                     newData,
                     particleLerpProgress,
                     posLerpProgress,
-                    respawnCParticleBatchSize,
                 )
             }
         }

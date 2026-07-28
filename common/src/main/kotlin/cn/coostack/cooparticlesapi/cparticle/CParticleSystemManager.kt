@@ -43,6 +43,12 @@ private data class ManagedCParticleSystemKey(
  */
 object CParticleSystemManager {
 
+    /** Emitter 未覆写时，CParticle 方块碰撞相对 system 原点的保证范围。 */
+    const val DEFAULT_BLOCK_COLLISION_RANGE = 24
+
+    /** 单个 emitter 可声明的最大 CParticle 方块碰撞范围，防止误配置创建超大稠密网格。 */
+    const val MAX_BLOCK_COLLISION_RANGE = 96
+
     private val systems = LinkedHashMap<ManagedCParticleSystemKey, CParticleSystem>()
 
     /** 全局开关 */
@@ -58,6 +64,10 @@ object CParticleSystemManager {
     @get:JvmStatic
     var particleCountLimit = 3_000_000
         private set
+
+    /** 把 emitter 声明限制到碰撞网格支持的安全范围。 */
+    internal fun normalizeBlockCollisionRange(range: Int): Int =
+        range.coerceIn(0, MAX_BLOCK_COLLISION_RANGE)
 
     /**
      * 当前所有 CParticle system 中的存活槽位数。

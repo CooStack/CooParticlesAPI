@@ -49,9 +49,9 @@ internal object CParticleVoxelCollision {
     ): Boolean {
         require(result.size >= RESULT_SIZE)
         if (startX < 0f || startY < 0f || startZ < 0f ||
-            startX >= CParticleBlockCollisionGrid.SIZE ||
-            startY >= CParticleBlockCollisionGrid.SIZE ||
-            startZ >= CParticleBlockCollisionGrid.SIZE
+            startX >= grid.size ||
+            startY >= grid.size ||
+            startZ >= grid.size
         ) {
             return false
         }
@@ -72,7 +72,7 @@ internal object CParticleVoxelCollision {
         val deltaY = traversalDelta(velocityY)
         val deltaZ = traversalDelta(velocityZ)
 
-        repeat(MAX_TRAVERSAL_STEPS) {
+        repeat(grid.size * 3) {
             val hitTime: Float
             val normal: Int
             if (timeX <= timeY && timeX <= timeZ) {
@@ -94,9 +94,9 @@ internal object CParticleVoxelCollision {
                 normal = -stepZ * 3
                 timeZ += deltaZ
             }
-            if (cellX !in 0 until CParticleBlockCollisionGrid.SIZE ||
-                cellY !in 0 until CParticleBlockCollisionGrid.SIZE ||
-                cellZ !in 0 until CParticleBlockCollisionGrid.SIZE
+            if (cellX !in 0 until grid.size ||
+                cellY !in 0 until grid.size ||
+                cellZ !in 0 until grid.size
             ) {
                 return false
             }
@@ -120,6 +120,4 @@ internal object CParticleVoxelCollision {
     private fun traversalDelta(velocity: Float): Float =
         if (velocity == 0f) Float.POSITIVE_INFINITY else 1f / kotlin.math.abs(velocity)
 
-    /** 单段最多跨过的单元边界数；64³ 网格最多需要 192 次。 */
-    private const val MAX_TRAVERSAL_STEPS = CParticleBlockCollisionGrid.SIZE * 3
 }
