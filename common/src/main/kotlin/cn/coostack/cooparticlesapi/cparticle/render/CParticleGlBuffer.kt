@@ -7,9 +7,31 @@ import org.lwjgl.BufferUtils
 import org.lwjgl.opengl.GL31
 import org.lwjgl.opengl.GL33.*
 import org.lwjgl.opengl.GL43
+import org.lwjgl.system.MemoryUtil
 import org.slf4j.LoggerFactory
 import java.nio.FloatBuffer
 import java.nio.ByteOrder
+
+/**
+ * 计算 Direct scratch 的下一次容量。
+ * 首次按实际需求分配，后续最多翻倍，并始终受 system 最大容量约束。
+ *
+ * @param currentCapacity 当前 float 容量，尚未分配时为 0
+ * @param requiredFloats 本次上传需要的 float 数量
+ * @param maxFloats 当前 system 可上传的最大 float 数量
+ * @return 满足本次上传的下一容量
+ */
+internal fun nextScratchCapacity(currentCapacity: Int, requiredFloats: Int, maxFloats: Int): Int {
+    require(maxFloats > 0) { "maxFloats must be positive" }
+    require(requiredFloats in 1..maxFloats) {
+        "requiredFloats must be in 1..maxFloats"
+    }
+    if (requiredFloats <= currentCapacity) return currentCapacity
+    if (currentCapacity <= 0) return requiredFloats
+    return maxOf(requiredFloats.toLong(), currentCapacity.toLong() * 2L)
+        .coerceAtMost(maxFloats.toLong())
+        .toInt()
+}
 
 /**
  * GPU 粒子实例缓冲: 一个 VBO 同时充当
@@ -64,13 +86,19 @@ class CParticleGlBuffer(val capacity: Int) {
         glBindBuffer(GL_ARRAY_BUFFER, prevVbo)
     }
 
-    private fun scratchBuffer(): FloatBuffer {
-        var s = scratch
-        if (s == null) {
-            s = BufferUtils.createFloatBuffer(capacity * CParticleStore.STRIDE)
-            scratch = s
-        }
-        return s
+    /** 按本次实际上传量获取 scratch；增长时立即释放旧 Direct Buffer。 */
+    private fun scratchBuffer(requiredFloats: Int): FloatBuffer {
+        val current = scratch
+        if (current != null && current.capacity() >= requiredFloats) return current
+        val nextCapacity = nextScratchCapacity(
+            current?.capacity() ?: 0,
+            requiredFloats,
+            capacity * CParticleStore.STRIDE,
+        )
+        val replacement = MemoryUtil.memAllocFloat(nextCapacity)
+        if (current != null) MemoryUtil.memFree(current)
+        scratch = replacement
+        return replacement
     }
 
     private fun smallPatchBuffer(): FloatBuffer {
@@ -90,7 +118,7 @@ class CParticleGlBuffer(val capacity: Int) {
         if (from > to) return
         val floatOffset = from * CParticleStore.STRIDE
         val floatCount = (to - from + 1) * CParticleStore.STRIDE
-        val s = scratchBuffer()
+        val s = scratchBuffer(floatCount)
         s.clear()
         s.put(data, floatOffset, floatCount)
         s.flip()
@@ -109,7 +137,6 @@ class CParticleGlBuffer(val capacity: Int) {
         java.util.Arrays.sort(slots, 0, count)
         val prev = glGetInteger(GL_ARRAY_BUFFER_BINDING)
         glBindBuffer(GL_ARRAY_BUFFER, vbo)
-        val s = scratchBuffer()
         var i = 0
         while (i < count) {
             var j = i
@@ -118,6 +145,7 @@ class CParticleGlBuffer(val capacity: Int) {
             val from = slots[i]
             val floatOffset = from * CParticleStore.STRIDE
             val floatCount = (slots[j] - from + 1) * CParticleStore.STRIDE
+            val s = scratchBuffer(floatCount)
             s.clear()
             s.put(data, floatOffset, floatCount)
             s.flip()
@@ -369,6 +397,7 @@ class CParticleGlBuffer(val capacity: Int) {
         }
         expandedCapacity = 0
         expandedInstances = 0
+        scratch?.let { MemoryUtil.memFree(it) }
         scratch = null
         smallPatchScratch = null
     }

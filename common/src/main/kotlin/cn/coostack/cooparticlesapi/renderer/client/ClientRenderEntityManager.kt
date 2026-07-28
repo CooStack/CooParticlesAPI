@@ -71,6 +71,17 @@ object ClientRenderEntityManager {
         return entities[uuid]
     }
 
+    /**
+     * 返回客户端当前持有的 RenderEntity 实例数量。
+     *
+     * 示例：F3 调试信息可用 `loadedEntityCount()` 显示当前加载量。
+     * 禁止把该值理解为已注册的 RenderEntity 类型数或服务端实例数。
+     *
+     * @return 当前客户端运行时实例数量
+     */
+    @JvmStatic
+    fun loadedEntityCount(): Int = entities.size
+
     fun clear() {
         entities.values.forEach { it.release() }
         entities.clear()

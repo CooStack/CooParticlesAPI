@@ -15,6 +15,7 @@ import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableParticle
 import cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind.GlobalWindDirection
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.world.phys.Vec3
+import java.util.UUID
 
 /**
  * # CParticleEmitterBridge
@@ -43,6 +44,7 @@ object CParticleEmitterBridge {
      * @param world 当前客户端世界
      * @param pos 粒子的生成坐标
      * @param data 粒子数据
+     * @param segmentCapacityHint 当前批次的 CParticle 数量，用于首次创建时确定 segment 容量
      * @return GPU 路径已处理时返回 `true`；能力或纹理不支持时返回 `false`
      */
     @JvmStatic
@@ -51,6 +53,7 @@ object CParticleEmitterBridge {
         world: ClientLevel,
         pos: Vec3,
         data: ControlableCParticleData,
+        segmentCapacityHint: Int,
     ): Boolean {
         if (!CParticleSystemManager.enabled) return false
         CParticleCapabilities.detect()
@@ -67,6 +70,7 @@ object CParticleEmitterBridge {
             layer,
             resolved.base.bindingKey,
             resolved.mask?.bindingKey,
+            segmentCapacityHint,
         )
         system.setOriginIfEmpty(emitter.pos)
 
@@ -85,6 +89,23 @@ object CParticleEmitterBridge {
     }
 
     /**
+     * 兼容直接调用桥接器的旧入口；没有批次信息时使用最小 segment 容量。
+     *
+     * @param emitter 当前客户端发射器
+     * @param world 当前客户端世界
+     * @param pos 粒子的生成坐标
+     * @param data 粒子数据
+     * @return GPU 路径已处理时返回 `true`；能力或纹理不支持时返回 `false`
+     */
+    @JvmStatic
+    fun trySpawn(
+        emitter: ClassParticleEmitters,
+        world: ClientLevel,
+        pos: Vec3,
+        data: ControlableCParticleData,
+    ): Boolean = trySpawn(emitter, world, pos, data, MIN_SEGMENT_CAPACITY)
+
+    /**
      * 返回仍有空槽位的 emitter system；已有分段写满时创建下一段。
      *
      * Example: `segment 0` 写满后返回同一 emitter 的 `segment 1`。
@@ -94,6 +115,7 @@ object CParticleEmitterBridge {
      * @param layer 粒子的渲染层
      * @param textureBindingKey 本批次使用的基础纹理绑定
      * @param maskTextureBindingKey 本批次使用的可选蒙版纹理绑定
+     * @param segmentCapacityHint 首次创建 segment 时使用的本批次容量提示
      * @return 一个仍可写入的 SIMULATED system
      */
     private fun findAvailableSystem(
@@ -101,9 +123,13 @@ object CParticleEmitterBridge {
         layer: CParticleRenderLayer,
         textureBindingKey: CParticleTextureBindingKey,
         maskTextureBindingKey: CParticleTextureBindingKey?,
+        segmentCapacityHint: Int,
     ): CParticleSystem {
         val baseName = "emitter/${emitter.uuid}/${layer.name.lowercase()}"
-        val segmentCapacity = DEFAULT_SEGMENT_CAPACITY.coerceAtMost(CParticleSystemManager.particleCountLimit)
+        val segmentCapacity = segmentCapacityFor(
+            segmentCapacityHint,
+            CParticleSystemManager.particleCountLimit,
+        )
         var segment = 0
         while (true) {
             val name = if (segment == 0) baseName else "$baseName/$segment"
@@ -129,6 +155,29 @@ object CParticleEmitterBridge {
         }
     }
 
+    /**
+     * 标记一个 emitter 的 GPU systems 已不再接收新粒子。
+     * 已空的 system 立即释放，其余 system 等存活粒子归零后释放。
+     *
+     * @param emitterId 已结束的 emitter UUID
+     */
+    internal fun finishEmitter(emitterId: UUID) {
+        CParticleSystemManager.releaseSystemsWhenEmpty("emitter/$emitterId/")
+    }
+
+    /**
+     * 根据已生成批次选择首次 segment 容量。
+     * 小批次保留 16384 个槽位，大批次直接按实际数量创建，单段最多 32767。
+     *
+     * @param batchParticleCount 当前批次的 CParticle 数量
+     * @param globalLimit 当前全局存活数量上限
+     * @return 创建新 segment 时使用的固定容量
+     */
+    internal fun segmentCapacityFor(batchParticleCount: Int, globalLimit: Int): Int {
+        return batchParticleCount.coerceIn(MIN_SEGMENT_CAPACITY, MAX_SEGMENT_CAPACITY)
+            .coerceAtMost(globalLimit.coerceAtLeast(1))
+    }
+
     private fun syncForces(target: MutableList<CParticleForce>, emitter: ClassParticleEmitters) {
         target.clear()
         // 与 ClassParticleEmitters.updatePhysics 相同的三项内建物理
@@ -149,5 +198,6 @@ object CParticleEmitterBridge {
         }
     }
 
-    private const val DEFAULT_SEGMENT_CAPACITY = 327670
+    private const val MIN_SEGMENT_CAPACITY = 16_384
+    private const val MAX_SEGMENT_CAPACITY = 32_767
 }

@@ -18,7 +18,7 @@
     "MainTargetMixin",
     "MutableSpriteSetAccessor",
     "ParticleEngineAccessor",
-    "ParticleEngineDebugMixin",
+    "DebugScreenOverlayMixin",
     "ParticleEngineMixin",
     "compat.iris.ShaderKeyIrisCompatMixin",
     "compat.iris.ShaderInstanceIrisCompatMixin",

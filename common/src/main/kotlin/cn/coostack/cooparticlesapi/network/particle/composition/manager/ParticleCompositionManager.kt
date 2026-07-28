@@ -15,12 +15,22 @@ import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.entity.player.Player
+import java.lang.ref.ReferenceQueue
+import java.lang.ref.WeakReference
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.collections.set
 import kotlin.jvm.java
 
 object ParticleCompositionManager {
+    /**
+     * 弱引用保存已进入客户端显示生命周期的 Composition 实例。
+     *
+     * 示例：顶层 Composition 及其直接显示的子 Composition 会分别占一个条目。
+     * 禁止在此处强持有 Composition，否则 Emitter 临时创建的实例无法被回收。
+     */
+    private val loadedClientCompositions = WeakIdentitySet<ParticleComposition>()
+
     val clientView = ConcurrentHashMap<UUID, ParticleComposition>()
 
     val serverView = ConcurrentHashMap<UUID, ParticleComposition>()
@@ -31,6 +41,34 @@ object ParticleCompositionManager {
     val playerPlayerVisibleSet = ConcurrentHashMap<UUID, HashSet<ParticleComposition>>()
 
     val registeredTypes = ConcurrentHashMap<String, StreamCodec<FriendlyByteBuf, ParticleComposition>>()
+
+    /**
+     * 登记或移除一个客户端活动 Composition。
+     *
+     * 示例：Composition 首次 `display()` 时传入 `true`，执行 `clear(true)` 时传入 `false`。
+     * 禁止为服务端仅用于同步的 Composition 传入 `true`。
+     *
+     * @param composition 需要更新活动状态的 Composition 实例
+     * @param loaded `true` 表示已加载到客户端，`false` 表示已离开客户端生命周期
+     */
+    internal fun setClientLoaded(composition: ParticleComposition, loaded: Boolean) {
+        if (loaded) {
+            loadedClientCompositions.add(composition)
+        } else {
+            loadedClientCompositions.remove(composition)
+        }
+    }
+
+    /**
+     * 返回客户端当前活动的全部 Composition 实例数量。
+     *
+     * 示例：F3 调试信息用该值统计顶层、嵌套及 Emitter 直接显示的 Composition。
+     * 禁止把该值理解为服务端实例数或已注册类型数。
+     *
+     * @return 当前客户端活动 Composition 数量
+     */
+    @JvmStatic
+    fun loadedClientCount(): Int = loadedClientCompositions.size()
 
     fun addClient(composition: ParticleComposition) {
         clientView[composition.controlUUID] = composition
@@ -184,6 +222,12 @@ object ParticleCompositionManager {
         }
     }
 
+    /**
+     * 清理当前客户端世界持有的所有 Composition。
+     *
+     * 示例：客户端断线或换世界时调用该方法，将顶层与嵌套实例一并移出活动计数。
+     * 禁止用该方法清理服务端 [serverView]。
+     */
     fun clearClient() {
         // 这里必须走 clear(true) 强制销毁
         // remove() 可能被使用者重写成延迟消散的语义 (例如先 status.disable() 等渐隐结束再真正销毁)
@@ -192,6 +236,7 @@ object ParticleCompositionManager {
             it.clear(true)
         }
         clientView.clear()
+        loadedClientCompositions.clear()
     }
 
 
@@ -203,4 +248,57 @@ object ParticleCompositionManager {
         playerPlayerVisibleSet.clear()
     }
 
+}
+
+private class WeakIdentitySet<T : Any> {
+    private val collectedReferences = ReferenceQueue<T>()
+    private val references = HashSet<IdentityWeakReference<T>>()
+
+    @Synchronized
+    fun add(value: T) {
+        removeCollectedReferences()
+        references.add(IdentityWeakReference(value, collectedReferences))
+    }
+
+    @Synchronized
+    fun remove(value: T) {
+        removeCollectedReferences()
+        references.remove(IdentityWeakReference(value))
+    }
+
+    @Synchronized
+    fun size(): Int {
+        removeCollectedReferences()
+        return references.size
+    }
+
+    @Synchronized
+    fun clear() {
+        references.clear()
+        while (collectedReferences.poll() != null) {
+            // 清空队列中已经失效的引用。
+        }
+    }
+
+    private fun removeCollectedReferences() {
+        while (true) {
+            val reference = collectedReferences.poll() ?: return
+            references.remove(reference)
+        }
+    }
+}
+
+private class IdentityWeakReference<T : Any>(
+    referent: T,
+    queue: ReferenceQueue<T>? = null,
+) : WeakReference<T>(referent, queue) {
+    private val identityHashCode = System.identityHashCode(referent)
+
+    override fun hashCode(): Int = identityHashCode
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is IdentityWeakReference<*>) return false
+        return get()?.let { referent -> referent === other.get() } ?: false
+    }
 }

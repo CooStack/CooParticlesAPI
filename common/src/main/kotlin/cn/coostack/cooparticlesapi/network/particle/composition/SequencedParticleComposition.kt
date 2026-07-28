@@ -2,6 +2,7 @@ package cn.coostack.cooparticlesapi.network.particle.composition
 
 import cn.coostack.cooparticlesapi.api.controler.Tickable
 import cn.coostack.cooparticlesapi.network.particle.composition.AutoParticleComposition
+import cn.coostack.cooparticlesapi.network.particle.composition.manager.ParticleCompositionManager
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import cn.coostack.cooparticlesapi.utils.helper.SequencedCompositionAnimationHelper
@@ -98,6 +99,12 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
         particleRotatedLocations.clear()
     }
 
+    /**
+     * 进入序列 Composition 的显示生命周期并初始化动画状态。
+     *
+     * 示例：客户端直接显示时会登记为一个活动 Composition 实例。
+     * 禁止在 [world] 尚未设置时调用。
+     */
     override fun display() {
         if (displayed) {
             return
@@ -107,6 +114,9 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
         status.loadControler(this)
         status.initHelper()
         this.client = world!!.isClientSide
+        if (client) {
+            ParticleCompositionManager.setClientLoaded(this, true)
+        }
         // 在服务器需要用来更新粒子个数 所以需要参与一次计算
         flush()
         if (!client) {

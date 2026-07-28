@@ -515,6 +515,14 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
         return this
     }
 
+    /**
+     * 清除当前显示内容，并按 [cancel] 决定是否结束本次生命周期。
+     *
+     * 示例：`clear(true)` 会销毁子节点并从客户端活动计数中移除本实例。
+     * 禁止用 `clear(false)` 表示最终移除，因为该模式用于保留 displayed 状态后重新生成内容。
+     *
+     * @param cancel `true` 表示结束生命周期，`false` 表示仅刷新显示内容
+     */
     open fun clear(cancel: Boolean) {
         particles.forEach {
             it.value.remove()
@@ -528,20 +536,37 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
         this.canceled = cancel
         if (cancel) {
             displayed = false
+            ParticleCompositionManager.setClientLoaded(this, false)
         }
     }
 
+    /**
+     * 在服务端重新生成 Composition 前重置旧生命周期状态。
+     *
+     * 示例：同一实例再次调用 `spawn(...)` 时先执行本方法，避免沿用 canceled 状态。
+     * 禁止在仍需保留当前客户端显示内容时调用。
+     */
     internal fun resetLifecycleForSpawn() {
+        ParticleCompositionManager.setClientLoaded(this, false)
         canceled = false
         displayed = false
     }
 
+    /**
+     * 根据当前世界进入服务端同步或客户端显示生命周期。
+     *
+     * 示例：客户端直接显示的嵌套 Composition 会在此登记为活动实例。
+     * 禁止在 [world] 尚未设置时调用。
+     */
     open fun display() {
         if (displayed) {
             return
         }
         displayed = true
         this.client = world!!.isClientSide
+        if (client) {
+            ParticleCompositionManager.setClientLoaded(this, true)
+        }
         // 在服务器需要用来更新粒子个数 所以需要参与一次计算
         flush()
         status.loadControler(this)

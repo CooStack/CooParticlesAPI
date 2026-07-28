@@ -4,6 +4,7 @@ import cn.coostack.cooparticlesapi.CooParticlesAPI
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
 import cn.coostack.cooparticlesapi.annotations.emitter.handle.ParticleEmittersRegistryHelper
+import cn.coostack.cooparticlesapi.cparticle.compat.CParticleEmitterBridge
 import cn.coostack.cooparticlesapi.event.CooEventBus
 import cn.coostack.cooparticlesapi.event.events.particle.emitter.EmitterRemoveEvent
 import cn.coostack.cooparticlesapi.event.events.particle.emitter.EmitterSpawnEvent
@@ -83,6 +84,7 @@ object ParticleEmittersManager {
     fun createOrChangeClient(emitters: ParticleEmitters, viewWorld: Level) {
         if (emitters.canceled) {
             clientEmitters.remove(emitters.uuid)
+            CParticleEmitterBridge.finishEmitter(emitters.uuid)
             return
         }
         if (clientEmitters.containsKey(emitters.uuid)) {
@@ -127,6 +129,7 @@ object ParticleEmittersManager {
             emitters.tick()
             if (emitters.canceled) {
                 iterator.remove()
+                CParticleEmitterBridge.finishEmitter(emitters.uuid)
                 CooEventBus.call(EmitterRemoveEvent(emitters, true))
             }
         }
@@ -207,6 +210,7 @@ object ParticleEmittersManager {
     fun clearAllVisible() {
         clientEmitters.values.forEach {
             it.remove()
+            CParticleEmitterBridge.finishEmitter(it.uuid)
             CooEventBus.call(EmitterRemoveEvent(it, true))
         }
         clientEmitters.clear()

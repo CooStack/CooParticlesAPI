@@ -78,6 +78,7 @@ object CParticleSystemManager {
 
     private val lastNonEmptyTick = HashMap<ManagedCParticleSystemKey, Int>()
     private val autoRelease = HashSet<ManagedCParticleSystemKey>()
+    private val terminalAutoRelease = HashSet<ManagedCParticleSystemKey>()
 
     // ------------------------------------------------------------ 系统管理
 
@@ -379,6 +380,35 @@ object CParticleSystemManager {
         systems.remove(key)?.release()
         lastNonEmptyTick.remove(key)
         autoRelease.remove(key)
+        terminalAutoRelease.remove(key)
+    }
+
+    /**
+     * 标记名称前缀匹配的自动回收 systems 不再接收新粒子。
+     * 已空的 system 当场释放，仍有粒子的 system 在归零后的第一个 tick 释放。
+     *
+     * @param namePrefix system 名称前缀
+     */
+    internal fun releaseSystemsWhenEmpty(namePrefix: String) {
+        val matchingKeys = systems.keys.filter { key ->
+            key in autoRelease && key.name.startsWith(namePrefix)
+        }
+        for (key in matchingKeys) {
+            val system = systems[key] ?: continue
+            if (system.store.aliveCount == 0) {
+                removeSystem(key)
+            } else {
+                terminalAutoRelease.add(key)
+            }
+        }
+    }
+
+    /**
+     * 判断自动回收 system 当前是否可以释放。
+     * terminal system 不再等待空闲阈值，但任何仍有粒子的 system 都不能提前销毁。
+     */
+    internal fun shouldReleaseAutoSystem(aliveCount: Int, terminal: Boolean, idleTicks: Int): Boolean {
+        return aliveCount == 0 && (terminal || idleTicks > AUTO_RELEASE_IDLE_TICKS)
     }
 
     /**
@@ -461,8 +491,13 @@ object CParticleSystemManager {
                 system.tick()
                 if (system.store.aliveCount > 0) {
                     lastNonEmptyTick[key] = currentTick
-                } else if (key in autoRelease &&
-                    currentTick - (lastNonEmptyTick[key] ?: currentTick) > AUTO_RELEASE_IDLE_TICKS
+                }
+                val idleTicks = currentTick - (lastNonEmptyTick[key] ?: currentTick)
+                if (key in autoRelease && shouldReleaseAutoSystem(
+                        system.store.aliveCount,
+                        key in terminalAutoRelease,
+                        idleTicks,
+                    )
                 ) {
                     toRemove.add(key)
                 }
@@ -499,6 +534,7 @@ object CParticleSystemManager {
             }
         }
         autoRelease.removeAll { it !in systems.keys }
+        terminalAutoRelease.clear()
     }
 
     /** 资源重载: 图集 UV 会变, 清空贴图缓存; shader 程序由 registry 自动重建 */
@@ -514,6 +550,7 @@ object CParticleSystemManager {
         systems.clear()
         lastNonEmptyTick.clear()
         autoRelease.clear()
+        terminalAutoRelease.clear()
         CParticleRenderer.release()
         CParticleGpuSimulator.release()
         CParticleBlockCollisionGridManager.clear()

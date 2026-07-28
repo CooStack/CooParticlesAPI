@@ -1,6 +1,7 @@
 package cn.coostack.cooparticlesapi.network.particle.emitters
 
 import cn.coostack.cooparticlesapi.annotations.emitter.handle.ParticleEmittersRegistryHelper
+import cn.coostack.cooparticlesapi.cparticle.compat.CParticleEmitterBridge
 import cn.coostack.cooparticlesapi.cparticle.force.CParticleForce
 import cn.coostack.cooparticlesapi.extend.asVec3
 import cn.coostack.cooparticlesapi.extend.lengthCoerceAtMost
@@ -258,9 +259,17 @@ abstract class ClassParticleEmitters(
         var spawnedCount = 0f
         val particles = genParticles(lerpProgress)
         val total = particles.size
+        val cparticleBatchSize = particles.count { it.first is ControlableCParticleData }
         particles.forEach {
             spawnedCount++
-            spawnParticle(world, pos.add(it.second.toVector()), it.first, spawnedCount / total, lerpProgress)
+            spawnParticle(
+                world,
+                pos.add(it.second.toVector()),
+                it.first,
+                spawnedCount / total,
+                lerpProgress,
+                cparticleBatchSize,
+            )
         }
     }
 
@@ -324,12 +333,18 @@ abstract class ClassParticleEmitters(
         return listOf()
     }
 
+    /**
+     * 生成单个粒子；GPU 路径会用本批次总量直接确定首次 system 容量。
+     *
+     * @param cparticleBatchSize 本次 [genParticles] 返回的 CParticle 数量
+     */
     private fun spawnParticle(
         world: ClientLevel,
         pos: Vec3,
         data: ControlableParticleData,
         particleLerpProgress: Float,
-        posLerpProgress: Float
+        posLerpProgress: Float,
+        cparticleBatchSize: Int,
     ) {
 
         val player = Minecraft.getInstance().player ?: return
@@ -338,7 +353,7 @@ abstract class ClassParticleEmitters(
         }
         // cparticle GPU 路径: 数据直接进 GPU 粒子系统, 跳过 controler/事件/碰撞
         if (data is ControlableCParticleData &&
-            cn.coostack.cooparticlesapi.cparticle.compat.CParticleEmitterBridge.trySpawn(this, world, pos, data)
+            CParticleEmitterBridge.trySpawn(this, world, pos, data, cparticleBatchSize)
         ) {
             return
         }
@@ -405,9 +420,19 @@ abstract class ClassParticleEmitters(
             // 生成新粒子
             val newParticles =
                 singleParticleDeathAction(control, data, data.respawnCount + 1, it)
+            val respawnCParticleBatchSize = newParticles.count { (newData, _) ->
+                newData is ControlableCParticleData
+            }
             newParticles.forEach { (newData, rel) ->
                 newData.respawnCount = data.respawnCount + 1
-                spawnParticle(world, this.loc.add(rel.toVector()), newData, particleLerpProgress, posLerpProgress)
+                spawnParticle(
+                    world,
+                    this.loc.add(rel.toVector()),
+                    newData,
+                    particleLerpProgress,
+                    posLerpProgress,
+                    respawnCParticleBatchSize,
+                )
             }
         }
         control.addPreTickAction {
