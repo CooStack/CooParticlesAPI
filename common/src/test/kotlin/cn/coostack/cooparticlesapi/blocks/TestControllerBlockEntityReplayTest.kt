@@ -122,10 +122,12 @@ class TestControllerBlockEntityReplayTest {
 
     private class RenderEntityLikeOption(
         val entity: Any
-    ) : TestOption {
+    ) : TestOption<Any> {
         private var valid = true
         var stopCount = 0
             private set
+
+        override fun paramTarget(): Any = entity
 
         override fun start() = Unit
 

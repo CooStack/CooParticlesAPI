@@ -1,5 +1,24 @@
 package cn.coostack.cooparticlesapi.test.api
 
+import cn.coostack.cooparticlesapi.animation.Animate
+import cn.coostack.cooparticlesapi.display.DisplayEntity
+import cn.coostack.cooparticlesapi.network.particle.composition.ParticleComposition
+import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmitters
+import cn.coostack.cooparticlesapi.network.particle.style.ParticleGroupStyle
+import cn.coostack.cooparticlesapi.test.ServerSoundFadeTestOption
+import cn.coostack.cooparticlesapi.test.ServerSoundStartDuckLoopTestOption
+import cn.coostack.cooparticlesapi.test.ServerSoundStartLoopTestOption
+import cn.coostack.cooparticlesapi.test.ServerSoundTestOption
+import cn.coostack.cooparticlesapi.test.ShakeOption
+import cn.coostack.cooparticlesapi.test.SimpleAnimateOption
+import cn.coostack.cooparticlesapi.test.SimpleCompositionOption
+import cn.coostack.cooparticlesapi.test.SimpleDisplayEntityOption
+import cn.coostack.cooparticlesapi.test.SimpleEmitterOption
+import cn.coostack.cooparticlesapi.test.SimpleEventHandlerOption
+import cn.coostack.cooparticlesapi.test.SimpleStyleOption
+import net.minecraft.world.entity.player.Player
+import net.minecraft.world.level.Level
+import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
 import org.joml.Vector4f
 import java.nio.file.Files
@@ -26,13 +45,13 @@ class TestOptionParamSupportTest {
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/test/api/TestOptionParam.kt"
         )
         val applyParamBody = source
-            .substringAfter("fun <T : Any> applyParam(")
-            .substringBefore("fun applyTo(")
+            .substringAfter("fun <T : Any, P : Any> applyParam(")
+            .substringBefore("fun <T : Any> applyTo(")
         val applyToBody = source
-            .substringAfter("fun applyTo(")
-            .substringBefore("fun applyOptionParams(")
+            .substringAfter("fun <T : Any> applyTo(")
+            .substringBefore("fun <T : Any> applyOptionParams(")
         val applyOptionParamsBody = source
-            .substringAfter("fun applyOptionParams(")
+            .substringAfter("fun <T : Any> applyOptionParams(")
             .substringBefore("fun optionParamSpecs(")
 
         assertFalse("runAppliers(option)" in applyParamBody)
@@ -164,7 +183,8 @@ class TestOptionParamSupportTest {
 
     @Test
     fun `applying a map of option values remains chainable`() {
-        val option = object : TestOption {
+        val option = object : TestOption<Unit> {
+            override fun paramTarget() = Unit
             override fun start() = Unit
             override fun stop() = Unit
             override fun isValid(): Boolean = true
@@ -176,6 +196,83 @@ class TestOptionParamSupportTest {
 
         assertSame(option, option.applyOptionParams(mapOf("count" to "2")))
         assertEquals(2, option.getParam<Int>("count"))
+    }
+
+    @Test
+    fun `applyTo receives the option target type`() {
+        val target = StringBuilder()
+        val option = object : TestOption<StringBuilder> {
+            override fun paramTarget(): StringBuilder = target
+            override fun start() = Unit
+            override fun stop() = Unit
+            override fun isValid(): Boolean = true
+            override fun onFailed() = Unit
+            override fun onSuccess() = Unit
+            override fun optionID(): String = "custom-id"
+            override fun doTick() = Unit
+        }
+            .applyParam(IntTestOptionValue("count"), 1)
+            .applyTo {
+                it.append(getParamOrThrow<Int>("count"))
+            }
+
+        option.applyOptionParams(mapOf("count" to "7"))
+
+        assertEquals("7", target.toString())
+        assertEquals("custom-id", option.optionID())
+    }
+
+    @Test
+    fun `multiple appliers share one target lookup`() {
+        val targets = ArrayList<StringBuilder>()
+        val option = object : TestOption<StringBuilder> {
+            override fun paramTarget(): StringBuilder = StringBuilder().also(targets::add)
+            override fun start() = Unit
+            override fun stop() = Unit
+            override fun isValid(): Boolean = true
+            override fun onFailed() = Unit
+            override fun onSuccess() = Unit
+            override fun optionID(): String = "shared-target"
+            override fun doTick() = Unit
+        }
+            .applyTo { it.append("first") }
+            .applyTo { it.append("-second") }
+
+        option.applyOptionParams(emptyMap())
+
+        assertEquals(1, targets.size)
+        assertEquals("first-second", targets.single().toString())
+    }
+
+    @Test
+    @Suppress("DEPRECATION")
+    fun `adding optional ids keeps the previous jvm constructors`() {
+        assertConstructor(SimpleAnimateOption::class.java, Animate::class.java, Int::class.javaPrimitiveType!!)
+        assertConstructor(SimpleEmitterOption::class.java, ParticleEmitters::class.java, Int::class.javaPrimitiveType!!)
+        assertConstructor(SimpleDisplayEntityOption::class.java, DisplayEntity::class.java, Int::class.javaPrimitiveType!!)
+        assertConstructor(SimpleCompositionOption::class.java, ParticleComposition::class.java, Int::class.javaPrimitiveType!!)
+        assertConstructor(
+            SimpleStyleOption::class.java,
+            ParticleGroupStyle::class.java,
+            Level::class.java,
+            Vec3::class.java,
+            Int::class.javaPrimitiveType!!
+        )
+        assertConstructor(SimpleEventHandlerOption::class.java, Player::class.java, Int::class.javaPrimitiveType!!)
+        assertConstructor(ShakeOption::class.java, Int::class.javaPrimitiveType!!, Player::class.java)
+        assertConstructor(ServerSoundTestOption::class.java, Player::class.java, ServerSoundTestOption.Mode::class.java)
+        assertConstructor(ServerSoundStartLoopTestOption::class.java, Player::class.java)
+        assertConstructor(ServerSoundStartDuckLoopTestOption::class.java, Player::class.java)
+        assertConstructor(ServerSoundFadeTestOption::class.java, Player::class.java)
+    }
+
+    private fun assertConstructor(type: Class<*>, vararg parameterTypes: Class<*>) {
+        assertTrue(
+            type.declaredConstructors.any { constructor ->
+                constructor.parameterTypes.contentEquals(parameterTypes)
+            },
+            "${type.name} 缺少构造器 ${parameterTypes.joinToString { it.simpleName }}"
+        )
     }
 
     private fun readProjectFile(relativePath: String): String {

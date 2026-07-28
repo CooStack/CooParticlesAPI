@@ -109,7 +109,7 @@ class BlockTestGroupTest {
         }
     }
 
-    private fun groupOf(option: TestOption): BlockTestGroup {
+    private fun groupOf(option: TestOption<*>): BlockTestGroup {
         return BlockTestGroup(uninitializedBlockTestPlayer(), "test")
             .also {
                 it.statusAnnouncer = {}
@@ -133,10 +133,12 @@ class BlockTestGroupTest {
 
     private class RecordingOption(
         private val mode: TestReviewMode
-    ) : TestOption {
+    ) : TestOption<RecordingOption> {
         var successCount = 0
         var failedCount = 0
         private var valid = true
+
+        override fun paramTarget(): RecordingOption = this
 
         override fun start() = Unit
 

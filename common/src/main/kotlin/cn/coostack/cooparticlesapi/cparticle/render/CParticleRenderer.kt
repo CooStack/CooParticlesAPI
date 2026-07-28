@@ -14,6 +14,7 @@ import cn.coostack.cooparticlesapi.cparticle.CParticleSystemManager
 import cn.coostack.cooparticlesapi.cparticle.CParticleTextureBindingKey
 import cn.coostack.cooparticlesapi.cparticle.CParticleTextureResolver
 import cn.coostack.cooparticlesapi.renderer.shader.AdvancedShaderProgramBuilder
+import cn.coostack.cooparticlesapi.renderer.shader.ShaderProgramRegistry
 import cn.coostack.cooparticlesapi.renderer.shader.api.CooShaderProgram
 import com.mojang.blaze3d.systems.RenderSystem
 import net.minecraft.client.Camera
@@ -56,12 +57,16 @@ object CParticleRenderer {
         CParticleRenderLayer.ADDITION_BLEND_TRANSLUCENT_NO_DEPTH_WRITE,
     )
 
-    private fun ensureProgram(): CooShaderProgram {
-        val current = program
-        if (current != null) {
-            if (current.program == 0) current.init()
-            return current
-        }
+    /**
+     * 把 CParticle 图形 program 加入统一注册表，不触发 GL 编译。
+     *
+     * Example: [CooParticlesAPIClient.init] 在 loader 客户端注册阶段调用。
+     * Forbidden: 本方法不能调用 `init()`，否则早期客户端初始化可能还没有 GL 上下文。
+     *
+     * @return 已注册的共享图形 program
+     */
+    internal fun registerProgram(): CooShaderProgram {
+        program?.let { return ShaderProgramRegistry.register(it) }
         return AdvancedShaderProgramBuilder()
             .vertex("core/vertex/cparticle.vsh")
             .fragment("core/fragment/cparticle.fsh")
@@ -77,10 +82,21 @@ object CParticleRenderer {
             .transformFeedbackVaryings("tfPosition", "tfUv", "tfPacked")
             .managedId("cparticle/render")
             .build()
-            .also {
-                it.init()
-                program = it
-            }
+            .also { program = it }
+    }
+
+    /**
+     * 返回可绘制的 CParticle program，遗漏客户端预注册时仍保留兼容兜底。
+     *
+     * Example: 正常路径直接返回渲染初始化阶段已经编译的 program。
+     * Forbidden: 只能在持有 GL 上下文的渲染线程调用。
+     *
+     * @return 已完成编译的共享图形 program
+     */
+    private fun ensureProgram(): CooShaderProgram {
+        return registerProgram().also { current ->
+            if (current.program == 0) current.init()
+        }
     }
 
     /**
@@ -582,8 +598,14 @@ object CParticleRenderer {
         shader.setFloat4Array("${prefix}CurveInHandles", curve?.packedInHandleData ?: emptyColorHandles)
     }
 
+    /**
+     * 释放 CParticle 图形 program 和外观查找表，并从统一注册表注销。
+     *
+     * Example: [CParticleSystemManager.releaseAll] 完全关闭 CParticle 子系统时调用。
+     * Forbidden: 普通资源重载不能调用本方法，注册表需要保留同一对象并重新编译。
+     */
     fun release() {
-        program?.release()
+        program?.let(ShaderProgramRegistry::unregister)
         program = null
         CParticleAppearanceDescriptors.release()
     }

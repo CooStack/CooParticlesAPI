@@ -4,8 +4,20 @@ import cn.coostack.cooparticlesapi.display.DisplayEntity
 import cn.coostack.cooparticlesapi.display.DisplayEntityManager
 import cn.coostack.cooparticlesapi.test.api.TestOption
 
-class SimpleDisplayEntityOption(val testDisplayEntity: DisplayEntity, var testingTick: Int = 100) : TestOption {
-    override fun paramTarget(): Any {
+/**
+ * 测试一个显示实体。
+ *
+ * @param T 显示实体的具体类型
+ * @property testDisplayEntity 本次测试使用的显示实体
+ * @property testingTick 最长运行时间，`-1` 表示不限时
+ * @property id 测试项 ID；不传时沿用原来的类名格式
+ */
+class SimpleDisplayEntityOption<T : DisplayEntity> @JvmOverloads constructor(
+    val testDisplayEntity: T,
+    var testingTick: Int = 100,
+    private val id: String = "displayer:  ${testDisplayEntity::class.java.name}"
+) : TestOption<T> {
+    override fun paramTarget(): T {
         return testDisplayEntity
     }
 
@@ -28,7 +40,7 @@ class SimpleDisplayEntityOption(val testDisplayEntity: DisplayEntity, var testin
     }
 
     override fun optionID(): String {
-        return "displayer:  ${testDisplayEntity::class.java.name}"
+        return id
     }
 
     override fun doTick() {

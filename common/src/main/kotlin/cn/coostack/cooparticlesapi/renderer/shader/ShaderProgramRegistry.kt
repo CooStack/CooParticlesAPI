@@ -25,6 +25,20 @@ object ShaderProgramRegistry {
         return program
     }
 
+    /**
+     * 释放并注销一个图形 program。
+     *
+     * Example: CParticle 完全释放时用它同步清理单例缓存和统一注册表。
+     * Forbidden: 临时失效后还需要参加资源重载的 program 不能注销。
+     *
+     * @param program 不再由注册表管理的图形 program
+     * @return 注销前 program 是否在注册表中
+     */
+    fun unregister(program: CooShaderProgram): Boolean {
+        program.release()
+        return graphicsPrograms.remove(program)
+    }
+
     fun unregister(program: CooComputeShaderProgram): Boolean {
         program.release()
         return computePrograms.remove(program)

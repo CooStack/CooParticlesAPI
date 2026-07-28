@@ -23,11 +23,11 @@ class BlockTestGroup(
         SKIPPED("跳过")
     }
 
-    val options = ArrayList<Supplier<TestOption>>()
+    val options = ArrayList<Supplier<TestOption<*>>>()
     private val optionParamOverrides = linkedMapOf<Int, Map<String, String>>()
-    var currentOption: TestOption? = null
+    var currentOption: TestOption<*>? = null
         private set
-    private var pendingReviewOption: TestOption? = null
+    private var pendingReviewOption: TestOption<*>? = null
     private var activeOptionIndex = -1
     private var nextOptionIndex = 0
     private var finishedAnnounced = false
@@ -39,7 +39,7 @@ class BlockTestGroup(
         return testPlayer
     }
 
-    override fun appendOption(sup: Supplier<TestOption>): BlockTestGroup {
+    override fun appendOption(sup: Supplier<TestOption<*>>): BlockTestGroup {
         options.add(sup)
         return this
     }
@@ -118,15 +118,15 @@ class BlockTestGroup(
         finishedAnnounced = true
     }
 
-    override fun skipCurrent(): TestOption? {
+    override fun skipCurrent(): TestOption<*>? {
         return advanceCurrent(OptionResult.SKIPPED)
     }
 
-    fun completeCurrent(): TestOption? {
+    fun completeCurrent(): TestOption<*>? {
         return advanceCurrent(OptionResult.PASSED)
     }
 
-    fun failCurrent(): TestOption? {
+    fun failCurrent(): TestOption<*>? {
         return advanceCurrent(OptionResult.FAILED)
     }
 
@@ -162,7 +162,7 @@ class BlockTestGroup(
         }
     }
 
-    private fun advanceCurrent(result: OptionResult): TestOption? {
+    private fun advanceCurrent(result: OptionResult): TestOption<*>? {
         val option = currentOption ?: pendingReviewOption ?: return null
         if (currentOption != null) {
             option.stop()
@@ -195,7 +195,7 @@ class BlockTestGroup(
         lastStatus = buildCurrentStatusLine() ?: "运行中"
     }
 
-    private fun finalizeOption(option: TestOption, result: OptionResult, announce: Boolean) {
+    private fun finalizeOption(option: TestOption<*>, result: OptionResult, announce: Boolean) {
         when (result) {
             OptionResult.PASSED -> {
                 option.onSuccess()
@@ -209,14 +209,14 @@ class BlockTestGroup(
         }
     }
 
-    override fun onOptionFailure(t: Throwable, option: TestOption) {
+    override fun onOptionFailure(t: Throwable, option: TestOption<*>) {
         val message = "测试项: ${option.optionID()} tick 异常: ${t.message ?: t::class.java.name}"
         lastStatus = message
         statusAnnouncer("[方块测试 $id] $message")
     }
 
-    override fun onOptionSuccess(option: TestOption) {
-        // Block tests keep the compact status line in the controller GUI.
+    override fun onOptionSuccess(option: TestOption<*>) {
+        // 方块测试在控制器界面中保留紧凑的状态行。
     }
 
     override fun onGroupFinished() {

@@ -34,18 +34,50 @@ object CParticleGpuSimulator {
     private val tmpOrigin = Vector3f()
     private val tmpCollisionOffset = Vector3f()
 
-    private fun ensureProgram(): CooComputeShaderProgram? {
-        val current = program
-        if (current != null) {
-            if (current.program != 0) return current
-            return initializeProgram(current)
-        }
-        val created = AdvancedShaderProgramBuilder()
+    /**
+     * 把 CParticle compute program 加入统一注册表，不触发 GL 编译。
+     *
+     * Example: 能力探测确认支持 compute 后，由 [initializeProgramIfSupported] 调用。
+     * Forbidden: 未确认 GL 4.3 或对应 ARB 扩展前不能注册，否则全量重载会尝试编译它。
+     *
+     * @return 已注册的共享 compute program
+     */
+    internal fun registerProgram(): CooComputeShaderProgram {
+        program?.let { return ShaderProgramRegistry.register(it) }
+        return AdvancedShaderProgramBuilder()
             .compute("core/compute/cparticle_sim.comp")
             .managedId("cparticle/simulate")
             .buildCompute()
-        program = created
-        return initializeProgram(created)
+            .also { program = it }
+    }
+
+    /**
+     * 在能力探测完成后提前编译 compute program。
+     *
+     * Example: 客户端渲染初始化在 [ShaderProgramRegistry.reinitializeAll] 前调用。
+     * Forbidden: 不支持 compute 或强制 CPU 模拟时不会注册 program。
+     */
+    internal fun initializeProgramIfSupported() {
+        if (!CParticleCapabilities.useGpuSimulation()) {
+            release()
+            return
+        }
+        val candidate = registerProgram()
+        if (candidate.program == 0) initializeProgram(candidate)
+    }
+
+    /**
+     * 返回可用的 compute program，初始化失败时让调用方回退 CPU 模拟。
+     *
+     * Example: program 已在客户端渲染初始化阶段编译时直接返回缓存实例。
+     * Forbidden: 不支持 compute 时不能强制创建 program。
+     *
+     * @return 可用的 compute program；不支持或编译失败时返回 `null`
+     */
+    private fun ensureProgram(): CooComputeShaderProgram? {
+        program?.takeIf { it.program != 0 }?.let { return it }
+        initializeProgramIfSupported()
+        return program?.takeIf { it.program != 0 }
     }
 
     private fun initializeProgram(candidate: CooComputeShaderProgram): CooComputeShaderProgram? {
@@ -159,8 +191,14 @@ object CParticleGpuSimulator {
         return true
     }
 
+    /**
+     * 释放并注销 CParticle compute program。
+     *
+     * Example: 强制 CPU 模拟或完全关闭 CParticle 子系统时调用。
+     * Forbidden: program 仍需参加下一次资源重载时不能提前调用。
+     */
     fun release() {
-        program?.release()
+        program?.let(ShaderProgramRegistry::unregister)
         program = null
     }
 

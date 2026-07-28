@@ -12,17 +12,32 @@ import net.minecraft.server.level.ServerPlayer
 import net.minecraft.sounds.SoundSource
 import net.minecraft.world.entity.player.Player
 
-class ServerSoundTestOption(player: Player, mode: Mode) : TestOption {
+/**
+ * 根据模式选择一个服务端声音测试。
+ *
+ * @property player 运行声音测试的玩家
+ * @param mode 要执行的声音测试模式
+ * @property id 测试项 ID；不传时使用所选模式原来的 ID
+ */
+class ServerSoundTestOption @JvmOverloads constructor(
+    private val player: Player,
+    mode: Mode,
+    private val id: String = defaultTestId(mode)
+) : TestOption<ServerSoundTestOption> {
     enum class Mode {
         START_LOOP,
         START_DUCK_LOOP,
         VOLUME_FADE
     }
 
-    private val delegate: TestOption = when (mode) {
-        Mode.START_LOOP -> ServerSoundStartLoopTestOption(player)
-        Mode.START_DUCK_LOOP -> ServerSoundStartDuckLoopTestOption(player)
-        Mode.VOLUME_FADE -> ServerSoundFadeTestOption(player)
+    private val delegate: TestOption<*> = when (mode) {
+        Mode.START_LOOP -> ServerSoundStartLoopTestOption(player, id)
+        Mode.START_DUCK_LOOP -> ServerSoundStartDuckLoopTestOption(player, id)
+        Mode.VOLUME_FADE -> ServerSoundFadeTestOption(player, id)
+    }
+
+    override fun paramTarget(): ServerSoundTestOption {
+        return this
     }
 
     override fun start() {
@@ -46,7 +61,7 @@ class ServerSoundTestOption(player: Player, mode: Mode) : TestOption {
     }
 
     override fun optionID(): String {
-        return delegate.optionID()
+        return id
     }
 
     override fun doTick() {
@@ -54,11 +69,22 @@ class ServerSoundTestOption(player: Player, mode: Mode) : TestOption {
     }
 }
 
-class ServerSoundStartLoopTestOption(player: Player) : BaseServerSoundTestOption(
+/**
+ * 播放开始音和循环音的服务端声音测试。
+ *
+ * @param player 运行测试的玩家
+ * @param id 测试项 ID；不传时保持原来的 ID
+ */
+class ServerSoundStartLoopTestOption @JvmOverloads constructor(
+    player: Player,
+    id: String = "server-sound-start-loop"
+) : BaseServerSoundTestOption<ServerSoundStartLoopTestOption>(
     player = player,
-    testId = "server-sound-start-loop",
+    testId = id,
     finishTick = LOOP_TICKS + CLEANUP_TICKS
 ) {
+    override fun paramTarget(): ServerSoundStartLoopTestOption = this
+
     override fun startServer(player: ServerPlayer) {
         playStart(player, layer("start"))
         loop = createLoop(player, layer("loop"), volume = 0.8f)
@@ -72,11 +98,22 @@ class ServerSoundStartLoopTestOption(player: Player) : BaseServerSoundTestOption
     }
 }
 
-class ServerSoundStartDuckLoopTestOption(player: Player) : BaseServerSoundTestOption(
+/**
+ * 播放带压低效果循环音的服务端声音测试。
+ *
+ * @param player 运行测试的玩家
+ * @param id 测试项 ID；不传时保持原来的 ID
+ */
+class ServerSoundStartDuckLoopTestOption @JvmOverloads constructor(
+    player: Player,
+    id: String = "server-sound-start-duck-loop"
+) : BaseServerSoundTestOption<ServerSoundStartDuckLoopTestOption>(
     player = player,
-    testId = "server-sound-start-duck-loop",
+    testId = id,
     finishTick = LOOP_TICKS + CLEANUP_TICKS
 ) {
+    override fun paramTarget(): ServerSoundStartDuckLoopTestOption = this
+
     override fun startServer(player: ServerPlayer) {
         playStart(player, layer("start"))
         ducking = createDucking(player, layer("duck"))
@@ -94,11 +131,22 @@ class ServerSoundStartDuckLoopTestOption(player: Player) : BaseServerSoundTestOp
     }
 }
 
-class ServerSoundFadeTestOption(player: Player) : BaseServerSoundTestOption(
+/**
+ * 测试循环音淡入和淡出。
+ *
+ * @param player 运行测试的玩家
+ * @param id 测试项 ID；不传时保持原来的 ID
+ */
+class ServerSoundFadeTestOption @JvmOverloads constructor(
+    player: Player,
+    id: String = "server-sound-fade"
+) : BaseServerSoundTestOption<ServerSoundFadeTestOption>(
     player = player,
-    testId = "server-sound-fade",
+    testId = id,
     finishTick = FADE_TEST_TICKS + CLEANUP_TICKS
 ) {
+    override fun paramTarget(): ServerSoundFadeTestOption = this
+
     override fun startServer(player: ServerPlayer) {
         playStart(player, layer("start"))
         loop = createLoop(player, layer("loop"), volume = 0f)
@@ -116,11 +164,19 @@ class ServerSoundFadeTestOption(player: Player) : BaseServerSoundTestOption(
     }
 }
 
-abstract class BaseServerSoundTestOption(
+/**
+ * 管理服务端声音测试的生命周期和资源清理。
+ *
+ * @param T 具体声音测试项类型
+ * @property player 运行测试的玩家
+ * @property testId 测试项 ID
+ * @property finishTick 测试完成时刻
+ */
+abstract class BaseServerSoundTestOption<T : BaseServerSoundTestOption<T>>(
     private val player: Player,
     private val testId: String,
     private val finishTick: Int
-) : TestOption {
+) : TestOption<T> {
     protected var loop: ServerManagedSoundInstance? = null
     protected var ducking: ServerDuckingSoundEffect? = null
 
@@ -262,6 +318,14 @@ private const val OBLITERATION_BEFORE_END_TICKS = 20
 private const val FADE_TICKS = 20
 private const val FADE_TEST_TICKS = 120
 private const val CLEANUP_TICKS = 20
+
+private fun defaultTestId(mode: ServerSoundTestOption.Mode): String {
+    return when (mode) {
+        ServerSoundTestOption.Mode.START_LOOP -> "server-sound-start-loop"
+        ServerSoundTestOption.Mode.START_DUCK_LOOP -> "server-sound-start-duck-loop"
+        ServerSoundTestOption.Mode.VOLUME_FADE -> "server-sound-fade"
+    }
+}
 
 private val START_SOUND = sound("test.laser_start")
 private val LOOP_SOUND = sound("test.laser_loop")

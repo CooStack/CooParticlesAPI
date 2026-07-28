@@ -5,12 +5,20 @@ import cn.coostack.cooparticlesapi.renderer.server.ServerRenderEntityManager
 import cn.coostack.cooparticlesapi.test.api.TestOption
 import cn.coostack.cooparticlesapi.test.api.TestReviewMode
 
-class SimpleRendererEntityOption(
-    val testEntity: RenderEntity,
+/**
+ * 测试一个服务端同步的渲染实体。
+ *
+ * @param T 渲染实体的具体类型
+ * @property testEntity 本次测试使用的渲染实体
+ * @property testingTick 最长运行时间，`-1` 表示不限时
+ * @property displayName 测试项 ID；不传时沿用原来的简单类名格式
+ */
+class SimpleRendererEntityOption<T : RenderEntity>(
+    val testEntity: T,
     var testingTick: Int = 100,
     val displayName: String = "entity: ${testEntity::class.java.simpleName}"
-) : TestOption {
-    override fun paramTarget(): Any {
+) : TestOption<T> {
+    override fun paramTarget(): T {
         return testEntity
     }
 

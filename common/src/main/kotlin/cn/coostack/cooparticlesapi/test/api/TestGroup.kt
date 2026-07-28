@@ -7,7 +7,7 @@ interface TestGroup {
 
     fun getUser(): Player
 
-    fun appendOption(sup: Supplier<TestOption>): TestGroup
+    fun appendOption(sup: Supplier<TestOption<*>>): TestGroup
 
     fun init()
 
@@ -15,12 +15,12 @@ interface TestGroup {
 
     fun isDone(): Boolean
 
-    fun skipCurrent(): TestOption?
+    fun skipCurrent(): TestOption<*>?
 
     fun doTick()
 
-    fun onOptionFailure(t: Throwable, option: TestOption)
-    fun onOptionSuccess(option: TestOption)
+    fun onOptionFailure(t: Throwable, option: TestOption<*>)
+    fun onOptionSuccess(option: TestOption<*>)
 
     fun onGroupFinished()
 

@@ -8,6 +8,7 @@ import net.minecraft.world.phys.Vec3
 import org.joml.Quaternionf
 import org.joml.Vector3f
 import org.joml.Vector4f
+import java.lang.ref.WeakReference
 import java.util.Collections
 import java.util.Locale
 import java.util.WeakHashMap
@@ -341,15 +342,15 @@ data class TestOptionParamSpec<T : Any>(
 }
 
 object TestOptionParamSupport {
-    private val specs = Collections.synchronizedMap(WeakHashMap<TestOption, LinkedHashMap<String, TestOptionParamSpec<*>>>())
-    private val values = Collections.synchronizedMap(WeakHashMap<TestOption, LinkedHashMap<String, Any>>())
-    private val appliers = Collections.synchronizedMap(WeakHashMap<TestOption, MutableList<TestOption.(Any) -> Unit>>())
+    private val specs = Collections.synchronizedMap(WeakHashMap<TestOption<*>, LinkedHashMap<String, TestOptionParamSpec<*>>>())
+    private val values = Collections.synchronizedMap(WeakHashMap<TestOption<*>, LinkedHashMap<String, Any>>())
+    private val appliers = Collections.synchronizedMap(WeakHashMap<TestOption<*>, MutableList<(Any) -> Unit>>())
 
-    fun <T : Any> applyParam(
-        option: TestOption,
-        type: TestOptionParamType<T>,
-        defaultValue: T
-    ): TestOption {
+    fun <T : Any, P : Any> applyParam(
+        option: TestOption<T>,
+        type: TestOptionParamType<P>,
+        defaultValue: P
+    ): TestOption<T> {
         require(type.valueClass.isInstance(defaultValue)) {
             "参数 ${type.id} 默认值类型 ${defaultValue::class.java.name} 与声明类型 ${type.valueClass.name} 不匹配"
         }
@@ -362,12 +363,18 @@ object TestOptionParamSupport {
         return option
     }
 
-    fun applyTo(option: TestOption, action: TestOption.(Any) -> Unit): TestOption {
-        appliers.getOrPut(option) { ArrayList() }.add(action)
+    @Suppress("UNCHECKED_CAST")
+    fun <T : Any> applyTo(option: TestOption<T>, action: TestOption<T>.(T) -> Unit): TestOption<T> {
+        val optionReference = WeakReference(option)
+        appliers.getOrPut(option) { ArrayList() }.add { target ->
+            optionReference.get()?.let { registeredOption ->
+                registeredOption.action(target as T)
+            }
+        }
         return option
     }
 
-    fun applyOptionParams(option: TestOption, encodedValues: Map<String, String>): TestOption {
+    fun <T : Any> applyOptionParams(option: TestOption<T>, encodedValues: Map<String, String>): TestOption<T> {
         val optionValues = valuesFor(option)
         optionParamSpecs(option).forEach { spec ->
             optionValues[spec.id] = spec.defaultValue
@@ -380,33 +387,33 @@ object TestOptionParamSupport {
         return option
     }
 
-    fun optionParamSpecs(option: TestOption): List<TestOptionParamSpec<*>> {
+    fun optionParamSpecs(option: TestOption<*>): List<TestOptionParamSpec<*>> {
         return specs[option]?.values?.toList() ?: emptyList()
     }
 
     @Suppress("UNCHECKED_CAST")
-    fun <T : Any> getParam(option: TestOption, id: String): T? {
-        return values[option]?.get(id) as? T
+    fun <P : Any> getParam(option: TestOption<*>, id: String): P? {
+        return values[option]?.get(id) as? P
     }
 
-    fun optionParamValues(option: TestOption): Map<String, String> {
+    fun optionParamValues(option: TestOption<*>): Map<String, String> {
         val optionValues = values[option]
         return optionParamSpecs(option).associate { spec ->
             spec.id to spec.textOf(optionValues?.get(spec.id))
         }
     }
 
-    private fun specsFor(option: TestOption): LinkedHashMap<String, TestOptionParamSpec<*>> {
+    private fun specsFor(option: TestOption<*>): LinkedHashMap<String, TestOptionParamSpec<*>> {
         return specs.getOrPut(option) { linkedMapOf() }
     }
 
-    private fun valuesFor(option: TestOption): LinkedHashMap<String, Any> {
+    private fun valuesFor(option: TestOption<*>): LinkedHashMap<String, Any> {
         return values.getOrPut(option) { linkedMapOf() }
     }
 
-    private fun runAppliers(option: TestOption) {
+    private fun runAppliers(option: TestOption<*>) {
         val target = option.paramTarget()
-        appliers[option]?.forEach { action -> option.action(target) }
+        appliers[option]?.forEach { action -> action(target) }
     }
 
     private fun isCodecRegistered(type: Class<*>): Boolean {

@@ -95,7 +95,6 @@ class BlockAPITestGroupBuilder(player: Player) : TestGroupBuilder {
                         }
                     )
                     .applyTo {
-                        it as TestCParticleEmitter
                         it.spawnPerTick = getParam<Int>("cp_spawn_per_tick")!!
                         it.particleMaxAge = getParam<Int>("cp_max_age")!!
                         it.particleSize = getParam<Float>("cp_size")!!
@@ -133,7 +132,6 @@ class BlockAPITestGroupBuilder(player: Player) : TestGroupBuilder {
                     )
                     .applyParam(DoubleTestOptionValue("cpc_rotate_speed", "每tick自转弧度"), Math.PI / 90.0)
                     .applyTo {
-                        it as TestCParticleComposition
                         it.ringCount = getParam<Int>("cpc_ring_count")!!
                         it.pointsPerRing = getParam<Int>("cpc_points_per_ring")!!
                         it.radius = getParam<Double>("cpc_radius")!!
@@ -148,7 +146,6 @@ class BlockAPITestGroupBuilder(player: Player) : TestGroupBuilder {
                 SimpleCompositionOption(TestGPURotationComposition(player.position, player.level))
                     .applyParam(RelativeLocationTestOptionValue("to", "相对向量"), RelativeLocation(0, 0, 1))
                     .applyTo {
-                        it as TestGPURotationComposition
                         it.to = getParamOrThrow("to")
                     }
             }
@@ -236,7 +233,6 @@ class BlockAPITestGroupBuilder(player: Player) : TestGroupBuilder {
                         Vector3f(1.00f, 0.36f, 0.12f)
                     )
                     .applyTo {
-                        it as TestSpreadPointEmitter
                         it.template.effect = getParam<ControlableParticleEffectBuilder>("effect")!!
                             .build(it.template.uuid)
                         it.template.setTextureSheet(getParam<TextureSheetsEnum>("texture-sheet")!!)
@@ -283,7 +279,6 @@ class BlockAPITestGroupBuilder(player: Player) : TestGroupBuilder {
                         TextureSheetsEnum.ADDITION_BLEND_TRANSLUCENT
                     )
                     .applyTo {
-                        it as TestCommandEmitter
                         it.ballRadius = getParam<Double>("ball_radius")!!
                     }
             }

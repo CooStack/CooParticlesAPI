@@ -6,10 +6,13 @@ enum class TestReviewMode {
 }
 
 /**
- * 测试单项
+ * 一个可由测试组调度的测试项。
  *
+ * [T] 是 [applyTo] 接收的目标类型。实现类必须让 [paramTarget] 返回同一类型，不能用无关对象代替。
+ *
+ * @param T 参数应用目标的类型
  */
-interface TestOption {
+interface TestOption<T : Any> {
     fun start()
 
     fun stop()
@@ -53,8 +56,13 @@ interface TestOption {
      *     .applyParam(FloatTestOptionValue("radius", "半径"), 1.0f)
      *     .applyParam(Vector3fTestOptionValue("color", "颜色").asColor(), Vector3f(1f))
      * ```
+     *
+     * @param P 参数值类型
+     * @param type 参数类型与编辑信息
+     * @param defaultValue 没有覆盖值时使用的默认值
+     * @return 当前测试项
      */
-    fun <T : Any> applyParam(type: TestOptionParamType<T>, defaultValue: T): TestOption {
+    fun <P : Any> applyParam(type: TestOptionParamType<P>, defaultValue: P): TestOption<T> {
         return TestOptionParamSupport.applyParam(this, type, defaultValue)
     }
 
@@ -62,24 +70,22 @@ interface TestOption {
      * 注册参数应用逻辑，并返回当前测试项以便继续链式调用。
      *
      * 此处的 lambda 接收者是当前 [TestOption]，因此可以用 [getParam] 读取已经完成解析的参数。
-     * lambda 参数是 [paramTarget] 的返回值：普通 Option 默认返回自身；
-     * `SimpleRendererEntityOption` 返回它持有的 `RenderEntity`。回调只在 [applyOptionParams]
-     * 执行后运行，不会在声明参数或注册回调时提前运行。
+     * lambda 参数是 [paramTarget] 的返回值。例如，`SimpleRendererEntityOption` 返回它持有的
+     * `RenderEntity`。回调只在 [applyOptionParams] 执行后运行，不会在声明参数或注册回调时提前运行。
      *
      * 对 `SimpleRendererEntityOption` 应用实体属性时，可以这样写：
      * ```kotlin
      * SimpleRendererEntityOption(MyRenderEntity(level, position), -1, "示例")
      *     .applyParam(FloatTestOptionValue("radius", "半径"), 1.0f)
-     *     .applyTo { target ->
-     *         val entity = target as MyRenderEntity
+     *     .applyTo { entity ->
      *         entity.radius = getParam<Float>("radius") ?: 1.0f
      *     }
      * ```
      *
-     * 如果要设置 Option 自身的字段，先把 lambda 接收者 `this` 转换为具体 Option 类型；
-     * 如果要设置目标实体或其他对象，则把 [paramTarget] 对应的 `target` 转换为具体类型后赋值。
+     * @param action 参数应用逻辑
+     * @return 当前测试项
      */
-    fun applyTo(action: TestOption.(Any) -> Unit): TestOption {
+    fun applyTo(action: TestOption<T>.(T) -> Unit): TestOption<T> {
         return TestOptionParamSupport.applyTo(this, action)
     }
 
@@ -90,8 +96,11 @@ interface TestOption {
      * 所有值准备完成后，本方法会依次执行此前通过 [applyTo] 注册的回调，并返回当前对象，
      * 因此可以写成 `option.applyOptionParams(values).start()`。[applyTo] 必须在本方法之前注册；
      * 调用完成后新增的回调不会自动补执行。
+     *
+     * @param values 参数 ID 到文本值的映射
+     * @return 当前测试项
      */
-    fun applyOptionParams(values: Map<String, String>): TestOption {
+    fun applyOptionParams(values: Map<String, String>): TestOption<T> {
         return TestOptionParamSupport.applyOptionParams(this, values)
     }
 
@@ -103,13 +112,18 @@ interface TestOption {
         return TestOptionParamSupport.optionParamValues(this)
     }
 
-    fun <T : Any> getParam(id: String): T? {
+    fun <P : Any> getParam(id: String): P? {
         return TestOptionParamSupport.getParam(this, id)
     }
 
-    fun <T: Any> getParamOrThrow(id: String) = getParam<T>(id)!!
+    fun <P : Any> getParamOrThrow(id: String) = getParam<P>(id)!!
 
-    fun paramTarget(): Any {
-        return this
-    }
+    /**
+     * 返回 [applyTo] 使用的目标。
+     *
+     * 返回值必须与 [T] 一致。禁止返回临时替代对象，否则已注册的参数应用逻辑会修改错误实例。
+     *
+     * @return 当前测试项持有的参数应用目标
+     */
+    fun paramTarget(): T
 }

@@ -5,7 +5,7 @@ import cn.coostack.cooparticlesapi.renderer.RenderEntity
 import net.minecraft.world.entity.player.Player
 
 object DemoWorldRenderEffectOptions {
-    fun irisStraightLaser(player: Player): SimpleRendererEntityOption {
+    fun irisStraightLaser(player: Player): SimpleRendererEntityOption<DemoIrisStraightLaserRenderEntity> {
         val start = player.eyePosition.add(player.forward.scale(2.0))
         val end = player.eyePosition.add(player.forward.scale(48.0))
         return SimpleRendererEntityOption(
@@ -18,7 +18,7 @@ object DemoWorldRenderEffectOptions {
         )
     }
 
-    fun blackHole(player: Player): SimpleRendererEntityOption {
+    fun blackHole(player: Player): SimpleRendererEntityOption<DemoBlackHoleRenderEntity> {
         return option(
             player = player,
             forwardDistance = 4.5,
@@ -27,7 +27,7 @@ object DemoWorldRenderEffectOptions {
         )
     }
 
-    fun shield(player: Player): SimpleRendererEntityOption {
+    fun shield(player: Player): SimpleRendererEntityOption<DemoShieldRenderEntity> {
         return option(
             player = player,
             forwardDistance = 3.5,
@@ -36,7 +36,7 @@ object DemoWorldRenderEffectOptions {
         )
     }
 
-    fun lightBeam(player: Player): SimpleRendererEntityOption {
+    fun lightBeam(player: Player): SimpleRendererEntityOption<DemoLightBeamRenderEntity> {
         return option(
             player = player,
             forwardDistance = 5.0,
@@ -45,7 +45,7 @@ object DemoWorldRenderEffectOptions {
         )
     }
 
-    fun lightOrb(player: Player): SimpleRendererEntityOption {
+    fun lightOrb(player: Player): SimpleRendererEntityOption<DemoLightOrbRenderEntity> {
         return option(
             player = player,
             forwardDistance = 4.0,
@@ -54,7 +54,7 @@ object DemoWorldRenderEffectOptions {
         )
     }
 
-    fun waterBall(player: Player): SimpleRendererEntityOption {
+    fun waterBall(player: Player): SimpleRendererEntityOption<DemoWaterBallRenderEntity> {
         return option(
             player = player,
             forwardDistance = 4.0,
@@ -63,7 +63,7 @@ object DemoWorldRenderEffectOptions {
         )
     }
 
-    fun trailOrb(player: Player): SimpleRendererEntityOption {
+    fun trailOrb(player: Player): SimpleRendererEntityOption<DemoTrailOrbRenderEntity> {
         return option(
             player = player,
             forwardDistance = 5.0,
@@ -72,12 +72,12 @@ object DemoWorldRenderEffectOptions {
         )
     }
 
-    private fun option(
+    private fun <T : RenderEntity> option(
         player: Player,
         forwardDistance: Double,
         displayName: String,
-        factory: (net.minecraft.world.level.Level, net.minecraft.world.phys.Vec3) -> RenderEntity
-    ): SimpleRendererEntityOption {
+        factory: (net.minecraft.world.level.Level, net.minecraft.world.phys.Vec3) -> T
+    ): SimpleRendererEntityOption<T> {
         val center = player.eyePosition.add(player.forward.scale(forwardDistance))
         return SimpleRendererEntityOption(
             testEntity = factory(player.level(), center),

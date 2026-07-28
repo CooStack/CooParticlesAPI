@@ -6,8 +6,24 @@ import cn.coostack.cooparticlesapi.utils.ServerCameraUtil
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.entity.player.Player
 
-class ShakeOption(val maxTick: Int = 20, val player: Player) : TestOption {
+/**
+ * 向服务端玩家发送镜头抖动测试。
+ *
+ * @property maxTick 最长运行时间
+ * @property player 接收抖动的玩家
+ * @property id 测试项 ID；不传时保持原来的 `shake-option`
+ */
+class ShakeOption @JvmOverloads constructor(
+    val maxTick: Int = 20,
+    val player: Player,
+    private val id: String = "shake-option"
+) : TestOption<ShakeOption> {
     var tick = 0
+
+    override fun paramTarget(): ShakeOption {
+        return this
+    }
+
     override fun start() {
         tick = 0
     }
@@ -26,7 +42,7 @@ class ShakeOption(val maxTick: Int = 20, val player: Player) : TestOption {
     }
 
     override fun optionID(): String {
-        return "shake-option"
+        return id
     }
 
     override fun doTick() {

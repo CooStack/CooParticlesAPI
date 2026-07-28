@@ -7,16 +7,30 @@ import cn.coostack.cooparticlesapi.test.api.TestReviewMode
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.entity.player.Player
 
+/**
+ * 在指定玩家上下文中运行一个后处理示例。
+ *
+ * @property player 绑定后处理的玩家
+ * @property displayName 测试项 ID；不传时使用通用后处理 ID
+ * @property testingTick 最长运行时间，`-1` 表示不限时
+ * @property instanceFactory 后处理实例工厂
+ * @property useTrackingChunkSpawn 是否向区块跟踪者广播
+ * @property description 人工检查提示
+ */
 class PostEffectDemoOption(
     private val player: Player,
-    private val displayName: String,
+    private val displayName: String = "post-effect-demo",
     private val testingTick: Int = 80,
     private val instanceFactory: (Player) -> PostEffectInstance,
     private val useTrackingChunkSpawn: Boolean = false,
     private val description: String = "Verify the post effect binding, lifecycle, and fallback behavior visually."
-) : TestOption {
+) : TestOption<PostEffectDemoOption> {
     private var active: PostEffectInstance? = null
     private var remainingTicks = testingTick
+
+    override fun paramTarget(): PostEffectDemoOption {
+        return this
+    }
 
     override fun start() {
         val instance = instanceFactory(player)

@@ -14,9 +14,9 @@ class GamingTestGroup(val testPlayer: Player, val id: String) : TestGroup {
         SKIPPED("跳过")
     }
 
-    val options = ArrayList<Supplier<TestOption>>()
-    var currentOption: TestOption? = null
-    private var pendingReviewOption: TestOption? = null
+    val options = ArrayList<Supplier<TestOption<*>>>()
+    var currentOption: TestOption<*>? = null
+    private var pendingReviewOption: TestOption<*>? = null
     private var activeOptionIndex = -1
     private var nextOptionIndex = 0
     private var actionBarCooldown = 0
@@ -25,7 +25,7 @@ class GamingTestGroup(val testPlayer: Player, val id: String) : TestGroup {
         return testPlayer
     }
 
-    override fun appendOption(sup: Supplier<TestOption>): GamingTestGroup {
+    override fun appendOption(sup: Supplier<TestOption<*>>): GamingTestGroup {
         options.add(sup)
         return this
     }
@@ -52,7 +52,7 @@ class GamingTestGroup(val testPlayer: Player, val id: String) : TestGroup {
         actionBarCooldown = 0
     }
 
-    override fun skipCurrent(): TestOption? {
+    override fun skipCurrent(): TestOption<*>? {
         return advanceCurrent(OptionResult.SKIPPED)
     }
 
@@ -88,7 +88,7 @@ class GamingTestGroup(val testPlayer: Player, val id: String) : TestGroup {
         }
     }
 
-    override fun onOptionFailure(t: Throwable, option: TestOption) {
+    override fun onOptionFailure(t: Throwable, option: TestOption<*>) {
         testPlayer.sendSystemMessage(
             Component.literal(
                 """
@@ -99,7 +99,7 @@ class GamingTestGroup(val testPlayer: Player, val id: String) : TestGroup {
         )
     }
 
-    override fun onOptionSuccess(option: TestOption) {
+    override fun onOptionSuccess(option: TestOption<*>) {
         testPlayer.sendSystemMessage(
             Component.literal(
                 "测试项: ${option.optionID()} 执行完成"
@@ -108,7 +108,7 @@ class GamingTestGroup(val testPlayer: Player, val id: String) : TestGroup {
     }
 
     override fun onGroupFinished() {
-        // done
+        // 当前测试项已经结束。
         testPlayer.sendSystemMessage(
             Component.literal(
                 "测试 $id 已经全部完成"
@@ -121,15 +121,15 @@ class GamingTestGroup(val testPlayer: Player, val id: String) : TestGroup {
         return id
     }
 
-    fun completeCurrent(): TestOption? {
+    fun completeCurrent(): TestOption<*>? {
         return advanceCurrent(OptionResult.PASSED)
     }
 
-    fun failCurrent(): TestOption? {
+    fun failCurrent(): TestOption<*>? {
         return advanceCurrent(OptionResult.FAILED)
     }
 
-    fun jumpRelative(offset: Int): TestOption? {
+    fun jumpRelative(offset: Int): TestOption<*>? {
         if (options.isEmpty()) {
             return null
         }
@@ -142,18 +142,18 @@ class GamingTestGroup(val testPlayer: Player, val id: String) : TestGroup {
         return jumpTo(target)
     }
 
-    fun jumpToFirst(): TestOption? {
+    fun jumpToFirst(): TestOption<*>? {
         return jumpTo(0)
     }
 
-    fun jumpToLast(): TestOption? {
+    fun jumpToLast(): TestOption<*>? {
         if (options.isEmpty()) {
             return null
         }
         return jumpTo(options.lastIndex)
     }
 
-    private fun jumpTo(index: Int): TestOption? {
+    private fun jumpTo(index: Int): TestOption<*>? {
         if (options.isEmpty()) {
             return null
         }
@@ -172,7 +172,7 @@ class GamingTestGroup(val testPlayer: Player, val id: String) : TestGroup {
         return old
     }
 
-    private fun advanceCurrent(result: OptionResult): TestOption? {
+    private fun advanceCurrent(result: OptionResult): TestOption<*>? {
         val option = currentOption ?: pendingReviewOption ?: return null
         if (currentOption != null) {
             option.stop()
@@ -201,7 +201,7 @@ class GamingTestGroup(val testPlayer: Player, val id: String) : TestGroup {
         sendOptionStarted(option)
     }
 
-    private fun finalizeOption(option: TestOption, result: OptionResult, announce: Boolean) {
+    private fun finalizeOption(option: TestOption<*>, result: OptionResult, announce: Boolean) {
         when (result) {
             OptionResult.PASSED -> option.onSuccess()
             OptionResult.FAILED, OptionResult.SKIPPED -> option.onFailed()
@@ -215,7 +215,7 @@ class GamingTestGroup(val testPlayer: Player, val id: String) : TestGroup {
         }
     }
 
-    private fun sendOptionStarted(option: TestOption) {
+    private fun sendOptionStarted(option: TestOption<*>) {
         val mode = when (option.reviewMode()) {
             TestReviewMode.AUTO -> "自动"
             TestReviewMode.MANUAL_VISUAL -> "人工视觉"
@@ -238,7 +238,7 @@ class GamingTestGroup(val testPlayer: Player, val id: String) : TestGroup {
         pushStatusHint(force = true)
     }
 
-    private fun sendManualReviewPrompt(option: TestOption) {
+    private fun sendManualReviewPrompt(option: TestOption<*>) {
         testPlayer.sendSystemMessage(
             Component.literal(
                 "[测试 ${activeOptionIndex + 1}/${options.size}] 待人工复核 | ${option.optionID()}"
@@ -255,7 +255,7 @@ class GamingTestGroup(val testPlayer: Player, val id: String) : TestGroup {
         pushStatusHint(force = true)
     }
 
-    private fun sendJumpMessage(targetIndex: Int, previous: TestOption?) {
+    private fun sendJumpMessage(targetIndex: Int, previous: TestOption<*>?) {
         val jumpedFrom = previous?.optionID()?.let { "，离开: $it" } ?: ""
         testPlayer.sendSystemMessage(
             Component.literal(

@@ -1,7 +1,10 @@
 package cn.coostack.cooparticlesapi
 
 import cn.coostack.cooparticlesapi.animation.AnimateManager
+import cn.coostack.cooparticlesapi.cparticle.CParticleCapabilities
 import cn.coostack.cooparticlesapi.cparticle.CParticleSystemManager
+import cn.coostack.cooparticlesapi.cparticle.render.CParticleRenderer
+import cn.coostack.cooparticlesapi.cparticle.simulate.CParticleGpuSimulator
 import cn.coostack.cooparticlesapi.data.holder.DataHolderManager
 import cn.coostack.cooparticlesapi.display.DisplayEntityManager
 import cn.coostack.cooparticlesapi.display.CooRenderTypeResourceRegistry
@@ -57,16 +60,17 @@ object CooParticlesAPIClient {
     lateinit var access: RegistryAccess
 
     /**
-     * 初始化客户端注册项，并应用当前配置中的 CParticle 总量上限。
+     * 初始化客户端注册项、CParticle 图形 program，并应用当前配置中的粒子总量上限。
      *
      * Example: 客户端入口在 common 初始化完成后调用一次 `init()`。
-     * Forbidden: 专用服务端不能调用该方法或加载其中的客户端类型。
+     * Forbidden: 此处只注册 program，不能执行依赖 GL 上下文的编译；专用服务端也不能调用本方法。
      */
     @JvmStatic
     fun init() {
         CParticleSystemManager.configureParticleCountLimit(
             CooParticlesServices.API_CONFIG_MANAGER.getConfig().cparticleCountLimit
         )
+        CParticleRenderer.registerProgram()
         TestControlKeyBindings.register()
         initGroup()
         initStyle()
@@ -149,6 +153,12 @@ object CooParticlesAPIClient {
     @JvmStatic
     private var renderInit = false
 
+    /**
+     * 在渲染线程准备客户端管线，并编译启动阶段已经注册的 shader program。
+     *
+     * Example: 首次资源加载或世界渲染时调用，CParticle 不再承担 program 首次编译。
+     * Forbidden: loader 的普通客户端注册回调没有可用 GL 上下文时不能直接调用。
+     */
     @JvmStatic
     fun initShaderPrograms() {
         if (renderInit) return
@@ -159,6 +169,8 @@ object CooParticlesAPIClient {
         PostEffectFrameExecutor.installBackend(OpenGlPostEffectExecutionBackend)
         RenderEffectRegistry.register(BuiltinRenderEffectTypes.MASK_BLOOM, OpenGlMaskBloomEffectExecutor)
         ClientRenderEntityManager.init()
+        CParticleCapabilities.detect()
+        CParticleGpuSimulator.initializeProgramIfSupported()
         ShaderProgramRegistry.reinitializeAll()
         CooParticlesConstants.logger.info("初始化渲染管线")
     }
