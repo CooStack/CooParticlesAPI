@@ -414,6 +414,22 @@ object CParticleSystemManager {
     }
 
     /**
+     * 更新名称前缀匹配的全部 system 的方块碰撞范围。
+     *
+     * Example: emitter 新建 segment 后，同步更新该 emitter 仍存活的旧 segment。
+     * Forbidden: [namePrefix] 不能为空，避免误改所有 system。
+     */
+    internal fun updateBlockCollisionRange(namePrefix: String, range: Int) {
+        require(namePrefix.isNotEmpty())
+        val normalizedRange = normalizeBlockCollisionRange(range)
+        for ((key, system) in systems) {
+            if (key.name.startsWith(namePrefix)) {
+                system.blockCollisionRange = normalizedRange
+            }
+        }
+    }
+
+    /**
      * 判断自动回收 system 当前是否可以释放。
      * terminal system 不再等待空闲阈值，但任何仍有粒子的 system 都不能提前销毁。
      */

@@ -276,6 +276,7 @@ abstract class ClassParticleEmitters(
                 it.first,
                 spawnedCount / total,
                 lerpProgress,
+                total,
             )
         }
     }
@@ -340,24 +341,13 @@ abstract class ClassParticleEmitters(
         return listOf()
     }
 
-    /**
-     * 生成一个已通过发射器插值定位的粒子。
-     *
-     * Example: [ControlableCParticleData] 从 4096 槽的 segment 起步，写满后再增加分段。
-     * Forbidden: 不能把整个 [genParticles] 的数量当作每个纹理 system 的容量。
-     *
-     * @param world 当前客户端世界
-     * @param pos 粒子的世界坐标
-     * @param data 本次生成使用的粒子数据
-     * @param particleLerpProgress 当前粒子在生成列表内的进度
-     * @param posLerpProgress 发射器位置插值进度
-     */
     private fun spawnParticle(
         world: ClientLevel,
         pos: Vec3,
         data: ControlableParticleData,
         particleLerpProgress: Float,
         posLerpProgress: Float,
+        batchCapacityHint: Int,
     ) {
 
         val player = Minecraft.getInstance().player ?: return
@@ -366,7 +356,7 @@ abstract class ClassParticleEmitters(
         }
         // cparticle GPU 路径: 数据直接进 GPU 粒子系统, 跳过 controler/事件/碰撞
         if (data is ControlableCParticleData &&
-            CParticleEmitterBridge.trySpawn(this, world, pos, data)
+            CParticleEmitterBridge.trySpawn(this, world, pos, data, batchCapacityHint)
         ) {
             return
         }
@@ -441,6 +431,7 @@ abstract class ClassParticleEmitters(
                     newData,
                     particleLerpProgress,
                     posLerpProgress,
+                    newParticles.size,
                 )
             }
         }
