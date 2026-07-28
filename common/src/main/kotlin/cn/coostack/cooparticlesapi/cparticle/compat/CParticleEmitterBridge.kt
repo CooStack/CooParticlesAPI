@@ -18,6 +18,95 @@ import net.minecraft.world.phys.Vec3
 import java.util.UUID
 
 /**
+ * 保存一个 emitter 渲染分组的当前分段游标。
+ *
+ * 示例：相同 layer 和纹理 binding 的粒子共用一个实例。
+ * 禁止在 binding 不同的粒子之间复用，否则会写入错误的 GPU system。
+ *
+ * @property baseName 该分组创建 system 时使用的名称前缀
+ * @property layer 粒子渲染层
+ * @property textureBindingKey 基础纹理 binding
+ * @property maskTextureBindingKey 可选蒙版纹理 binding
+ * @property segmentCapacity 新建分段的槽位容量
+ */
+private class CParticleEmitterSystemCursor(
+    private val baseName: String,
+    private val layer: CParticleRenderLayer,
+    private val textureBindingKey: CParticleTextureBindingKey,
+    private val maskTextureBindingKey: CParticleTextureBindingKey?,
+    var segmentCapacity: Int,
+) {
+    /**
+     * 按需查询 system，并让已找到的可写分段留在热路径中。
+     *
+     * 示例：连续生成时直接复用未满的 system。
+     * 禁止跨 emitter 共享该游标。
+     */
+    private val segments = CParticleEmitterSegmentCursor(
+        isReleased = CParticleSystem::released,
+        isFull = { it.store.isFull() },
+        getOrCreate = ::getOrCreateSystem,
+    )
+
+    /**
+     * 判断粒子是否属于当前渲染分组。
+     *
+     * 示例：基础和蒙版 binding 都相同时返回 `true`。
+     * 禁止只比较渲染层，纹理 binding 也是 system 键的一部分。
+     *
+     * @param layer 待匹配的渲染层
+     * @param textureBindingKey 待匹配的基础纹理 binding
+     * @param maskTextureBindingKey 待匹配的蒙版纹理 binding
+     * @return 三项 system 键都相同时返回 `true`
+     */
+    fun matches(
+        layer: CParticleRenderLayer,
+        textureBindingKey: CParticleTextureBindingKey,
+        maskTextureBindingKey: CParticleTextureBindingKey?,
+    ): Boolean = this.layer == layer &&
+        this.textureBindingKey == textureBindingKey &&
+        this.maskTextureBindingKey == maskTextureBindingKey
+
+    /**
+     * 返回该渲染分组当前可写的 system。
+     *
+     * 示例：当前分段未满时直接返回缓存引用。
+     * 禁止绕过游标直接从第 0 段开始扫描。
+     *
+     * @return 当前可写的 GPU 粒子 system
+     */
+    fun findAvailable(): CParticleSystem = segments.findAvailable()
+
+    /**
+     * 按分段编号取得 system，不存在时按当前容量创建。
+     *
+     * 示例：编号 `0` 使用 [baseName]，编号 `1` 使用 `${baseName}/1`。
+     * 禁止创建不匹配当前 layer 或纹理 binding 的 system。
+     *
+     * @param segment 分段编号，从 `0` 开始
+     * @return 对应编号的 system
+     */
+    private fun getOrCreateSystem(segment: Int): CParticleSystem {
+        val name = if (segment == 0) baseName else "$baseName/$segment"
+        return CParticleSystemManager.getSystem(
+            name,
+            CParticleSystemMode.SIMULATED,
+            layer,
+            textureBindingKey,
+            maskTextureBindingKey,
+        ) ?: CParticleSystemManager.getOrCreateSystem(
+            name,
+            segmentCapacity,
+            layer,
+            CParticleSystemMode.SIMULATED,
+            textureBindingKey,
+            autoReleaseWhenEmpty = true,
+            maskTextureBindingKey = maskTextureBindingKey,
+        )
+    }
+}
+
+/**
  * # CParticleEmitterBridge
  *
  * 发射器在客户端生成粒子时，把当前 [ControlableParticleData] 转成独立的 GPU 实例：
@@ -36,6 +125,14 @@ import java.util.UUID
 object CParticleEmitterBridge {
 
     /**
+     * 每个 emitter 按渲染层和纹理 binding 保存少量分段游标。
+     *
+     * 示例：同一 emitter 的普通纹理和方块蒙版各自保留一个游标。
+     * 禁止在 [finishEmitter] 后保留对应 UUID 的条目。
+     */
+    private val systemCursors = HashMap<UUID, ArrayList<CParticleEmitterSystemCursor>>()
+
+    /**
      * 尝试把一个粒子交给 GPU 系统.
      *
      * Example: 支持 GPU 时生成粒子；达到全局上限时直接丢弃本次生成请求。
@@ -45,7 +142,7 @@ object CParticleEmitterBridge {
      * @param world 当前客户端世界
      * @param pos 粒子的生成坐标
      * @param data 粒子数据
-     * @param segmentCapacityHint 当前生成批次的总数上限，用于首次创建时确定 segment 容量
+     * @param segmentCapacityHint 当前批次的 CParticle 数量，用于首次创建时确定 segment 容量
      * @return GPU 路径已处理时返回 `true`；能力或纹理不支持时返回 `false`
      */
     @JvmStatic
@@ -120,7 +217,7 @@ object CParticleEmitterBridge {
      * @param layer 粒子的渲染层
      * @param textureBindingKey 本批次使用的基础纹理绑定
      * @param maskTextureBindingKey 本批次使用的可选蒙版纹理绑定
-     * @param segmentCapacityHint 首次创建 segment 时使用的批次总数上限
+     * @param segmentCapacityHint 首次创建 segment 时使用的 CParticle 批次数量
      * @return 一个仍可写入的 SIMULATED system
      */
     private fun findAvailableSystem(
@@ -130,34 +227,22 @@ object CParticleEmitterBridge {
         maskTextureBindingKey: CParticleTextureBindingKey?,
         segmentCapacityHint: Int,
     ): CParticleSystem {
-        val baseName = "emitter/${emitter.uuid}/${layer.name.lowercase()}"
         val segmentCapacity = segmentCapacityFor(
             segmentCapacityHint,
             CParticleSystemManager.particleCountLimit,
         )
-        var segment = 0
-        while (true) {
-            val name = if (segment == 0) baseName else "$baseName/$segment"
-            val existing = CParticleSystemManager.getSystem(
-                name,
-                CParticleSystemMode.SIMULATED,
-                layer,
-                textureBindingKey,
-                maskTextureBindingKey,
-            )
-            if (existing == null || !existing.store.isFull()) {
-                return existing ?: CParticleSystemManager.getOrCreateSystem(
-                    name,
-                    segmentCapacity,
-                    layer,
-                    CParticleSystemMode.SIMULATED,
-                    textureBindingKey,
-                    autoReleaseWhenEmpty = true,
-                    maskTextureBindingKey = maskTextureBindingKey,
-                )
-            }
-            segment++
-        }
+        val cursors = systemCursors.getOrPut(emitter.uuid) { ArrayList(1) }
+        val cursor = cursors.firstOrNull {
+            it.matches(layer, textureBindingKey, maskTextureBindingKey)
+        } ?: CParticleEmitterSystemCursor(
+            "emitter/${emitter.uuid}/${layer.name.lowercase()}",
+            layer,
+            textureBindingKey,
+            maskTextureBindingKey,
+            segmentCapacity,
+        ).also(cursors::add)
+        cursor.segmentCapacity = segmentCapacity
+        return cursor.findAvailable()
     }
 
     /**
@@ -167,6 +252,7 @@ object CParticleEmitterBridge {
      * @param emitterId 已结束的 emitter UUID
      */
     internal fun finishEmitter(emitterId: UUID) {
+        systemCursors.remove(emitterId)
         CParticleSystemManager.releaseSystemsWhenEmpty("emitter/$emitterId/")
     }
 
@@ -174,7 +260,7 @@ object CParticleEmitterBridge {
      * 根据已生成批次选择首次 segment 容量。
      * 小批次保留 16384 个槽位，大批次直接按实际数量创建，单段最多 32767。
      *
-     * @param batchParticleCount 当前生成批次的总数上限
+     * @param batchParticleCount 当前批次的 CParticle 数量
      * @param globalLimit 当前全局存活数量上限
      * @return 创建新 segment 时使用的固定容量
      */

@@ -268,6 +268,7 @@ abstract class ClassParticleEmitters(
         var spawnedCount = 0f
         val particles = genParticles(lerpProgress)
         val total = particles.size
+        val cparticleBatchSize = particles.count { it.first is ControlableCParticleData }
         particles.forEach {
             spawnedCount++
             spawnParticle(
@@ -276,7 +277,7 @@ abstract class ClassParticleEmitters(
                 it.first,
                 spawnedCount / total,
                 lerpProgress,
-                total,
+                cparticleBatchSize,
             )
         }
     }
@@ -347,7 +348,7 @@ abstract class ClassParticleEmitters(
         data: ControlableParticleData,
         particleLerpProgress: Float,
         posLerpProgress: Float,
-        batchCapacityHint: Int,
+        cparticleBatchSize: Int,
     ) {
 
         val player = Minecraft.getInstance().player ?: return
@@ -356,7 +357,7 @@ abstract class ClassParticleEmitters(
         }
         // cparticle GPU 路径: 数据直接进 GPU 粒子系统, 跳过 controler/事件/碰撞
         if (data is ControlableCParticleData &&
-            CParticleEmitterBridge.trySpawn(this, world, pos, data, batchCapacityHint)
+            CParticleEmitterBridge.trySpawn(this, world, pos, data, cparticleBatchSize)
         ) {
             return
         }
@@ -423,6 +424,9 @@ abstract class ClassParticleEmitters(
             // 生成新粒子
             val newParticles =
                 singleParticleDeathAction(control, data, data.respawnCount + 1, it)
+            val respawnCParticleBatchSize = newParticles.count { (newData, _) ->
+                newData is ControlableCParticleData
+            }
             newParticles.forEach { (newData, rel) ->
                 newData.respawnCount = data.respawnCount + 1
                 spawnParticle(
@@ -431,7 +435,7 @@ abstract class ClassParticleEmitters(
                     newData,
                     particleLerpProgress,
                     posLerpProgress,
-                    newParticles.size,
+                    respawnCParticleBatchSize,
                 )
             }
         }
