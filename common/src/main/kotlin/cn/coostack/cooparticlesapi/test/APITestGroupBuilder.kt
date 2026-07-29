@@ -18,6 +18,7 @@ import cn.coostack.cooparticlesapi.test.options.display.CylinderBoardDisplayEnti
 import cn.coostack.cooparticlesapi.test.options.particle.composition.TestComposition
 import cn.coostack.cooparticlesapi.test.options.display.TestBlockDisplayEntity
 import cn.coostack.cooparticlesapi.test.options.particle.composition.GenNewComposition
+import cn.coostack.cooparticlesapi.test.options.particle.composition.SequenceTestGPUComposition
 import cn.coostack.cooparticlesapi.test.options.particle.composition.TestFourierPhotoComposition
 import cn.coostack.cooparticlesapi.test.options.particle.composition.TestGlowingAnimationComposition
 import cn.coostack.cooparticlesapi.test.options.particle.composition.TestModelComposition
@@ -205,6 +206,15 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
             }
             .appendOption {
                 SimpleCompositionOption(TestSeqComposition(player.eyePosition, player.level()), 1000)
+            }
+            .appendOption {
+                SimpleCompositionOption(
+                    SequenceTestGPUComposition(
+                        player.eyePosition.add(player.forward.scale(3.0)),
+                        player.level()
+                    ),
+                    1000
+                )
             }
             .appendOption {
                 SimpleEmitterOption(

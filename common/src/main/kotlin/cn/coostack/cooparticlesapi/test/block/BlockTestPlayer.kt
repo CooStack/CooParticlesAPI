@@ -22,7 +22,13 @@ class BlockTestPlayer private constructor(
             field = value
             syncVirtualPose()
         }
-    private var virtualForward: Vec3 = DEFAULT_FORWARD
+    /**
+     * 未绑定真实玩家时保存的单位朝向。
+     *
+     * 示例：[setForward] 会先规范化输入再写入该字段。
+     * 禁止直接保存零向量；默认值由 [BlockTestForward] 提供。
+     */
+    private var virtualForward: Vec3 = BlockTestForward.DEFAULT
     private var virtualYaw: Float = 0f
     var yaw: Float
         get() = realPlayer?.yRot ?: virtualYaw
@@ -89,12 +95,28 @@ class BlockTestPlayer private constructor(
         }
     }
 
+    /**
+     * 返回真实玩家视线或模拟玩家保存的单位朝向。
+     *
+     * 示例：绑定真实玩家时会实时读取 `lookAngle`。
+     * 禁止假定返回值与上次调用相同；真实玩家可能已经转向。
+     *
+     * @return 当前单位朝向
+     */
     override fun getForward(): Vec3 {
-        return realPlayer?.lookAngle?.let(::normalizeOrDefault) ?: virtualForward
+        return realPlayer?.lookAngle?.let(BlockTestForward::normalizeOrDefault) ?: virtualForward
     }
 
+    /**
+     * 设置模拟玩家朝向，无效输入回退到默认方向。
+     *
+     * 示例：传入 `Vec3(1.0, 0.0, 0.0)` 会面向正 X。
+     * 禁止用该方法移动玩家；位置由 [offset] 控制。
+     *
+     * @param value 待保存朝向
+     */
     fun setForward(value: Vec3) {
-        virtualForward = normalizeOrDefault(value)
+        virtualForward = BlockTestForward.normalizeOrDefault(value)
     }
 
     override fun isSpectator(): Boolean {
@@ -114,18 +136,30 @@ class BlockTestPlayer private constructor(
     }
 
     companion object {
-        val DEFAULT_FORWARD: Vec3 = Vec3(0.0, 0.0, 1.0)
+        /**
+         * 保留给现有调用方的默认朝向兼容入口。
+         *
+         * 示例：旧代码可继续读取 `BlockTestPlayer.DEFAULT_FORWARD`。
+         * 禁止在纯单元测试中仅为读取该值而初始化实体类；应使用 [BlockTestForward.DEFAULT]。
+         */
+        val DEFAULT_FORWARD: Vec3 = BlockTestForward.DEFAULT
 
         private fun virtualProfile(level: ServerLevel, pos: BlockPos): GameProfile {
             val seed = "coo-block-test:${level.dimension().location()}:${pos.x},${pos.y},${pos.z}"
             return GameProfile(UUID.nameUUIDFromBytes(seed.toByteArray(StandardCharsets.UTF_8)), "CooBlockTest")
         }
 
+        /**
+         * 保留给现有调用方的朝向规范化兼容入口。
+         *
+         * 示例：运行期代码可继续调用 `BlockTestPlayer.normalizeOrDefault(value)`。
+         * 禁止在未启动 Minecraft 注册表的纯测试中调用；应直接使用 [BlockTestForward.normalizeOrDefault]。
+         *
+         * @param value 待规范化朝向
+         * @return 单位向量或默认朝向
+         */
         fun normalizeOrDefault(value: Vec3): Vec3 {
-            if (value.lengthSqr() < 1.0E-8) {
-                return DEFAULT_FORWARD
-            }
-            return value.normalize()
+            return BlockTestForward.normalizeOrDefault(value)
         }
 
         private fun fromRotation(yaw: Float, pitch: Float): Vec3 {

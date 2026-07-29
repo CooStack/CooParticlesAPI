@@ -3,6 +3,7 @@ package cn.coostack.cooparticlesapi.test.block
 import cn.coostack.cooparticlesapi.test.api.TestGroup
 import cn.coostack.cooparticlesapi.test.api.TestOption
 import cn.coostack.cooparticlesapi.test.api.TestOptionParamSpec
+import cn.coostack.cooparticlesapi.test.api.TestOptionPlayerUpdateSupport
 import cn.coostack.cooparticlesapi.test.api.TestReviewMode
 import net.minecraft.network.chat.Component
 import net.minecraft.world.entity.player.Player
@@ -17,9 +18,23 @@ class BlockTestGroup(
     }
     constructor(testPlayer: Player, id: String) : this(BlockTestPlayer(testPlayer), id)
 
+    /**
+     * 保留给旧版调用方的测试项复核结果。
+     *
+     * 示例：旧代码可继续传入 [PASSED] 完成人工复核。
+     * 新代码禁止继续扩展此枚举，应改用 [BlockTestOptionResult]。
+     *
+     * @property displayName 状态行使用的中文名称
+     */
+    @Deprecated("使用 BlockTestOptionResult")
     enum class OptionResult(val displayName: String) {
+        /** 测试项通过。 */
         PASSED("通过"),
+
+        /** 测试项失败。 */
         FAILED("失败"),
+
+        /** 测试项由操作员跳过。 */
         SKIPPED("跳过")
     }
 
@@ -33,6 +48,13 @@ class BlockTestGroup(
     private var finishedAnnounced = false
     var announceGroupFinished: Boolean = true
     var reviewMode: BlockTestReviewMode = BlockTestReviewMode.MANUAL_VISUAL
+    /**
+     * 在 Option supplier 构造前通知外部重置模拟玩家。
+     *
+     * 示例：控制器在此回调中把 ONCE 轨道放回当前测试项起点。
+     * 禁止在回调中推进测试组或调用当前 Option。
+     */
+    var optionStartListener: (BlockTestPlayer, Int) -> Unit = { _, _ -> }
     private var lastStatus = "未开始"
 
     override fun getUser(): Player {
@@ -119,30 +141,37 @@ class BlockTestGroup(
     }
 
     override fun skipCurrent(): TestOption<*>? {
-        return advanceCurrent(OptionResult.SKIPPED)
+        return advanceCurrent(BlockTestOptionResult.SKIPPED)
     }
 
     fun completeCurrent(): TestOption<*>? {
-        return advanceCurrent(OptionResult.PASSED)
+        return advanceCurrent(BlockTestOptionResult.PASSED)
     }
 
     fun failCurrent(): TestOption<*>? {
-        return advanceCurrent(OptionResult.FAILED)
+        return advanceCurrent(BlockTestOptionResult.FAILED)
     }
 
     override fun isDone(): Boolean {
         return currentOption == null && pendingReviewOption == null && nextOptionIndex >= options.size
     }
 
+    /**
+     * 更新当前测试项，并在其 tick 前派发最新的模拟玩家姿态。
+     *
+     * 示例：控制器先设置玩家位置和 forward，再由本方法调用玩家更新回调与 Option tick。
+     * 禁止在等待人工复核时继续派发玩家更新事件。
+     */
     override fun doTick() {
         val option = currentOption ?: return
         try {
+            TestOptionPlayerUpdateSupport.dispatch(option, testPlayer)
             option.doTick()
         } catch (e: Exception) {
             onOptionFailure(e, option)
             option.stop()
             currentOption = null
-            finalizeOption(option, OptionResult.FAILED, announce = false)
+            finalizeOption(option, BlockTestOptionResult.FAILED, announce = false)
             startNextOption()
             return
         }
@@ -157,12 +186,12 @@ class BlockTestGroup(
                 lastStatus = buildCurrentStatusLine() ?: "等待人工复核"
                 return
             }
-            finalizeOption(option, OptionResult.PASSED, announce = false)
+            finalizeOption(option, BlockTestOptionResult.PASSED, announce = false)
             startNextOption()
         }
     }
 
-    private fun advanceCurrent(result: OptionResult): TestOption<*>? {
+    private fun advanceCurrent(result: BlockTestOptionResult): TestOption<*>? {
         val option = currentOption ?: pendingReviewOption ?: return null
         if (currentOption != null) {
             option.stop()
@@ -187,6 +216,7 @@ class BlockTestGroup(
             return
         }
         activeOptionIndex = nextOptionIndex
+        optionStartListener(testPlayer, activeOptionIndex)
         val option = options[nextOptionIndex].get()
         nextOptionIndex++
         currentOption = option
@@ -195,13 +225,13 @@ class BlockTestGroup(
         lastStatus = buildCurrentStatusLine() ?: "运行中"
     }
 
-    private fun finalizeOption(option: TestOption<*>, result: OptionResult, announce: Boolean) {
+    private fun finalizeOption(option: TestOption<*>, result: BlockTestOptionResult, announce: Boolean) {
         when (result) {
-            OptionResult.PASSED -> {
+            BlockTestOptionResult.PASSED -> {
                 option.onSuccess()
                 onOptionSuccess(option)
             }
-            OptionResult.FAILED, OptionResult.SKIPPED -> option.onFailed()
+            BlockTestOptionResult.FAILED, BlockTestOptionResult.SKIPPED -> option.onFailed()
         }
         lastStatus = "[测试 ${activeOptionIndex + 1}/${options.size}] ${option.optionID()} -> ${result.displayName}"
         if (announce) {

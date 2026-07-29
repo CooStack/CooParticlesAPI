@@ -3,6 +3,7 @@ package cn.coostack.cooparticlesapi.blocks
 import cn.coostack.cooparticlesapi.test.api.TestOption
 import cn.coostack.cooparticlesapi.test.api.TestReviewMode
 import cn.coostack.cooparticlesapi.test.block.BlockTestGroup
+import cn.coostack.cooparticlesapi.test.block.BlockTestOptionResult
 import cn.coostack.cooparticlesapi.test.block.BlockTestMode
 import cn.coostack.cooparticlesapi.test.block.BlockTestPlayer
 import sun.misc.Unsafe
@@ -79,7 +80,7 @@ class TestControllerBlockEntityReplayTest {
 
         fixture.runLoop.start()
 
-        assertFalse(fixture.runLoop.reviewCurrent(BlockTestGroup.OptionResult.PASSED))
+        assertFalse(fixture.runLoop.reviewCurrent(BlockTestOptionResult.PASSED))
         assertEquals(1, fixture.groups.size)
         assertTrue(fixture.runLoop.isRunning())
     }

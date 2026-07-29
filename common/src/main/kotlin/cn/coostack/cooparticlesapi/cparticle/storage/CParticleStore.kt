@@ -220,6 +220,7 @@ class CParticleStore(val capacity: Int) {
 
     /** 本 tick 新生成的槽位 (供 GPU 模式做增量上传) */
     val spawnedSlots = IntArray(capacity)
+    private val spawnedBits = LongArray((capacity + 63) ushr 6)
     var spawnedCount = 0
         private set
 
@@ -310,8 +311,8 @@ class CParticleStore(val capacity: Int) {
     /**
      * 使用基础纹理和可选蒙版描述符生成一个粒子。
      *
-     * Example: `spawn(particle, origin, animationId, 15, 15)` 占用一个空槽位。
-     * Forbidden: 受全局限制的 store 达到共享上限后不能继续生成。
+     * 示例：`spawn(particle, origin, animationId, 15, 15)` 占用一个空槽位。
+     * 禁止：受全局限制的 store 达到共享上限后不能继续生成。
      *
      * @param p 粒子数据
      * @param origin 系统原点 (位置写入为原点相对 float)
@@ -329,6 +330,7 @@ class CParticleStore(val capacity: Int) {
      * @param maskColorMultiplier 蒙版采样使用的独立 RGB 倍率
      * @param textureGeneration 纹理缓存代数
      * @param appearanceDescriptorId GPU 外观描述符
+     * @param spawnPosition 写入槽位的位置；默认使用 [CParticle.pos]
      * @return 分配的槽位；本地池或全局额度已满时返回 `-1`
      */
     internal fun spawnWithMask(
@@ -348,6 +350,7 @@ class CParticleStore(val capacity: Int) {
         randomMaskQuarterUv: Boolean = false,
         maskTextureBindingKey: CParticleTextureBindingKey? = null,
         maskColorMultiplier: Vector3f? = null,
+        spawnPosition: Vec3 = p.pos,
     ): Int {
         CParticleTextureDescriptors.requireValidDescriptorId(animationId)
         maskAnimationId?.let(CParticleTextureDescriptors::requireValidDescriptorId)
@@ -357,9 +360,9 @@ class CParticleStore(val capacity: Int) {
         val slot = freeStack[--freeTop]
         val base = slot * STRIDE
 
-        val rx = (p.pos.x - origin.x).toFloat()
-        val ry = (p.pos.y - origin.y).toFloat()
-        val rz = (p.pos.z - origin.z).toFloat()
+        val rx = (spawnPosition.x - origin.x).toFloat()
+        val ry = (spawnPosition.y - origin.y).toFloat()
+        val rz = (spawnPosition.z - origin.z).toFloat()
         val maxAge = p.maxAge.coerceAtLeast(1)
 
         data[base] = rx; data[base + 1] = ry; data[base + 2] = rz
@@ -418,8 +421,11 @@ class CParticleStore(val capacity: Int) {
         writeTicks[slot] = Int.MIN_VALUE
         aliveCount++
         if (slot + 1 > highWater) highWater = slot + 1
-        if (spawnedCount < spawnedSlots.size) {
+        val spawnedWord = slot ushr 6
+        val spawnedMask = 1L shl (slot and 63)
+        if (spawnedBits[spawnedWord] and spawnedMask == 0L && spawnedCount < spawnedSlots.size) {
             spawnedSlots[spawnedCount++] = slot
+            spawnedBits[spawnedWord] = spawnedBits[spawnedWord] or spawnedMask
         }
         releaseDynamicSource(slot)
         if (p.updateMode == CParticleUpdateMode.DYNAMIC) {
@@ -675,6 +681,7 @@ class CParticleStore(val capacity: Int) {
         blockCollisionCount = 0
         agingCount = 0
         highWater = 0
+        java.util.Arrays.fill(spawnedBits, 0L)
         spawnedCount = 0
         dynamicState = null
         killedState = null
@@ -707,6 +714,11 @@ class CParticleStore(val capacity: Int) {
     }
 
     fun clearSpawned() {
+        for (i in 0 until spawnedCount) {
+            val slot = spawnedSlots[i]
+            val word = slot ushr 6
+            spawnedBits[word] = spawnedBits[word] and (1L shl (slot and 63)).inv()
+        }
         spawnedCount = 0
     }
 

@@ -6,7 +6,7 @@ import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
 import cn.coostack.cooparticlesapi.blocks.TestControllerBlockAccess
 import cn.coostack.cooparticlesapi.network.packet.api.CooPacket
 import cn.coostack.cooparticlesapi.network.packet.api.ServerContext
-import cn.coostack.cooparticlesapi.test.block.BlockTestGroup
+import cn.coostack.cooparticlesapi.test.block.BlockTestOptionResult
 import net.minecraft.core.BlockPos
 import net.minecraft.resources.ResourceLocation
 
@@ -30,9 +30,9 @@ class PacketReviewTestControllerC2S() : CooPacket() {
         val sender = context.sender
         if (!sender.isCreative) return
         val result = when {
-            action.equals(PASS, ignoreCase = true) -> BlockTestGroup.OptionResult.PASSED
-            action.equals(FAIL, ignoreCase = true) -> BlockTestGroup.OptionResult.FAILED
-            action.equals(SKIP, ignoreCase = true) -> BlockTestGroup.OptionResult.SKIPPED
+            action.equals(PASS, ignoreCase = true) -> BlockTestOptionResult.PASSED
+            action.equals(FAIL, ignoreCase = true) -> BlockTestOptionResult.FAILED
+            action.equals(SKIP, ignoreCase = true) -> BlockTestOptionResult.SKIPPED
             else -> return
         }
         TestControllerBlockAccess.find(sender.server, dimension, blockPos)?.reviewCurrent(result)

@@ -113,14 +113,33 @@ class CParticleDisplayer(
     /**
      * 在共享或已绑定的 CParticle system 中显示一个粒子。
      *
-     * Example: composition 调用 `display(loc, world)` 后持有返回的控制句柄。
-     * Forbidden: 达到全局上限后不能继续创建分段 system。
+     * 示例：composition 调用 `display(loc, world)` 后持有返回的控制句柄。
+     * 禁止：达到全局上限后不能继续创建分段 system。
      *
      * @param loc 粒子的世界坐标
      * @param world 当前客户端世界
      * @return 控制句柄；GPU 不可用、纹理无效或达到上限时返回 `null`
      */
     override fun display(loc: Vec3, world: ClientLevel): Controlable<*>? {
+        return display(loc, world, null)
+    }
+
+    /**
+     * 使用真实世界坐标采样环境，并可单独指定 GPU 槽位写入坐标。
+     *
+     * 示例：整组变换中的 composition 传入当前渲染位置和稳定的 system 局部基准。
+     * 禁止：共享 system 不应传入其他 system 的槽位坐标。
+     *
+     * @param loc 粒子显示、纹理解析和光照采样使用的世界坐标
+     * @param world 当前客户端世界
+     * @param storagePosition 可选槽位写入坐标；为 `null` 时由 system 从 [loc] 换算
+     * @return 控制句柄；GPU 不可用、纹理无效或达到上限时返回 `null`
+     */
+    internal fun display(
+        loc: Vec3,
+        world: ClientLevel,
+        storagePosition: Vec3?,
+    ): Controlable<*>? {
         if (!CParticleSystemManager.enabled) return null
         CParticleCapabilities.detect()
         if (CParticleCapabilities.detectionComplete && !CParticleCapabilities.instancingSupported) return null
@@ -133,7 +152,7 @@ class CParticleDisplayer(
             resolved.base.bindingKey,
             resolved.mask?.bindingKey,
         )
-        var slot = target.spawnResolved(p, resolved)
+        var slot = target.spawnResolved(p, resolved, storagePosition)
         if (system == null) {
             var segment = 0
             while (slot < 0 && CParticleSystemManager.hasAvailableParticleCapacity()) {
@@ -143,7 +162,7 @@ class CParticleDisplayer(
                     resolved.mask?.bindingKey,
                     ++segment,
                 )
-                slot = target.spawnResolved(p, resolved)
+                slot = target.spawnResolved(p, resolved, storagePosition)
             }
         }
         if (slot < 0) return null

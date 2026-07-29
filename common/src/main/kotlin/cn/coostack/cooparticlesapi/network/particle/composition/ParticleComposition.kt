@@ -790,13 +790,22 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
         toggleRelative()
     }
 
+    /**
+     * 显示一个相对坐标对应的粒子节点。
+     *
+     * 示例：普通粒子以 [position] 为原点，启用整组变换的 managed CParticle 先计算实际渲染坐标。
+     * 禁止把 system 局部坐标直接当作世界坐标，否则光照和位置相关纹理会从错误位置采样。
+     *
+     * @param data 粒子显示方式和初始化动作
+     * @param pos 已完成初始缩放与旋转的相对坐标
+     */
     protected open fun displayEntry(data: CompositionData, pos: RelativeLocation) {
         val uuid = data.uuid
         val displayer = data.displayerBuilder(uuid)
-        if (displayer is CParticleDisplayer) {
+        val managedCParticleSystem = if (displayer is CParticleDisplayer) {
             data.cParticleHandlers.forEach(displayer::applyParticleInit)
             bindManagedSystem(displayer)
-        }
+        } else null
         if (displayer is ParticleDisplayer.SingleParticleDisplayer) {
             val controler = ControlParticleManager.createControl(uuid)
             controler.applyInitializedAction {
@@ -805,8 +814,17 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
                 }
             }
         }
-        val toPos = position.add(pos.x, pos.y, pos.z)
-        val controler = displayer.display(toPos, world as ClientLevel) ?: let {
+        val toPos = resolveCParticleSpawnPosition(pos, managedCParticleSystem)
+        val clientWorld = world as ClientLevel
+        val controler = if (displayer is CParticleDisplayer) {
+            displayer.display(
+                toPos,
+                clientWorld,
+                resolveCParticleStoragePosition(pos, managedCParticleSystem),
+            )
+        } else {
+            displayer.display(toPos, clientWorld)
+        } ?: let {
             CooParticlesConstants.logger.error("display生成了null 错误target类型 ${displayer::class.java.name}")
             return
         }
@@ -858,12 +876,21 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
         particleRotatedLocations.add(pos)
     }
 
-    private fun bindManagedSystem(displayer: CParticleDisplayer) {
-        if (displayer.hasBoundSystem) return
+    /**
+     * 为未绑定的 CParticle displayer 取得当前 composition 专用的 system。
+     *
+     * 示例：同一 composition、渲染层和纹理绑定会复用同一个 system。
+     * 禁止覆盖调用方已经绑定的 system；这种情况返回 `null` 并保留原有行为。
+     *
+     * @param displayer 待绑定的 GPU 粒子显示器
+     * @return 本次绑定的 managed system；无法绑定或已有外部绑定时返回 `null`
+     */
+    private fun bindManagedSystem(displayer: CParticleDisplayer): CParticleSystem? {
+        if (displayer.hasBoundSystem) return null
         val layerName = displayer.layer.name.lowercase()
         val name = "composition/$controlUUID/$layerName"
         val resolvedTextures = displayer.resolveTexturesAt(position)
-        if (!resolvedTextures.isValid) return
+        if (!resolvedTextures.isValid) return null
         val bindingKey = resolvedTextures.base.bindingKey
         val maskBindingKey = resolvedTextures.mask?.bindingKey
         val existing = CParticleSystemManager.getSystem(
@@ -891,12 +918,61 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
             autoReleaseWhenEmpty = true,
             maskTextureBindingKey = maskBindingKey,
         )
-        if (!displayer.bindSystemIfAbsent(target)) return
+        if (!displayer.bindSystemIfAbsent(target)) return null
         target.setOriginIfEmpty(position)
         target.visibleRange = Double.MAX_VALUE
         cParticleSystemConfigurations[null]?.forEach { it(target) }
         cParticleSystemConfigurations[displayer.layer]?.forEach { it(target) }
         managedCParticleSystems.add(target)
+        if (gpuTransformActive) {
+            syncGpuTransform()
+        }
+        return target
+    }
+
+    /**
+     * 计算粒子显示与环境采样使用的世界坐标。
+     *
+     * 示例：整组变换启用后，序列后续粒子使用 system 当前矩阵换算真实渲染位置。
+     * 禁止在这里返回槽位局部坐标；[CParticleSystem] 会在写入时自行逆变换。
+     *
+     * @param pos composition 中保存的相对坐标
+     * @param managedSystem 当前 composition 管理的 GPU system，普通显示器传 `null`
+     * @return 写入显示器的世界坐标
+     */
+    internal fun resolveCParticleSpawnPosition(
+        pos: RelativeLocation,
+        managedSystem: CParticleSystem?,
+    ): Vec3 {
+        if (!gpuTransformActive || managedSystem == null) {
+            return position.add(pos.x, pos.y, pos.z)
+        }
+        val transformed = managedSystem.groupTransform.transformPosition(
+            Vector3f(pos.x.toFloat(), pos.y.toFloat(), pos.z.toFloat())
+        )
+        return managedSystem.origin.add(
+            transformed.x.toDouble(),
+            transformed.y.toDouble(),
+            transformed.z.toDouble(),
+        )
+    }
+
+    /**
+     * 返回整组 GPU 变换启用时使用的稳定槽位坐标。
+     *
+     * 示例：system 原点为 `(10, 20, 30)` 时，相对坐标 `(2, 3, 4)` 写为 `(12, 23, 34)`。
+     * 禁止在 CPU 路径提供该坐标；此时 system 需要按现存矩阵逆变换真实世界坐标。
+     *
+     * @param pos composition 保存的相对坐标
+     * @param managedSystem 当前 composition 管理的 GPU system
+     * @return 槽位写入坐标；不使用整组 GPU 变换时返回 `null`
+     */
+    internal fun resolveCParticleStoragePosition(
+        pos: RelativeLocation,
+        managedSystem: CParticleSystem?,
+    ): Vec3? {
+        val system = managedSystem?.takeIf { gpuTransformActive } ?: return null
+        return system.origin.add(pos.x, pos.y, pos.z)
     }
 
     private fun applyGpuAxisRotation(rotationAxis: RelativeLocation, radian: Double) {
@@ -940,12 +1016,15 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
     }
 
     protected fun refreshGpuTransformMode() {
+        val wasActive = gpuTransformActive
         gpuTransformActive = managedCParticleCount > 0 &&
                 managedCParticleCount == particles.size &&
                 controlerTicks.none { it is CParticleControlable }
         if (gpuTransformActive) {
             syncGpuTransform()
-            managedCParticleSystems.forEach { it.snapGroupTransform() }
+            if (!wasActive) {
+                managedCParticleSystems.forEach { it.snapGroupTransform() }
+            }
         }
     }
 

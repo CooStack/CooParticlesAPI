@@ -35,9 +35,11 @@ import kotlin.math.round
  * @property packet 服务端发送的控制器状态
  * @param openParamPage 是否在初始化后直接显示参数页
  */
-class TestControllerScreen(
+class TestControllerScreen internal constructor(
     private val packet: PacketOpenTestControllerScreenS2C,
-    openParamPage: Boolean = false
+    openParamPage: Boolean = false,
+    private val sharedHistory: TestControllerUndoHistory<TestControllerPacketDrafts.TestControllerConfigSnapshot>? = null,
+    private val initialPrecisionUnlocked: Boolean = false,
 ) : Screen(Component.literal("测试方块")) {
     private lateinit var groupBox: EditBox
     private lateinit var indexBox: EditBox
@@ -56,6 +58,29 @@ class TestControllerScreen(
     private lateinit var offsetPickButton: Button
     private lateinit var forwardPickButton: Button
     private lateinit var precisionButton: Button
+    /**
+     * 位置通道的静态或动态选择按钮。
+     * 示例：主页面显示“动态”；禁止把它放到独立动态页。
+     */
+    private lateinit var positionModeButton: Button
+
+    /**
+     * forward 通道的静态或动态选择按钮。
+     * 示例：主页面显示“静态”；禁止用它修改位置通道。
+     */
+    private lateinit var forwardModeButton: Button
+
+    /**
+     * 位置通道启用动态时显示的曲线编辑按钮。
+     * 示例：点击后打开位置曲线；禁止在静态状态显示。
+     */
+    private lateinit var positionEditButton: Button
+
+    /**
+     * forward 通道启用动态时显示的曲线编辑按钮。
+     * 示例：点击后打开 forward 曲线；禁止在静态状态显示。
+     */
+    private lateinit var forwardEditButton: Button
     private lateinit var saveButton: Button
     private lateinit var startButton: Button
     private lateinit var stopButton: Button
@@ -65,6 +90,8 @@ class TestControllerScreen(
     private lateinit var paramsButton: Button
     private lateinit var backButton: Button
     private lateinit var colorHexBox: EditBox
+    private lateinit var undoButton: Button
+    private lateinit var redoButton: Button
 
     private val paramBoxes = ArrayList<EditBox>()
     private val paramComponentBoxes = ArrayList<List<EditBox>>()
@@ -76,7 +103,10 @@ class TestControllerScreen(
     private val maxVisibleSuggestions = 3
     private var mode = BlockTestMode.fromId(packet.mode)
     private var repeatIndex = packet.repeatIndex
-    private var precisionUnlocked = false
+    private var precisionUnlocked = initialPrecisionUnlocked
+    private val history = sharedHistory ?: TestControllerUndoHistory(
+        initial = TestControllerPacketDrafts.snapshotFrom(packet)
+    )
     private var currentParamSpecs: List<EncodedTestOptionParamSpec> = emptyList()
     private var paramStateKey = ""
     private var paramScroll = 0
@@ -95,7 +125,20 @@ class TestControllerScreen(
     private var colorPickerDrag = ColorPickerDrag.NONE
     private var updatingColorHex = false
     private var updatingColorRgb = false
+    /**
+     * 保存主界面尚未提交的位置与 forward 动态配置。
+     *
+     * 示例：切换位置为动态后，打开曲线编辑器会把该状态带入草稿。
+     * 禁止把该草稿当作服务端已经保存的配置。
+     */
+    private val animationDraft = TestControllerPacketDrafts.draftFrom(packet)
 
+    /**
+     * 创建主界面、参数页和动态通道控件。
+     *
+     * 示例：位置与 Forward 行右侧分别显示静态或动态选择按钮。
+     * 禁止在初始化阶段发送更新包；用户点击保存或开始后才提交。
+     */
     override fun init() {
         val left = width / 2 - 170
         var y = 34
@@ -108,6 +151,17 @@ class TestControllerScreen(
         groupBox.setMaxLength(256)
         groupBox.setResponder { updateSuggestions() }
         addRenderableWidget(groupBox)
+
+        undoButton = Button.builder(Component.literal("撤回")) {
+            recordCurrentState()
+            restoreHistory(history.undo())
+        }.bounds(width - 108, 8, 48, 20).build()
+        redoButton = Button.builder(Component.literal("重做")) {
+            recordCurrentState()
+            restoreHistory(history.redo())
+        }.bounds(width - 56, 8, 48, 20).build()
+        addRenderableWidget(undoButton)
+        addRenderableWidget(redoButton)
 
         y += 28
         modeButton = Button.builder(Component.literal(mode.displayName)) {
@@ -204,6 +258,30 @@ class TestControllerScreen(
         }.bounds(left + 312, forwardXBox.y, 48, 20).build()
         addRenderableWidget(forwardPickButton)
 
+        positionModeButton = Button.builder(Component.literal(animationModeLabel(animationDraft.positionDynamic))) {
+            animationDraft.positionDynamic = !animationDraft.positionDynamic
+            updateAnimationButtons()
+            layoutWidgets()
+        }.bounds(0, 0, ANIMATION_MODE_WIDTH, 20).build()
+        addRenderableWidget(positionModeButton)
+
+        forwardModeButton = Button.builder(Component.literal(animationModeLabel(animationDraft.forwardDynamic))) {
+            animationDraft.forwardDynamic = !animationDraft.forwardDynamic
+            updateAnimationButtons()
+            layoutWidgets()
+        }.bounds(0, 0, ANIMATION_MODE_WIDTH, 20).build()
+        addRenderableWidget(forwardModeButton)
+
+        positionEditButton = Button.builder(Component.literal("编辑")) {
+            openCurveEditor(TestControllerTrackKind.POSITION)
+        }.bounds(0, 0, ANIMATION_EDIT_WIDTH, 20).build()
+        addRenderableWidget(positionEditButton)
+
+        forwardEditButton = Button.builder(Component.literal("编辑")) {
+            openCurveEditor(TestControllerTrackKind.FORWARD)
+        }.bounds(0, 0, ANIMATION_EDIT_WIDTH, 20).build()
+        addRenderableWidget(forwardEditButton)
+
         y += 28
         widthBox = editBox(left + 92, y, 64, trim(packet.boxWidth))
         heightBox = editBox(left + 166, y, 64, trim(packet.boxHeight))
@@ -274,10 +352,28 @@ class TestControllerScreen(
         updateSuggestions()
         updateIndexSuggestion()
         updateParamBoxes(syncVisible = false)
+        updateAnimationButtons()
         layoutWidgets()
     }
 
     override fun keyPressed(keyCode: Int, scanCode: Int, modifiers: Int): Boolean {
+        if (Screen.hasControlDown()) {
+            if (keyCode == GLFW.GLFW_KEY_Z && Screen.hasShiftDown()) {
+                recordCurrentState()
+                restoreHistory(history.redo())
+                return true
+            }
+            if (keyCode == GLFW.GLFW_KEY_Z) {
+                recordCurrentState()
+                restoreHistory(history.undo())
+                return true
+            }
+            if (keyCode == GLFW.GLFW_KEY_Y) {
+                recordCurrentState()
+                restoreHistory(history.redo())
+                return true
+            }
+        }
         if (colorPickerRow >= 0) {
             if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
                 closeColorPicker()
@@ -330,6 +426,12 @@ class TestControllerScreen(
             }
         }
         return super.keyPressed(keyCode, scanCode, modifiers)
+    }
+
+    override fun charTyped(codePoint: Char, modifiers: Int): Boolean {
+        val handled = super.charTyped(codePoint, modifiers)
+        if (handled) recordCurrentState()
+        return handled
     }
 
     override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
@@ -393,6 +495,7 @@ class TestControllerScreen(
     override fun mouseReleased(mouseX: Double, mouseY: Double, button: Int): Boolean {
         if (colorPickerDrag != ColorPickerDrag.NONE) {
             colorPickerDrag = ColorPickerDrag.NONE
+            recordCurrentState()
             return true
         }
         return super.mouseReleased(mouseX, mouseY, button)
@@ -424,6 +527,8 @@ class TestControllerScreen(
     }
 
     override fun render(graphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
+        if (colorPickerDrag == ColorPickerDrag.NONE) recordCurrentState()
+        updateHistoryButtons()
         renderBackground(graphics, mouseX, mouseY, partialTick)
         super.render(graphics, mouseX, mouseY, partialTick)
         renderLabels(graphics)
@@ -432,6 +537,14 @@ class TestControllerScreen(
         renderColorPicker(graphics, mouseX, mouseY, partialTick)
     }
 
+    /**
+     * 绘制当前页面的字段标签和运行状态。
+     *
+     * 示例：主界面在向量输入左侧绘制位置偏移、Forward 与碰撞箱标签。
+     * 禁止在这里重复绘制动态通道说明，通道状态由同行按钮显示。
+     *
+     * @param graphics 当前 GUI 绘图上下文
+     */
     private fun renderLabels(graphics: GuiGraphics) {
         if (page == ControllerPage.PARAMS) {
             renderParamPageLabels(graphics)
@@ -454,10 +567,11 @@ class TestControllerScreen(
         } else {
             y += 28
         }
+        val animationRowExtra = if (width >= MIN_INLINE_ANIMATION_WIDTH) 0 else ANIMATION_STACK_HEIGHT
         graphics.drawString(font, "位置偏移", left, y, 0xE0E0E0, true)
-        y += 28
+        y += 28 + animationRowExtra
         graphics.drawString(font, "Forward", left, y, 0xE0E0E0, true)
-        y += 28
+        y += 28 + animationRowExtra
         graphics.drawString(font, "碰撞箱", left, y, 0xE0E0E0, true)
         graphics.drawString(font, "状态: ${displayStatus()}", left, height - 34, 0xF0F0F0, true)
         graphics.drawString(font, "测试项: ${packet.optionCount}", left, height - 22, 0xF0F0F0, true)
@@ -517,6 +631,14 @@ class TestControllerScreen(
         }.bounds(x, y, width, 20).build()
     }
 
+    /**
+     * 把主界面当前输入与动态草稿组装为待提交更新包。
+     *
+     * 示例：打开位置曲线前调用本方法可保留尚未保存的分组和碰撞箱输入。
+     * 禁止把返回值视为服务端确认结果。
+     *
+     * @return 包含当前界面完整状态的更新包
+     */
     private fun updatePacket(): PacketUpdateTestControllerC2S {
         prepareParamState(syncVisible = true)
         return PacketUpdateTestControllerC2S().also {
@@ -530,9 +652,13 @@ class TestControllerScreen(
             it.offsetX = doubleValue(offsetXBox, 0.0)
             it.offsetY = doubleValue(offsetYBox, 0.0)
             it.offsetZ = doubleValue(offsetZBox, 0.0)
+            it.positionDynamic = animationDraft.positionDynamic
+            it.positionTrack = animationDraft.positionTrack
             it.forwardX = doubleValue(forwardXBox, 0.0)
             it.forwardY = doubleValue(forwardYBox, 0.0)
             it.forwardZ = doubleValue(forwardZBox, 1.0)
+            it.forwardDynamic = animationDraft.forwardDynamic
+            it.forwardTrack = animationDraft.forwardTrack
             it.boxWidth = doubleValue(widthBox, 0.6)
             it.boxHeight = doubleValue(heightBox, 1.8)
             it.boxDepth = doubleValue(depthBox, 0.6)
@@ -956,17 +1082,50 @@ class TestControllerScreen(
         val index = actualParamIndex(row)
         val spec = currentParamSpecs.getOrNull(index) ?: return
         if (!spec.pickable) return
+        val absolute = paramAbsoluteModes.getOrElse(index) {
+            positionModeOf(spec.defaultValue, spec) == TestOptionParamPositionMode.ABSOLUTE
+        }
+        val draft = updatePacket()
         TestControllerPickClient.begin(
             screenPacket = packet,
-            packet = updatePacket(),
+            packet = draft,
             kind = TestControllerPickKind.PARAM_POSITION,
             precisionUnlocked = precisionUnlocked,
             paramOptionIndex = currentOptionIndex(),
             paramId = spec.id,
             paramComponentCount = spec.componentCount.coerceAtLeast(2),
-            paramAbsolute = paramAbsoluteModes.getOrElse(index) {
-                positionModeOf(spec.defaultValue, spec) == TestOptionParamPositionMode.ABSOLUTE
-            }
+            paramAbsolute = absolute,
+            onPicked = { point, _, _ ->
+                val picked = if (absolute) {
+                    point
+                } else {
+                    point.subtract(net.minecraft.world.phys.Vec3.atCenterOf(packet.blockPos))
+                }
+                val components = if (spec.componentCount == 2) {
+                    "${formatDouble(picked.x)},${formatDouble(picked.z)}"
+                } else {
+                    "${formatDouble(picked.x)},${formatDouble(picked.y)},${formatDouble(picked.z)}"
+                }
+                val values = LinkedHashMap(TestOptionParamCodec.decodeOptionValues(draft.optionParamValues))
+                values[spec.id] = "${if (absolute) "absolute" else "relative"}:$components"
+                draft.optionParamIndex = currentOptionIndex()
+                draft.optionParamValues = TestOptionParamCodec.encodeOptionValues(values)
+                history.record(TestControllerPacketDrafts.snapshotFrom(packet, draft))
+                minecraft?.setScreen(TestControllerScreen(
+                    TestControllerPacketDrafts.reopenPacket(packet, draft),
+                    true,
+                    history,
+                    precisionUnlocked,
+                ))
+            },
+            onCancelled = {
+                minecraft?.setScreen(TestControllerScreen(
+                    TestControllerPacketDrafts.reopenPacket(packet, draft),
+                    true,
+                    history,
+                    precisionUnlocked,
+                ))
+            },
         )
         onClose()
     }
@@ -1536,6 +1695,12 @@ class TestControllerScreen(
         return (availableHeight / PARAM_ROW_HEIGHT).coerceIn(1, PARAM_MAX_VISIBLE_ROWS)
     }
 
+    /**
+     * 根据主页面、参数页和测试模式摆放并启用控件。
+     *
+     * 示例：位置通道为动态时，其同行编辑按钮可见；静态时只保留模式按钮。
+     * 禁止通过改变按钮尺寸表达 hover 或动态状态，以免向量行发生位移。
+     */
     private fun layoutWidgets() {
         if (!::groupBox.isInitialized) return
         val left = width / 2 - 170
@@ -1544,9 +1709,19 @@ class TestControllerScreen(
         val indexVisible = mainPage && mode == BlockTestMode.INDEX
         val reviewVisible = mainPage && packet.pendingReview
         val offsetY = if (indexVisible) 128 else 90
-        val forwardY = offsetY + 28
-        val boxY = forwardY + 28
+        val animationInline = width >= MIN_INLINE_ANIMATION_WIDTH
+        val animationRowExtra = if (animationInline) 0 else ANIMATION_STACK_HEIGHT
+        val forwardY = offsetY + 28 + animationRowExtra
+        val boxY = forwardY + 28 + animationRowExtra
         val buttonsY = boxY + 34
+
+        undoButton.setX(width - 108)
+        undoButton.setY(8)
+        redoButton.setX(width - 56)
+        redoButton.setY(8)
+        undoButton.visible = true
+        redoButton.visible = true
+        updateHistoryButtons()
 
         groupBox.setX(left + 92)
         groupBox.setY(34)
@@ -1613,6 +1788,24 @@ class TestControllerScreen(
         setRow(offsetY, offsetXBox, offsetYBox, offsetZBox, offsetPickButton)
         setRow(forwardY, forwardXBox, forwardYBox, forwardZBox, forwardPickButton)
         setRow(boxY, widthBox, heightBox, depthBox, precisionButton)
+        val animationControlsX = left + if (animationInline) ANIMATION_CONTROLS_X else ANIMATION_STACK_X
+        val animationControlsOffsetY = if (animationInline) 0 else ANIMATION_STACK_OFFSET_Y
+        positionModeButton.setX(animationControlsX)
+        positionModeButton.setY(offsetY + animationControlsOffsetY)
+        forwardModeButton.setX(animationControlsX)
+        forwardModeButton.setY(forwardY + animationControlsOffsetY)
+        positionEditButton.setX(animationControlsX + ANIMATION_MODE_WIDTH + ANIMATION_CONTROL_GAP)
+        positionEditButton.setY(offsetY + animationControlsOffsetY)
+        forwardEditButton.setX(animationControlsX + ANIMATION_MODE_WIDTH + ANIMATION_CONTROL_GAP)
+        forwardEditButton.setY(forwardY + animationControlsOffsetY)
+        positionModeButton.visible = mainPage
+        positionModeButton.active = mainPage
+        forwardModeButton.visible = mainPage
+        forwardModeButton.active = mainPage
+        positionEditButton.visible = mainPage && animationDraft.positionDynamic
+        positionEditButton.active = positionEditButton.visible
+        forwardEditButton.visible = mainPage && animationDraft.forwardDynamic
+        forwardEditButton.active = forwardEditButton.visible
         listOf(
             offsetXBox, offsetYBox, offsetZBox,
             forwardXBox, forwardYBox, forwardZBox,
@@ -1702,8 +1895,122 @@ class TestControllerScreen(
         button.setY(y)
     }
 
+    /**
+     * 刷新两个通道选择按钮的静态或动态文字。
+     *
+     * 示例：点击位置模式后，按钮会立即从“静态”切换为“动态”。
+     * 禁止在这里改变编辑按钮尺寸或发送网络包。
+     */
+    private fun updateAnimationButtons() {
+        if (!::positionModeButton.isInitialized) return
+        positionModeButton.message = Component.literal(animationModeLabel(animationDraft.positionDynamic))
+        forwardModeButton.message = Component.literal(animationModeLabel(animationDraft.forwardDynamic))
+    }
+
+    /**
+     * 返回动态通道选择按钮使用的短标签。
+     *
+     * 示例：启用动态轨道时返回“动态”。
+     * 禁止附加通道名；位置与 Forward 已由当前行标签说明。
+     *
+     * @param dynamic 当前通道是否启用动态轨道
+     * @return “静态”或“动态”
+     */
+    private fun animationModeLabel(dynamic: Boolean): String = if (dynamic) "动态" else "静态"
+
+    /**
+     * 打开指定通道的曲线编辑器，并在返回时恢复完整主界面草稿。
+     *
+     * 示例：编辑位置曲线后按 Esc，主界面的分组与碰撞箱输入仍保留。
+     * 禁止在打开编辑器时提前向服务端提交草稿。
+     *
+     * @param kind 要编辑的位置或 forward 通道
+     */
+    private fun openCurveEditor(kind: TestControllerTrackKind) {
+        val draft = updatePacket()
+        history.record(TestControllerPacketDrafts.snapshotFrom(packet, draft))
+        minecraft?.setScreen(
+            TestControllerCurveEditorScreen(packet, draft, kind, history) {
+                minecraft?.setScreen(
+                    TestControllerScreen(
+                        TestControllerPacketDrafts.reopenPacket(packet, draft),
+                        page == ControllerPage.PARAMS,
+                        history,
+                        precisionUnlocked,
+                    )
+                )
+            }
+        )
+    }
+
+    /** 将当前控件值记录为一条配置历史，供主界面和曲线编辑器共享。 */
+    internal fun recordCurrentState() {
+        if (!::groupBox.isInitialized) return
+        history.record(TestControllerPacketDrafts.snapshotFrom(packet, updatePacket()))
+    }
+
+    /** 由撤回或重做恢复完整界面快照。 */
+    private fun restoreHistory(snapshot: TestControllerPacketDrafts.TestControllerConfigSnapshot?) {
+        if (snapshot == null) {
+            updateHistoryButtons()
+            return
+        }
+        minecraft?.setScreen(
+            TestControllerScreen(snapshot.toPacket(), page == ControllerPage.PARAMS, history, precisionUnlocked)
+        )
+    }
+
+    private fun updateHistoryButtons() {
+        if (!::undoButton.isInitialized) return
+        undoButton.active = history.canUndo
+        redoButton.active = history.canRedo
+    }
+
     private fun startPick(kind: TestControllerPickKind) {
-        TestControllerPickClient.begin(packet, updatePacket(), kind, precisionUnlocked)
+        val draft = updatePacket()
+        TestControllerPickClient.begin(
+            screenPacket = packet,
+            packet = draft,
+            kind = kind,
+            precisionUnlocked = precisionUnlocked,
+            onPicked = { point, fromBlock, lookAngle ->
+                val origin = net.minecraft.world.phys.Vec3.atCenterOf(packet.blockPos)
+                val picked = if (kind == TestControllerPickKind.OFFSET) {
+                    point.subtract(origin)
+                } else if (fromBlock) {
+                    point.subtract(origin).let { value ->
+                        val length = value.length()
+                        if (length <= 1.0E-7) net.minecraft.world.phys.Vec3(0.0, 0.0, 1.0) else value.scale(1.0 / length)
+                    }
+                } else {
+                    lookAngle
+                }
+                if (kind == TestControllerPickKind.OFFSET) {
+                    draft.offsetX = if (precisionUnlocked) picked.x else picked.x.roundToDecimals(6)
+                    draft.offsetY = if (precisionUnlocked) picked.y else picked.y.roundToDecimals(6)
+                    draft.offsetZ = if (precisionUnlocked) picked.z else picked.z.roundToDecimals(6)
+                } else {
+                    draft.forwardX = if (precisionUnlocked) picked.x else picked.x.roundToDecimals(6)
+                    draft.forwardY = if (precisionUnlocked) picked.y else picked.y.roundToDecimals(6)
+                    draft.forwardZ = if (precisionUnlocked) picked.z else picked.z.roundToDecimals(6)
+                }
+                history.record(TestControllerPacketDrafts.snapshotFrom(packet, draft))
+                minecraft?.setScreen(TestControllerScreen(
+                    TestControllerPacketDrafts.reopenPacket(packet, draft),
+                    page == ControllerPage.PARAMS,
+                    history,
+                    precisionUnlocked,
+                ))
+            },
+            onCancelled = {
+                minecraft?.setScreen(TestControllerScreen(
+                    TestControllerPacketDrafts.reopenPacket(packet, draft),
+                    false,
+                    history,
+                    precisionUnlocked,
+                ))
+            },
+        )
         onClose()
     }
 
@@ -1718,7 +2025,48 @@ class TestControllerScreen(
         HUE
     }
 
+    /**
+     * 保存控制器界面的固定布局与输入尺寸。
+     *
+     * 示例：同行动态按钮使用 [ANIMATION_MODE_WIDTH] 保持尺寸稳定。
+     * 禁止在这里保存当前界面的可变草稿。
+     */
     companion object {
+        /**
+         * 动态模式按钮宽度，单位为 GUI 像素。
+         * 示例：“静态”与“动态”均使用 42 px；禁止在 hover 时改变该值。
+         */
+        private const val ANIMATION_MODE_WIDTH = 42
+
+        /**
+         * 动态编辑按钮宽度，单位为 GUI 像素。
+         * 示例：“编辑”使用 40 px；禁止按通道使用不同宽度。
+         */
+        private const val ANIMATION_EDIT_WIDTH = 40
+
+        /**
+         * 动态按钮组相对主界面左边界的横坐标。
+         * 示例：按钮组放在拾取按钮右侧；禁止覆盖向量输入框。
+         */
+        private const val ANIMATION_CONTROLS_X = 366
+
+        /** 窄视口下把动态按钮放到向量输入行的下一行。 */
+        private const val ANIMATION_STACK_X = 92
+
+        /** 窄视口下动态按钮相对向量输入行的垂直偏移。 */
+        private const val ANIMATION_STACK_OFFSET_Y = 22
+
+        /** 窄视口下为动态按钮预留的额外行高。 */
+        private const val ANIMATION_STACK_HEIGHT = 22
+
+        /** 动态按钮可以保持同行显示的最小 GUI 宽度。 */
+        private const val MIN_INLINE_ANIMATION_WIDTH = 564
+
+        /**
+         * 动态模式按钮与编辑按钮之间的间距。
+         * 示例：两个按钮相隔 4 px；禁止用负值让按钮重叠。
+         */
+        private const val ANIMATION_CONTROL_GAP = 4
         private const val PARAM_ROW_HEIGHT = 24
         private const val PARAM_LIST_TOP = 78
         private const val PARAM_BOTTOM_RESERVED = 60

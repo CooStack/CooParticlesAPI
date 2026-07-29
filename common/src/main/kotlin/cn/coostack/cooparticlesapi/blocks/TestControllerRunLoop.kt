@@ -2,7 +2,9 @@ package cn.coostack.cooparticlesapi.blocks
 
 import cn.coostack.cooparticlesapi.test.block.BlockTestGroup
 import cn.coostack.cooparticlesapi.test.block.BlockTestMode
+import cn.coostack.cooparticlesapi.test.block.BlockTestOptionResult
 import cn.coostack.cooparticlesapi.test.block.BlockTestReviewMode
+import cn.coostack.cooparticlesapi.test.block.BlockTestPlayer
 
 internal class TestControllerRunLoop(
     private val groupFactory: () -> BlockTestGroup?,
@@ -41,6 +43,16 @@ internal class TestControllerRunLoop(
     }
 
     fun hasPendingReview(): Boolean = activeGroup?.hasPendingReview() == true
+
+    /**
+     * 返回当前测试组复用的模拟玩家。
+     *
+     * 示例：控制器 tick 在调用测试项前更新该玩家姿态。
+     * 禁止把返回值保存到下一轮测试；测试组结束后引用不再属于运行时。
+     *
+     * @return 当前组玩家，没有活动组时返回 `null`
+     */
+    fun activeTestPlayer(): BlockTestPlayer? = activeGroup?.testPlayer
 
     fun start(): Boolean {
         cancel(clearWait = true)
@@ -85,13 +97,13 @@ internal class TestControllerRunLoop(
         return persistentStateChanged(previousShouldAutoRun, previousWaitTicks)
     }
 
-    fun reviewCurrent(result: BlockTestGroup.OptionResult): Boolean {
+    fun reviewCurrent(result: BlockTestOptionResult): Boolean {
         val group = activeGroup ?: return false
         if (!group.hasPendingReview()) return false
         when (result) {
-            BlockTestGroup.OptionResult.PASSED -> group.completeCurrent()
-            BlockTestGroup.OptionResult.FAILED -> group.failCurrent()
-            BlockTestGroup.OptionResult.SKIPPED -> group.skipCurrent()
+            BlockTestOptionResult.PASSED -> group.completeCurrent()
+            BlockTestOptionResult.FAILED -> group.failCurrent()
+            BlockTestOptionResult.SKIPPED -> group.skipCurrent()
         } ?: return false
         lastStatus = group.statusLine()
         if (group.isDone()) {

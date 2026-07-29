@@ -23,6 +23,7 @@ import cn.coostack.cooparticlesapi.test.block.BlockTestGroup
 import cn.coostack.cooparticlesapi.test.block.BlockTestPlayer
 import cn.coostack.cooparticlesapi.test.options.display.TestBlockDisplayEntity
 import cn.coostack.cooparticlesapi.test.options.particle.composition.DynamicCParticleComposition
+import cn.coostack.cooparticlesapi.test.options.particle.composition.SequenceTestGPUComposition
 import cn.coostack.cooparticlesapi.test.options.particle.composition.TestCParticleComposition
 import cn.coostack.cooparticlesapi.test.options.particle.composition.TestComposition
 import cn.coostack.cooparticlesapi.test.options.particle.composition.TestGPURotationComposition
@@ -41,6 +42,7 @@ import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
+import cn.coostack.cooparticlesapi.extend.asRelative
 import kotlin.math.PI
 
 class BlockAPITestGroupBuilder(player: Player) : TestGroupBuilder {
@@ -52,6 +54,15 @@ class BlockAPITestGroupBuilder(player: Player) : TestGroupBuilder {
 
     override fun build(): TestGroup {
         return BlockTestGroup(player, groupID())
+            .appendOption {
+                SimpleCompositionOption(
+                    SequenceTestGPUComposition(player.position,player.level)
+                ).onPlayerUpdate { player, composition ->
+                    composition.direction = player.forward
+                    composition.teleportTo(player.position())
+
+                }
+            }
             .appendOption {
                 SimpleEmitterOption(
                     TestGPUEmitter(player.position, player.level)

@@ -25,6 +25,24 @@ object TestControllerPickClient {
     private var escWasDown = false
     private var useWasDown = false
 
+    /**
+     * 开始一次世界取点请求，并显示与主控制器一致的操作提示。
+     *
+     * 示例：关键帧窗口传入 [onPicked] 后只回填本地输入框。
+     * 禁止在关键帧编辑场景中依赖默认网络提交行为；应使用回调接收目标。
+     *
+     * @param screenPacket 控制器开屏快照
+     * @param packet 控制器客户端草稿
+     * @param kind 取点语义
+     * @param precisionUnlocked 是否保留未限制的小数精度
+     * @param paramOptionIndex 参数页选项索引
+     * @param paramId 参数标识
+     * @param paramComponentCount 参数向量分量数量
+     * @param paramAbsolute 参数取点是否使用世界绝对坐标
+     * @param onPicked 成功取点后的回调；参数依次为目标点、是否来自方块、玩家朝向
+     * @param onCancelled 取消取点后的回调
+     */
+    /** 保留原有公共取点入口；高级本地回调入口仅供 BlockTest GUI 使用。 */
     fun begin(
         screenPacket: PacketOpenTestControllerScreenS2C,
         packet: PacketUpdateTestControllerC2S,
@@ -33,7 +51,35 @@ object TestControllerPickClient {
         paramOptionIndex: Int = 0,
         paramId: String = "",
         paramComponentCount: Int = 3,
-        paramAbsolute: Boolean = false
+        paramAbsolute: Boolean = false,
+    ) {
+        begin(
+            screenPacket,
+            packet,
+            kind,
+            precisionUnlocked,
+            paramOptionIndex,
+            paramId,
+            paramComponentCount,
+            paramAbsolute,
+            history = null,
+            onPicked = null,
+            onCancelled = null,
+        )
+    }
+
+    internal fun begin(
+        screenPacket: PacketOpenTestControllerScreenS2C,
+        packet: PacketUpdateTestControllerC2S,
+        kind: TestControllerPickKind,
+        precisionUnlocked: Boolean,
+        paramOptionIndex: Int = 0,
+        paramId: String = "",
+        paramComponentCount: Int = 3,
+        paramAbsolute: Boolean = false,
+        history: TestControllerUndoHistory<TestControllerPacketDrafts.TestControllerConfigSnapshot>? = null,
+        onPicked: ((Vec3, Boolean, Vec3) -> Unit)? = null,
+        onCancelled: (() -> Unit)? = null,
     ) {
         request = TestControllerPickRequest(
             screenPacket = screenPacket,
@@ -43,7 +89,10 @@ object TestControllerPickClient {
             paramOptionIndex = paramOptionIndex,
             paramId = paramId,
             paramComponentCount = paramComponentCount,
-            paramAbsolute = paramAbsolute
+            paramAbsolute = paramAbsolute,
+            history = history,
+            onPicked = onPicked,
+            onCancelled = onCancelled,
         )
         escWasDown = false
         useWasDown = false
@@ -101,7 +150,15 @@ object TestControllerPickClient {
             return
         }
         val target = currentTarget(client, current) ?: return
+        val callback = current.onPicked
+        if (callback != null) {
+            val lookAngle = player.lookAngle
+            cancel()
+            callback(target.point, target.fromBlock, lookAngle)
+            return
+        }
         applyTarget(current, target, player.lookAngle)
+        current.history?.record(TestControllerPacketDrafts.snapshotFrom(current.screenPacket, current.packet))
         reopenParamPageOnNextController = current.kind == TestControllerPickKind.PARAM_POSITION
         current.packet.reopen = true
         CooClientPacketManager.sendTo(current.packet)
@@ -196,50 +253,20 @@ object TestControllerPickClient {
     }
 
     private fun cancelAndReopen(client: Minecraft, current: TestControllerPickRequest) {
+        val onCancelled = current.onCancelled
         val packet = reopenPacket(current)
         cancel()
         client.setScreen(null)
         client.player?.displayClientMessage(Component.literal("已取消拾取"), true)
+        if (onCancelled != null) {
+            onCancelled()
+            return
+        }
         client.setScreen(TestControllerScreen(packet, current.kind == TestControllerPickKind.PARAM_POSITION))
     }
 
     private fun reopenPacket(current: TestControllerPickRequest): PacketOpenTestControllerScreenS2C {
-        val source = current.screenPacket
-        val update = current.packet
-        return PacketOpenTestControllerScreenS2C().also {
-            it.blockPos = source.blockPos
-            it.boxDepth = update.boxDepth
-            it.boxHeight = update.boxHeight
-            it.boxWidth = update.boxWidth
-            it.currentIndex = source.currentIndex
-            it.dimension = source.dimension
-            it.forwardX = update.forwardX
-            it.forwardY = update.forwardY
-            it.forwardZ = update.forwardZ
-            it.groupId = update.groupId
-            it.mode = update.mode
-            it.offsetX = update.offsetX
-            it.offsetY = update.offsetY
-            it.offsetZ = update.offsetZ
-            it.optionCount = source.optionCount
-            it.optionIds = ArrayList(source.optionIds)
-            it.optionParamSpecs = ArrayList(source.optionParamSpecs)
-            it.optionParamValues = ArrayList(source.optionParamValues).also { values ->
-                while (values.size <= update.optionParamIndex) {
-                    values.add("")
-                }
-                values[update.optionParamIndex] = update.optionParamValues
-            }
-            it.pendingReview = source.pendingReview
-            it.registeredIds = ArrayList(source.registeredIds)
-            it.registeredOptionIds = ArrayList(source.registeredOptionIds)
-            it.registeredOptionParamSpecs = ArrayList(source.registeredOptionParamSpecs)
-            it.repeatDelayTicks = update.repeatDelayTicks
-            it.repeatIndex = update.repeatIndex
-            it.running = source.running
-            it.selectedIndex = update.selectedIndex
-            it.status = source.status
-        }
+        return TestControllerPacketDrafts.reopenPacket(current.screenPacket, current.packet)
     }
 
     private fun Vec3.normal(): Vec3 {

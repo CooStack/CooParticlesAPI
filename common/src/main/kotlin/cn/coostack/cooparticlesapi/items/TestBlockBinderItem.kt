@@ -25,7 +25,7 @@ class TestBlockBinderItem(properties: Properties) : Item(properties) {
         tooltipComponents: MutableList<Component>,
         tooltipFlag: TooltipFlag
     ) {
-        tooltipComponents.add(Component.literal("右键一个测试方块绑定").withStyle(ChatFormatting.GRAY))
+        tooltipComponents.add(Component.literal("右键测试方块: 绑定或解绑").withStyle(ChatFormatting.GRAY))
         tooltipComponents.add(Component.literal("Shift + 右键: 开启或者取消测试").withStyle(ChatFormatting.GRAY))
     }
 
@@ -59,10 +59,13 @@ class TestBlockBinderItem(properties: Properties) : Item(properties) {
                     }
                 }
             } else {
-                if (TestBlockBindings.add(stack, binding)) {
+                if (TestBlockBindings.contains(stack, binding)) {
+                    TestBlockBindings.remove(stack, binding)
+                    player.sendSystemMessage(Component.literal("已解绑测试方块 ${formatPos(binding.pos)}"))
+                } else if (TestBlockBindings.add(stack, binding)) {
                     player.sendSystemMessage(Component.literal("已绑定测试方块 ${formatPos(binding.pos)}"))
                 } else {
-                    player.sendSystemMessage(Component.literal("该测试方块已经绑定"))
+                    player.sendSystemMessage(Component.literal("测试方块绑定失败 ${formatPos(binding.pos)}"))
                 }
             }
         }

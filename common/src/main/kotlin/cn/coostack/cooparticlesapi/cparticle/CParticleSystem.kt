@@ -16,7 +16,6 @@ import org.joml.Matrix4f
 import org.joml.Matrix4fc
 import org.joml.Vector3f
 import org.joml.Vector3fc
-import kotlin.math.abs
 
 /**
  * # CParticleSystem — 一个 GPU 粒子池
@@ -232,16 +231,18 @@ class CParticleSystem(
     /**
      * 使用已解析纹理生成粒子，供 manager 避免二次模型解析。
      *
-     * Example: 默认批次先按基础和蒙版 binding 选 system，再调用本方法。
-     * Forbidden: [resolved] 的任一 binding 都必须与当前 system 相同。
+     * 示例：默认批次先按基础和蒙版 binding 选 system，再调用本方法。
+     * 禁止：[resolved] 的任一 binding 都必须与当前 system 相同。
      *
      * @param p 粒子生成描述
      * @param resolved 客户端统一双纹理解析结果
+     * @param storagePosition 可选槽位写入坐标；为 `null` 时从粒子世界坐标逆变换
      * @return 槽位；达到全局上限、其他失败或 binding 不匹配时返回 `-1`
      */
     internal fun spawnResolved(
         p: CParticle,
         resolved: CParticleResolvedTextures,
+        storagePosition: Vec3? = null,
     ): Int {
         if (released || !resolved.isValid) return -1
         if (resolved.base.bindingKey != textureBindingKey ||
@@ -251,8 +252,10 @@ class CParticleSystem(
             return -1
         }
         if (!CParticleSystemManager.hasAvailableParticleCapacity()) return -1
+        val worldPosition = p.pos
         if (store.aliveCount == 0) snapGroupTransform()
-        rebaseIfNeeded(p.pos)
+        rebaseIfNeeded(worldPosition)
+        val resolvedStoragePosition = storagePosition ?: resolveStoragePosition(worldPosition) ?: return -1
         val randomSeed = p.randomSeed ?: CParticleGpuMath.nextAutomaticSeed()
         var block = p.light
         var sky = p.light
@@ -260,7 +263,7 @@ class CParticleSystem(
             // 采样世界光照 (生成时一次)
             val world = Minecraft.getInstance().level
             if (world != null) {
-                val packedLight = LevelRenderer.getLightColor(world, BlockPos.containing(p.pos))
+                val packedLight = LevelRenderer.getLightColor(world, BlockPos.containing(worldPosition))
                 block = (packedLight shr 4) and 15
                 sky = (packedLight shr 20) and 15
             } else {
@@ -283,6 +286,7 @@ class CParticleSystem(
             randomMaskQuarterUv = resolved.randomMaskQuarterUv,
             maskTextureBindingKey = maskTextureBindingKey,
             maskColorMultiplier = resolved.mask?.colorMultiplier,
+            spawnPosition = resolvedStoragePosition,
         )
     }
 
@@ -737,9 +741,41 @@ class CParticleSystem(
     }
 
     private fun inverseGroupTransform(): Matrix4f? {
-        val determinant = groupTransform.determinant3x3()
-        if (!determinant.isFinite() || abs(determinant) <= 1e-8f) return null
-        return Matrix4f(groupTransform).invertAffine()
+        return inverseAffine(groupTransform)
+    }
+
+    /**
+     * 把 SCRIPTED 粒子的渲染世界坐标换算为槽位写入坐标。
+     *
+     * 示例：整组平移 10 格后，在世界坐标 11 生成的粒子会写入局部坐标 1。
+     * 禁止对 SIMULATED system 应用该换算；其生成位置由模拟器直接接管。
+     *
+     * @param worldPosition 粒子应当显示和采样环境的世界坐标
+     * @return 供 [CParticleStore] 写入的世界坐标形式；矩阵不可逆时返回 `null`
+     */
+    private fun resolveStoragePosition(worldPosition: Vec3): Vec3? {
+        if (mode != CParticleSystemMode.SCRIPTED || hasIdentityGroupTransform()) {
+            return worldPosition
+        }
+        val inverse = inverseGroupTransform() ?: return null
+        val transformed = inverse.transformPosition(
+            Vector3f(
+                (worldPosition.x - origin.x).toFloat(),
+                (worldPosition.y - origin.y).toFloat(),
+                (worldPosition.z - origin.z).toFloat(),
+            )
+        )
+        return origin.add(
+            transformed.x.toDouble(),
+            transformed.y.toDouble(),
+            transformed.z.toDouble(),
+        )
+    }
+
+    private fun inverseAffine(matrix: Matrix4fc): Matrix4f? {
+        val determinant = matrix.determinant3x3()
+        if (!determinant.isFinite() || determinant == 0f) return null
+        return Matrix4f(matrix).invertAffine()
     }
 
     private fun hasIdentityGroupTransform(): Boolean {
@@ -763,8 +799,7 @@ class CParticleSystem(
      */
     fun tick() {
         if (released) return
-        previousGroupTransform.set(currentGroupTransform)
-        currentGroupTransform.set(groupTransform)
+        prepareGroupTransformForTick()
         try {
             clearFinishedResetTransition()
             if (store.aliveCount == 0 && store.spawnedCount == 0 && store.killedCount == 0) {
@@ -779,6 +814,17 @@ class CParticleSystem(
         } finally {
             tickCount++
         }
+    }
+
+    /**
+     * 提交本 tick 的整组矩阵，所有槽位共用同一段 previous/current 插值。
+     *
+     * 示例：序列新增槽位后，已有槽位和新槽位一起从上一矩阵插值到当前矩阵。
+     * 禁止单独改写新槽位的 previous 端点，否则生成期间会与主体旋转脱节。
+     */
+    private fun prepareGroupTransformForTick() {
+        previousGroupTransform.set(currentGroupTransform)
+        currentGroupTransform.set(groupTransform)
     }
 
     private fun clearFinishedResetTransition() {

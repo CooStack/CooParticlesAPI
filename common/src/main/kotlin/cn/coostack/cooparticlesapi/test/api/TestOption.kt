@@ -1,5 +1,7 @@
 package cn.coostack.cooparticlesapi.test.api
 
+import net.minecraft.world.entity.player.Player
+
 enum class TestReviewMode {
     AUTO,
     MANUAL_VISUAL
@@ -87,6 +89,28 @@ interface TestOption<T : Any> {
      */
     fun applyTo(action: TestOption<T>.(T) -> Unit): TestOption<T> {
         return TestOptionParamSupport.applyTo(this, action)
+    }
+
+    /**
+     * 注册模拟玩家姿态更新后的处理逻辑，并返回当前测试项以便继续链式调用。
+     *
+     * BlockTest 在每个活动 tick 更新模拟玩家的位置和 forward 后调用该逻辑，回调接收当前
+     * [Player] 与 [paramTarget] 返回的强类型目标。普通玩家测试不会自动派发此事件。
+     *
+     * 示例：
+     * ```kotlin
+     * option.onPlayerUpdate { player, target ->
+     *     target.setPosition(player.position())
+     * }
+     * ```
+     *
+     * 禁止在回调中推进测试组或手动调用 [doTick]，否则同一 tick 会重复执行测试逻辑。
+     *
+     * @param action 玩家更新后的处理逻辑
+     * @return 当前测试项
+     */
+    fun onPlayerUpdate(action: TestOption<T>.(Player, T) -> Unit): TestOption<T> {
+        return TestOptionPlayerUpdateSupport.register(this, action)
     }
 
     /**

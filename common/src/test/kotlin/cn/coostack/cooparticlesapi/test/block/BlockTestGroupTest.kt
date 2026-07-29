@@ -2,6 +2,7 @@ package cn.coostack.cooparticlesapi.test.block
 
 import cn.coostack.cooparticlesapi.test.api.TestOption
 import cn.coostack.cooparticlesapi.test.api.TestReviewMode
+import net.minecraft.world.entity.player.Player
 import sun.misc.Unsafe
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -99,6 +100,48 @@ class BlockTestGroupTest {
         assertEquals(0, option.successCount)
         assertEquals(1, option.failedCount)
         assertNull(group.currentOption)
+    }
+
+    /**
+     * 玩家更新回调应在 Option tick 前收到当前模拟玩家和参数目标。
+     *
+     * 示例：依赖玩家位置的粒子目标会先同步位置，再执行自身 tick。
+     * 禁止把待复核 Option 当作仍在运行的 Option 重复更新。
+     */
+    @Test
+    fun `player update callback receives typed context before option tick`() {
+        val events = ArrayList<String>()
+        val target = StringBuilder()
+        var callbackReceiver: TestOption<StringBuilder>? = null
+        var callbackPlayer: Player? = null
+        var valid = true
+        val option = object : TestOption<StringBuilder> {
+            override fun paramTarget(): StringBuilder = target
+            override fun start() = Unit
+            override fun stop() = Unit
+            override fun isValid(): Boolean = valid
+            override fun onFailed() = Unit
+            override fun onSuccess() = Unit
+            override fun optionID(): String = "player-update"
+            override fun doTick() {
+                events += "tick"
+                valid = false
+            }
+        }.onPlayerUpdate { player, receivedTarget ->
+            callbackReceiver = this
+            callbackPlayer = player
+            assertSame(target, receivedTarget)
+            events += "player-update"
+        }
+        val group = groupOf(option)
+
+        group.start()
+        group.doTick()
+        group.doTick()
+
+        assertEquals(listOf("player-update", "tick"), events)
+        assertSame(option, callbackReceiver)
+        assertSame(group.testPlayer, callbackPlayer)
     }
 
     private fun pendingGroup(option: RecordingOption): BlockTestGroup {

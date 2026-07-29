@@ -20,18 +20,30 @@ class TestControllerReviewFlowContractTest {
         val screen = readProjectFile(
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/test/block/client/TestControllerScreen.kt"
         )
-        val pickClient = readProjectFile(
-            "common/src/main/kotlin/cn/coostack/cooparticlesapi/test/block/client/TestControllerPickClient.kt"
+        val packetDrafts = readProjectFile(
+            "common/src/main/kotlin/cn/coostack/cooparticlesapi/test/block/client/TestControllerPacketDrafts.kt"
         )
 
+        val reviewCurrentBody = blockEntity
+            .substringAfter("fun reviewCurrent(result: BlockTestOptionResult)")
+            .substringBefore("fun reviewCurrent(result: BlockTestGroup.OptionResult)")
+
+        assertTrue("val wasRunning = runLoop.isRunning()" in reviewCurrentBody)
+        assertTrue("if (wasRunning && !runLoop.isRunning())" in reviewCurrentBody)
+        assertTrue("freezeAnimation()" in reviewCurrentBody)
         assertTrue("fun reviewCurrent(result: BlockTestGroup.OptionResult)" in blockEntity)
+        assertTrue("fun updateConfig(\n        groupId: String" in blockEntity)
+        assertTrue("enum class OptionResult" in readProjectFile(
+            "common/src/main/kotlin/cn/coostack/cooparticlesapi/test/block/BlockTestGroup.kt"
+        ))
         assertTrue("@CooAutoRegister" in packet)
         assertTrue("reviewCurrent(result)" in packet)
         assertTrue("pendingReview = blockEntity.hasPendingReview()" in openPacket)
         assertTrue("PacketReviewTestControllerC2S.PASS" in screen)
         assertTrue("PacketReviewTestControllerC2S.FAIL" in screen)
         assertTrue("PacketReviewTestControllerC2S.SKIP" in screen)
-        assertTrue("pendingReview = source.pendingReview" in pickClient)
+        assertTrue("fun reopenPacket(" in packetDrafts)
+        assertTrue("it.pendingReview = source.pendingReview" in packetDrafts)
     }
 
     private fun readProjectFile(relativePath: String): String {
