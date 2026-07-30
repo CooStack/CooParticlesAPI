@@ -1,7 +1,9 @@
 package cn.coostack.cooparticlesapi.test.options.renderer.world
 
+import cn.coostack.cooparticlesapi.annotations.CooAutoRegisterRenderer
 import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModel
 import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelRenderer
+import cn.coostack.cooparticlesapi.renderer.runtime.AutoRegisteredRenderEntityRenderer
 import cn.coostack.cooparticlesapi.renderer.runtime.FramePostRenderEntityRenderer
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderContributionCollector
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderContributionInput
@@ -10,9 +12,12 @@ import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityInstance
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityVisualProfile
 import org.joml.Vector3f
 
+/** 光束演示实体的模型与遮罩泛光 renderer。 */
+@CooAutoRegisterRenderer
 class DemoLightBeamRenderEntityRenderer :
     RenderEntityModelRenderer<DemoLightBeamRenderEntity>,
-    FramePostRenderEntityRenderer<DemoLightBeamRenderEntity> {
+    FramePostRenderEntityRenderer<DemoLightBeamRenderEntity>,
+    AutoRegisteredRenderEntityRenderer<DemoLightBeamRenderEntity> {
     override fun initialize(instance: RenderEntityInstance<DemoLightBeamRenderEntity>) {
     }
 

@@ -1,5 +1,7 @@
 package cn.coostack.cooparticlesapi.test.options.renderer.world
 
+import cn.coostack.cooparticlesapi.annotations.CooAutoRegisterRenderer
+import cn.coostack.cooparticlesapi.renderer.runtime.AutoRegisteredRenderEntityRenderer
 import cn.coostack.cooparticlesapi.renderer.backend.RenderBackendCapability
 import cn.coostack.cooparticlesapi.renderer.client.RenderUtil
 import cn.coostack.cooparticlesapi.renderer.effects.builtin.BuiltinRenderEffectDescriptors
@@ -33,9 +35,11 @@ import kotlin.math.sin
  * 再用 [TrailModelBuilder] 重建拖尾条带 —— 这就是“点在不断变化的动态模型”。
  * glow mask 复用同一套模型，并演示 mask bloom 的三个可选增强项。
  */
+@CooAutoRegisterRenderer
 class DemoTrailOrbRenderEntityRenderer :
     RenderEntityModelRenderer<DemoTrailOrbRenderEntity>,
-    FramePostRenderEntityRenderer<DemoTrailOrbRenderEntity> {
+    FramePostRenderEntityRenderer<DemoTrailOrbRenderEntity>,
+    AutoRegisteredRenderEntityRenderer<DemoTrailOrbRenderEntity> {
 
     private val tracker = TrailPointTracker(
         maxPoints = 96,

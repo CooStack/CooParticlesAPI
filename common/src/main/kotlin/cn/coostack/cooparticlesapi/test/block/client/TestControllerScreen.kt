@@ -125,6 +125,39 @@ class TestControllerScreen internal constructor(
     private var colorPickerDrag = ColorPickerDrag.NONE
     private var updatingColorHex = false
     private var updatingColorRgb = false
+
+    /**
+     * 标记当前是否正由缩放后的 [Screen.render] 绘制内容控件。
+     *
+     * 示例：该标记为 `true` 时跳过 [Screen.render] 内部的第二次背景绘制。
+     * 禁止在一次 render 调用结束后保留该状态。
+     */
+    private var renderingScaledContent = false
+
+    /**
+     * 当前真实 GUI 尺寸对应的内容画布。
+     *
+     * 示例：自动 GUI scale 产生窄视口时，控件仍在较大的内容坐标系中排版。
+     * 禁止把它用于未缩放的背景绘制。
+     */
+    private lateinit var viewport: TestControllerScreenViewport
+
+    /**
+     * 内容布局使用的虚拟宽度。
+     *
+     * 示例：主界面用它居中字段和判断动态控件是否同行；禁止用真实 [width] 替代。
+     */
+    private val layoutWidth: Int
+        get() = viewport.width
+
+    /**
+     * 内容布局使用的虚拟高度。
+     *
+     * 示例：参数页用它计算可见行数和底部按钮位置；禁止用真实 [height] 替代。
+     */
+    private val layoutHeight: Int
+        get() = viewport.height
+
     /**
      * 保存主界面尚未提交的位置与 forward 动态配置。
      *
@@ -140,7 +173,8 @@ class TestControllerScreen internal constructor(
      * 禁止在初始化阶段发送更新包；用户点击保存或开始后才提交。
      */
     override fun init() {
-        val left = width / 2 - 170
+        viewport = TestControllerScreenViewport.calculate(width, height)
+        val left = layoutWidth / 2 - 170
         var y = 34
         paramBoxes.clear()
         paramComponentBoxes.clear()
@@ -155,11 +189,11 @@ class TestControllerScreen internal constructor(
         undoButton = Button.builder(Component.literal("撤回")) {
             recordCurrentState()
             restoreHistory(history.undo())
-        }.bounds(width - 108, 8, 48, 20).build()
+        }.bounds(layoutWidth - 108, 8, 48, 20).build()
         redoButton = Button.builder(Component.literal("重做")) {
             recordCurrentState()
             restoreHistory(history.redo())
-        }.bounds(width - 56, 8, 48, 20).build()
+        }.bounds(layoutWidth - 56, 8, 48, 20).build()
         addRenderableWidget(undoButton)
         addRenderableWidget(redoButton)
 
@@ -434,14 +468,22 @@ class TestControllerScreen internal constructor(
         return handled
     }
 
+    /**
+     * 把真实鼠标坐标还原到内容坐标系后处理点击。
+     *
+     * 示例：缩放后的按钮仍按其视觉边界响应点击。
+     * 禁止把真实坐标直接传给内容控件，否则小视口下命中位置会偏移。
+     */
     override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
+        val contentMouseX = viewport.unscale(mouseX)
+        val contentMouseY = viewport.unscale(mouseY)
         if (colorPickerRow >= 0) {
-            if (handleColorPickerClick(mouseX, mouseY, button)) {
+            if (handleColorPickerClick(contentMouseX, contentMouseY, button)) {
                 return true
             }
-            if (isInsideColorPicker(mouseX, mouseY)) {
+            if (isInsideColorPicker(contentMouseX, contentMouseY)) {
                 val clickedInput = colorInputBoxes().firstOrNull {
-                    it.mouseClicked(mouseX, mouseY, button)
+                    it.mouseClicked(contentMouseX, contentMouseY, button)
                 }
                 if (clickedInput != null) {
                     setFocused(clickedInput)
@@ -451,29 +493,35 @@ class TestControllerScreen internal constructor(
             closeColorPicker()
             return true
         }
-        val swatchRow = colorSwatchAt(mouseX.toInt(), mouseY.toInt())
+        val swatchRow = colorSwatchAt(contentMouseX.toInt(), contentMouseY.toInt())
         if (swatchRow != null) {
             openColorPicker(swatchRow)
             return true
         }
-        val pickedParamIndex = paramSuggestionAt(mouseX.toInt(), mouseY.toInt())
+        val pickedParamIndex = paramSuggestionAt(contentMouseX.toInt(), contentMouseY.toInt())
         if (pickedParamIndex != null) {
             selectedParamSuggestionIndex = pickedParamIndex
             acceptSelectedParamSuggestion()
             return true
         }
-        val pickedIndex = suggestionAt(mouseX.toInt(), mouseY.toInt())
+        val pickedIndex = suggestionAt(contentMouseX.toInt(), contentMouseY.toInt())
         if (pickedIndex != null) {
             selectedSuggestionIndex = pickedIndex
             groupBox.value = suggestions[pickedIndex]
             updateSuggestions()
             return true
         }
-        val handled = super.mouseClicked(mouseX, mouseY, button)
+        val handled = super.mouseClicked(contentMouseX, contentMouseY, button)
         updateParamSuggestion()
         return handled
     }
 
+    /**
+     * 使用内容坐标和内容距离处理拖动。
+     *
+     * 示例：颜色选择器在缩放后仍跟随鼠标连续变化。
+     * 禁止只转换当前位置而保留原始拖动距离。
+     */
     override fun mouseDragged(
         mouseX: Double,
         mouseY: Double,
@@ -481,26 +529,48 @@ class TestControllerScreen internal constructor(
         dragX: Double,
         dragY: Double
     ): Boolean {
+        val contentMouseX = viewport.unscale(mouseX)
+        val contentMouseY = viewport.unscale(mouseY)
+        val contentDragX = viewport.unscale(dragX)
+        val contentDragY = viewport.unscale(dragY)
         if (colorPickerRow >= 0 && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
             when (colorPickerDrag) {
-                ColorPickerDrag.SATURATION_VALUE -> updateSaturationValue(mouseX, mouseY)
-                ColorPickerDrag.HUE -> updateHue(mouseX)
-                ColorPickerDrag.NONE -> return super.mouseDragged(mouseX, mouseY, button, dragX, dragY)
+                ColorPickerDrag.SATURATION_VALUE -> updateSaturationValue(contentMouseX, contentMouseY)
+                ColorPickerDrag.HUE -> updateHue(contentMouseX)
+                ColorPickerDrag.NONE -> return super.mouseDragged(
+                    contentMouseX,
+                    contentMouseY,
+                    button,
+                    contentDragX,
+                    contentDragY,
+                )
             }
             return true
         }
-        return super.mouseDragged(mouseX, mouseY, button, dragX, dragY)
+        return super.mouseDragged(contentMouseX, contentMouseY, button, contentDragX, contentDragY)
     }
 
+    /**
+     * 把释放位置还原到内容坐标系并结束拖动。
+     *
+     * 示例：缩放后的输入框能收到与点击位置一致的释放事件。
+     * 禁止混用真实坐标和内容坐标结束一次拖动。
+     */
     override fun mouseReleased(mouseX: Double, mouseY: Double, button: Int): Boolean {
         if (colorPickerDrag != ColorPickerDrag.NONE) {
             colorPickerDrag = ColorPickerDrag.NONE
             recordCurrentState()
             return true
         }
-        return super.mouseReleased(mouseX, mouseY, button)
+        return super.mouseReleased(viewport.unscale(mouseX), viewport.unscale(mouseY), button)
     }
 
+    /**
+     * 使用内容坐标处理滚轮位置，同时保留滚轮步数。
+     *
+     * 示例：参数页在缩放后仍能从鼠标所在的内容区域滚动。
+     * 禁止缩放 [scrollY]，它表示滚轮步数而不是屏幕距离。
+     */
     override fun mouseScrolled(mouseX: Double, mouseY: Double, scrollX: Double, scrollY: Double): Boolean {
         if (colorPickerRow >= 0) {
             return true
@@ -523,18 +593,47 @@ class TestControllerScreen internal constructor(
             }
             return true
         }
-        return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY)
+        return super.mouseScrolled(viewport.unscale(mouseX), viewport.unscale(mouseY), scrollX, scrollY)
     }
 
+    /**
+     * 只在真实坐标阶段绘制背景，缩放内容阶段跳过重复调用。
+     *
+     * 示例：[render] 显式调用时绘制完整背景，[Screen.render] 随后的内部调用会被忽略。
+     * 禁止在 [renderingScaledContent] 为 `true` 时再次执行模糊和菜单背景。
+     */
+    override fun renderBackground(graphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
+        if (!renderingScaledContent) {
+            super.renderBackground(graphics, mouseX, mouseY, partialTick)
+        }
+    }
+
+    /**
+     * 先绘制真实尺寸背景，再在内容坐标系中统一绘制控件和浮层。
+     *
+     * 示例：`512x288` 视口中的全部内容按同一比例缩小。
+     * 禁止缩放背景或漏掉建议框、颜色选择器等浮层。
+     */
     override fun render(graphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
         if (colorPickerDrag == ColorPickerDrag.NONE) recordCurrentState()
         updateHistoryButtons()
         renderBackground(graphics, mouseX, mouseY, partialTick)
-        super.render(graphics, mouseX, mouseY, partialTick)
-        renderLabels(graphics)
-        renderSuggestions(graphics, mouseX, mouseY)
-        renderParamSuggestions(graphics, mouseX, mouseY)
-        renderColorPicker(graphics, mouseX, mouseY, partialTick)
+        val contentMouseX = viewport.unscale(mouseX.toDouble()).toInt()
+        val contentMouseY = viewport.unscale(mouseY.toDouble()).toInt()
+        val contentScale = viewport.scale.toFloat()
+        graphics.pose().pushPose()
+        graphics.pose().scale(contentScale, contentScale, 1f)
+        renderingScaledContent = true
+        try {
+            super.render(graphics, contentMouseX, contentMouseY, partialTick)
+            renderLabels(graphics)
+            renderSuggestions(graphics, contentMouseX, contentMouseY)
+            renderParamSuggestions(graphics, contentMouseX, contentMouseY)
+            renderColorPicker(graphics, contentMouseX, contentMouseY, partialTick)
+        } finally {
+            renderingScaledContent = false
+            graphics.pose().popPose()
+        }
     }
 
     /**
@@ -550,7 +649,7 @@ class TestControllerScreen internal constructor(
             renderParamPageLabels(graphics)
             return
         }
-        val left = width / 2 - 170
+        val left = layoutWidth / 2 - 170
         var y = 16
         graphics.drawString(font, title, left, y, 0xFFFFFF, true)
         y = 38
@@ -567,18 +666,24 @@ class TestControllerScreen internal constructor(
         } else {
             y += 28
         }
-        val animationRowExtra = if (width >= MIN_INLINE_ANIMATION_WIDTH) 0 else ANIMATION_STACK_HEIGHT
+        val animationRowExtra = if (layoutWidth >= MIN_INLINE_ANIMATION_WIDTH) 0 else ANIMATION_STACK_HEIGHT
         graphics.drawString(font, "位置偏移", left, y, 0xE0E0E0, true)
         y += 28 + animationRowExtra
         graphics.drawString(font, "Forward", left, y, 0xE0E0E0, true)
         y += 28 + animationRowExtra
         graphics.drawString(font, "碰撞箱", left, y, 0xE0E0E0, true)
-        graphics.drawString(font, "状态: ${displayStatus()}", left, height - 34, 0xF0F0F0, true)
-        graphics.drawString(font, "测试项: ${packet.optionCount}", left, height - 22, 0xF0F0F0, true)
+        graphics.drawString(font, "状态: ${displayStatus()}", left, layoutHeight - 34, 0xF0F0F0, true)
+        graphics.drawString(font, "测试项: ${packet.optionCount}", left, layoutHeight - 22, 0xF0F0F0, true)
     }
 
+    /**
+     * 按内容画布宽度绘制参数页标题、参数标签和滚动条。
+     *
+     * 示例：缩放后参数标签仍与输入框对齐。
+     * 禁止按真实视口宽度单独居中这些标签。
+     */
     private fun renderParamPageLabels(graphics: GuiGraphics) {
-        val left = width / 2 - 170
+        val left = layoutWidth / 2 - 170
         graphics.drawString(font, title, left, 16, 0xFFFFFF, true)
         graphics.drawString(font, fitTextToWidth(selectedOptionIdLine(), PARAM_CONTENT_WIDTH), left, 38, 0xC8EFC8, true)
         if (currentParamSpecs.isEmpty()) {
@@ -1135,9 +1240,15 @@ class TestControllerScreen internal constructor(
         graphics.fill(x + 1, y + 1, x + 13, y + 13, color ?: 0xFF444444.toInt())
     }
 
+    /**
+     * 在内容坐标系中查找鼠标命中的颜色色块。
+     *
+     * 示例：点击参数行色块会返回对应可见行。
+     * 禁止传入未经 [TestControllerScreenViewport.unscale] 转换的坐标。
+     */
     private fun colorSwatchAt(mouseX: Int, mouseY: Int): Int? {
         if (page != ControllerPage.PARAMS) return null
-        val left = width / 2 - 170
+        val left = layoutWidth / 2 - 170
         repeat(visibleParamRowCount()) { row ->
             val spec = currentParamSpecs.getOrNull(actualParamIndex(row)) ?: return@repeat
             if (!spec.color) return@repeat
@@ -1172,6 +1283,12 @@ class TestControllerScreen internal constructor(
         layoutWidgets()
     }
 
+    /**
+     * 在内容画布中央绘制颜色选择器和遮罩。
+     *
+     * 示例：小视口下遮罩随内容画布一起缩放并覆盖完整界面。
+     * 禁止使用真实视口宽高绘制内容遮罩。
+     */
     private fun renderColorPicker(graphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
         val spec = activeColorSpec() ?: return
         val left = colorPickerLeft()
@@ -1183,7 +1300,7 @@ class TestControllerScreen internal constructor(
         graphics.flush()
         graphics.pose().pushPose()
         graphics.pose().translate(0f, 0f, COLOR_PICKER_Z)
-        graphics.fill(0, 0, width, height, 0x88000000.toInt())
+        graphics.fill(0, 0, layoutWidth, layoutHeight, 0x88000000.toInt())
         graphics.fill(left - 1, top - 1, left + COLOR_PICKER_WIDTH + 1, top + COLOR_PICKER_HEIGHT + 1, 0xFF9A9A9A.toInt())
         graphics.fill(left, top, left + COLOR_PICKER_WIDTH, top + COLOR_PICKER_HEIGHT, 0xFF202020.toInt())
         graphics.drawString(font, "颜色", left + 12, top + 7, 0xFFFFFFFF.toInt(), false)
@@ -1383,9 +1500,19 @@ class TestControllerScreen internal constructor(
                 mouseY >= top && mouseY <= top + COLOR_PICKER_HEIGHT
     }
 
-    private fun colorPickerLeft(): Int = (width - COLOR_PICKER_WIDTH) / 2
+    /**
+     * 返回颜色选择器在内容画布中的左边界。
+     *
+     * 示例：内容画布变宽时选择器仍保持居中；禁止按真实视口宽度计算。
+     */
+    private fun colorPickerLeft(): Int = (layoutWidth - COLOR_PICKER_WIDTH) / 2
 
-    private fun colorPickerTop(): Int = (height - COLOR_PICKER_HEIGHT) / 2
+    /**
+     * 返回颜色选择器在内容画布中的上边界。
+     *
+     * 示例：内容画布变高时选择器仍保持居中；禁止按真实视口高度计算。
+     */
+    private fun colorPickerTop(): Int = (layoutHeight - COLOR_PICKER_HEIGHT) / 2
 
     private fun rgbToHsv(color: List<Float>): List<Float> {
         val r = color.getOrElse(0) { 0f }.coerceIn(0f, 1f)
@@ -1690,8 +1817,14 @@ class TestControllerScreen internal constructor(
         }
     }
 
+    /**
+     * 根据内容画布高度计算参数页可创建的输入行数。
+     *
+     * 示例：缩放后较高的虚拟画布可以保留更多参数行。
+     * 禁止按真实视口高度裁掉本可见的行。
+     */
     private fun visibleParamRowCapacity(): Int {
-        val availableHeight = height - PARAM_LIST_TOP - PARAM_BOTTOM_RESERVED
+        val availableHeight = layoutHeight - PARAM_LIST_TOP - PARAM_BOTTOM_RESERVED
         return (availableHeight / PARAM_ROW_HEIGHT).coerceIn(1, PARAM_MAX_VISIBLE_ROWS)
     }
 
@@ -1703,21 +1836,21 @@ class TestControllerScreen internal constructor(
      */
     private fun layoutWidgets() {
         if (!::groupBox.isInitialized) return
-        val left = width / 2 - 170
+        val left = layoutWidth / 2 - 170
         val mainPage = page == ControllerPage.MAIN
         val paramPage = page == ControllerPage.PARAMS
         val indexVisible = mainPage && mode == BlockTestMode.INDEX
         val reviewVisible = mainPage && packet.pendingReview
         val offsetY = if (indexVisible) 128 else 90
-        val animationInline = width >= MIN_INLINE_ANIMATION_WIDTH
+        val animationInline = layoutWidth >= MIN_INLINE_ANIMATION_WIDTH
         val animationRowExtra = if (animationInline) 0 else ANIMATION_STACK_HEIGHT
         val forwardY = offsetY + 28 + animationRowExtra
         val boxY = forwardY + 28 + animationRowExtra
         val buttonsY = boxY + 34
 
-        undoButton.setX(width - 108)
+        undoButton.setX(layoutWidth - 108)
         undoButton.setY(8)
-        redoButton.setX(width - 56)
+        redoButton.setX(layoutWidth - 56)
         redoButton.setY(8)
         undoButton.visible = true
         redoButton.visible = true
@@ -1820,7 +1953,7 @@ class TestControllerScreen internal constructor(
         }
 
         if (paramPage) {
-            val bottomY = height - 28
+            val bottomY = layoutHeight - 28
             backButton.setX(left)
             backButton.setY(bottomY)
             saveButton.setX(left + 68)
@@ -1883,8 +2016,14 @@ class TestControllerScreen internal constructor(
         }
     }
 
+    /**
+     * 在内容画布中摆放一行三轴输入框和操作按钮。
+     *
+     * 示例：位置、Forward 和碰撞箱三行共享相同横向对齐。
+     * 禁止用真实视口宽度计算该行中心。
+     */
     private fun setRow(y: Int, first: EditBox, second: EditBox, third: EditBox, button: Button) {
-        val left = width / 2 - 170
+        val left = layoutWidth / 2 - 170
         first.setX(left + 92)
         first.setY(y)
         second.setX(left + 166)

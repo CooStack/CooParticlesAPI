@@ -34,7 +34,7 @@ class TestControllerDynamicControlsContractTest {
         assertTrue("TestControllerCurveEditorScreen" in source)
         assertTrue("MIN_INLINE_ANIMATION_WIDTH" in source)
         assertTrue("ANIMATION_STACK_X" in source)
-        assertTrue("animationInline = width >= MIN_INLINE_ANIMATION_WIDTH" in source)
+        assertTrue("animationInline = layoutWidth >= MIN_INLINE_ANIMATION_WIDTH" in source)
         assertTrue("animationRowExtra" in source)
     }
 

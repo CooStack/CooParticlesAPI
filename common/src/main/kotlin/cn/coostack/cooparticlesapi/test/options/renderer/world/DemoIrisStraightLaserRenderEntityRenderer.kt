@@ -1,6 +1,7 @@
 package cn.coostack.cooparticlesapi.test.options.renderer.world
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
+import cn.coostack.cooparticlesapi.annotations.CooAutoRegisterRenderer
 import cn.coostack.cooparticlesapi.display.CooParticlesRenderTypes
 import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameStage
 import cn.coostack.cooparticlesapi.renderer.runtime.LocalRenderInput
@@ -8,6 +9,7 @@ import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityFeatureSet
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityInstance
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityVisualProfile
 import cn.coostack.cooparticlesapi.renderer.runtime.IrisRenderTypeProxyRenderer
+import cn.coostack.cooparticlesapi.renderer.runtime.AutoRegisteredRenderEntityRenderer
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderTypeRenderInput
 import cn.coostack.cooparticlesapi.renderer.runtime.WorldPassRenderEntityRenderer
 import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModel
@@ -36,9 +38,12 @@ import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
 
+/** Iris 直线激光演示实体的本地渲染与代理模型 renderer。 */
+@CooAutoRegisterRenderer
 class DemoIrisStraightLaserRenderEntityRenderer :
     WorldPassRenderEntityRenderer<DemoIrisStraightLaserRenderEntity>,
-    IrisRenderTypeProxyRenderer<DemoIrisStraightLaserRenderEntity> {
+    IrisRenderTypeProxyRenderer<DemoIrisStraightLaserRenderEntity>,
+    AutoRegisteredRenderEntityRenderer<DemoIrisStraightLaserRenderEntity> {
     override fun initialize(instance: RenderEntityInstance<DemoIrisStraightLaserRenderEntity>) {
         initStatic()
     }

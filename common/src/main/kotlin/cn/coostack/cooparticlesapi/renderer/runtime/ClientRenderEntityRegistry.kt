@@ -18,12 +18,14 @@ import net.minecraft.resources.ResourceLocation
  */
 object ClientRenderEntityRegistry {
     private val types = LinkedHashMap<ResourceLocation, ClientRenderEntityType>()
+    private val automaticEntityClasses = LinkedHashMap<ResourceLocation, Class<out RenderEntity>>()
 
     /**
      * 直接注册一个完整的客户端类型定义。
      *
      * @throws IllegalArgumentException 当同一个 id 被重复注册时抛出
      */
+    @Synchronized
     fun register(id: ResourceLocation, type: ClientRenderEntityType) {
         if (types.containsKey(id)) {
             throw IllegalArgumentException(id.toString())
@@ -51,6 +53,7 @@ object ClientRenderEntityRegistry {
      *
      * @throws IllegalStateException 当 codec 尚未注册时抛出
      */
+    @Synchronized
     fun registerRenderer(id: ResourceLocation, rendererFactory: () -> RenderEntityRenderer<out RenderEntity>) {
         val existing = types[id]
             ?: throw IllegalStateException("RenderEntity codec not registered: $id")
@@ -58,10 +61,35 @@ object ClientRenderEntityRegistry {
     }
 
     /**
+     * 在自动注册器完成全部校验后，一次提交本轮新增或补全的类型。
+     */
+    @Synchronized
+    internal fun applyRegistrations(registrations: Map<ResourceLocation, AutomaticClientRenderEntityType>) {
+        registrations.forEach { (id, registration) ->
+            val existing = types[id]
+            val existingEntityClass = automaticEntityClasses[id]
+            check(existing == null || existingEntityClass == registration.entityClass) {
+                "RenderEntity id ownership changed during automatic registration: $id"
+            }
+        }
+        registrations.forEach { (id, registration) ->
+            types[id] = registration.type
+            automaticEntityClasses[id] = registration.entityClass
+        }
+    }
+
+    /** 返回自动注册条目绑定的实体类型；手动条目没有该元数据。 */
+    @Synchronized
+    internal fun getAutomaticEntityClass(id: ResourceLocation): Class<out RenderEntity>? {
+        return automaticEntityClasses[id]
+    }
+
+    /**
      * 读取指定 id 的客户端类型定义。
      *
      * 返回 `null` 表示该 RenderEntity 还没有被客户端注册。
      */
+    @Synchronized
     fun get(id: ResourceLocation): ClientRenderEntityType? {
         return types[id]
     }
@@ -71,7 +99,15 @@ object ClientRenderEntityRegistry {
      *
      * 主要用于测试、重载或重新初始化场景。
      */
+    @Synchronized
     fun clear() {
         types.clear()
+        automaticEntityClasses.clear()
     }
 }
+
+/** 自动注册器提交给客户端类型表的完整条目。 */
+internal data class AutomaticClientRenderEntityType(
+    val type: ClientRenderEntityType,
+    val entityClass: Class<out RenderEntity>
+)

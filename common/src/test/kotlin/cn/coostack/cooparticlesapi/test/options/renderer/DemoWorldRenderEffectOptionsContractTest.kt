@@ -60,9 +60,6 @@ class DemoWorldRenderEffectOptionsContractTest {
         val support = readProjectFile(
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/test/options/renderer/world/DemoWorldRenderModelSupport.kt"
         )
-        val clientRegistry = readProjectFile(
-            "common/src/main/kotlin/cn/coostack/cooparticlesapi/test/options/renderer/world/DemoWorldRenderEffectClientRegistry.kt"
-        )
         val manager = readProjectFile(
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/client/ClientRenderEntityManager.kt"
         )
@@ -79,6 +76,8 @@ class DemoWorldRenderEffectOptionsContractTest {
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/test/options/renderer/world/DemoWorldRenderEffectRenderer.kt"
         ).toFile().exists())
         rendererSources.forEach { renderer ->
+            assertTrue("@CooAutoRegisterRenderer" in renderer)
+            assertTrue("AutoRegisteredRenderEntityRenderer" in renderer)
             assertTrue("RenderEntityModelRenderer" in renderer)
             assertTrue("buildModel(" in renderer)
             assertFalse("RenderEntityModelRenderer<DemoWorldRenderEffectSpec>" in renderer)
@@ -125,16 +124,10 @@ class DemoWorldRenderEffectOptionsContractTest {
         assertTrue("sphereShell(" in rendererSources[3])
         assertTrue("annulus(" in rendererSources[0])
         assertTrue("sphereShell(" in rendererSources[1])
-        assertTrue("DemoBlackHoleRenderEntity.ID" in clientRegistry)
-        assertTrue("DemoBlackHoleRenderEntityRenderer()" in clientRegistry)
-        assertTrue("DemoShieldRenderEntity.ID" in clientRegistry)
-        assertTrue("DemoShieldRenderEntityRenderer()" in clientRegistry)
-        assertTrue("DemoLightBeamRenderEntity.ID" in clientRegistry)
-        assertTrue("DemoLightBeamRenderEntityRenderer()" in clientRegistry)
-        assertTrue("DemoLightOrbRenderEntity.ID" in clientRegistry)
-        assertTrue("DemoLightOrbRenderEntityRenderer()" in clientRegistry)
-        assertTrue("ClientRenderEntityRegistry.registerRenderer" in clientRegistry)
-        assertTrue("DemoWorldRenderEffectClientRegistry.register()" in manager)
+        assertFalse(projectFile(
+            "common/src/main/kotlin/cn/coostack/cooparticlesapi/test/options/renderer/world/DemoWorldRenderEffectClientRegistry.kt"
+        ).toFile().exists())
+        assertFalse("DemoWorldRenderEffectClientRegistry" in manager)
     }
 
     @Test

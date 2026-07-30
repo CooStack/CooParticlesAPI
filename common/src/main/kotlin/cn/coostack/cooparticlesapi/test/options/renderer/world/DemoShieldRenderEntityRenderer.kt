@@ -1,7 +1,9 @@
 package cn.coostack.cooparticlesapi.test.options.renderer.world
 
+import cn.coostack.cooparticlesapi.annotations.CooAutoRegisterRenderer
 import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModel
 import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelRenderer
+import cn.coostack.cooparticlesapi.renderer.runtime.AutoRegisteredRenderEntityRenderer
 import cn.coostack.cooparticlesapi.renderer.runtime.FramePostRenderEntityRenderer
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderContributionCollector
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderContributionInput
@@ -9,9 +11,12 @@ import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityFeatureSet
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityInstance
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityVisualProfile
 
+/** 护盾演示实体的模型与遮罩泛光 renderer。 */
+@CooAutoRegisterRenderer
 class DemoShieldRenderEntityRenderer :
     RenderEntityModelRenderer<DemoShieldRenderEntity>,
-    FramePostRenderEntityRenderer<DemoShieldRenderEntity> {
+    FramePostRenderEntityRenderer<DemoShieldRenderEntity>,
+    AutoRegisteredRenderEntityRenderer<DemoShieldRenderEntity> {
     override fun initialize(instance: RenderEntityInstance<DemoShieldRenderEntity>) {
     }
 

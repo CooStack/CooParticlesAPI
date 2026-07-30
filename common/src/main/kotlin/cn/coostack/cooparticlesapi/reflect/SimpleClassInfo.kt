@@ -15,4 +15,14 @@ class SimpleClassInfo(val type: String, val annotations: HashSet<String>) {
         return Class.forName(type)
     }
 
+    /**
+     * 按需加载扫描到的类，并允许调用方避免执行静态初始化。
+     *
+     * 客户端 renderer 扫描使用 `initialize = false`，防止注册阶段提前创建渲染资源。
+     */
+    fun toClass(initialize: Boolean): Class<*> {
+        val classLoader = Thread.currentThread().contextClassLoader ?: SimpleClassInfo::class.java.classLoader
+        return Class.forName(type, initialize, classLoader)
+    }
+
 }

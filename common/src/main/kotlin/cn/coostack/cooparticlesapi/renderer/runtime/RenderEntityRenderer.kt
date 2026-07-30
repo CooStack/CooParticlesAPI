@@ -66,6 +66,14 @@ interface RenderEntityRenderer<T : RenderEntity> {
 }
 
 /**
+ * 为自动注册提供实体类型绑定的 renderer 标记接口。
+ *
+ * 该接口不增加运行时方法；泛型参数 [T] 只用于在扫描阶段找到对应的 RenderEntity。
+ * renderer 仍然通过 [RenderEntityRenderer] 的原有生命周期工作。
+ */
+interface AutoRegisteredRenderEntityRenderer<T : RenderEntity> : RenderEntityRenderer<T>
+
+/**
  * 显式声明当前 renderer 参与 world pass 本地几何绘制。
  */
 interface WorldPassRenderEntityRenderer<T : RenderEntity> : RenderEntityRenderer<T> {

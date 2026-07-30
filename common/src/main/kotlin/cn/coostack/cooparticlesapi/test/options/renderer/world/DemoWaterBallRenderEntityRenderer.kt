@@ -1,5 +1,7 @@
 package cn.coostack.cooparticlesapi.test.options.renderer.world
 
+import cn.coostack.cooparticlesapi.annotations.CooAutoRegisterRenderer
+import cn.coostack.cooparticlesapi.renderer.runtime.AutoRegisteredRenderEntityRenderer
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameStage
 import cn.coostack.cooparticlesapi.renderer.runtime.CompositeMode
@@ -24,8 +26,11 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
+/** 水球演示实体的本地 world pass renderer。 */
+@CooAutoRegisterRenderer
 class DemoWaterBallRenderEntityRenderer :
-    WorldPassRenderEntityRenderer<DemoWaterBallRenderEntity> {
+    WorldPassRenderEntityRenderer<DemoWaterBallRenderEntity>,
+    AutoRegisteredRenderEntityRenderer<DemoWaterBallRenderEntity> {
     override fun initialize(instance: RenderEntityInstance<DemoWaterBallRenderEntity>) {
         ensureProgram()
         ensureBuffer()

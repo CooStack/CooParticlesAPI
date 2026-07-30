@@ -168,7 +168,6 @@ object CooParticlesAPIClient {
         RenderEntityModelExecutors.install(OpenGlRenderEntityModelExecutor)
         PostEffectFrameExecutor.installBackend(OpenGlPostEffectExecutionBackend)
         RenderEffectRegistry.register(BuiltinRenderEffectTypes.MASK_BLOOM, OpenGlMaskBloomEffectExecutor)
-        ClientRenderEntityManager.init()
         CParticleCapabilities.detect()
         CParticleGpuSimulator.initializeProgramIfSupported()
         ShaderProgramRegistry.reinitializeAll()

@@ -9,7 +9,6 @@ import cn.coostack.cooparticlesapi.renderer.runtime.ClientRenderEntityRegistry
 import cn.coostack.cooparticlesapi.renderer.runtime.LegacyRenderEntityRenderer
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityInstance
 import cn.coostack.cooparticlesapi.renderer.state.RenderStateGuard
-import cn.coostack.cooparticlesapi.test.options.renderer.world.DemoWorldRenderEffectClientRegistry
 import cn.coostack.cooparticlesapi.utils.MinecraftRendererUtil
 import com.mojang.blaze3d.vertex.PoseStack
 import net.minecraft.client.Camera
@@ -35,10 +34,6 @@ object ClientRenderEntityManager {
     private val cachedProjMatrix = Matrix4f()
     private val renderStateGuard = RenderStateGuard()
     private val entityPipeTypes = HashMap<ResourceLocation, ResourceLocation>()
-
-    fun init() {
-        DemoWorldRenderEffectClientRegistry.register()
-    }
 
     fun register(id: ResourceLocation, codec: StreamCodec<FriendlyByteBuf, RenderEntity>) {
         val existing = ClientRenderEntityRegistry.get(id)
