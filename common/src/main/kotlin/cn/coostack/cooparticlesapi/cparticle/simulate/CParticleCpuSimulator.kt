@@ -117,6 +117,12 @@ object CParticleCpuSimulator {
         for (slot in from until to) {
             if ((bits[slot ushr 6] and (1L shl (slot and 63))) == 0L) continue
             val base = slot * STRIDE
+            val flags = data[base + CParticleStore.OFF_FLAGS].toInt()
+            if (flags and CParticleStore.FLAG_NEWBORN != 0) {
+                data[base + CParticleStore.OFF_FLAGS] =
+                    (flags and CParticleStore.FLAG_NEWBORN.inv()).toFloat()
+                continue
+            }
             var px = data[base]
             var py = data[base + 1]
             var pz = data[base + 2]

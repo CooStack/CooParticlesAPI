@@ -35,8 +35,11 @@ object CParticleInstanceFlags {
     /** 方块占用网格碰撞，bit 15。Example: emitter data 开启 blockCollision 时置位。Forbidden: SCRIPTED 句柄不读取此位。 */
     const val BLOCK_COLLISION = 1 shl 15
 
+    /** 新生槽位标记，bit 16。首轮只上传初始状态，模拟器会跳过并清除此位。 */
+    internal const val NEWBORN = 1 shl 16
+
     /** 当前已分配位形成的最大值。Example: 可用于 float 精确性测试。Forbidden: 不要把它当成 descriptor 上限。 */
-    const val MAX_PACKED_VALUE = (1 shl 16) - 1
+    const val MAX_PACKED_VALUE = (1 shl 17) - 1
 
     /** float 能精确表示的整数边界。Example: flags 必须小于此值。Forbidden: 不要分配 bit 24。 */
     const val FLOAT_EXACT_INTEGER_LIMIT = 1 shl 24

@@ -538,6 +538,16 @@ void main() {
     if (applyTransition && uTransitionParams.w > 0.5) {
         particleColor = mix(uTransitionColorFrom, uTransitionColorTo, uTransitionParams.z);
     }
+    float baseAlpha = iColor.a;
+    if (uAlphaTransitionKeys > 0) {
+        baseAlpha = sampleScalarCurve(
+            uAlphaTransitionProgress,
+            uAlphaTransitionKeys,
+            uAlphaTransitionCurveType,
+            uAlphaTransitionCurve,
+            uAlphaTransitionCurveHandles
+        );
+    }
     float alphaScale = sampleParticleAlphaCurve(lifeT) * sampleAlphaCurve(curveT);
     if (applyTransition) {
         alphaScale *= sampleScalarCurve(
@@ -548,14 +558,7 @@ void main() {
             uTransitionAlphaCurveHandles
         );
     }
-    alphaScale *= sampleScalarCurve(
-        uAlphaTransitionProgress,
-        uAlphaTransitionKeys,
-        uAlphaTransitionCurveType,
-        uAlphaTransitionCurve,
-        uAlphaTransitionCurveHandles
-    );
-    vColor = vec4(particleColor, iColor.a * alphaScale);
+    vColor = vec4(particleColor, baseAlpha * alphaScale);
 
     int blockLight = (flags >> 3) & 15;
     int skyLight = (flags >> 7) & 15;

@@ -14,6 +14,7 @@ class CParticleTextureFlagsTest {
             CParticleInstanceFlags.RANDOM_QUARTER_UV,
             CParticleInstanceFlags.MASK_RANDOM_QUARTER_UV,
             CParticleInstanceFlags.BLOCK_COLLISION,
+            CParticleInstanceFlags.NEWBORN,
         )
         for (index in featureBits.indices) for (other in index + 1 until featureBits.size) {
             assertEquals(0, featureBits[index] and featureBits[other])

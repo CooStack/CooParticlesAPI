@@ -33,6 +33,7 @@ class CParticleGlobalCountLimitTest {
             assertEquals(baseline + 1, CParticleSystemManager.totalAlive())
             assertEquals(-1, spawn(secondSystem))
 
+            firstSystem.store.clearSpawned()
             firstSystem.store.tickAges(writeBufferAge = false)
             assertEquals(baseline, CParticleSystemManager.totalAlive())
 

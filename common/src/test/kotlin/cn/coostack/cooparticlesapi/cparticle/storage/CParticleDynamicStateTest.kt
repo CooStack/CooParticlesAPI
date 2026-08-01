@@ -144,6 +144,7 @@ class CParticleDynamicStateTest {
         }
         val slowSlot = store.spawn(slow, Vec3.ZERO, initialUv, 15, 15)
         val fastSlot = store.spawn(fast, Vec3.ZERO, initialUv, 15, 15)
+        store.clearSpawned()
 
         CParticleCpuSimulator.simulate(
             store,
@@ -217,6 +218,7 @@ class CParticleDynamicStateTest {
         val store = CParticleStore(1)
         val particle = CParticle().apply { maxAge = 20 }
         store.spawn(particle, Vec3.ZERO, initialUv, 15, 15)
+        store.clearSpawned()
 
         store.tickAges(writeBufferAge = false)
         store.publishDynamicAges()

@@ -376,6 +376,14 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
     /**
      * 扫描此 composition 的完整运行时子树，为所有 CParticle systems 播放同一段 GPU alpha 过渡。
      * 子树包括嵌套 composition、ParticleGroupStyle 和 ControlableParticleGroup。
+     * 过渡曲线会覆盖粒子实例的 alpha，再与粒子、system 和普通视觉过渡的 alpha 曲线相乘。
+     *
+     * @param durationTicks 过渡时长，单位为 tick，必须为有限正数
+     * @param alphaCurve 用于覆盖粒子实例 alpha 的曲线
+     * @param mode 过渡结束后的行为
+     * @param restart 是否强制替换相同配置
+     * @return 当前 composition
+     * @throws IllegalArgumentException 当 [durationTicks] 不是有限正数时抛出
      */
     @JvmOverloads
     fun playCParticleAlphaTransition(

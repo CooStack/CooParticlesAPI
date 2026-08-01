@@ -11,7 +11,7 @@ import org.joml.Vector3fc
  *
  * @property startTick 开始播放的系统 tick
  * @property durationTicks 过渡时长，单位 tick
- * @property alphaCurve 不透明度倍率曲线
+ * @property alphaCurve 不透明度曲线；视觉过渡将其作为倍率，独立 alpha 过渡将其作为实例 alpha 覆盖值
  * @property scaleCurve 等比缩放倍率曲线
  * @property mode 过渡结束后的行为
  */
@@ -35,7 +35,7 @@ internal class CParticleVisualTransition(
      * 禁止：不要只比较曲线对象引用，等值曲线也应匹配。
      *
      * @param durationTicks 候选时长
-     * @param alphaCurve 候选不透明度倍率曲线
+     * @param alphaCurve 候选不透明度曲线
      * @param scaleCurve 候选等比缩放倍率曲线
      * @param colorFrom 候选起始颜色
      * @param colorTo 候选结束颜色

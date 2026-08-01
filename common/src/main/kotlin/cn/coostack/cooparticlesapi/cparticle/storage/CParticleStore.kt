@@ -90,6 +90,7 @@ class CParticleStore(val capacity: Int) {
         const val FLAG_RANDOM_QUARTER_UV = CParticleInstanceFlags.RANDOM_QUARTER_UV
         const val FLAG_MASK_RANDOM_QUARTER_UV = CParticleInstanceFlags.MASK_RANDOM_QUARTER_UV
         const val FLAG_BLOCK_COLLISION = CParticleInstanceFlags.BLOCK_COLLISION
+        internal const val FLAG_NEWBORN = CParticleInstanceFlags.NEWBORN
 
         private const val SNAP_SIZE_W = 0
         private const val SNAP_SIZE_H = 1
@@ -221,6 +222,7 @@ class CParticleStore(val capacity: Int) {
     /** 本 tick 新生成的槽位 (供 GPU 模式做增量上传) */
     val spawnedSlots = IntArray(capacity)
     private val spawnedBits = LongArray((capacity + 63) ushr 6)
+    private val newbornBits = LongArray((capacity + 63) ushr 6)
     var spawnedCount = 0
         private set
 
@@ -373,16 +375,18 @@ class CParticleStore(val capacity: Int) {
         data[base + OFF_VEL + 1] = p.velocity.y.toFloat()
         data[base + OFF_VEL + 2] = p.velocity.z.toFloat()
         val hasDirection = p.cameraOption == ParticleCameraOption.ROTATION && p.rotationDirection != null
-        data[base + OFF_FLAGS] = packFlagsWithMask(
-            true,
-            p.cameraOption.ordinal,
-            blockLight,
-            skyLight,
-            p.randomAgePreTick,
-            hasDirection,
-            randomQuarterUv,
-            randomMaskQuarterUv,
-            p.blockCollision,
+        data[base + OFF_FLAGS] = (
+            packFlagsWithMask(
+                true,
+                p.cameraOption.ordinal,
+                blockLight,
+                skyLight,
+                p.randomAgePreTick,
+                hasDirection,
+                randomQuarterUv,
+                randomMaskQuarterUv,
+                p.blockCollision,
+            ) or FLAG_NEWBORN
         ).toFloat()
         if (p.blockCollision) blockCollisionCount++
         data[base + OFF_SIZE] = p.weightSize
@@ -423,6 +427,7 @@ class CParticleStore(val capacity: Int) {
         if (slot + 1 > highWater) highWater = slot + 1
         val spawnedWord = slot ushr 6
         val spawnedMask = 1L shl (slot and 63)
+        newbornBits[spawnedWord] = newbornBits[spawnedWord] or spawnedMask
         if (spawnedBits[spawnedWord] and spawnedMask == 0L && spawnedCount < spawnedSlots.size) {
             spawnedSlots[spawnedCount++] = slot
             spawnedBits[spawnedWord] = spawnedBits[spawnedWord] or spawnedMask
@@ -471,6 +476,7 @@ class CParticleStore(val capacity: Int) {
         aliveBits[slot ushr 6] = aliveBits[slot ushr 6] and (1L shl (slot and 63)).inv()
         val agingMask = 1L shl (slot and 63)
         val agingWord = slot ushr 6
+        newbornBits[agingWord] = newbornBits[agingWord] and agingMask.inv()
         if ((agingBits[agingWord] and agingMask) != 0L) {
             agingBits[agingWord] = agingBits[agingWord] and agingMask.inv()
             agingCount--
@@ -511,6 +517,11 @@ class CParticleStore(val capacity: Int) {
                 val bit = java.lang.Long.numberOfTrailingZeros(bits)
                 bits = bits and (bits - 1)
                 val slot = (w shl 6) + bit
+                val mask = 1L shl bit
+                if (newbornBits[w] and mask != 0L) {
+                    newbornBits[w] = newbornBits[w] and mask.inv()
+                    continue
+                }
                 val newAge = ++ages[slot]
                 if (writeBufferAge) {
                     data[slot * STRIDE + OFF_AGE] = newAge.toFloat()
@@ -682,6 +693,7 @@ class CParticleStore(val capacity: Int) {
         agingCount = 0
         highWater = 0
         java.util.Arrays.fill(spawnedBits, 0L)
+        java.util.Arrays.fill(newbornBits, 0L)
         spawnedCount = 0
         dynamicState = null
         killedState = null
@@ -716,10 +728,21 @@ class CParticleStore(val capacity: Int) {
     fun clearSpawned() {
         for (i in 0 until spawnedCount) {
             val slot = spawnedSlots[i]
+            val flagsOffset = slot * STRIDE + OFF_FLAGS
+            val flags = data[flagsOffset].toInt()
+            data[flagsOffset] = (flags and FLAG_NEWBORN.inv()).toFloat()
             val word = slot ushr 6
-            spawnedBits[word] = spawnedBits[word] and (1L shl (slot and 63)).inv()
+            val mask = 1L shl (slot and 63)
+            spawnedBits[word] = spawnedBits[word] and mask.inv()
+            newbornBits[word] = newbornBits[word] and mask.inv()
         }
         spawnedCount = 0
+    }
+
+    internal fun isPendingSpawn(slot: Int): Boolean {
+        if (slot !in 0 until capacity) return false
+        val word = slot ushr 6
+        return spawnedBits[word] and (1L shl (slot and 63)) != 0L
     }
 
     internal fun clearKilled() {

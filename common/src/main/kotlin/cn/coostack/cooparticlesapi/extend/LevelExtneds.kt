@@ -35,5 +35,11 @@ inline fun <reified R : CooPacket> ServerLevel.requestCooPacket(
 val Level.serverLevel: ServerLevel?
     get() = this as? ServerLevel
 
+val Level.serverWorld: ServerLevel?
+    get() = serverLevel
+
+val Level.clientWorld: ClientLevel?
+    get() = clientLevel
+
 val Level.clientLevel: ClientLevel?
     get() = this as? ClientLevel

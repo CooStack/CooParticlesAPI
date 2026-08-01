@@ -3,6 +3,7 @@ package cn.coostack.cooparticlesapi.cparticle
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class CParticleDynamicContractTest {
@@ -66,7 +67,7 @@ class CParticleDynamicContractTest {
         val setAge = system.substringAfter("fun scriptedSetAge(").substringBefore("fun scriptedSetRotation(")
         val visualWrites = system.substringAfter("fun scriptedSetColor(").substringBefore("fun scriptedSetAge(")
 
-        assertTrue("store.setAge(slot, age, tickCount)" in setAge)
+        assertTrue("store.setAge(slot, age, lifecycleEpochTick(slot))" in setAge)
         assertTrue("settleTicks" !in setAge)
         assertTrue("store.markDirty(slot)" in visualWrites)
         assertTrue("settleTicks" !in visualWrites)
@@ -120,7 +121,7 @@ class CParticleDynamicContractTest {
             "common/src/main/resources/assets/cooparticlesapi/shaders/core/vertex/cparticle.vsh"
         )
         val colorWrites = shader.substringAfter("vec3 particleColor = iColor.rgb;")
-            .substringBefore("float alphaScale")
+            .substringBefore("float baseAlpha")
 
         val cycle = colorWrites.indexOf("particleColor = 0.5 + 0.5 * cos")
         val curve = colorWrites.indexOf("sampleColorCurve(curveT)")
@@ -128,6 +129,37 @@ class CParticleDynamicContractTest {
         assertTrue(cycle >= 0)
         assertTrue(curve > cycle)
         assertTrue(transition > curve)
+    }
+
+    /**
+     * 独立 alpha transition 覆盖实例 alpha，生命周期和 visual transition 曲线继续作为倍率。
+     */
+    @Test
+    fun `alpha transition overrides instance alpha before lifetime multipliers`() {
+        val shader = readProjectFile(
+            "common/src/main/resources/assets/cooparticlesapi/shaders/core/vertex/cparticle.vsh"
+        )
+        val renderer = readProjectFile(
+            "common/src/main/kotlin/cn/coostack/cooparticlesapi/cparticle/render/CParticleRenderer.kt"
+        )
+        val alphaWrites = shader.substringAfter("float baseAlpha = iColor.a;")
+            .substringBefore("vColor = vec4")
+        val scalarCurveUpload = renderer.substringAfter("private fun setScalarCurve(")
+            .substringBefore("private fun setColorCurve(")
+
+        val transitionOverride = alphaWrites.indexOf("baseAlpha = sampleScalarCurve(")
+        val lifetimeCurves = alphaWrites.indexOf(
+            "float alphaScale = sampleParticleAlphaCurve(lifeT) * sampleAlphaCurve(curveT);"
+        )
+        val visualTransition = alphaWrites.indexOf("alphaScale *= sampleScalarCurve(")
+        assertTrue("if (uAlphaTransitionKeys > 0)" in alphaWrites)
+        assertTrue(transitionOverride >= 0)
+        assertTrue(lifetimeCurves > transitionOverride)
+        assertTrue(visualTransition > lifetimeCurves)
+        assertFalse("alphaScale *= sampleScalarCurve(\n        uAlphaTransitionProgress" in alphaWrites)
+        assertTrue("baseAlpha * alphaScale" in shader)
+        assertTrue("alphaTransition?.alphaCurve?.takeIf { alphaTransitionProgress != null }" in renderer)
+        assertTrue("curve?.keyCount ?: 0" in scalarCurveUpload)
     }
 
     @Test

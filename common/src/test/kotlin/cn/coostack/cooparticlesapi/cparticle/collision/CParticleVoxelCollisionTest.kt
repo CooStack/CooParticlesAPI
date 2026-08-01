@@ -124,6 +124,7 @@ class CParticleVoxelCollisionTest {
         }
         val collidingSlot = store.spawn(colliding, Vec3.ZERO, 0, 15, 15)
         val freeSlot = store.spawn(free, Vec3.ZERO, 0, 15, 15)
+        store.clearSpawned()
 
         CParticleCpuSimulator.simulate(
             store,

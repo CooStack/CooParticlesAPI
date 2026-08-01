@@ -276,7 +276,7 @@ class CParticleSystem(
             resolved.base.animationId ?: resolved.base.descriptorId,
             block,
             sky,
-            epochTick = tickCount,
+            epochTick = tickCount + 1,
             randomSeed = randomSeed,
             colorMultiplier = resolved.base.colorMultiplier,
             randomQuarterUv = resolved.randomBaseQuarterUv,
@@ -449,7 +449,16 @@ class CParticleSystem(
     }
 
     /**
-     * 播放独立的 system alpha 倍率过渡，不会替换颜色或大小视觉过渡。
+     * 播放独立的 system alpha 过渡。过渡生效时，曲线值会覆盖粒子实例的 alpha，
+     * 再与粒子生命周期、system alpha 和视觉过渡的 alpha 曲线相乘。
+     * 此方法不会替换颜色或大小视觉过渡。
+     *
+     * @param durationTicks 过渡时长，单位为 tick，必须为有限正数
+     * @param alphaCurve 用于覆盖粒子实例 alpha 的曲线
+     * @param mode 过渡结束后的行为
+     * @param restart 是否强制替换相同配置
+     * @return 当前系统
+     * @throws IllegalArgumentException 当 [durationTicks] 不是有限正数时抛出
      */
     @JvmOverloads
     fun playAlphaTransition(
@@ -472,8 +481,9 @@ class CParticleSystem(
         ) {
             return this
         }
+        // tickCount 会在本轮 system tick 末尾自增；下一次渲染应从曲线起点开始。
         alphaTransition = CParticleVisualTransition(
-            startTick = tickCount.toFloat(),
+            startTick = tickCount.toFloat() + 1f,
             durationTicks = durationTicks,
             alphaCurve = alphaCurve,
             scaleCurve = null,
@@ -580,28 +590,31 @@ class CParticleSystem(
 
     fun scriptedSetAge(slot: Int, generation: Int, age: Int) {
         if (!checkHandle(slot, generation)) return
-        store.setAge(slot, age, tickCount)
+        store.setAge(slot, age, lifecycleEpochTick(slot))
     }
 
     fun scriptedSetRotation(slot: Int, generation: Int, yaw: Float, pitch: Float, roll: Float) {
         if (!checkHandle(slot, generation)) return
-        store.setBaseRotation(slot, pitch, yaw, roll, tickCount)
+        store.setBaseRotation(slot, pitch, yaw, roll, lifecycleEpochTick(slot))
     }
 
     fun scriptedSetRotationDirection(slot: Int, generation: Int, direction: Vector3f?) {
         if (!checkHandle(slot, generation)) return
-        store.setRotationDirection(slot, direction, tickCount)
+        store.setRotationDirection(slot, direction, lifecycleEpochTick(slot))
     }
 
     fun scriptedSetAngularVelocity(slot: Int, generation: Int, velocity: Vector3f) {
         if (!checkHandle(slot, generation)) return
-        store.setAngularVelocity(slot, velocity, tickCount)
+        store.setAngularVelocity(slot, velocity, lifecycleEpochTick(slot))
     }
 
     fun scriptedAddRoll(slot: Int, generation: Int, radians: Float) {
         if (!checkHandle(slot, generation)) return
-        store.addRoll(slot, radians, tickCount)
+        store.addRoll(slot, radians, lifecycleEpochTick(slot))
     }
+
+    private fun lifecycleEpochTick(slot: Int): Int =
+        if (store.isPendingSpawn(slot)) tickCount + 1 else tickCount
 
     fun scriptedGetRotation(slot: Int, generation: Int): Vector3f? {
         if (!checkHandle(slot, generation)) return null
@@ -872,8 +885,8 @@ class CParticleSystem(
             )
             store.tickAges(writeBufferAge = true)
             store.publishDynamicAges()
-            uploadDirty()
             store.clearSpawned()
+            uploadDirty()
             store.clearKilled()
         }
     }
@@ -887,8 +900,8 @@ class CParticleSystem(
         }
         store.tickAges(writeBufferAge = false)
         store.publishDynamicAges()
-        uploadDirty()
         store.clearSpawned()
+        uploadDirty()
         store.clearKilled()
     }
 

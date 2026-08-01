@@ -13,7 +13,7 @@ import java.util.IdentityHashMap
 
 /**
  * 在运行时 composition 树中查找 CParticle systems，并播放 system 级 alpha 过渡。
- * 过渡在 GPU 中计算，不会逐个改写粒子实例。
+ * 过渡在 GPU 中覆盖粒子实例 alpha，不会逐个改写实例数据。
  */
 object CParticleCompositionAlphaHelper {
     @JvmStatic

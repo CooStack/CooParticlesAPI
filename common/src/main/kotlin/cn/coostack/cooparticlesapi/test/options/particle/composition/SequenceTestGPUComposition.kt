@@ -56,6 +56,7 @@ class SequenceTestGPUComposition(position: Vec3, world: Level? = null) : AutoPar
                                     .addCParticleInstanceInit {
                                         effect = ControlableSmallGustEffect(UUID.randomUUID())
                                         size = 0.2F
+                                        alpha = 0.0F
                                         age = Random.nextInt(maxAge)
                                     }
                             }
@@ -109,6 +110,7 @@ class SequenceTestGPUComposition(position: Vec3, world: Level? = null) : AutoPar
                                     .addCParticleInstanceInit {
                                         effect = ControlableEnchantmentEffect(UUID.randomUUID())
                                         size = 0.2F
+                                        alpha = 0.0F
                                         age = Random.nextInt(maxAge)
                                     }
                             }

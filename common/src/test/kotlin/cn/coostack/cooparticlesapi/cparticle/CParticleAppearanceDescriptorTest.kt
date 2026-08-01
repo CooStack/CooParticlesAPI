@@ -212,7 +212,7 @@ class CParticleAppearanceDescriptorTest {
         assertTrue("sampleParticleScaleXCurve(lifeT)" in shader)
         assertTrue("sampleParticleScaleYCurve(lifeT)" in shader)
         assertTrue("vec2 size = iSizeRot.xy * scale;" in shader)
-        assertTrue("iColor.a * alphaScale" in shader)
+        assertTrue("baseAlpha * alphaScale" in shader)
     }
 
     /**

@@ -45,6 +45,7 @@ const int TYPE_ROTATION = 7;
 const int TYPE_NOISE = 8;
 const int TYPE_FLOW_FIELD = 9;
 const int FLAG_BLOCK_COLLISION = 32768;
+const int FLAG_NEWBORN = 1 << 16;
 const float COLLISION_SURFACE_OFFSET = 0.07;
 
 bool collisionOccupied(ivec3 cell) {
@@ -177,6 +178,11 @@ void main() {
     }
     int flags = int(particles[i].velFlags.w + 0.5);
     if ((flags & 1) == 0) {
+        return;
+    }
+    if ((flags & FLAG_NEWBORN) != 0) {
+        flags &= ~FLAG_NEWBORN;
+        particles[i].velFlags.w = float(flags);
         return;
     }
 

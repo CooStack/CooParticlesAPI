@@ -138,6 +138,7 @@ class CParticleGpuStateTest {
             angularVelocity = Vector3f(0.1f, 0.2f, 0.3f)
         }
         val slot = store.spawn(particle, Vec3.ZERO, 91, 15, 15, epochTick = 4, randomSeed = -7)
+        store.clearSpawned()
         val base = slot * CParticleStore.STRIDE
         val visualBefore = store.data.copyOfRange(base + CParticleStore.OFF_FLAGS, base + CParticleStore.STRIDE)
 

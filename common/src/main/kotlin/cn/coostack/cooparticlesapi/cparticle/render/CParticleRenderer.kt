@@ -570,7 +570,7 @@ object CParticleRenderer {
      *
      * @param shader 当前 CParticle shader
      * @param prefix uniform 组的前缀
-     * @param curve 要上传的曲线；`null` 表示倍率恒为 1
+     * @param curve 要上传的曲线；`null` 会上传 0 个关键帧，由对应 shader 路径使用默认值
      */
     private fun setScalarCurve(shader: CooShaderProgram, prefix: String, curve: CParticleCurve?) {
         shader.setInt("${prefix}Keys", curve?.keyCount ?: 0)
