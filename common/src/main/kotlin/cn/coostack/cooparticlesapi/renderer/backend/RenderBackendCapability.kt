@@ -3,7 +3,7 @@ package cn.coostack.cooparticlesapi.renderer.backend
 /**
  * backend 可声明的渲染能力。
  *
- * effect graph 和 builtin effect 会根据这些能力判断当前效果是否可以安全执行。
+ * Pipeline compiler 和 runtime 会据此判断当前效果是否可以执行。
  */
 enum class RenderBackendCapability {
     /**
@@ -30,7 +30,7 @@ enum class RenderBackendCapability {
     /**
      * backend 允许在真正帧尾执行统一的最终 post 处理阶段。
      *
-     * 这是大多数 descriptor graph/builtin frame-post 效果的最低要求之一。
+     * 这是帧尾 Pipeline 和 ShaderEffect 的基础能力。
      */
     FINAL_FRAME_POST
 }

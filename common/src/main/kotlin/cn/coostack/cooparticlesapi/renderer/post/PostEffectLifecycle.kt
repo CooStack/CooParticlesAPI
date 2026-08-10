@@ -27,7 +27,7 @@ import kotlin.math.min
  *
  * 这个类替代调用方手动维护 age、过期判断、progress 计算和网络同步字段。
  */
-data class PostEffectLifecycle(
+internal data class PostEffectLifecycle(
     val durationTicks: Int,
     val ageTicks: Int = 0,
     val warmupTicks: Int = 0,
@@ -84,7 +84,7 @@ data class PostEffectLifecycle(
 }
 
 /** 生命周期阶段。阶段只表达语义，不会自动改变 shader；需要 shader 或业务代码读取后自行使用。 */
-enum class PostEffectLifecyclePhase {
+internal enum class PostEffectLifecyclePhase {
     /** 预热期，适合做淡入、预采样或延迟触发。 */
     WARMUP,
     /** 展开期，适合半径、强度、mask 范围从小到大变化。 */

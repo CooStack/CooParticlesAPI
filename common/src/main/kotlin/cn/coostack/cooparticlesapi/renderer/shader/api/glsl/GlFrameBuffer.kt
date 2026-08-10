@@ -1,6 +1,5 @@
 package cn.coostack.cooparticlesapi.renderer.shader.api.glsl
 
-import cn.coostack.cooparticlesapi.renderer.shader.api.pipe.PipeChannels
 import java.util.function.Supplier
 
 /**
@@ -79,11 +78,6 @@ interface GlFrameBuffer {
      * 设置附件纹理过滤模式。
      */
     fun setTextureFilterMod(mod: Int)
-
-    /**
-     * 把颜色附件转换为 `PipeChannels`，供 shader pipe 继续消费。
-     */
-    fun outputChannels(): PipeChannels
 
     /**
      * 在绑定当前 framebuffer 的作用域内执行写入逻辑。

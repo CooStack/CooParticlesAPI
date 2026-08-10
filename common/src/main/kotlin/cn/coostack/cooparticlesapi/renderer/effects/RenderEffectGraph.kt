@@ -3,7 +3,6 @@ package cn.coostack.cooparticlesapi.renderer.effects
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.renderer.backend.RenderBackendCapability
 import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameContext
-import cn.coostack.cooparticlesapi.renderer.runtime.RenderContributionCollector
 
 /**
  * 当前帧的 descriptor graph 收集与执行器。
@@ -14,10 +13,10 @@ import cn.coostack.cooparticlesapi.renderer.runtime.RenderContributionCollector
  * - 依据优先级和提交顺序稳定排序
  * - 按连续的 executor 批次分发给 `RenderEffectRegistry`
  */
-class RenderEffectGraph(
+internal class RenderEffectGraph(
     private val backendCapabilities: Set<RenderBackendCapability>,
     private val frameContext: RenderFrameContext
-) : RenderEffectCollector, RenderContributionCollector {
+) : RenderEffectCollector {
     private val descriptors = mutableListOf<IndexedDescriptor>()
     private var nextSequence = 0L
 

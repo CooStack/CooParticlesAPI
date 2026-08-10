@@ -15,7 +15,7 @@ interface RenderBackendHooks {
     /**
      * 执行 world pass。
      *
-     * 这里通常会驱动 `RenderEntityRenderer.renderLocal(...)` 这类直接世界绘制。
+     * 这里通常会驱动 `RenderEntityRenderer.render(...)` 的直接世界绘制。
      */
     fun renderWorldPass(context: RenderFrameContext)
 
@@ -31,9 +31,7 @@ interface RenderBackendHooks {
      */
     fun flushFrameComposites(context: RenderFrameContext)
 
-    /**
-     * 运行帧尾 descriptor / post effect 阶段。
-     */
+    /** 运行 Pipeline 的帧尾后处理阶段。 */
     fun runFramePost(context: RenderFrameContext)
 }
 
@@ -46,7 +44,7 @@ interface RenderBackend {
     /**
      * 当前 backend 支持的能力集合。
      *
-     * effect graph 会基于它过滤对 scene copy、depth read 等功能有要求的 descriptor。
+     * Pipeline compiler 会用它检查 scene copy、depth read 等资源需求。
      */
     val capabilities: Set<RenderBackendCapability>
 

@@ -27,6 +27,7 @@ class ImagePointBuilder(val image: ResourceLocation) {
         val scaled = ImageUtil.scale(scale, picture)
         val offsetX = scaled.width * step / 2.0
         val offsetZ = scaled.height * step / 2.0
+
         return ImageUtil.toPoints(scaled, step).onEach {
             it.x -= offsetX
             it.z -= offsetZ

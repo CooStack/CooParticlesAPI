@@ -1,91 +1,147 @@
 package cn.coostack.cooparticlesapi.renderer.post
 
+import cn.coostack.cooparticlesapi.CooParticlesConstants
+import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelinePostEffectCompiler
+import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelines
+import net.minecraft.resources.ResourceLocation
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 /**
  * 行为契约测试：覆盖 PostEffectFrameExecutor / OpenGl backend / Iris backend 在
  * 重构后引入的关键不变量。
  *
- * 现有 :common 测试 classpath 不包含 Minecraft jar（生产代码标记为 compileOnly），
- * 所以我们沿用仓库里其它 *ContractTest 的源码字符串匹配风格。每条断言都直接对应
- * 一个真实可能回归的现实风险点，注释说明为什么这串字符串值得保护。
+ * Pipeline 编译部分直接验证对象行为；依赖客户端 OpenGL 环境的部分沿用源码契约检查。
+ * 每条断言都对应一个可能影响帧间资源或执行顺序的回归点。
  */
 class PostEffectFrameExecutorBehaviorTest {
 
     @Test
-    fun `bloom downsample and upsample helpers wire by previous pass name not by bright color slot`() {
-        val source = readProjectFile(
-            "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/post/PostEffectFrameExecutor.kt"
-        )
+    fun `line keeps producer pass and attachment identity`() {
+        val pipeline = CooPipelines.generic<Any>(id("behavior_line_attachment")) {
+            val gbuffer = pass("gbuffer") {
+                fragment(id("post/gbuffer.fsh"))
+                input("SceneColor")
+                colorAttachments(2)
+            }
+            val composite = pass("composite") {
+                fragment(id("post/composite.fsh"))
+                input("Normal")
+            }
+            line(sceneColor(), gbuffer.input("SceneColor"))
+            line(gbuffer.color(1), composite.input("Normal"))
+            line(composite.color(), screenTarget())
+        }
 
-        // downsample/upsample helpers must take an explicit sourcePassName, otherwise the bloom
-        // pyramid collapses back to the BRIGHT_COLOR slot and downsample_2 starts reading the
-        // wrong texture.
-        assertTrue("private fun bloomDownsamplePass(name: String, sourcePassName: String): PostEffectPass" in source)
-        assertTrue("private fun bloomUpsamplePass(name: String, sourcePassName: String): PostEffectPass" in source)
-        assertTrue("source = PostEffectInputSource.PASS_OUTPUT" in source)
-        assertTrue("sourcePassName = sourcePassName" in source)
+        val passes = requireNotNull(CooPipelinePostEffectCompiler.compile(pipeline)).type.chain.passes
+        val normalInput = passes.single { it.name == "composite" }.inputs.single()
+
+        assertEquals(listOf("gbuffer", "composite"), passes.map(PostEffectPass::name))
+        assertEquals(PostEffectInputSource.PASS_OUTPUT, normalInput.source)
+        assertEquals("gbuffer", normalInput.sourcePassName)
+        assertEquals(1, normalInput.sourcePassAttachment)
     }
 
     @Test
-    fun `bloom blur passes rewrite bright color inputs into pass outputs of the previous pass`() {
-        val source = readProjectFile(
-            "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/post/PostEffectFrameExecutor.kt"
-        )
+    fun `ping pong feedback reads the previous iteration output`() {
+        val pipeline = CooPipelines.generic<Any>(id("behavior_ping_pong_feedback")) {
+            val blur = pingPong("blur", iterations = 3, feedbackSampler = "Input") {
+                fragment(id("post/blur.fsh"))
+            }
+            line(sceneColor(), blur.input("Input"))
+            line(blur.color(), screenTarget())
+        }
 
-        // Each blur iteration must rewire BRIGHT_COLOR -> PASS_OUTPUT to a specific previous pass,
-        // otherwise blur_horizontal_l1_i2 would re-read whatever last wrote to BLOOM target.
-        assertTrue("private fun bloomSingleIterationBlurPass(" in source)
-        assertTrue("if (input.source == PostEffectInputSource.BRIGHT_COLOR)" in source)
-        assertTrue("source = PostEffectInputSource.PASS_OUTPUT" in source)
+        val iterations = requireNotNull(CooPipelinePostEffectCompiler.compile(pipeline))
+            .type.chain.passes
+
+        assertEquals(PostEffectInputSource.SCENE_COLOR, iterations[0].inputs.single().source)
+        iterations.drop(1).forEachIndexed { previousIndex, pass ->
+            val feedback = pass.inputs.single()
+            assertEquals(PostEffectInputSource.PASS_OUTPUT, feedback.source)
+            assertEquals("blur_iteration_$previousIndex", feedback.sourcePassName)
+            assertEquals(0, feedback.sourcePassAttachment)
+        }
     }
 
     @Test
-    fun `bloom expansion tracks per level final pass so downsample reads correct upstream`() {
-        val source = readProjectFile(
-            "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/post/PostEffectFrameExecutor.kt"
-        )
+    fun `ping pong alternates targets and parameters`() {
+        val pipeline = CooPipelines.generic<Any>(id("behavior_ping_pong_alternation")) {
+            val blur = pingPong("blur", iterations = 4, feedbackSampler = "Input") {
+                fragment(id("post/blur.fsh"))
+                alternate("Axis", 1F, -1F)
+            }
+            line(sceneColor(), blur.input("Input"))
+            line(blur.color(), screenTarget())
+        }
 
-        // perLevelFinalPass is the cure for the original bug: downsample_(N+1) used to read the
-        // BRIGHT_COLOR target, which (after upsample writes) pointed at the wrong mip.
-        assertTrue("val perLevelFinalPass = mutableMapOf<Int, String>()" in source)
-        assertTrue("perLevelFinalPass[level] = previousPassName" in source)
-        assertTrue("var previousPassName" in source)
+        val compiled = requireNotNull(CooPipelinePostEffectCompiler.compile(pipeline))
+        val instance = compiled.type.create(params = compiled.defaultParams)
+        val iterations = compiled.type.chain.passes
+        val targetKeys = iterations.map { it.outputTargetKey }
+        val axes = iterations.map { pass ->
+            pass.uniforms.single { it.name == "Axis" }.provider(instance)
+        }
+
+        assertEquals(2, targetKeys.toSet().size)
+        assertNotEquals(targetKeys[0], targetKeys[1])
+        assertEquals(targetKeys[0], targetKeys[2])
+        assertEquals(targetKeys[1], targetKeys[3])
+        assertEquals(
+            listOf(
+                PostEffectParamValue.FloatValue(1F),
+                PostEffectParamValue.FloatValue(-1F),
+                PostEffectParamValue.FloatValue(1F),
+                PostEffectParamValue.FloatValue(-1F)
+            ),
+            axes
+        )
     }
 
     @Test
-    fun `bloom upsample chain telescopes from deepest mip back up to full resolution`() {
-        val source = readProjectFile(
-            "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/post/PostEffectFrameExecutor.kt"
-        )
+    fun `downstream card reads the final ping pong iteration`() {
+        val pipeline = CooPipelines.generic<Any>(id("behavior_ping_pong_downstream")) {
+            val blur = pingPong("blur", iterations = 3, feedbackSampler = "Input") {
+                fragment(id("post/blur.fsh"))
+            }
+            val composite = pass("composite") {
+                fragment(id("post/composite.fsh"))
+                input("Bloom")
+            }
+            line(sceneColor(), blur.input("Input"))
+            line(blur.color(), composite.input("Bloom"))
+            line(composite.color(), screenTarget())
+        }
 
-        // Deepest upsample seeds from the level's last blur; higher levels read the previous
-        // upsample (one mip smaller). If this stops being conditional on `level == levels`, the
-        // chain breaks.
-        assertTrue("for (level in levels downTo 1)" in source)
-        assertTrue("if (level == levels)" in source)
-        assertTrue("perLevelFinalPass.getValue(level)" in source)
+        val composite = requireNotNull(CooPipelinePostEffectCompiler.compile(pipeline))
+            .type.chain.passes.single { it.name == "composite" }
+        val bloomInput = composite.inputs.single()
+
+        assertEquals(PostEffectInputSource.PASS_OUTPUT, bloomInput.source)
+        assertEquals("blur_iteration_2", bloomInput.sourcePassName)
+        assertEquals(0, bloomInput.sourcePassAttachment)
     }
 
     @Test
-    fun `bloom composite reads the upsampled chain output explicitly so resolution does not depend on last bloom write`() {
-        val executorSource = readProjectFile(
-            "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/post/PostEffectFrameExecutor.kt"
-        )
-        val backendSource = readProjectFile(
-            "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/post/OpenGlPostEffectExecutionBackend.kt"
-        )
+    fun `named framebuffer keeps its output and attachment contract`() {
+        val target = id("framebuffer/behavior_gbuffer")
+        val pipeline = CooPipelines.generic<Any>(id("behavior_named_framebuffer")) {
+            val gbuffer = pass("gbuffer") {
+                fragment(id("post/gbuffer.fsh"))
+                colorAttachments(2)
+            }
+            line(gbuffer.color(1), framebufferTarget(target, 1))
+        }
 
-        // Composite must explicitly bind to the most recent upsample by name, not depend on
-        // "whatever wrote to BLOOM last".
-        assertTrue("withBrightSourcePass(composite, sourcePassName = previousPassName)" in executorSource)
+        val pass = requireNotNull(CooPipelinePostEffectCompiler.compile(pipeline))
+            .type.chain.passes.single()
 
-        // Backend resolves PASS_OUTPUT by per-pass texture, so the explicit binding actually
-        // takes effect end to end.
-        assertTrue("input.producedByPassName?.let { state.lastPassOutputTextures[it] }" in backendSource)
+        assertEquals(target, pass.outputTargetId)
+        assertEquals(2, pass.colorAttachmentCount)
     }
 
     @Test
@@ -94,11 +150,7 @@ class PostEffectFrameExecutorBehaviorTest {
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/backend/IrisSafeRenderBackend.kt"
         )
 
-        // Iris compatibility strategy: ClientRenderTargetResolver probes the bound framebuffer
-        // and exposes Iris-managed color / depth attachments through RenderFrameContext.
-        // The capability advertisement here is what gates that resolver path on at frame build
-        // time — removing any of these makes the "draw on top of Iris" pipeline fall back to
-        // the wrong target.
+        // Iris 后端保留场景能力，目标解析器才能取得 Iris 管理的颜色与深度 attachment。
         assertTrue("RenderBackendCapability.SCENE_COLOR_COPY" in source)
         assertTrue("RenderBackendCapability.SCENE_DEPTH_READ" in source)
         assertTrue("RenderBackendCapability.SAFE_WORLD_COMPOSITE" in source)
@@ -111,8 +163,7 @@ class PostEffectFrameExecutorBehaviorTest {
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/post/PostEffectFrameExecutor.kt"
         )
 
-        // orderPasses must do real topological sort over PASS_OUTPUT edges, otherwise A/C -> B
-        // fan-in chains run out of order.
+        // PASS_OUTPUT 连线必须参与拓扑排序，才能保证多输入节点在依赖项之后执行。
         assertTrue("private fun orderPasses(passes: List<PostEffectPass>): List<PostEffectPass>" in source)
         assertTrue("PostEffectInputSource.PASS_OUTPUT" in source)
         assertTrue("val dependents = linkedMapOf<String, MutableList<String>>()" in source)
@@ -125,7 +176,7 @@ class PostEffectFrameExecutorBehaviorTest {
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/post/PostEffectFrameExecutor.kt"
         )
 
-        // The two skip paths must remain in place so plans never silently drop a pass.
+        // 缺少输入或能力时必须给出原因，不能静默丢弃 pass。
         assertTrue("missing required input(s):" in source)
         assertTrue("missing required capability(s):" in source)
         assertTrue("val missingCapabilities = pass.requiredCapabilities - context.backend.capabilities" in source)
@@ -137,15 +188,12 @@ class PostEffectFrameExecutorBehaviorTest {
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/post/OpenGlPostEffectExecutionBackend.kt"
         )
 
-        // Two distinct lookups must coexist: lastPassOutputTextures (per-pass) for explicit
-        // PASS_OUTPUT links, and lastOutputTextures[PostEffectOutput.BLOOM] for legacy
-        // BRIGHT_COLOR semantics. Removing either one regresses bloom.
+        // 显式 PASS_OUTPUT 与管理目标使用不同索引，两条解析路径都必须保留。
         assertTrue("lastPassOutputTextures" in source)
         assertTrue("state.lastOutputTextures[PostEffectOutput.BLOOM]" in source)
         assertTrue("step.output.targetKey" in source)
         assertTrue("step.output.scaleDivisor" in source)
-        // Mipmap regeneration must be wired to bloom outputs so bloom_composite's textureLod
-        // chain has real data on every level.
+        // Bloom 输出需要重建 mipmap，后续 textureLod 才能读取有效层级。
         assertTrue("step.output.output == PostEffectOutput.BLOOM" in source)
         assertTrue("it.useMipmap()" in source)
     }
@@ -156,8 +204,7 @@ class PostEffectFrameExecutorBehaviorTest {
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/post/OpenGlPostEffectExecutionBackend.kt"
         )
 
-        // After one post instance writes to FINAL_SCREEN, the next instance must not reuse the
-        // old scene copy. It should copy the current final framebuffer and chain on top of that.
+        // 写入最终屏幕后必须使场景副本失效，后续实例才能接着读取最新结果。
         assertTrue("private fun drawToFinal(step: PostEffectExecutionStep, state: InstanceFrameState)" in source)
         assertTrue("chainedSceneFramebufferId = framebuffer" in source)
         assertTrue("chainedSceneFramebufferId ?: context.sceneColorFramebufferId" in source)
@@ -170,18 +217,53 @@ class PostEffectFrameExecutorBehaviorTest {
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/post/OpenGlPostEffectExecutionBackend.kt"
         )
 
-        // Eviction tracking must exist with a frame counter, last-seen map, grace constant and a
-        // body that releases buffers — without these, long sessions accumulate orphaned FBOs.
+        // 缓存淘汰必须记录帧与最后使用时间，并实际释放过期 FBO。
         assertTrue("instanceLastSeenFrame" in source)
         assertTrue("frameCounter" in source)
-        assertTrue("TARGET_EVICTION_GRACE_FRAMES" in source)
+        assertTrue("frameCounter - lastSeen > 60L" in source)
         assertTrue("private fun evictStaleTargets()" in source)
         assertTrue("it.buffer.release()" in source)
 
-        // release() must reset the eviction state too, otherwise after a shader reload the cache
-        // still thinks old instances are alive.
+        // shader reload 后 release() 也必须清空淘汰状态。
         assertTrue("instanceLastSeenFrame.clear()" in source)
         assertTrue("frameCounter = 0" in source)
+    }
+
+    @Test
+    fun `simple framebuffer always restores framebuffer and viewport state`() {
+        val source = readProjectFile(
+            "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/shader/glsl/SimpleFrameBuffer.kt"
+        )
+        val initScope = source.substringAfter("override fun init()")
+            .substringBefore("override fun setTextureFilterMod")
+        val writeScope = source.substringAfter("override fun writeFrameBufferWith")
+            .substringBefore("override fun readFrameBufferWith")
+        val readScope = source.substringAfter("override fun readFrameBufferWith")
+            .substringBefore("override fun reset()")
+        val resizeScope = source.substringAfter("override fun resize")
+            .substringBefore("override fun copyDepthBuffer")
+        val textureScope = source.substringAfter("private fun bindTextureTo")
+            .substringBefore("private fun normalizeMagFilter")
+
+        listOf(initScope, writeScope, readScope).forEach { scope ->
+            assertTrue("GL_READ_FRAMEBUFFER_BINDING" in scope)
+            assertTrue("GL_DRAW_FRAMEBUFFER_BINDING" in scope)
+            assertTrue("try {" in scope)
+            assertTrue("} finally {" in scope)
+            assertTrue("glBindFramebuffer(GL_READ_FRAMEBUFFER, previousRead)" in scope)
+            assertTrue("glBindFramebuffer(GL_DRAW_FRAMEBUFFER, previousDraw)" in scope)
+        }
+        assertTrue("GL_READ_FRAMEBUFFER_BINDING" in resizeScope)
+        assertTrue("GL_DRAW_FRAMEBUFFER_BINDING" in resizeScope)
+        assertTrue("try {" in resizeScope)
+        assertTrue("} finally {" in resizeScope)
+        assertTrue("if (previousRead == resizedFramebuffer) fbo else previousRead" in resizeScope)
+        assertTrue("if (previousDraw == resizedFramebuffer) fbo else previousDraw" in resizeScope)
+        assertTrue("glViewport(previousViewport[0]" in writeScope)
+        assertTrue("readScope()" in readScope)
+        assertTrue("try {" in textureScope)
+        assertTrue("fc.run()" in textureScope)
+        assertTrue("} finally {" in textureScope)
     }
 
     @Test
@@ -190,8 +272,7 @@ class PostEffectFrameExecutorBehaviorTest {
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/CooParticlesAPIClient.kt"
         )
 
-        // The Iris compatibility strategy is "let Iris draw, then paint on top": this is enforced
-        // by syncRenderBackend swapping in IrisSafeRenderBackend whenever a shader pack is in use.
+        // shader pack 启用时必须切换到 Iris 安全后端，先保留 Iris 结果再执行自定义着色。
         assertTrue("fun checkIrisShaderPackUsed(): Boolean" in source)
         assertTrue("fun syncRenderBackend(): RenderBackend" in source)
         assertTrue("IrisSafeRenderBackend" in source)
@@ -217,5 +298,9 @@ class PostEffectFrameExecutorBehaviorTest {
             cursor = cursor.parent
         }
         error("Could not locate repository root from ${System.getProperty("user.dir")}")
+    }
+
+    private fun id(path: String): ResourceLocation {
+        return ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, path)
     }
 }

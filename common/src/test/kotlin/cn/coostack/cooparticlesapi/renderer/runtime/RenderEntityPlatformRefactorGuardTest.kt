@@ -8,12 +8,14 @@ import kotlin.test.assertTrue
 
 class RenderEntityPlatformRefactorGuardTest {
     @Test
-    fun `renderer default feature description routes through builtin descriptor catalog`() {
+    fun `renderer no longer exposes feature description`() {
         val source = readProjectFile(
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/runtime/RenderEntityRenderer.kt"
         )
 
-        assertTrue("BuiltinRenderEffectDescriptors.describeEntity(entity)" in source)
+        assertTrue("val pipeline: CooRenderPipeline<T>" in source)
+        assertFalse("BuiltinRenderEffectDescriptors" in source)
+        assertFalse("describeFeatures" in source)
     }
 
     @Test
@@ -23,6 +25,9 @@ class RenderEntityPlatformRefactorGuardTest {
         )
 
         assertTrue("BuiltinRenderEffectDescriptors.collectEntity(entity, context, collector)" in source)
+        assertTrue("CooPipelineRuntimeEffect.descriptor" in source)
+        assertFalse("CooPipelines.MASK_BLOOM.id" in source)
+        assertFalse("BuiltinRenderEffectDescriptors.maskBloom" in source)
         assertFalse("ClientScreenGlowManager" in source)
         assertFalse("ClientPersistentBloomManager" in source)
         assertFalse("ClientWorldLightManager.submitFrameEffects(" in source)

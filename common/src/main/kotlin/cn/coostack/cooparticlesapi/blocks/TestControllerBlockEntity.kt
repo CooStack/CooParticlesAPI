@@ -15,6 +15,7 @@ import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.protocol.Packet
 import net.minecraft.network.protocol.game.ClientGamePacketListener
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket
+import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.state.BlockState
@@ -24,7 +25,7 @@ class TestControllerBlockEntity(
     pos: BlockPos,
     state: BlockState
 ) : BlockEntity(CooBlockEntityTypes.TEST_CONTROLLER.get(), pos, state) {
-    var groupId: String = ""
+    var groupId: String = defaultTestControllerGroupId().toString()
     var mode: BlockTestMode = BlockTestMode.SEQUENTIAL
     var selectedIndex: Int = 0
     var repeatIndex: Boolean = false
@@ -63,32 +64,47 @@ class TestControllerBlockEntity(
         return runLoop.statusText()
     }
 
-    fun registeredGroupIds(): List<String> {
+    /** @return 当前服务端可创建的方块测试组资源 ID */
+    fun registeredGroupIds(): List<ResourceLocation> {
         val serverLevel = level as? ServerLevel ?: return emptyList()
         return TestManager.registeredBlockIds(createTestPlayer(serverLevel))
     }
 
+    /** @return 当前测试组的测试项数量 */
     fun optionCount(): Int {
         val serverLevel = level as? ServerLevel ?: return 0
-        return TestManager.optionCount(groupId, createTestPlayer(serverLevel))
+        val id = resolvedGroupId() ?: return 0
+        return TestManager.optionCount(id, createTestPlayer(serverLevel))
     }
 
+    /** @return 当前测试组的测试项 ID */
     fun optionIds(): List<String> {
         val serverLevel = level as? ServerLevel ?: return emptyList()
-        return TestManager.optionIds(groupId, createTestPlayer(serverLevel))
+        val id = resolvedGroupId() ?: return emptyList()
+        return TestManager.optionIds(id, createTestPlayer(serverLevel))
     }
 
-    fun optionIds(groupId: String): List<String> {
+    /**
+     * @param groupId 待查询的测试组资源 ID
+     * @return 该测试组的测试项 ID
+     */
+    fun optionIds(groupId: ResourceLocation): List<String> {
         val serverLevel = level as? ServerLevel ?: return emptyList()
         return TestManager.optionIds(groupId, createTestPlayer(serverLevel))
     }
 
+    /** @return 当前测试组每个测试项的参数定义 */
     fun optionParamSpecs(): List<List<TestOptionParamSpec<*>>> {
         val serverLevel = level as? ServerLevel ?: return emptyList()
-        return TestManager.optionParamSpecs(groupId, createTestPlayer(serverLevel))
+        val id = resolvedGroupId() ?: return emptyList()
+        return TestManager.optionParamSpecs(id, createTestPlayer(serverLevel))
     }
 
-    fun optionParamSpecs(groupId: String): List<List<TestOptionParamSpec<*>>> {
+    /**
+     * @param groupId 待查询的测试组资源 ID
+     * @return 该测试组每个测试项的参数定义
+     */
+    fun optionParamSpecs(groupId: ResourceLocation): List<List<TestOptionParamSpec<*>>> {
         val serverLevel = level as? ServerLevel ?: return emptyList()
         return TestManager.optionParamSpecs(groupId, createTestPlayer(serverLevel))
     }
@@ -186,7 +202,7 @@ class TestControllerBlockEntity(
         optionParamIndex: Int,
         optionParamValues: Map<String, String>
     ): Boolean {
-        val nextGroupId = groupId.trim()
+        val nextGroupId = resolveGroupId(groupId)?.toString().orEmpty()
         val nextSelectedIndex = selectedIndex.coerceAtLeast(0)
         val nextRepeatDelayTicks = repeatDelayTicks.coerceAtLeast(0)
         val nextPlayerOffset = finiteVec3(playerOffset, Vec3.ZERO)
@@ -328,7 +344,12 @@ class TestControllerBlockEntity(
 
     override fun loadAdditional(tag: CompoundTag, provider: HolderLookup.Provider) {
         super.loadAdditional(tag, provider)
-        groupId = tag.getString("groupId")
+        val savedGroupId = tag.getString("groupId")
+        groupId = if (savedGroupId.isBlank()) {
+            defaultTestControllerGroupId().toString()
+        } else {
+            resolveGroupId(savedGroupId)?.toString().orEmpty()
+        }
         mode = BlockTestMode.fromId(tag.getString("mode"))
         selectedIndex = tag.getInt("selectedIndex").coerceAtLeast(0)
         repeatIndex = tag.getBoolean("repeatIndex")
@@ -411,7 +432,8 @@ class TestControllerBlockEntity(
     private fun buildRuntimeGroup(): BlockTestGroup? {
         val serverLevel = level as? ServerLevel ?: return null
         val player = createTestPlayer(serverLevel)
-        val built = TestManager.buildBlock(groupId, player) ?: run {
+        val id = resolvedGroupId()
+        val built = id?.let { TestManager.buildBlock(it, player) } ?: run {
             buildFailureStatus = "未知 TestGroupID: $groupId"
             return null
         }
@@ -425,6 +447,28 @@ class TestControllerBlockEntity(
         }
         runtimeGroup.optionStartListener = { player, _ -> resetOnceAnimations(player) }
         return runtimeGroup
+    }
+
+    /** @return 当前配置解析后的测试组资源 ID */
+    private fun resolvedGroupId(): ResourceLocation? {
+        return resolveGroupId(groupId)
+    }
+
+    /**
+     * 解析完整资源 ID，并兼容 path 唯一的旧版无命名空间存档。
+     *
+     * @param value 网络或存档中的测试组 ID
+     * @return 有效且无歧义的资源 ID；无法解析时返回 `null`
+     */
+    private fun resolveGroupId(value: String): ResourceLocation? {
+        val input = value.trim()
+        if (input.isBlank()) {
+            return null
+        }
+        if (':' in input) {
+            return ResourceLocation.tryParse(input)
+        }
+        return TestManager.registeredIds().singleOrNull { id -> id.path == input }
     }
 
     private fun createTestPlayer(serverLevel: ServerLevel): BlockTestPlayer {

@@ -8,9 +8,19 @@ import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import java.nio.charset.StandardCharsets
 import java.util.UUID
+import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
+/**
+ * 为方块测试提供服务端世界、位置、姿态和碰撞箱视图的模拟玩家。
+ *
+ * 未绑定真实玩家时只在服务端测试上下文中使用；传播快照通过测试宿主注入的回调同步到客户端。
+ *
+ * @property virtualLevel 未绑定真实玩家时使用的服务端世界
+ * @property virtualBlockPos 未绑定真实玩家时使用的方块位置
+ * @property realPlayer 可选的真实服务端玩家
+ */
 class BlockTestPlayer private constructor(
     private val virtualLevel: ServerLevel,
     private val virtualBlockPos: BlockPos,
@@ -163,8 +173,9 @@ class BlockTestPlayer private constructor(
         }
 
         private fun fromRotation(yaw: Float, pitch: Float): Vec3 {
-            val yawRad = Math.toRadians(yaw.toDouble())
-            val pitchRad = Math.toRadians(pitch.toDouble())
+            // Minecraft 的旋转角度是度数，先转换为弧度再计算单位视线向量。
+            val yawRad = yaw.toDouble() * (PI / 180.0)
+            val pitchRad = pitch.toDouble() * (PI / 180.0)
             val horizontal = cos(pitchRad)
             val x = -sin(yawRad) * horizontal
             val y = -sin(pitchRad)

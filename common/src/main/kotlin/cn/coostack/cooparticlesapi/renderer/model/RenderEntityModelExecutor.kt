@@ -1,7 +1,7 @@
 package cn.coostack.cooparticlesapi.renderer.model
 
-import cn.coostack.cooparticlesapi.renderer.runtime.LocalRenderInput
+import cn.coostack.cooparticlesapi.renderer.runtime.RenderInput
 
 fun interface RenderEntityModelExecutor {
-    fun draw(model: RenderEntityModel, input: LocalRenderInput<*>)
+    fun draw(model: RenderEntityModel, input: RenderInput<*>)
 }

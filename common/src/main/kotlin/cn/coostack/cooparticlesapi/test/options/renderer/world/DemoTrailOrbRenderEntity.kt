@@ -25,17 +25,16 @@ class DemoTrailOrbRenderEntity() : AutoRenderEntity(null, Vec3.ZERO), DemoWorldR
 
     /** 盘旋轨道半径。 */
     @CodecField
-    override var radius: Float = 1.6f
+    override var radius: Float = 1.6F
 
     @CodecField
-    override var intensity: Float = 1.25f
+    override var intensity: Float = 1.25F
 
     @CodecField
     override var durationTicks: Int = 200
 
-    override val modelPipeKey: String = "trail_orb"
     override val displayName: String = "render_entity/trail_orb"
-    override val effectColor: Vector4f = Vector4f(1.0f, 0.62f, 0.25f, 0.85f)
+    override val effectColor: Vector4f = Vector4f(1.0F, 0.62F, 0.25F, 0.85F)
 
     override fun serverTick() {
         if (durationTicks in 1..age) remove()

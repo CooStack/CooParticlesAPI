@@ -2,55 +2,35 @@ package cn.coostack.cooparticlesapi.test.options.renderer.world
 
 import cn.coostack.cooparticlesapi.annotations.CooAutoRegisterRenderer
 import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModel
-import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelRenderer
-import cn.coostack.cooparticlesapi.renderer.runtime.AutoRegisteredRenderEntityRenderer
-import cn.coostack.cooparticlesapi.renderer.runtime.FramePostRenderEntityRenderer
-import cn.coostack.cooparticlesapi.renderer.runtime.RenderContributionCollector
-import cn.coostack.cooparticlesapi.renderer.runtime.RenderContributionInput
-import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityFeatureSet
-import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityInstance
-import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityVisualProfile
+import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelines
+import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityRenderer
+import cn.coostack.cooparticlesapi.renderer.runtime.RenderInput
 import org.joml.Vector3f
 
 /** 光束演示实体的模型与遮罩泛光 renderer。 */
 @CooAutoRegisterRenderer
-class DemoLightBeamRenderEntityRenderer :
-    RenderEntityModelRenderer<DemoLightBeamRenderEntity>,
-    FramePostRenderEntityRenderer<DemoLightBeamRenderEntity>,
-    AutoRegisteredRenderEntityRenderer<DemoLightBeamRenderEntity> {
-    override fun initialize(instance: RenderEntityInstance<DemoLightBeamRenderEntity>) {
+class DemoLightBeamRenderEntityRenderer : RenderEntityRenderer<DemoLightBeamRenderEntity> {
+    override val pipeline = CooPipelines.MASK_BLOOM
+        .blurSigma(5.5F)
+        .blurRange(5.5F)
+        .intensity { entity: DemoLightBeamRenderEntity -> entity.intensity }
+
+    override fun render(input: RenderInput<DemoLightBeamRenderEntity>) {
+        DemoWorldRenderModelSupport.renderModel(input, buildModel(input.entity, input.tickDelta))
     }
 
-    override fun describeFeatures(entity: DemoLightBeamRenderEntity): RenderEntityFeatureSet {
-        return DemoWorldRenderModelSupport.describeFeatures()
-    }
-
-    override fun createVisualProfile(entity: DemoLightBeamRenderEntity): RenderEntityVisualProfile {
-        return DemoWorldRenderModelSupport.createVisualProfile()
-    }
-
-    override fun buildModel(entity: DemoLightBeamRenderEntity, tickDelta: Float): RenderEntityModel {
-        return DemoWorldRenderModelSupport.buildModel(entity) { model, basePipe ->
-            val height = entity.radius * 5f
-            val coreColor = DemoWorldRenderModelSupport.boosted(entity.effectColor, 2.2f, 0.95f)
+    private fun buildModel(entity: DemoLightBeamRenderEntity, tickDelta: Float): RenderEntityModel {
+        return DemoWorldRenderModelSupport.buildModel { model, baseLayer ->
+            val height = entity.radius * 5F
+            val coreColor = DemoWorldRenderModelSupport.boosted(entity.effectColor, 2.2F, 0.95F)
             DemoWorldRenderModelSupport.line(
                 model,
-                basePipe,
-                Vector3f(0f, -height, 0f),
-                Vector3f(0f, height, 0f),
+                baseLayer,
+                Vector3f(0F, -height, 0F),
+                Vector3f(0F, height, 0F),
                 coreColor
             )
         }
     }
 
-    override fun collectRenderContributions(
-        input: RenderContributionInput<DemoLightBeamRenderEntity>,
-        collector: RenderContributionCollector
-    ) {
-        DemoWorldRenderModelSupport.collectModelMaskBloom(
-            input,
-            collector,
-            buildModel(input.instance.entity, input.frameContext.tickDelta)
-        )
-    }
 }

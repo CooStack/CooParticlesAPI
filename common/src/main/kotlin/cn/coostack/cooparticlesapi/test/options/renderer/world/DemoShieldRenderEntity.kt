@@ -18,17 +18,16 @@ class DemoShieldRenderEntity() : AutoRenderEntity(null, Vec3.ZERO), DemoWorldRen
     }
 
     @CodecField
-    override var radius: Float = 2.25f
+    override var radius: Float = 2.25F
 
     @CodecField
-    override var intensity: Float = 0.78f
+    override var intensity: Float = 0.78F
 
     @CodecField
     override var durationTicks: Int = 120
 
-    override val modelPipeKey: String = "shield"
     override val displayName: String = "render_entity/shield"
-    override val effectColor: Vector4f = Vector4f(0.20f, 0.72f, 1.0f, 0.55f)
+    override val effectColor: Vector4f = Vector4f(0.20F, 0.72F, 1.0F, 0.55F)
 
     override fun serverTick() {
         if (durationTicks in 1..age) remove()

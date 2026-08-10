@@ -18,17 +18,16 @@ class DemoLightBeamRenderEntity() : AutoRenderEntity(null, Vec3.ZERO), DemoWorld
     }
 
     @CodecField
-    override var radius: Float = 0.7f
+    override var radius: Float = 0.7F
 
     @CodecField
-    override var intensity: Float = 1.2f
+    override var intensity: Float = 1.2F
 
     @CodecField
     override var durationTicks: Int = 120
 
-    override val modelPipeKey: String = "light_beam"
     override val displayName: String = "render_entity/light_beam"
-    override val effectColor: Vector4f = Vector4f(1.0f, 0.84f, 0.28f, 0.72f)
+    override val effectColor: Vector4f = Vector4f(1.0F, 0.84F, 0.28F, 0.72F)
 
     override fun serverTick() {
         if (durationTicks in 1..age) remove()

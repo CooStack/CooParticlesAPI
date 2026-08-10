@@ -10,7 +10,7 @@ import net.minecraft.resources.ResourceLocation
  * 它只描述“做什么”和“需要什么”，
  * 真正如何执行交给 `RenderEffectRegistry` 中对应 effect type 的 executor。
  */
-data class RenderEffectDescriptor(
+internal data class RenderEffectDescriptor(
     /** 该效果的类型 id，用于查找对应 executor。 */
     val effectType: ResourceLocation,
     /** 当前效果实例的逻辑 id。 */
@@ -28,7 +28,7 @@ data class RenderEffectDescriptor(
 /**
  * descriptor 风格的效果收集器。
  */
-fun interface RenderEffectCollector {
+internal fun interface RenderEffectCollector {
     /**
      * 提交一个 descriptor。
      */
@@ -38,7 +38,7 @@ fun interface RenderEffectCollector {
 /**
  * 某个 effect type 对应的执行器。
  */
-fun interface RenderEffectExecutor {
+internal fun interface RenderEffectExecutor {
     /**
      * 批量渲染同一 `effectType` 下的 descriptor 列表。
      */

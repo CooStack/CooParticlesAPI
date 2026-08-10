@@ -4,6 +4,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.exists
 import kotlin.test.Test
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class RenderEntityV2ContractTest {
@@ -34,31 +35,44 @@ class RenderEntityV2ContractTest {
     }
 
     @Test
-    fun `v2 runtime contract types exist`() {
+    fun `runtime contract is pipeline based`() {
         val rendererPath = projectFile("common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/runtime/RenderEntityRenderer.kt")
-        val profilePath = projectFile("common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/runtime/RenderEntityVisualProfile.kt")
+        val inputPath = projectFile("common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/runtime/RenderInput.kt")
 
         assertTrue(rendererPath.exists(), "Expected RenderEntityRenderer.kt to exist")
-        assertTrue(profilePath.exists(), "Expected RenderEntityVisualProfile.kt to exist")
+        assertTrue(inputPath.exists(), "Expected RenderInput.kt to exist")
+        listOf(
+            "LegacyRenderEntityRenderer.kt",
+            "LocalEffectChain.kt",
+            "LocalEffectStep.kt",
+            "LocalRenderInput.kt",
+            "LocalRenderTargetPool.kt",
+            "RenderContribution.kt",
+            "RenderEntityVisualProfile.kt"
+        ).forEach { fileName ->
+            assertFalse(
+                projectFile(
+                    "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/runtime/$fileName"
+                ).exists(),
+                "$fileName must be removed"
+            )
+        }
 
         val rendererSource = Files.readString(rendererPath)
+        val inputSource = Files.readString(inputPath)
         assertTrue("interface RenderEntityRenderer" in rendererSource)
-        assertTrue("fun describeFeatures" in rendererSource)
-        assertTrue("fun createVisualProfile" in rendererSource)
-        assertTrue("fun initialize" in rendererSource)
-        assertTrue("interface WorldPassRenderEntityRenderer" in rendererSource)
-        assertTrue("interface FramePostRenderEntityRenderer" in rendererSource)
-        assertTrue("interface RenderEntityUpdateHook" in rendererSource)
-        assertTrue("interface RenderEntityReleaseHook" in rendererSource)
-
-        val profileSource = Files.readString(profilePath)
-        assertTrue("data class RenderEntityVisualProfile" in profileSource)
-        assertTrue("compositeMode" in profileSource)
-        assertTrue("needsSceneColorCopy" in profileSource)
-        assertTrue("needsSceneDepth" in profileSource)
-        assertTrue("localChainEnabled" in profileSource)
-        assertTrue("frameEffectsEnabled" in profileSource)
-        assertTrue("renderPriority" in profileSource)
+        assertTrue("val pipeline: CooRenderPipeline<T>" in rendererSource)
+        assertTrue("fun render(input: RenderInput<T>)" in rendererSource)
+        assertTrue("class RenderInput" in inputSource)
+        assertTrue("val entity: T" in inputSource)
+        assertTrue("val tickDelta: Float" in inputSource)
+        assertFalse("RenderEntityFeatureSet" in rendererSource)
+        assertFalse("RenderContribution" in rendererSource)
+        assertFalse("describeFeatures" in rendererSource)
+        assertFalse("glowMaskConfig" in rendererSource)
+        assertFalse("FramePostRenderEntityRenderer" in rendererSource)
+        assertFalse("SharedModelMaskBloomRenderEntityRenderer" in rendererSource)
+        assertFalse("DedicatedGlowMaskRenderEntityRenderer" in rendererSource)
     }
 
     private fun readProjectFile(relativePath: String): String {

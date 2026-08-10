@@ -1,24 +1,18 @@
 package cn.coostack.cooparticlesapi.test.options.renderer.world
 
-import cn.coostack.cooparticlesapi.annotations.CooAutoRegisterRenderer
-import cn.coostack.cooparticlesapi.renderer.runtime.AutoRegisteredRenderEntityRenderer
 import cn.coostack.cooparticlesapi.CooParticlesConstants
-import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameStage
-import cn.coostack.cooparticlesapi.renderer.runtime.CompositeMode
-import cn.coostack.cooparticlesapi.renderer.runtime.LocalRenderInput
-import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityFeatureSet
-import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityInstance
-import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityVisualProfile
-import cn.coostack.cooparticlesapi.renderer.runtime.WorldPassRenderEntityRenderer
-import cn.coostack.cooparticlesapi.renderer.shader.AdvancedShaderProgramBuilder
-import cn.coostack.cooparticlesapi.renderer.shader.api.CooShaderProgram
-import cn.coostack.cooparticlesapi.renderer.shader.data.CooVertexFormat
-import cn.coostack.cooparticlesapi.renderer.shader.data.VertexData
-import cn.coostack.cooparticlesapi.renderer.shader.texture.IdentifierTexture
-import cn.coostack.cooparticlesapi.renderer.shader.texture.SimpleTextures
-import cn.coostack.cooparticlesapi.renderer.shader.vertex.DynamicVertexBuffer
+import cn.coostack.cooparticlesapi.annotations.CooAutoRegisterRenderer
+import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModel
+import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelBuilder
+import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelExecutors
+import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelPrimitiveMode
+import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelVertex
+import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelines
+import cn.coostack.cooparticlesapi.renderer.pipeline.CooUniformProvider
+import cn.coostack.cooparticlesapi.renderer.pipeline.CooUniformValue
+import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityRenderer
+import cn.coostack.cooparticlesapi.renderer.runtime.RenderInput
 import net.minecraft.resources.ResourceLocation
-import org.joml.Matrix4f
 import org.joml.Vector2f
 import org.joml.Vector3f
 import org.joml.Vector4f
@@ -26,98 +20,75 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
-/** 水球演示实体的本地 world pass renderer。 */
+/** 水球演示实体的自定义 world shader renderer。 */
 @CooAutoRegisterRenderer
-class DemoWaterBallRenderEntityRenderer :
-    WorldPassRenderEntityRenderer<DemoWaterBallRenderEntity>,
-    AutoRegisteredRenderEntityRenderer<DemoWaterBallRenderEntity> {
-    override fun initialize(instance: RenderEntityInstance<DemoWaterBallRenderEntity>) {
-        ensureProgram()
-        ensureBuffer()
-        ensureTextures()
-    }
-
-    override fun describeFeatures(entity: DemoWaterBallRenderEntity): RenderEntityFeatureSet {
-        return RenderEntityFeatureSet(
-            stages = setOf(RenderFrameStage.WORLD_PASS),
-            requestedSceneTargets = emptySet(),
-            effectTypes = emptySet(),
-            localRendererEnabled = true,
-            effectGraphEnabled = false
-        )
-    }
-
-    override fun createVisualProfile(entity: DemoWaterBallRenderEntity): RenderEntityVisualProfile {
-        return RenderEntityVisualProfile(
-            compositeMode = CompositeMode.ALPHA,
-            needsSceneColorCopy = false,
-            needsSceneDepth = false,
-            renderPriority = 190
-        )
-    }
-
-    override fun renderLocal(input: LocalRenderInput<DemoWaterBallRenderEntity>) {
-        drawWaterBall(
-            entity = input.instance.entity,
-            tickDelta = input.tickDelta,
-            viewMatrix = input.viewMatrix,
-            projMatrix = input.projMatrix,
-            modelMatrix = Matrix4f(input.modelMatrix)
-        )
-    }
-
-    private fun drawWaterBall(
-        entity: DemoWaterBallRenderEntity,
-        tickDelta: Float,
-        viewMatrix: Matrix4f,
-        projMatrix: Matrix4f,
-        modelMatrix: Matrix4f
-    ) {
-        val shader = ensureProgram()
-        val vertexBuffer = ensureBuffer()
-        val textures = ensureTextures()
-        val vertices = buildSphereVertices(entity)
-        shader.useOnContext {
-            setMatrix4("projMat", projMatrix)
-            setMatrix4("viewMat", viewMatrix)
-            setMatrix4("transMat", modelMatrix)
-            setFloat("time", entity.getTime(tickDelta))
-            setFloat("radius", entity.radius)
-            setFloat("intensity", entity.intensity)
-            setFloat4("tint", entity.effectColor)
-            setInt("noiseTex", 0)
-            vertexBuffer.setVertexes(vertices, CooVertexFormat.POINT_COLOR_TEXTURE_UV_FORMAT)
-            textures.drawWith(
-                Runnable {
-                    vertexBuffer.draw()
+class DemoWaterBallRenderEntityRenderer : RenderEntityRenderer<DemoWaterBallRenderEntity> {
+    override val pipeline = CooPipelines.entity<DemoWaterBallRenderEntity>(id("render_entity/water_ball")) {
+        world {
+            vertex(id("core/vertex/render_entity_water_ball.vsh"))
+            fragment(id("core/fragment/render_entity_water_ball.fsh"))
+            inputTexture("noiseTex", id("noise.png"))
+            uniform("time") { entity: DemoWaterBallRenderEntity -> entity.age.toFloat() }
+            uniform("radius") { entity: DemoWaterBallRenderEntity -> entity.radius }
+            uniform("intensity") { entity: DemoWaterBallRenderEntity -> entity.intensity }
+            uniformValue(
+                "tint",
+                CooUniformProvider<DemoWaterBallRenderEntity> { entity ->
+                    val color = entity.effectColor
+                    CooUniformValue.Vec4Value(color.x, color.y, color.z, color.w)
                 }
             )
         }
     }
 
-    private fun buildSphereVertices(entity: DemoWaterBallRenderEntity): List<VertexData> {
-        val vertices = ArrayList<VertexData>(LAT_SEGMENTS * LON_SEGMENTS * 6)
+    override fun render(input: RenderInput<DemoWaterBallRenderEntity>) {
+        RenderEntityModelExecutors.active().draw(buildModel(input.entity), input)
+    }
+
+    private fun buildModel(entity: DemoWaterBallRenderEntity): RenderEntityModel {
+        val model = RenderEntityModelBuilder()
+        val layer = model.layer("water_ball")
+        buildSphereVertices(entity).forEach { vertex ->
+            model.addVertex(
+                layer = layer,
+                position = vertex.position,
+                color = vertex.color,
+                uv = vertex.uv,
+                normal = vertex.normal,
+                primitiveMode = RenderEntityModelPrimitiveMode.TRIANGLES
+            )
+        }
+        return model.build()
+    }
+
+    private fun buildSphereVertices(entity: DemoWaterBallRenderEntity): List<RenderEntityModelVertex> {
+        val latitudeSegments = 24
+        val longitudeSegments = 64
+        val verticesPerQuad = 6
+        val vertices = ArrayList<RenderEntityModelVertex>(
+            latitudeSegments * longitudeSegments * verticesPerQuad
+        )
         val color = Vector4f(entity.effectColor)
-        for (lat in 0 until LAT_SEGMENTS) {
-            val v0 = lat.toFloat() / LAT_SEGMENTS.toFloat()
-            val v1 = (lat + 1).toFloat() / LAT_SEGMENTS.toFloat()
+        for (lat in 0 until latitudeSegments) {
+            val v0 = lat.toFloat() / latitudeSegments.toFloat()
+            val v1 = (lat + 1).toFloat() / latitudeSegments.toFloat()
             val theta0 = (-PI / 2.0 + PI * v0).toFloat()
             val theta1 = (-PI / 2.0 + PI * v1).toFloat()
-            for (lon in 0 until LON_SEGMENTS) {
-                val u0 = lon.toFloat() / LON_SEGMENTS.toFloat()
-                val u1 = (lon + 1).toFloat() / LON_SEGMENTS.toFloat()
+            for (lon in 0 until longitudeSegments) {
+                val u0 = lon.toFloat() / longitudeSegments.toFloat()
+                val u1 = (lon + 1).toFloat() / longitudeSegments.toFloat()
                 val phi0 = (2.0 * PI * u0).toFloat()
                 val phi1 = (2.0 * PI * u1).toFloat()
-                val a = sphereVertex(entity.radius, theta0, phi0, u0, v0, color)
-                val b = sphereVertex(entity.radius, theta1, phi0, u0, v1, color)
-                val c = sphereVertex(entity.radius, theta1, phi1, u1, v1, color)
-                val d = sphereVertex(entity.radius, theta0, phi1, u1, v0, color)
-                vertices += a
-                vertices += b
-                vertices += c
-                vertices += a
-                vertices += c
-                vertices += d
+                val first = sphereVertex(entity.radius, theta0, phi0, u0, v0, color)
+                val second = sphereVertex(entity.radius, theta1, phi0, u0, v1, color)
+                val third = sphereVertex(entity.radius, theta1, phi1, u1, v1, color)
+                val fourth = sphereVertex(entity.radius, theta0, phi1, u1, v0, color)
+                vertices += first
+                vertices += second
+                vertices += third
+                vertices += first
+                vertices += third
+                vertices += fourth
             }
         }
         return vertices
@@ -130,61 +101,20 @@ class DemoWaterBallRenderEntityRenderer :
         u: Float,
         v: Float,
         color: Vector4f
-    ): VertexData {
+    ): RenderEntityModelVertex {
         val ringRadius = cos(theta) * radius
-        return VertexData(
-            Vector3f(cos(phi) * ringRadius, sin(theta) * radius, sin(phi) * ringRadius),
-            Vector4f(color),
-            Vector2f(u, v)
+        val normal = Vector3f(cos(phi) * cos(theta), sin(theta), sin(phi) * cos(theta))
+        return RenderEntityModelVertex(
+            position = Vector3f(cos(phi) * ringRadius, sin(theta) * radius, sin(phi) * ringRadius),
+            color = Vector4f(color),
+            uv = Vector2f(u, v),
+            normal = normal
         )
     }
 
     companion object {
-        private const val LAT_SEGMENTS = 24
-        private const val LON_SEGMENTS = 64
-
-        private var program: CooShaderProgram? = null
-        private var buffer: DynamicVertexBuffer? = null
-        private var textures: SimpleTextures? = null
-
-        private fun ensureProgram(): CooShaderProgram {
-            val current = program
-            if (current != null) {
-                if (current.program == 0) current.init()
-                return current
-            }
-            return AdvancedShaderProgramBuilder()
-                .vertex("core/vertex/render_entity_water_ball.vsh")
-                .fragment("core/fragment/render_entity_water_ball.fsh")
-                .managedId("render_entity/water_ball")
-                .build()
-                .also {
-                    it.init()
-                    program = it
-                }
-        }
-
-        private fun ensureBuffer(): DynamicVertexBuffer {
-            return buffer ?: DynamicVertexBuffer().also {
-                it.init()
-                buffer = it
-            }
-        }
-
-        private fun ensureTextures(): SimpleTextures {
-            val current = textures
-            if (current != null) {
-                return current
-            }
-            return SimpleTextures().also {
-                it.addTexture(
-                    IdentifierTexture(
-                        ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "noise.png")
-                    )
-                )
-                it.init()
-                textures = it
-            }
+        private fun id(path: String): ResourceLocation {
+            return ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, path)
         }
     }
 }

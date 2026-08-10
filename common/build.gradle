@@ -32,6 +32,8 @@ dependencies {
     // fabric and neoforge both bundle mixinextras, so it is safe to use it in common
     compileOnly group: 'io.github.llamalad7', name: 'mixinextras-common', version: '0.3.5'
     compileOnly "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2"
+    compileOnly "maven.modrinth:sodium:mc1.21.1-0.6.13-neoforge"
+    compileOnly "org.sinytra.forgified-fabric-api:fabric-renderer-api-v1:3.4.0+9c40919e19"
     annotationProcessor group: 'io.github.llamalad7', name: 'mixinextras-common', version: '0.3.5'
     compileOnly fileTree(dir: "../compile_only_depend", includes: ["*.jar"])
     implementation fileTree(dir: "../depend", includes: ["*.jar"])
@@ -81,4 +83,16 @@ tasks.withType(Test).configureEach {
 }
 repositories {
     mavenCentral()
+    maven {
+        url = uri("https://api.modrinth.com/maven")
+        content {
+            includeGroup("maven.modrinth")
+        }
+    }
+    maven {
+        url = uri("https://maven.su5ed.dev/releases")
+        content {
+            includeGroup("org.sinytra.forgified-fabric-api")
+        }
+    }
 }

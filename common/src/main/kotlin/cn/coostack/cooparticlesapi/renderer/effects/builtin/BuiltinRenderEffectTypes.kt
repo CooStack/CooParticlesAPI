@@ -6,9 +6,7 @@ import net.minecraft.resources.ResourceLocation
 /**
  * 仓库内置 effect type 常量表。
  */
-object BuiltinRenderEffectTypes {
-    /** 基于模型/贴图内容 mask 的 bloom 效果类型。 */
-    val MASK_BLOOM: ResourceLocation = id("effect/mask_bloom")
+internal object BuiltinRenderEffectTypes {
     /** 世界光照合成效果类型。 */
     val WORLD_LIGHT: ResourceLocation = id("effect/world_light")
     /** compute dispatch 效果类型。 */

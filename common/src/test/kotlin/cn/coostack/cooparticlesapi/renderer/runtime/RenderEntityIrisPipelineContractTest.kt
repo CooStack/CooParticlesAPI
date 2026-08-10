@@ -3,11 +3,12 @@ package cn.coostack.cooparticlesapi.renderer.runtime
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class RenderEntityIrisPipelineContractTest {
     @Test
-    fun `raw world pass renderers explicitly opt into iris`() {
+    fun `iris execution is internal to runtime`() {
         val rendererApi = readProjectFile(
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/runtime/RenderEntityRenderer.kt"
         )
@@ -15,10 +16,9 @@ class RenderEntityIrisPipelineContractTest {
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/runtime/RenderEntityInstance.kt"
         )
 
-        assertTrue("enum class IrisWorldPassMode" in rendererApi)
-        assertTrue("interface IrisWorldPassRenderEntityRenderer" in rendererApi)
-        assertTrue("fun irisWorldPassMode(entity: T): IrisWorldPassMode" in rendererApi)
-        assertTrue("IrisCompat.runWithEntityShader(irisMode)" in instance)
+        assertFalse("IrisWorldPassMode" in rendererApi)
+        assertFalse("IrisWorldPassRenderEntityRenderer" in rendererApi)
+        assertTrue("IrisCompat.runWithRenderEntityShader" in instance)
         assertTrue("irisWorldPassSubmitted" in instance)
     }
 
@@ -36,8 +36,6 @@ class RenderEntityIrisPipelineContractTest {
 
         assertTrue("renderIrisWorldPass" in levelMixin)
         assertTrue("renderIrisWorldPass" in manager)
-        assertTrue("GameRenderer.getRendertypeEntitySolidShader()" in irisCompat)
-        assertTrue("GameRenderer.getRendertypeEntityCutoutShader()" in irisCompat)
         assertTrue("GameRenderer.getRendertypeEntityTranslucentShader()" in irisCompat)
         assertTrue("entityShader.apply()" in irisCompat)
         assertTrue("entityShader.clear()" in irisCompat)

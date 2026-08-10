@@ -5,7 +5,7 @@ import net.minecraft.resources.ResourceLocation
 /**
  * effectType 到 executor 的注册表。
  */
-object RenderEffectRegistry {
+internal object RenderEffectRegistry {
     private val executors = LinkedHashMap<ResourceLocation, RenderEffectExecutor>()
 
     /**

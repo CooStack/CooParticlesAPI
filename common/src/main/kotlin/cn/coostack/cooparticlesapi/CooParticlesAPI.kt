@@ -20,6 +20,7 @@ import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
 import cn.coostack.cooparticlesapi.renderer.server.ServerRenderEntityManager
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityAutoRegistry
+import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainEffectManager
 import cn.coostack.cooparticlesapi.scheduler.CooScheduler
 import cn.coostack.cooparticlesapi.supports.sound.ServerSoundLoopManager
 import cn.coostack.cooparticlesapi.supports.sound.ServerSoundManager
@@ -133,6 +134,7 @@ object CooParticlesAPI {
         ParticleCompositionManager.clearServer()
         DisplayEntityManager.clearServer()
         ServerRenderEntityManager.clear()
+        CooTerrainEffectManager.clearServerGroups()
         TestManager.clearServer()
     }
 
@@ -159,6 +161,7 @@ object CooParticlesAPI {
         ParticleCompositionManager.tickServer()
         AnimateManager.tickServer()
         TestManager.doTickServer()
+        CooTerrainEffectManager.tick(server)
         CooServerPacketManager.tick()
     }
 }

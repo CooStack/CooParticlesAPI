@@ -3,7 +3,7 @@ package cn.coostack.cooparticlesapi.renderer.compute
 import cn.coostack.cooparticlesapi.renderer.effects.builtin.ComputeDispatchRenderRequest
 import org.lwjgl.opengl.GL43.glMemoryBarrier
 
-object ComputeDispatchRenderer {
+internal object ComputeDispatchRenderer {
     fun renderRequests(requests: List<ComputeDispatchRenderRequest>) {
         requests.forEach { request ->
             val program = request.program

@@ -11,6 +11,7 @@ import cn.coostack.cooparticlesapi.renderer.backend.VanillaSafeRenderBackend
 import cn.coostack.cooparticlesapi.renderer.post.PostEffectFrameExecutor
 import com.mojang.blaze3d.pipeline.RenderTarget
 import net.minecraft.client.Minecraft
+import net.minecraft.resources.ResourceLocation
 import org.joml.Matrix4f
 
 object ClientRenderPipelineManager {
@@ -159,6 +160,10 @@ object ClientRenderPipelineManager {
         return context.sceneDepthTextureId
             ?: context.sceneResources.get(RenderSceneTargets.SCENE_DEPTH)?.depthTextureId
             ?: minecraft.mainRenderTarget.depthTextureId
+    }
+
+    internal fun currentSceneResourceTextureId(id: ResourceLocation, attachment: Int = 0): Int? {
+        return currentFrameContext?.sceneResources?.get(id)?.colorTextureId(attachment)
     }
 
     fun currentFinalCompositeTarget(): RenderTarget {

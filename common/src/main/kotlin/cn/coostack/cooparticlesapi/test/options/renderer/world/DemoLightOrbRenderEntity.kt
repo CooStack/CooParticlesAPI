@@ -18,17 +18,16 @@ class DemoLightOrbRenderEntity() : AutoRenderEntity(null, Vec3.ZERO), DemoWorldR
     }
 
     @CodecField
-    override var radius: Float = 1.1f
+    override var radius: Float = 1.1F
 
     @CodecField
-    override var intensity: Float = 1.15f
+    override var intensity: Float = 1.15F
 
     @CodecField
     override var durationTicks: Int = 120
 
-    override val modelPipeKey: String = "light_orb"
     override val displayName: String = "render_entity/light_orb"
-    override val effectColor: Vector4f = Vector4f(0.48f, 0.88f, 1.0f, 0.7f)
+    override val effectColor: Vector4f = Vector4f(0.48F, 0.88F, 1.0F, 0.7F)
 
     override fun serverTick() {
         if (durationTicks in 1..age) remove()

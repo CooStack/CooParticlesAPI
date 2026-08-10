@@ -10,12 +10,12 @@ import net.minecraft.network.codec.StreamCodec
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload
 import net.minecraft.resources.ResourceLocation
 
-class PacketRendererPostEffectS2C(
-    val operation: Operation,
-    val state: SyncedPostEffectState?,
-    val instanceId: String
+class PacketRendererPostEffectS2C private constructor(
+    internal val operation: Operation,
+    internal val state: SyncedPostEffectState?,
+    internal val instanceId: String
 ) : CustomPacketPayload {
-    enum class Operation(val id: Int) {
+    internal enum class Operation(val id: Int) {
         CREATE(0),
         UPDATE(1),
         REMOVE(2);
@@ -46,15 +46,15 @@ class PacketRendererPostEffectS2C(
                 PacketRendererPostEffectS2C(operation, state, instanceId)
             })
 
-        fun create(state: SyncedPostEffectState): PacketRendererPostEffectS2C {
+        internal fun create(state: SyncedPostEffectState): PacketRendererPostEffectS2C {
             return PacketRendererPostEffectS2C(Operation.CREATE, state, state.instanceId)
         }
 
-        fun update(state: SyncedPostEffectState): PacketRendererPostEffectS2C {
+        internal fun update(state: SyncedPostEffectState): PacketRendererPostEffectS2C {
             return PacketRendererPostEffectS2C(Operation.UPDATE, state, state.instanceId)
         }
 
-        fun remove(instanceId: String): PacketRendererPostEffectS2C {
+        internal fun remove(instanceId: String): PacketRendererPostEffectS2C {
             return PacketRendererPostEffectS2C(Operation.REMOVE, null, instanceId)
         }
 
@@ -64,6 +64,8 @@ class PacketRendererPostEffectS2C(
             PostEffectBinding.writeTyped(buf, binding)
             lifecycle.write(buf)
             params.write(buf)
+            buf.writeInt(uniformNames.size)
+            uniformNames.sorted().forEach(buf::writeUtf)
             buf.writeUtf(sourceId)
             buf.writeInt(priority)
         }
@@ -75,6 +77,9 @@ class PacketRendererPostEffectS2C(
                 binding = PostEffectBinding.readTyped(buf),
                 lifecycle = PostEffectLifecycle.read(buf),
                 params = PostEffectParams.read(buf),
+                uniformNames = buildSet {
+                    repeat(buf.readInt()) { add(buf.readUtf()) }
+                },
                 sourceId = buf.readUtf(),
                 priority = buf.readInt()
             )

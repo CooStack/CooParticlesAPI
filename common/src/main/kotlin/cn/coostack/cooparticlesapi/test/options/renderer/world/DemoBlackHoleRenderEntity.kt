@@ -18,17 +18,16 @@ class DemoBlackHoleRenderEntity() : AutoRenderEntity(null, Vec3.ZERO), DemoWorld
     }
 
     @CodecField
-    override var radius: Float = 1.35f
+    override var radius: Float = 1.35F
 
     @CodecField
-    override var intensity: Float = 1.0f
+    override var intensity: Float = 1.0F
 
     @CodecField
     override var durationTicks: Int = 120
 
-    override val modelPipeKey: String = "black_hole"
     override val displayName: String = "render_entity/black_hole"
-    override val effectColor: Vector4f = Vector4f(0.10f, 0.04f, 0.18f, 0.82f)
+    override val effectColor: Vector4f = Vector4f(0.10F, 0.04F, 0.18F, 0.82F)
 
     override fun serverTick() {
         if (durationTicks in 1..age) remove()

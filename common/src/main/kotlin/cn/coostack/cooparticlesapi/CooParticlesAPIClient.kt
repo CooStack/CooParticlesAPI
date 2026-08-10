@@ -22,16 +22,16 @@ import cn.coostack.cooparticlesapi.renderer.backend.RenderBackend
 import cn.coostack.cooparticlesapi.renderer.backend.VanillaSafeRenderBackend
 import cn.coostack.cooparticlesapi.renderer.client.ClientRenderEntityManager
 import cn.coostack.cooparticlesapi.renderer.client.ClientRenderPipelineManager
-import cn.coostack.cooparticlesapi.renderer.effects.RenderEffectRegistry
-import cn.coostack.cooparticlesapi.renderer.effects.builtin.BuiltinRenderEffectTypes
-import cn.coostack.cooparticlesapi.renderer.effects.builtin.OpenGlMaskBloomEffectExecutor
 import cn.coostack.cooparticlesapi.renderer.model.OpenGlRenderEntityModelExecutor
 import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelExecutors
 import cn.coostack.cooparticlesapi.renderer.post.CooPostEffects
 import cn.coostack.cooparticlesapi.renderer.post.OpenGlPostEffectExecutionBackend
 import cn.coostack.cooparticlesapi.renderer.post.PostEffectFrameExecutor
 import cn.coostack.cooparticlesapi.renderer.post.PostEffectRuntimeRegistry
+import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelineRuntimeEffect
 import cn.coostack.cooparticlesapi.renderer.shader.ShaderProgramRegistry
+import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainEffectRegistry
+import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainPipelineManager
 import cn.coostack.cooparticlesapi.scheduler.CooScheduler
 import cn.coostack.cooparticlesapi.supports.sound.ClientSoundManager
 import cn.coostack.cooparticlesapi.supports.sound.ClientSoundLoopManager
@@ -39,6 +39,8 @@ import cn.coostack.cooparticlesapi.test.TestControlKeyBindings
 import cn.coostack.cooparticlesapi.test.TestManager
 import cn.coostack.cooparticlesapi.test.block.client.TestControllerPickClient
 import cn.coostack.cooparticlesapi.test.options.display.TestDisplayerStyle
+import cn.coostack.cooparticlesapi.test.options.renderer.PostEffectDemoOptions
+import cn.coostack.cooparticlesapi.test.options.renderer.pipeline.RenderPipelineExamples
 import cn.coostack.cooparticlesapi.test.options.particle.client.BarrierSwordGroupClient
 import cn.coostack.cooparticlesapi.test.options.particle.client.ScaleCircleGroupClient
 import cn.coostack.cooparticlesapi.test.options.particle.client.SequencedMagicCircleClient
@@ -67,6 +69,7 @@ object CooParticlesAPIClient {
      */
     @JvmStatic
     fun init() {
+        irisLoaded = CooParticlesServices.PLATFORM.isModLoaded("iris")
         CParticleSystemManager.configureParticleCountLimit(
             CooParticlesServices.API_CONFIG_MANAGER.getConfig().cparticleCountLimit
         )
@@ -76,7 +79,6 @@ object CooParticlesAPIClient {
         initStyle()
         initParticleType()
         initRender()
-        irisLoaded = CooParticlesServices.PLATFORM.isModLoaded("iris")
     }
 
     @JvmStatic
@@ -167,7 +169,6 @@ object CooParticlesAPIClient {
         ClientRenderPipelineManager.setActiveBackend(selectedRenderBackend)
         RenderEntityModelExecutors.install(OpenGlRenderEntityModelExecutor)
         PostEffectFrameExecutor.installBackend(OpenGlPostEffectExecutionBackend)
-        RenderEffectRegistry.register(BuiltinRenderEffectTypes.MASK_BLOOM, OpenGlMaskBloomEffectExecutor)
         CParticleCapabilities.detect()
         CParticleGpuSimulator.initializeProgramIfSupported()
         ShaderProgramRegistry.reinitializeAll()
@@ -179,7 +180,6 @@ object CooParticlesAPIClient {
         renderInit = false
         CParticleSystemManager.onResourceReload()
         OpenGlRenderEntityModelExecutor.release()
-        OpenGlMaskBloomEffectExecutor.release()
         RenderEntityModelExecutors.reset()
         PostEffectFrameExecutor.releaseBackendResources()
         PostEffectFrameExecutor.resetBackend()
@@ -189,8 +189,12 @@ object CooParticlesAPIClient {
     }
 
     private fun initRender() {
+        CooTerrainPipelineManager.initialize()
+        RenderPipelineExamples.registerBlockExamples()
+        PostEffectDemoOptions.init()
         CooRenderTypeResourceRegistry.reloadFromClasspath()
         PostEffectRuntimeRegistry.initOnClient()
+        CooPipelineRuntimeEffect.initOnClient()
         CooParticleTextureSheet.init()
     }
 
@@ -223,6 +227,8 @@ object CooParticlesAPIClient {
         ControlParticleManager.clearClient()
         CParticleSystemManager.clear()
         ClientRenderEntityManager.clear()
+        CooTerrainEffectRegistry.clear()
+        CooTerrainPipelineManager.releaseResources()
         CooPostEffects.client.clear()
         DataHolderManager.clearClient()
         TestManager.clearClient()

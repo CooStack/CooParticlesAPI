@@ -2,35 +2,20 @@ package cn.coostack.cooparticlesapi.test.options.renderer.world
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.annotations.CooAutoRegisterRenderer
-import cn.coostack.cooparticlesapi.display.CooParticlesRenderTypes
-import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameStage
-import cn.coostack.cooparticlesapi.renderer.runtime.LocalRenderInput
-import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityFeatureSet
-import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityInstance
-import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityVisualProfile
-import cn.coostack.cooparticlesapi.renderer.runtime.IrisRenderTypeProxyRenderer
-import cn.coostack.cooparticlesapi.renderer.runtime.AutoRegisteredRenderEntityRenderer
-import cn.coostack.cooparticlesapi.renderer.runtime.RenderTypeRenderInput
-import cn.coostack.cooparticlesapi.renderer.runtime.WorldPassRenderEntityRenderer
-import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModel
-import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelBuilder
-import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelPipe
-import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelPrimitive
-import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelPrimitiveMode
-import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelVertex
+import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelines
+import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityRenderer
+import cn.coostack.cooparticlesapi.renderer.runtime.RenderInput
 import cn.coostack.cooparticlesapi.renderer.shader.ShaderProgramBuilder
 import cn.coostack.cooparticlesapi.renderer.shader.api.CooShaderProgram
 import cn.coostack.cooparticlesapi.renderer.shader.data.CooVertexFormat
 import cn.coostack.cooparticlesapi.renderer.shader.data.VertexData
 import cn.coostack.cooparticlesapi.renderer.shader.vertex.SimpleVertexBuffer
 import com.mojang.blaze3d.systems.RenderSystem
-import net.minecraft.client.renderer.RenderType
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.phys.Vec3
 import org.joml.Matrix4f
 import org.joml.Quaternionf
 import org.joml.Vector2f
-import org.joml.Vector2i
 import org.joml.Vector3f
 import org.joml.Vector4f
 import kotlin.math.PI
@@ -40,71 +25,12 @@ import kotlin.math.sin
 
 /** Iris 直线激光演示实体的本地渲染与代理模型 renderer。 */
 @CooAutoRegisterRenderer
-class DemoIrisStraightLaserRenderEntityRenderer :
-    WorldPassRenderEntityRenderer<DemoIrisStraightLaserRenderEntity>,
-    IrisRenderTypeProxyRenderer<DemoIrisStraightLaserRenderEntity>,
-    AutoRegisteredRenderEntityRenderer<DemoIrisStraightLaserRenderEntity> {
-    override fun initialize(instance: RenderEntityInstance<DemoIrisStraightLaserRenderEntity>) {
+class DemoIrisStraightLaserRenderEntityRenderer : RenderEntityRenderer<DemoIrisStraightLaserRenderEntity> {
+    override val pipeline = CooPipelines.DEFAULT
+
+    override fun render(input: RenderInput<DemoIrisStraightLaserRenderEntity>) {
         initStatic()
-    }
-
-    override fun describeFeatures(entity: DemoIrisStraightLaserRenderEntity): RenderEntityFeatureSet {
-        return RenderEntityFeatureSet(
-            stages = setOf(RenderFrameStage.WORLD_PASS),
-            localRendererEnabled = true,
-            effectGraphEnabled = false
-        )
-    }
-
-    override fun createVisualProfile(entity: DemoIrisStraightLaserRenderEntity): RenderEntityVisualProfile {
-        return RenderEntityVisualProfile(renderPriority = 190)
-    }
-
-    override fun irisProxyRenderType(
-        input: RenderTypeRenderInput<DemoIrisStraightLaserRenderEntity>,
-        primitive: RenderEntityModelPrimitive
-    ): RenderType? {
-        if (primitive.primitiveMode != RenderEntityModelPrimitiveMode.QUADS) {
-            return null
-        }
-        return CooParticlesRenderTypes.entityCutoutEmissive(
-            LASER_IMPACT_NOISE_TEXTURE,
-            input.instance.entity.brightness
-        )
-    }
-
-    override fun buildIrisProxyModel(entity: DemoIrisStraightLaserRenderEntity, tickDelta: Float): RenderEntityModel {
-        val start = entity.renderStart(tickDelta)
-        val end = entity.renderEnd(tickDelta)
-        val length = entity.beamLength(start, end)
-        if (length <= DemoIrisStraightLaserRenderEntity.MIN_BEAM_LENGTH) {
-            return RenderEntityModelBuilder().build()
-        }
-        val alpha = entity.currentAlpha(tickDelta) * entity.irisMaskAlpha.coerceIn(0f, 1f)
-        if (alpha <= MIN_VISIBLE_ALPHA) {
-            return RenderEntityModelBuilder().build()
-        }
-        val builder = RenderEntityModelBuilder()
-        val maskPipe = builder.pipe(IRIS_MASK_PIPE)
-        appendIrisProxyBeam(
-            builder = builder,
-            pipe = maskPipe,
-            start = start,
-            end = end,
-            anchor = entity.pos,
-            radius = entity.currentRadius(tickDelta) * 1.24f,
-            color = Vector4f(entity.color.x, entity.color.y, entity.color.z, alpha),
-            coneEndRatio = coneRatio(length),
-            radialSegments = 24,
-            axialSegments = 48,
-            textureRepeat = MASK_TEXTURE_REPEAT
-        )
-        return builder.build()
-    }
-
-    override fun renderLocal(input: LocalRenderInput<DemoIrisStraightLaserRenderEntity>) {
-        initStatic()
-        val entity = input.instance.entity
+        val entity = input.entity
         val start = entity.renderStart(input.tickDelta)
         val end = entity.renderEnd(input.tickDelta)
         val length = entity.beamLength(start, end)
@@ -115,7 +41,7 @@ class DemoIrisStraightLaserRenderEntityRenderer :
         if (alpha <= MIN_VISIBLE_ALPHA) {
             return
         }
-        val pulse = 0.5f + 0.5f * sin((entity.age + input.tickDelta) * 0.42f)
+        val pulse = 0.5F + 0.5F * sin((entity.age + input.tickDelta) * 0.42F)
         renderPasses(
             entity = entity,
             modelMatrix = orientedModelMatrix(input.modelMatrix, start, end, entity.pos),
@@ -159,10 +85,10 @@ class DemoIrisStraightLaserRenderEntityRenderer :
                 viewMatrix = viewMatrix,
                 projMatrix = projMatrix,
                 beamLength = beamLength,
-                beamRadius = radius * (1.18f + pulse * 0.10f),
+                beamRadius = radius * (1.18F + pulse * 0.10F),
                 passColor = entity.color,
-                passAlpha = (passAlpha * 0.34f).coerceAtMost(0.48f),
-                brightness = 0.64f,
+                passAlpha = (passAlpha * 0.34F).coerceAtMost(0.48F),
+                brightness = 0.64F,
                 phaseProgress = phaseProgress,
                 collapse = collapse,
                 time = time,
@@ -174,10 +100,10 @@ class DemoIrisStraightLaserRenderEntityRenderer :
                 viewMatrix = viewMatrix,
                 projMatrix = projMatrix,
                 beamLength = beamLength,
-                beamRadius = radius * 1.18f,
-                passColor = mixColor(entity.color, Vector3f(1.0f, 0.97f, 0.90f), 0.28f),
-                passAlpha = (passAlpha * 0.10f).coerceAtMost(0.18f),
-                brightness = 0.74f,
+                beamRadius = radius * 1.18F,
+                passColor = mixColor(entity.color, Vector3f(1.0F, 0.97F, 0.90F), 0.28F),
+                passAlpha = (passAlpha * 0.10F).coerceAtMost(0.18F),
+                brightness = 0.74F,
                 phaseProgress = phaseProgress,
                 collapse = collapse,
                 time = time,
@@ -190,10 +116,10 @@ class DemoIrisStraightLaserRenderEntityRenderer :
                 viewMatrix = viewMatrix,
                 projMatrix = projMatrix,
                 beamLength = beamLength,
-                beamRadius = radius * 0.30f,
-                passColor = mixColor(entity.color, Vector3f(1.0f, 0.98f, 0.92f), 0.62f),
-                passAlpha = (passAlpha * 0.12f).coerceAtMost(0.22f),
-                brightness = 1.16f,
+                beamRadius = radius * 0.30F,
+                passColor = mixColor(entity.color, Vector3f(1.0F, 0.98F, 0.92F), 0.62F),
+                passAlpha = (passAlpha * 0.12F).coerceAtMost(0.22F),
+                brightness = 1.16F,
                 phaseProgress = phaseProgress,
                 collapse = collapse,
                 time = time,
@@ -205,10 +131,10 @@ class DemoIrisStraightLaserRenderEntityRenderer :
                 viewMatrix = viewMatrix,
                 projMatrix = projMatrix,
                 beamLength = beamLength,
-                beamRadius = radius * 2.80f,
+                beamRadius = radius * 2.80F,
                 passColor = entity.color,
-                passAlpha = (passAlpha * 0.13f).coerceAtMost(0.24f),
-                brightness = 1.95f,
+                passAlpha = (passAlpha * 0.13F).coerceAtMost(0.24F),
+                brightness = 1.95F,
                 phaseProgress = phaseProgress,
                 collapse = collapse,
                 time = time,
@@ -242,8 +168,12 @@ class DemoIrisStraightLaserRenderEntityRenderer :
         }
         ensureBeamGeometry(beamLength)
         beamShader.useOnContext {
-            val brightnessScale = entity.brightness.coerceAtLeast(0f)
-            RenderSystem.setShaderTexture(0, LASER_IMPACT_NOISE_TEXTURE)
+            val brightnessScale = entity.brightness.coerceAtLeast(0F)
+            val impactNoiseTexture = ResourceLocation.fromNamespaceAndPath(
+                CooParticlesConstants.MOD_ID,
+                "textures/effect/straight_laser_impact_noise.png"
+            )
+            RenderSystem.setShaderTexture(0, impactNoiseTexture)
             setInt("impactNoise", 0)
             setMatrix4("modelMatrix", modelMatrix)
             setMatrix4("viewMatrix", viewMatrix)
@@ -251,8 +181,8 @@ class DemoIrisStraightLaserRenderEntityRenderer :
             setFloat("beamRadius", beamRadius.coerceAtLeast(DemoIrisStraightLaserRenderEntity.MIN_RADIUS))
             setFloat("beamLength", beamLength.coerceAtLeast(DemoIrisStraightLaserRenderEntity.MIN_BEAM_LENGTH))
             setFloat3("color", passColor)
-            setFloat("alpha", (passAlpha * alphaMultiplierFromBrightness(brightnessScale)).coerceAtMost(1f))
-            setFloat("brightness", brightness * brightnessScale * BRIGHTNESS_MULTIPLIER)
+            setFloat("alpha", (passAlpha * alphaMultiplierFromBrightness(brightnessScale)).coerceAtMost(1F))
+            setFloat("brightness", brightness * brightnessScale * 0.82F)
             setFloat("phaseProgress", phaseProgress)
             setFloat("collapse", collapse)
             setFloat("time", time)
@@ -279,9 +209,9 @@ class DemoIrisStraightLaserRenderEntityRenderer :
             (start.z - anchor.z).toFloat()
         ).rotate(
             Quaternionf().rotationTo(
-                0f,
-                1f,
-                0f,
+                0F,
+                1F,
+                0F,
                 direction.x.toFloat(),
                 direction.y.toFloat(),
                 direction.z.toFloat()
@@ -289,104 +219,18 @@ class DemoIrisStraightLaserRenderEntityRenderer :
         )
     }
 
-    private fun appendIrisProxyBeam(
-        builder: RenderEntityModelBuilder,
-        pipe: RenderEntityModelPipe,
-        start: Vec3,
-        end: Vec3,
-        anchor: Vec3,
-        radius: Float,
-        color: Vector4f,
-        coneEndRatio: Float,
-        radialSegments: Int,
-        axialSegments: Int,
-        textureRepeat: Float
-    ) {
-        val length = start.distanceTo(end).toFloat()
-        if (length <= DemoIrisStraightLaserRenderEntity.MIN_BEAM_LENGTH) {
-            return
-        }
-        val direction = end.subtract(start).normalize()
-        val rotation = Quaternionf().rotationTo(
-            0f,
-            1f,
-            0f,
-            direction.x.toFloat(),
-            direction.y.toFloat(),
-            direction.z.toFloat()
-        )
-        val offset = Vector3f(
-            (start.x - anchor.x).toFloat(),
-            (start.y - anchor.y).toFloat(),
-            (start.z - anchor.z).toFloat()
-        )
-        val stops = buildProxyAxialStops(axialSegments, coneEndRatio)
-        for (segment in 0 until radialSegments) {
-            val angle0 = (PI.toFloat() * 2f * segment) / radialSegments.toFloat()
-            val angle1 = (PI.toFloat() * 2f * (segment + 1)) / radialSegments.toFloat()
-            for (axial in 0 until stops.size - 1) {
-                val y0 = stops[axial]
-                val y1 = stops[axial + 1]
-                val u0 = segment.toFloat() / radialSegments.toFloat()
-                val u1 = (segment + 1).toFloat() / radialSegments.toFloat()
-                val a = proxyVertex(angle0, y0, u0, radius, length, coneEndRatio, color, rotation, offset, textureRepeat)
-                val b = proxyVertex(angle1, y0, u1, radius, length, coneEndRatio, color, rotation, offset, textureRepeat)
-                val c = proxyVertex(angle1, y1, u1, radius, length, coneEndRatio, color, rotation, offset, textureRepeat)
-                val d = proxyVertex(angle0, y1, u0, radius, length, coneEndRatio, color, rotation, offset, textureRepeat)
-                builder.addRenderTypeQuad(pipe, a, b, c, d)
-            }
-        }
-    }
-
-    private fun proxyVertex(
-        angle: Float,
-        y: Float,
-        u: Float,
-        radius: Float,
-        length: Float,
-        coneEndRatio: Float,
-        color: Vector4f,
-        rotation: Quaternionf,
-        offset: Vector3f,
-        textureRepeat: Float
-    ): RenderEntityModelVertex {
-        val radiusScale = proxyConeRadiusScale(y, coneEndRatio)
-        val normal = Vector3f(cos(angle), 0f, sin(angle)).normalize()
-        val local = Vector3f(normal.x * radius * radiusScale, y * length, normal.z * radius * radiusScale)
-        rotation.transform(local)
-        rotation.transform(normal)
-        local.add(offset)
-        return RenderEntityModelVertex(
-            position = local,
-            color = color,
-            uv = Vector2f(u, y * textureRepeat),
-            uv1 = Vector2i(0, 10),
-            uv2 = Vector2i(0xF000F0 and 0xFFFF, 0xF000F0 ushr 16),
-            normal = normal
-        )
-    }
-
     companion object {
-        private const val MIN_VISIBLE_ALPHA = 0.001f
-        private const val CONE_LENGTH_FRACTION = 0.10f
-        private const val MAX_CONE_LENGTH = 10.0f
-        private const val BRIGHTNESS_MULTIPLIER = 0.82f
-        private const val MASK_TEXTURE_REPEAT = 3.2f
-        private const val IRIS_MASK_PIPE = "iris_straight_laser_entity_mask"
+        private const val MIN_VISIBLE_ALPHA = 0.001F
+        private const val CONE_LENGTH_FRACTION = 0.10F
+        private const val MAX_CONE_LENGTH = 10.0F
         private const val LAYER_OUTER_TEXTURE = 0
         private const val LAYER_INNER_GLOW = 1
         private const val LAYER_OUTER_BLOOM = 2
 
-        private val LASER_IMPACT_NOISE_TEXTURE: ResourceLocation =
-            ResourceLocation.fromNamespaceAndPath(
-                CooParticlesConstants.MOD_ID,
-                "textures/effect/straight_laser_impact_noise.png"
-            )
-
         private lateinit var beamVertexBuffer: SimpleVertexBuffer
         private lateinit var beamShader: CooShaderProgram
         private var initialized = false
-        private var beamGeometryConeRatio = -1f
+        private var beamGeometryConeRatio = -1F
 
         private fun initStatic() {
             if (initialized) {
@@ -407,8 +251,8 @@ class DemoIrisStraightLaserRenderEntityRenderer :
         private fun ensureBeamGeometry(beamLength: Float) {
             val coneRatio = (MAX_CONE_LENGTH / beamLength.coerceAtLeast(DemoIrisStraightLaserRenderEntity.MIN_BEAM_LENGTH))
                 .coerceAtMost(CONE_LENGTH_FRACTION)
-                .coerceIn(0.001f, 1.0f)
-            if (abs(beamGeometryConeRatio - coneRatio) <= 0.0001f) {
+                .coerceIn(0.001F, 1.0F)
+            if (abs(beamGeometryConeRatio - coneRatio) <= 0.0001F) {
                 return
             }
             beamVertexBuffer.setVertexes(buildCylinderVertices(coneRatio), CooVertexFormat.POINT_FORMAT)
@@ -421,8 +265,8 @@ class DemoIrisStraightLaserRenderEntityRenderer :
             val yStops = buildAxialStops(axialSegments, coneEndRatio)
             val vertices = ArrayList<VertexData>(segments * (yStops.size - 1) * 6)
             for (segment in 0 until segments) {
-                val angle0 = (PI.toFloat() * 2f * segment) / segments.toFloat()
-                val angle1 = (PI.toFloat() * 2f * (segment + 1)) / segments.toFloat()
+                val angle0 = (PI.toFloat() * 2F * segment) / segments.toFloat()
+                val angle1 = (PI.toFloat() * 2F * (segment + 1)) / segments.toFloat()
                 val x0 = cos(angle0)
                 val z0 = sin(angle0)
                 val x1 = cos(angle1)
@@ -446,26 +290,11 @@ class DemoIrisStraightLaserRenderEntityRenderer :
             val stops = ArrayList<Float>(axialSegments + 2)
             for (index in 0..axialSegments) {
                 val y = index.toFloat() / axialSegments.toFloat()
-                if (stops.none { abs(it - y) <= 0.0001f }) {
+                if (stops.none { abs(it - y) <= 0.0001F }) {
                     stops += y
                 }
             }
-            if (stops.none { abs(it - coneEndRatio) <= 0.0001f }) {
-                stops += coneEndRatio
-            }
-            stops.sort()
-            return stops
-        }
-
-        private fun buildProxyAxialStops(axialSegments: Int, coneEndRatio: Float): List<Float> {
-            val stops = ArrayList<Float>(axialSegments + 2)
-            for (index in 0..axialSegments) {
-                val y = index.toFloat() / axialSegments.toFloat()
-                if (stops.none { abs(it - y) <= 0.0001f }) {
-                    stops += y
-                }
-            }
-            if (stops.none { abs(it - coneEndRatio) <= 0.0001f }) {
+            if (stops.none { abs(it - coneEndRatio) <= 0.0001F }) {
                 stops += coneEndRatio
             }
             stops.sort()
@@ -475,21 +304,14 @@ class DemoIrisStraightLaserRenderEntityRenderer :
         private fun coneRatio(length: Float): Float {
             return (MAX_CONE_LENGTH / length.coerceAtLeast(DemoIrisStraightLaserRenderEntity.MIN_BEAM_LENGTH))
                 .coerceAtMost(CONE_LENGTH_FRACTION)
-                .coerceIn(0.001f, 1.0f)
+                .coerceIn(0.001F, 1.0F)
         }
 
         private fun coneRadiusScale(y: Float, coneEndRatio: Float): Float {
             if (y >= coneEndRatio) {
-                return 1.0f
+                return 1.0F
             }
-            return DemoIrisStraightLaserRenderEntity.smoothstep(0.0f, coneEndRatio, y)
-        }
-
-        private fun proxyConeRadiusScale(y: Float, coneEndRatio: Float): Float {
-            if (y >= coneEndRatio) {
-                return 1.0f
-            }
-            return DemoIrisStraightLaserRenderEntity.smoothstep(0.0f, coneEndRatio, y)
+            return DemoIrisStraightLaserRenderEntity.smoothstep(0.0F, coneEndRatio, y)
         }
 
         private fun appendQuad(
@@ -515,7 +337,7 @@ class DemoIrisStraightLaserRenderEntityRenderer :
         }
 
         private fun mixColor(from: Vector3f, to: Vector3f, alpha: Float): Vector3f {
-            val t = alpha.coerceIn(0f, 1f)
+            val t = alpha.coerceIn(0F, 1F)
             return Vector3f(
                 DemoIrisStraightLaserRenderEntity.mix(from.x, to.x, t),
                 DemoIrisStraightLaserRenderEntity.mix(from.y, to.y, t),
@@ -524,10 +346,10 @@ class DemoIrisStraightLaserRenderEntityRenderer :
         }
 
         private fun alphaMultiplierFromBrightness(brightness: Float): Float {
-            if (brightness <= 1f) {
-                return brightness.coerceIn(0.05f, 1f)
+            if (brightness <= 1F) {
+                return brightness.coerceIn(0.05F, 1F)
             }
-            return (1f + (brightness - 1f) * 0.42f).coerceAtMost(3.5f)
+            return (1F + (brightness - 1F) * 0.42F).coerceAtMost(3.5F)
         }
     }
 }

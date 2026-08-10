@@ -40,21 +40,19 @@ class RenderEntityPlatformArchitectureTest {
     }
 
     @Test
-    fun `renderer interface exposes descriptor api without frame effect compatibility bridge`() {
+    fun `renderer interface exposes only pipeline and render`() {
         val source = readProjectFile(
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/runtime/RenderEntityRenderer.kt"
         )
 
-        assertTrue("fun describeFeatures(entity: T): RenderEntityFeatureSet" in source)
-        assertTrue("interface WorldPassRenderEntityRenderer" in source)
-        assertTrue("interface FramePostRenderEntityRenderer" in source)
-        assertTrue("interface RenderEntityReleaseHook" in source)
-        assertFalse("collectFrameEffects(" in source)
-        assertFalse("FrameEffectInput" in source)
-        assertFalse("asFrameEffectCollector(" in source)
-        assertTrue("fun renderLocal(input: LocalRenderInput<T>)" in source)
-        assertTrue("fun collectRenderContributions(" in source)
-        assertTrue("fun release(instance: RenderEntityInstance<T>)" in source)
+        assertTrue("val pipeline: CooRenderPipeline<T>" in source)
+        assertTrue("fun render(input: RenderInput<T>)" in source)
+        assertFalse("describeFeatures" in source)
+        assertFalse("createVisualProfile" in source)
+        assertFalse("WorldPassRenderEntityRenderer" in source)
+        assertFalse("FramePostRenderEntityRenderer" in source)
+        assertFalse("RenderEntityReleaseHook" in source)
+        assertFalse("RenderTypeBackedRenderEntityRenderer" in source)
     }
 
     private fun readProjectFile(relativePath: String): String {

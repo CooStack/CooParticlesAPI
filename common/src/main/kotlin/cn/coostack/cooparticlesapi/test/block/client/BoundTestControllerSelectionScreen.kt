@@ -94,13 +94,10 @@ class BoundTestControllerSelectionScreen(
     private fun displayStatus(index: Int): String {
         val running = packet.running.getOrNull(index) == true
         val currentIndex = packet.currentIndices.getOrElse(index) { 0 }
+        val currentOptionId = packet.currentOptionIds.getOrElse(index) { "" }
         val optionCount = packet.optionCounts.getOrElse(index) { 0 }
         if (running) {
-            return if (currentIndex > 0 && optionCount > 0) {
-                "运行中 当前索引: $currentIndex/$optionCount"
-            } else {
-                "运行中"
-            }
+            return testControllerRunningStatus(currentIndex, optionCount, currentOptionId)
         }
         return compactStatus(packet.statuses.getOrElse(index) { "未知" })
     }
@@ -181,6 +178,7 @@ class BoundTestControllerSelectionScreen(
             packet.groupIds.size,
             packet.statuses.size,
             packet.currentIndices.size,
+            packet.currentOptionIds.size,
             packet.optionCounts.size
         )
     }

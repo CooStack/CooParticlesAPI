@@ -2,6 +2,7 @@ package cn.coostack.cooparticlesapi.renderer.runtime
 
 import cn.coostack.cooparticlesapi.reflect.SimpleClassInfo
 import cn.coostack.cooparticlesapi.renderer.RenderEntity
+import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelines
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.resources.ResourceLocation
@@ -197,42 +198,49 @@ class RenderEntityAutoRegisterTest {
         }
     }
 
-    private class TestRenderer : AutoRegisteredRenderEntityRenderer<TestRenderEntity> {
+    private class TestRenderer : RenderEntityRenderer<TestRenderEntity> {
         init {
             createdCount++
         }
 
-        override fun initialize(instance: RenderEntityInstance<TestRenderEntity>) = Unit
+        override val pipeline = CooPipelines.DEFAULT
+
+        override fun render(input: RenderInput<TestRenderEntity>) = Unit
 
         companion object {
             var createdCount = 0
         }
     }
 
-    private class DuplicateTestRenderer : AutoRegisteredRenderEntityRenderer<TestRenderEntity> {
-        override fun initialize(instance: RenderEntityInstance<TestRenderEntity>) = Unit
+    private class DuplicateTestRenderer : RenderEntityRenderer<TestRenderEntity> {
+        override val pipeline = CooPipelines.DEFAULT
+        override fun render(input: RenderInput<TestRenderEntity>) = Unit
     }
 
-    private class GenericRenderer : AutoRegisteredRenderEntityRenderer<GenericRenderEntity<String>> {
-        override fun initialize(instance: RenderEntityInstance<GenericRenderEntity<String>>) = Unit
+    private class GenericRenderer : RenderEntityRenderer<GenericRenderEntity<String>> {
+        override val pipeline = CooPipelines.DEFAULT
+        override fun render(input: RenderInput<GenericRenderEntity<String>>) = Unit
     }
 
-    private abstract class GenericRendererBase<T : RenderEntity> : AutoRegisteredRenderEntityRenderer<T>
-
-    private class InheritedGenericRenderer : GenericRendererBase<TestRenderEntity>() {
-        override fun initialize(instance: RenderEntityInstance<TestRenderEntity>) = Unit
+    private abstract class GenericRendererBase<T : RenderEntity> : RenderEntityRenderer<T> {
+        override val pipeline = CooPipelines.DEFAULT
+        override fun render(input: RenderInput<T>) = Unit
     }
 
-    private class UnresolvedGenericRenderer<T : RenderEntity> : AutoRegisteredRenderEntityRenderer<T> {
-        override fun initialize(instance: RenderEntityInstance<T>) = Unit
+    private class InheritedGenericRenderer : GenericRendererBase<TestRenderEntity>()
+
+    private class UnresolvedGenericRenderer<T : RenderEntity> : RenderEntityRenderer<T> {
+        override val pipeline = CooPipelines.DEFAULT
+        override fun render(input: RenderInput<T>) = Unit
     }
 
     private object StaticInitializationState {
         var initialized = false
     }
 
-    private class StaticInitializationRenderer : AutoRegisteredRenderEntityRenderer<TestRenderEntity> {
-        override fun initialize(instance: RenderEntityInstance<TestRenderEntity>) = Unit
+    private class StaticInitializationRenderer : RenderEntityRenderer<TestRenderEntity> {
+        override val pipeline = CooPipelines.DEFAULT
+        override fun render(input: RenderInput<TestRenderEntity>) = Unit
 
         companion object {
             init {

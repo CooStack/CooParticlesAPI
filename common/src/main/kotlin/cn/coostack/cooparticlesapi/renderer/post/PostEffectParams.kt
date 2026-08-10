@@ -9,8 +9,8 @@ import net.minecraft.resources.ResourceLocation
  * 这些值用于普通 uniform，也可用于特殊输入：
  *
  * - `FloatValue` / `IntValue` 等会上传到同名 uniform
- * - `ResourceValue` 可作为 [PostEffectPassBuilder.inputCustomTexture] 的资源贴图来源
- * - `IntValue` / `LongValue` 也可作为 [PostEffectPassBuilder.inputCustomTexture] 的已有 GL texture id
+ * - `ResourceValue` 可作为 Pipeline 自定义纹理端口的资源贴图来源
+ * - `IntValue` / `LongValue` 也可表示已有 GL texture id
  * - `Vec3Value` 常用于方块绑定偏移或 `vec3` uniform
  *
  * 类型名统一带 `Value` 后缀，是为了避免和 Minecraft 的 `Vec3`、`ResourceLocation`、
@@ -18,7 +18,7 @@ import net.minecraft.resources.ResourceLocation
  *
  * 网络 type id 仍保持 `"vec3"`、`"color"` 这类短字符串，改类名不会改变协议格式。
  */
-sealed interface PostEffectParamValue {
+internal sealed interface PostEffectParamValue {
     fun write(buf: FriendlyByteBuf)
 
     /** 布尔参数，通常对应 GLSL `uniform bool`，例如 `throughWalls`。 */
@@ -31,8 +31,7 @@ sealed interface PostEffectParamValue {
     /**
      * 整数参数。
      *
-     * 普通 uniform 场景对应 GLSL `uniform int`；当参数名匹配
-     * [PostEffectPassBuilder.inputCustomTexture] 的 sampler 名时，也可以表示已有 GL texture id。
+     * 普通 uniform 场景对应 GLSL `uniform int`；匹配纹理端口 sampler 名时也可以表示已有 GL texture id。
      */
     data class IntValue(val value: Int) : PostEffectParamValue {
         override fun write(buf: FriendlyByteBuf) {
@@ -76,7 +75,7 @@ sealed interface PostEffectParamValue {
     /**
      * 资源位置参数。
      *
-     * 最常见用途是作为 [PostEffectPassBuilder.inputCustomTexture] 的贴图来源：
+     * 最常见用途是作为 Pipeline 自定义纹理端口的贴图来源：
      *
      * ```kotlin
      * inputCustomTexture("noise", textureSlot = 3)
@@ -151,7 +150,7 @@ sealed interface PostEffectParamValue {
  * 这个 id 是协议字段，不等同于 Kotlin 类名。即使类名是 `Vec3Value`，
  * 网络中仍写 `"vec3"`，用于保持兼容和减少包体。
  */
-val PostEffectParamValue.typeId: String
+internal val PostEffectParamValue.typeId: String
     get() = when (this) {
         is PostEffectParamValue.BoolValue -> "bool"
         is PostEffectParamValue.IntValue -> "int"
@@ -169,21 +168,9 @@ val PostEffectParamValue.typeId: String
  * 一个 post effect 实例携带的参数表。
  *
  * 参数表会随 [SyncedPostEffectState] 发送到客户端，并在每帧执行 pass 时被 uniform provider 读取。
- * 参数名通常和 shader uniform 名保持一致：
- *
- * ```kotlin
- * BuiltinPostEffectTypes.SHOCKWAVE.create()
- *     .duration(30)
- *     .params {
- *         float("radius", 0.35f)
- *         float("strength", 0.08f)
- *         bool("throughWalls", false)
- *     }
- * ```
- *
- * 这个类替代了“每个效果自己定义一个 packet payload / NBT / bytebuf 格式”的重复工作。
+ * 参数名和 shader uniform 名保持一致；该快照也用于服务端到客户端的播放同步。
  */
-data class PostEffectParams(
+internal data class PostEffectParams(
     private val values: Map<String, PostEffectParamValue> = emptyMap()
 ) {
     fun asMap(): Map<String, PostEffectParamValue> = values
@@ -215,20 +202,9 @@ data class PostEffectParams(
 /**
  * [PostEffectParams] 的构建器。
  *
- * 自定义 post 实例中用户最常用的是：
- *
- * ```kotlin
- * MyPost.create()
- *     .params {
- *         float("strength", 0.08f)
- *         color("tint", 0.4f, 0.8f, 1.0f)
- *         resource("noise", id("textures/effect/noise.png"))
- *     }
- * ```
- *
- * 这里替代手写 `mapOf("x" to PostEffectParamValue.FloatValue(...))`，并把网络可序列化类型集中约束在一处。
+ * 仅由 [cn.coostack.cooparticlesapi.renderer.pipeline.CooShaderEffectPlayBuilder] 使用。
  */
-class PostEffectParamsBuilder {
+internal class PostEffectParamsBuilder {
     private val values = LinkedHashMap<String, PostEffectParamValue>()
 
     /** 写入 `bool` 参数，通常对应 GLSL `uniform bool`。 */
@@ -243,14 +219,14 @@ class PostEffectParamsBuilder {
     fun double(name: String, value: Double) = apply { values[name] = PostEffectParamValue.DoubleValue(value) }
     /** 写入字符串参数；当前 OpenGL uniform 上传会忽略它，通常用于自定义 executor 或业务标记。 */
     fun string(name: String, value: String) = apply { values[name] = PostEffectParamValue.StringValue(value) }
-    /** 写入资源位置，常用于 [PostEffectPassBuilder.inputCustomTexture]。 */
+    /** 写入资源位置，供 Pipeline 自定义纹理端口读取。 */
     fun resource(name: String, value: ResourceLocation) = apply { values[name] = PostEffectParamValue.ResourceValue(value) }
     /** 写入二维向量，通常对应 GLSL `uniform vec2`。 */
     fun vec2(name: String, x: Float, y: Float) = apply { values[name] = PostEffectParamValue.Vec2Value(x, y) }
     /** 写入三维向量，通常对应 GLSL `uniform vec3` 或方块绑定偏移。 */
     fun vec3(name: String, x: Double, y: Double, z: Double) = apply { values[name] = PostEffectParamValue.Vec3Value(x, y, z) }
     /** 写入颜色，通常对应 GLSL `uniform vec4`。 */
-    fun color(name: String, red: Float, green: Float, blue: Float, alpha: Float = 1f) = apply {
+    fun color(name: String, red: Float, green: Float, blue: Float, alpha: Float = 1F) = apply {
         values[name] = PostEffectParamValue.ColorValue(red, green, blue, alpha)
     }
 

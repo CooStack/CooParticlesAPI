@@ -1,7 +1,7 @@
 package cn.coostack.cooparticlesapi.renderer.utils
 
 import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModel
-import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelPipe
+import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelLayer
 import org.joml.Vector4f
 import java.io.InputStream
 
@@ -9,21 +9,21 @@ object ObjModelUtil {
     @JvmStatic
     fun parse(
         source: String,
-        pipe: RenderEntityModelPipe,
+        layer: RenderEntityModelLayer,
         color: Vector4f = Vector4f(1f, 1f, 1f, 1f),
         flipV: Boolean = false
     ): RenderEntityModel {
-        return ObjModelLoader.parse(source, color, flipV).buildModel(pipe)
+        return ObjModelLoader.parse(source, color, flipV).buildModel(layer)
     }
 
     @JvmStatic
     fun parse(
         input: InputStream,
-        pipe: RenderEntityModelPipe,
+        layer: RenderEntityModelLayer,
         color: Vector4f = Vector4f(1f, 1f, 1f, 1f),
         flipV: Boolean = false
     ): RenderEntityModel {
-        return ObjModelLoader.parse(input, color, flipV).buildModel(pipe)
+        return ObjModelLoader.parse(input, color, flipV).buildModel(layer)
     }
 
     @JvmStatic

@@ -19,7 +19,8 @@ class ControlableParticleDataSizeTest {
         assertTrue("this.depthSize = depthSize" in source)
         assertTrue("this.depthSize = data.depthSize" in source)
         assertTrue("this.previewDepthSize = data.depthSize" in source)
-        assertTrue("it.depthSize = this.depthSize" in source)
+        assertTrue("return ControlableParticleData().also(::copyTo)" in source)
+        assertTrue("target.depthSize = depthSize" in source)
     }
 
     @Test

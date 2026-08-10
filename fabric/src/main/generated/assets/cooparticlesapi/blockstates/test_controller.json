@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "hidden=false": {
+      "model": "cooparticlesapi:block/test_controller"
+    },
+    "hidden=true": {
+      "model": "cooparticlesapi:block/test_controller"
+    }
+  }
+}

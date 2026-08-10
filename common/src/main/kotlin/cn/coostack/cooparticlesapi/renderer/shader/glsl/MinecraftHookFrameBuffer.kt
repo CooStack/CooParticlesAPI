@@ -2,8 +2,6 @@ package cn.coostack.cooparticlesapi.renderer.shader.glsl
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlFrameBuffer
-import cn.coostack.cooparticlesapi.renderer.shader.api.pipe.PipeChannels
-import cn.coostack.cooparticlesapi.renderer.shader.pipe.manager.FramePipeChannels
 import com.mojang.blaze3d.pipeline.RenderTarget
 import org.lwjgl.opengl.GL33.*
 import java.util.function.Supplier
@@ -56,11 +54,6 @@ open class MinecraftHookFrameBuffer(
     }
 
     override fun setTextureFilterMod(mod: Int) {
-    }
-
-    override fun outputChannels(): PipeChannels {
-        return FramePipeChannels()
-            .addChannel { mcFrame.colorTextureId }
     }
 
     override fun clear(bit: Int) {

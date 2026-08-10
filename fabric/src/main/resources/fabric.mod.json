@@ -36,7 +36,8 @@
   },
   "mixins": [
     "${mod_id}.mixins.json",
-    "${mod_id}.fabric.mixins.json"
+    "${mod_id}.fabric.mixins.json",
+    "${mod_id}.sodium.mixins.json"
   ],
   "accessWidener": "${mod_id}.accesswidener",
   "depends": {
@@ -49,4 +50,3 @@
     "another-mod": "*"
   }
 }
-  

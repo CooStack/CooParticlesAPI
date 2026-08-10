@@ -1,174 +1,223 @@
 package cn.coostack.cooparticlesapi.test.options.renderer
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
-import cn.coostack.cooparticlesapi.renderer.backend.RenderBackendCapability
-import cn.coostack.cooparticlesapi.renderer.post.CooPostEffectTypes
-import cn.coostack.cooparticlesapi.renderer.post.CooPostEffects
-import cn.coostack.cooparticlesapi.renderer.post.PostEffectItemContext
-import cn.coostack.cooparticlesapi.renderer.post.PostEffectParamValue
-import net.minecraft.core.registries.BuiltInRegistries
+import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelineIteration
+import cn.coostack.cooparticlesapi.renderer.pipeline.CooShaderEffects
+import cn.coostack.cooparticlesapi.renderer.pipeline.CooUniformValue
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.entity.player.Player
 
+/** APITest 中的屏幕效果全部通过公开的 ShaderEffect Pipeline API 实现。 */
 object PostEffectDemoOptions {
-    private val CUSTOM_CHAIN_ID: ResourceLocation = id("post/demo_custom_chain")
+    private val GRAYSCALE = CooShaderEffects.register(id("post/demo/grayscale")) {
+        fragment(shader("grayscale"))
+        inputSceneColor("scene")
+        outputToScreen()
+    }
+
+    private val SYNCED_SHOCKWAVE = CooShaderEffects.register(id("post/demo/synced_shockwave")) {
+        fragment(shader("shockwave"))
+        inputSceneColor("scene")
+        outputToScreen()
+    }
+
+    private val BLOOM = CooShaderEffects.register(id("post/demo/bloom")) {
+        val extract = pass("bright_extract") {
+            fragment(shader("bloom_bright_extract"))
+            inputSceneColor("scene")
+        }
+        val blur = pingPong("blur", iterations = 4, feedbackSampler = "bright") {
+            fragment(shader("bloom_ping_pong_blur"))
+            alternate("Axis", 0, 1)
+            iterationUniform("Iteration") { iteration: CooPipelineIteration ->
+                CooUniformValue.IntValue(iteration.index)
+            }
+        }
+        val composite = pass("composite") {
+            fragment(shader("bloom_composite"))
+            inputSceneColor("scene")
+            input("bright")
+            outputToScreen()
+        }
+        line(extract.color(), blur.input("bright"))
+        line(blur.color(), composite.input("bright"))
+    }
+
+    private val SCREEN_DISTORTION = CooShaderEffects.register(id("post/demo/screen_distortion")) {
+        fragment(shader("screen_distortion"))
+        inputSceneColor("scene")
+        outputToScreen()
+    }
+
+    private val HALO = CooShaderEffects.register(id("post/demo/halo")) {
+        val mask = pass("halo_mask") {
+            fragment(shader("halo_mask"))
+            inputSceneDepth("depth", optional = true)
+        }
+        val composite = pass("halo_composite") {
+            fragment(shader("halo_composite"))
+            inputSceneColor("scene")
+            input("mask")
+            outputToScreen()
+        }
+        line(mask.color(), composite.input("mask"))
+    }
+
+    private val MASK_GRAPH = CooShaderEffects.register(id("post/demo/mask_graph")) {
+        val mask = pass("mask") {
+            fragment(shader("halo_mask"))
+            inputSceneDepth("depth", optional = true)
+        }
+        val debug = pass("mask_debug") {
+            fragment(shader("mask_debug"))
+            inputSceneColor("scene")
+            input("mask")
+            outputToScreen()
+        }
+        line(mask.color(), debug.input("mask"))
+    }
+
+    private val COLOR_SHIFT = CooShaderEffects.register(id("post/demo/color_shift")) {
+        fragment(shader("demo_color_shift"))
+        inputSceneColor("scene")
+        outputToScreen()
+    }
+
+    fun init() = Unit
 
     fun grayscale(player: Player): PostEffectDemoOption {
         return PostEffectDemoOption(
             player = player,
-            displayName = "post/grayscale_screen",
+            displayName = "shader_effect/grayscale",
             testingTick = 80,
-            instanceFactory = {
-                CooPostEffects.builtin.grayscale()
+            effect = GRAYSCALE,
+            configure = {
+                uniform("progress", 1F)
             },
-            description = "Full-screen grayscale preset through CooPostEffects.builtin.grayscale()."
+            description = "Full-screen grayscale declared and played through CooShaderEffects."
         )
     }
 
     fun serverShockwave(player: Player): PostEffectDemoOption {
         return PostEffectDemoOption(
             player = player,
-            displayName = "post/server_shockwave_world",
+            displayName = "shader_effect/server_synced_shockwave",
             testingTick = 60,
-            useTrackingChunkSpawn = true,
-            instanceFactory = { viewer ->
-                val center = viewer.eyePosition.add(viewer.forward.scale(5.0))
-                CooPostEffects.builtin.shockwave()
-                    .bindWorld(center.x, center.y, center.z, viewer.level().dimension().location())
-                    .params {
-                        float("radius", 8.0f)
-                        float("feather", 0.22f)
-                        float("strength", 0.12f)
-                    }
+            effect = SYNCED_SHOCKWAVE,
+            configure = {
+                uniform("center", CooUniformValue.Vec2Value(0.5F, 0.5F))
+                uniform("radius", 0.28F)
+                uniform("feather", 0.08F)
+                uniform("strength", 0.12F)
+                uniform("progress", 0.35F)
             },
-            description = "Server-synchronized world-bound shockwave with radius and feather params."
+            description = "Server-triggered screen ShaderEffect using the new play(player) entry."
         )
     }
 
     fun bloom(player: Player): PostEffectDemoOption {
         return PostEffectDemoOption(
             player = player,
-            displayName = "post/bloom_screen_space",
+            displayName = "shader_effect/ping_pong_bloom",
             testingTick = 100,
-            instanceFactory = {
-                CooPostEffects.builtin.bloom()
-                    .params {
-                        float("threshold", 0.75f)
-                        float("softKnee", 0.45f)
-                        float("intensity", 1.35f)
-                        float("blurRadius", 4.0f)
-                        int("iterations", 2)
-                    }
+            effect = BLOOM,
+            configure = {
+                uniform("threshold", 0.75F)
+                uniform("softKnee", 0.45F)
+                uniform("blurRadius", 4F)
+                uniform("intensity", 1.35F)
+                uniform("exposure", 1F)
+                uniform("mipLevels", 1)
             },
-            description = "Screen-space bloom preset: bright extract, blur horizontal, blur vertical, composite."
+            description = "Bright extract, four ping-pong blur iterations, then a line-connected composite."
         )
     }
 
     fun screenDistortion(player: Player): PostEffectDemoOption {
         return PostEffectDemoOption(
             player = player,
-            displayName = "post/screen_distortion",
+            displayName = "shader_effect/screen_distortion",
             testingTick = 80,
-            instanceFactory = {
-                CooPostEffects.builtin.screenDistortion()
-                    .params {
-                        float("strength", 0.055f)
-                    }
+            effect = SCREEN_DISTORTION,
+            configure = {
+                uniform("strength", 0.055F)
+                uniform("progress", 0.3F)
             },
-            description = "Screen distortion preset that requires scene color and optionally reads depth."
+            description = "Single-card ShaderEffect reading the copied scene color."
         )
     }
 
     fun halo(player: Player): PostEffectDemoOption {
-        return PostEffectDemoOption(
+        return haloOption(
             player = player,
-            displayName = "post/halo_world_binding",
-            testingTick = 100,
-            instanceFactory = { viewer ->
-                val center = viewer.eyePosition.add(viewer.forward.scale(4.0))
-                CooPostEffects.builtin.halo()
-                    .bindWorld(center.x, center.y, center.z, viewer.level().dimension().location())
-                    .params {
-                        color("color", 1.0f, 0.74f, 0.22f, 1.0f)
-                        float("intensity", 1.6f)
-                        float("radius", 1.8f)
-                        float("feather", 0.35f)
-                        float("depthFade", 0.8f)
-                        bool("throughWalls", false)
-                    }
-            },
-            description = "World-position halo preset, independent from bloom and point lights."
+            displayName = "shader_effect/depth_aware_halo",
+            color = CooUniformValue.Vec4Value(1F, 0.74F, 0.22F, 1F),
+            description = "A mask card feeds its FBO output into the halo composite card."
         )
     }
 
     fun blockBinding(player: Player): PostEffectDemoOption {
         return PostEffectDemoOption(
             player = player,
-            displayName = "post/block_bound_mask_debug",
+            displayName = "shader_effect/mask_graph",
             testingTick = 80,
-            instanceFactory = { viewer ->
-                CooPostEffects.builtin.maskDebug()
-                    .bindBlock(
-                        viewer.blockPosition(),
-                        viewer.level().dimension().location(),
-                        PostEffectParamValue.Vec3Value(0.5, 0.5, 0.5)
-                    )
-                    .params {
-                        color("color", 0.0f, 1.0f, 0.25f, 0.55f)
-                    }
+            effect = MASK_GRAPH,
+            configure = {
+                uniform("center", CooUniformValue.Vec2Value(0.5F, 0.5F))
+                uniform("radius", 0.32F)
+                uniform("feather", 0.08F)
+                uniform("depthFade", 0.8F)
+                uniform("color", CooUniformValue.Vec4Value(0F, 1F, 0.25F, 0.55F))
             },
-            description = "Block-bound mask debug effect using a block center offset."
+            description = "Mask generation and mask visualization connected as two Pipeline cards."
         )
     }
 
     fun itemBinding(player: Player): PostEffectDemoOption {
-        return PostEffectDemoOption(
+        return haloOption(
             player = player,
-            displayName = "post/item_bound_gui_context",
-            testingTick = 80,
-            instanceFactory = { viewer ->
-                val itemId = BuiltInRegistries.ITEM.getKey(viewer.mainHandItem.item)
-                CooPostEffects.builtin.halo()
-                    .bindItem(itemId, PostEffectItemContext.GUI)
-                    .params {
-                        color("color", 0.35f, 0.78f, 1.0f, 1.0f)
-                        float("intensity", 1.2f)
-                        float("radius", 1.0f)
-                        float("feather", 0.22f)
-                    }
-            },
-            description = "Item-bound halo sample for GUI/inventory context using the main-hand item id."
+            displayName = "shader_effect/tinted_halo",
+            color = CooUniformValue.Vec4Value(0.35F, 0.78F, 1F, 1F),
+            description = "The same immutable ShaderEffect template played with an isolated tint snapshot."
         )
     }
 
     fun customChain(player: Player): PostEffectDemoOption {
         return PostEffectDemoOption(
             player = player,
-            displayName = "post/custom_chain_type",
+            displayName = "shader_effect/custom_line_graph",
             testingTick = 80,
-            instanceFactory = {
-                customChainType().create()
-                    .bindScreen()
-                    .params {
-                        float("amount", 0.35f)
-                    }
+            effect = COLOR_SHIFT,
+            configure = {
+                uniform("amount", 0.35F)
+                uniform("progress", 0.25F)
             },
-            description = "Custom PostEffectType chain declared through the type builder API."
+            description = "Custom screen shader registered and played through the public graph API."
         )
     }
 
-    private fun customChainType() =
-        CooPostEffectTypes.get(CUSTOM_CHAIN_ID) ?: CooPostEffectTypes.register(CUSTOM_CHAIN_ID) {
-            maskedScreen()
-            require(RenderBackendCapability.FINAL_FRAME_POST)
-            pass("demo_color_shift", shader("demo_color_shift")) {
-                inputSceneColor("scene")
-                outputToFinalScreen()
-                uniform("amount") { it.params["amount"] ?: PostEffectParamValue.FloatValue(0.25f) }
-                uniform("progress") { PostEffectParamValue.FloatValue(it.progress) }
-            }
-            outputToFinalScreen()
-        }
+    private fun haloOption(
+        player: Player,
+        displayName: String,
+        color: CooUniformValue.Vec4Value,
+        description: String
+    ): PostEffectDemoOption {
+        return PostEffectDemoOption(
+            player = player,
+            displayName = displayName,
+            testingTick = 100,
+            effect = HALO,
+            configure = {
+                uniform("center", CooUniformValue.Vec2Value(0.5F, 0.5F))
+                uniform("radius", 0.28F)
+                uniform("feather", 0.08F)
+                uniform("depthFade", 0.8F)
+                uniform("color", color)
+                uniform("intensity", 1.6F)
+            },
+            description = description
+        )
+    }
 
     private fun id(path: String): ResourceLocation {
         return ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, path)

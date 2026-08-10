@@ -13,6 +13,7 @@ import net.minecraft.resources.ResourceLocation
 @CooAutoRegister
 class PacketOpenBoundTestSelectionScreenS2C() : CooPacket() {
     @CodecField var currentIndices: List<Int> = emptyList()
+    @CodecField var currentOptionIds: List<String> = emptyList()
     @CodecField var dimensions: List<String> = emptyList()
     @CodecField var groupIds: List<String> = emptyList()
     @CodecField var loaded: List<Boolean> = emptyList()
@@ -37,6 +38,7 @@ class PacketOpenBoundTestSelectionScreenS2C() : CooPacket() {
                 it.groupIds = entries.map { entry -> entry.groupId }
                 it.statuses = entries.map { entry -> entry.status }
                 it.currentIndices = entries.map { entry -> entry.currentIndex }
+                it.currentOptionIds = entries.map { entry -> entry.currentOptionId }
                 it.optionCounts = entries.map { entry -> entry.optionCount }
                 it.loaded = entries.map { entry -> entry.loaded }
                 it.running = entries.map { entry -> entry.running }

@@ -21,6 +21,7 @@ import cn.coostack.cooparticlesapi.test.api.Vec3TestOptionValue
 import cn.coostack.cooparticlesapi.test.api.Vector3fTestOptionValue
 import cn.coostack.cooparticlesapi.test.block.BlockTestGroup
 import cn.coostack.cooparticlesapi.test.block.BlockTestPlayer
+import cn.coostack.cooparticlesapi.test.block.BlockTexturePropagationTestOption
 import cn.coostack.cooparticlesapi.test.options.display.TestBlockDisplayEntity
 import cn.coostack.cooparticlesapi.test.options.particle.composition.DynamicCParticleComposition
 import cn.coostack.cooparticlesapi.test.options.particle.composition.SequenceTestGPUComposition
@@ -37,12 +38,12 @@ import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestGPUEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestSpreadPointEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.event.TestCollideEventHandler
 import cn.coostack.cooparticlesapi.test.options.particle.style.RomaMagicTestStyle
+import cn.coostack.cooparticlesapi.extend.asRelative
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
-import cn.coostack.cooparticlesapi.extend.asRelative
 import kotlin.math.PI
 
 class BlockAPITestGroupBuilder(player: Player) : TestGroupBuilder {
@@ -141,7 +142,7 @@ class BlockAPITestGroupBuilder(player: Player) : TestGroupBuilder {
                         Vector3fTestOptionValue("cpc_color_outer", "外层颜色").asColor(),
                         Vector3f(0.85f, 0.30f, 1.00f)
                     )
-                    .applyParam(DoubleTestOptionValue("cpc_rotate_speed", "每tick自转弧度"), Math.PI / 90.0)
+                    .applyParam(DoubleTestOptionValue("cpc_rotate_speed", "每tick自转弧度"), PI / 90.0)
                     .applyTo {
                         it.ringCount = getParam<Int>("cpc_ring_count")!!
                         it.pointsPerRing = getParam<Int>("cpc_points_per_ring")!!
@@ -292,6 +293,9 @@ class BlockAPITestGroupBuilder(player: Player) : TestGroupBuilder {
                     .applyTo {
                         it.ballRadius = getParam<Double>("ball_radius")!!
                     }
+            }
+            .appendOption {
+                BlockTexturePropagationTestOption(player)
             }
     }
 

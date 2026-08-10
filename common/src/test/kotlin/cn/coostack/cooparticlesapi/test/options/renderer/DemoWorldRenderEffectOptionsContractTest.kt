@@ -8,6 +8,26 @@ import kotlin.test.assertTrue
 
 class DemoWorldRenderEffectOptionsContractTest {
     @Test
+    fun `post effect demos use shader effect pipeline api`() {
+        val options = readProjectFile(
+            "common/src/main/kotlin/cn/coostack/cooparticlesapi/test/options/renderer/PostEffectDemoOptions.kt"
+        )
+        val option = readProjectFile(
+            "common/src/main/kotlin/cn/coostack/cooparticlesapi/test/options/renderer/PostEffectDemoOption.kt"
+        )
+
+        assertTrue("CooShaderEffects.register" in options)
+        assertTrue("pingPong(\"blur\"" in options)
+        assertTrue("line(extract.color(), blur.input(\"bright\"))" in options)
+        assertTrue("CooShaderEffect" in option)
+        assertTrue("effect.play" in option)
+        assertFalse("CooPostEffectTypes" in options)
+        assertFalse("CooPostEffects" in options)
+        assertFalse("PostEffectType" in options)
+        assertFalse("PostEffectInstance" in option)
+    }
+
+    @Test
     fun `world object visuals are render entity demos not post effect demos`() {
         val postOptions = readProjectFile(
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/test/options/renderer/PostEffectDemoOptions.kt"
@@ -77,10 +97,13 @@ class DemoWorldRenderEffectOptionsContractTest {
         ).toFile().exists())
         rendererSources.forEach { renderer ->
             assertTrue("@CooAutoRegisterRenderer" in renderer)
-            assertTrue("AutoRegisteredRenderEntityRenderer" in renderer)
-            assertTrue("RenderEntityModelRenderer" in renderer)
+            assertTrue("RenderEntityRenderer" in renderer)
+            assertTrue("override val pipeline = CooPipelines.MASK_BLOOM" in renderer)
+            assertTrue("override fun render(input: RenderInput" in renderer)
             assertTrue("buildModel(" in renderer)
-            assertFalse("RenderEntityModelRenderer<DemoWorldRenderEffectSpec>" in renderer)
+            assertFalse("AutoRegisteredRenderEntityRenderer" in renderer)
+            assertFalse("FramePostRenderEntityRenderer" in renderer)
+            assertFalse("collectRenderContributions" in renderer)
             assertFalse("DemoWorldRenderEffectKind" in renderer)
             assertFalse("when (entity)" in renderer)
             assertFalse("Tesselator" in renderer)
@@ -89,32 +112,22 @@ class DemoWorldRenderEffectOptionsContractTest {
         }
         rendererFiles.zip(rendererSources).forEach { (rendererFile, renderer) ->
             val (fileName, entityName) = rendererFile
-            assertTrue("RenderEntityModelRenderer<$entityName>" in renderer)
-            assertTrue("FramePostRenderEntityRenderer<$entityName>" in renderer)
-            assertTrue("RenderEntityInstance<$entityName>" in renderer)
-            assertTrue("buildModel(entity: $entityName" in renderer)
-            assertTrue("collectRenderContributions(" in renderer)
-            assertTrue("collectModelMaskBloom(" in renderer)
+            assertTrue("RenderEntityRenderer<$entityName>" in renderer, fileName)
+            assertTrue("RenderInput<$entityName>" in renderer, fileName)
+            assertTrue("buildModel(entity: $entityName" in renderer, fileName)
+            assertTrue(".intensity { entity: $entityName" in renderer, fileName)
         }
         assertFalse("RenderEntityModelRenderer" in support)
         assertTrue("RenderEntityModelBuilder()" in support)
-        assertTrue("model.pipe(\"world_model\")" in support)
-        assertTrue("model.addVertex(pipe" in support)
+        assertTrue("model.layer(\"world_model\")" in support)
+        assertTrue("model.addVertex(layer" in support)
         assertTrue("model.addTriangle(" in support)
         assertTrue("model.addQuad(" in support)
         assertFalse("post(BuiltinPostEffectTypes.HALO.id)" in support)
         assertFalse("post(BuiltinPostEffectTypes.BLOOM.id)" in support)
-        assertTrue("BuiltinRenderEffectTypes.MASK_BLOOM" in support)
-        assertTrue("BuiltinRenderEffectDescriptors.sharedModelMaskBloom(" in support)
         assertTrue("RenderEntityModelExecutors.active().draw" in support)
-        assertFalse("RenderBackendCapability.SCENE_DEPTH_READ" in support)
-        assertTrue("RenderBackendCapability.SAFE_WORLD_COMPOSITE" in support)
-        assertTrue("CompositeMode.ADDITIVE" in support)
-        assertTrue("RenderFrameStage.WORLD_PASS" in support)
-        assertTrue("RenderSceneTargets.SCENE_COLOR" in support)
-        assertTrue("RenderSceneTargets.SCENE_DEPTH" in support)
-        assertTrue("needsSceneDepth = true" in support)
-        assertTrue("effectGraphEnabled = true" in support)
+        assertFalse("BuiltinRenderEffectDescriptors" in support)
+        assertFalse("RenderContribution" in support)
         assertTrue("fun annulus(" in support)
         assertTrue("fun sphereShell(" in support)
         assertTrue("fun verticalBeam(" in support)
@@ -131,21 +144,37 @@ class DemoWorldRenderEffectOptionsContractTest {
     }
 
     @Test
-    fun `render entity model pipe api stays simple and graph based`() {
+    fun `water ball declares its shader resources through pipeline`() {
+        val renderer = readProjectFile(
+            "common/src/main/kotlin/cn/coostack/cooparticlesapi/test/options/renderer/world/" +
+                "DemoWaterBallRenderEntityRenderer.kt"
+        )
+
+        assertTrue("CooPipelines.entity<DemoWaterBallRenderEntity>" in renderer)
+        assertTrue("vertex(id(\"core/vertex/render_entity_water_ball.vsh\"))" in renderer)
+        assertTrue("fragment(id(\"core/fragment/render_entity_water_ball.fsh\"))" in renderer)
+        assertTrue("inputTexture(\"noiseTex\", id(\"noise.png\"))" in renderer)
+        assertTrue("uniform(\"radius\")" in renderer)
+        assertTrue("uniformValue(" in renderer)
+        assertTrue("RenderEntityModelExecutors.active().draw" in renderer)
+        assertFalse("AdvancedShaderProgramBuilder" in renderer)
+        assertFalse("IdentifierTexture" in renderer)
+        assertFalse("DynamicVertexBuffer" in renderer)
+    }
+
+    @Test
+    fun `render entity model layers use unified pipeline nodes`() {
         val builder = readProjectFile(
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/model/RenderEntityModelBuilder.kt"
+        )
+        val layer = readProjectFile(
+            "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/model/RenderEntityModelLayer.kt"
         )
         val primitive = readProjectFile(
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/model/RenderEntityModelPrimitive.kt"
         )
         val primitiveMode = readProjectFile(
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/model/RenderEntityModelPrimitiveMode.kt"
-        )
-        val pipeBuilder = readProjectFile(
-            "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/model/RenderEntityModelPipeBuilder.kt"
-        )
-        val graphBuilder = readProjectFile(
-            "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/model/RenderEntityModelPipeGraphBuilder.kt"
         )
         val executor = readProjectFile(
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/model/OpenGlRenderEntityModelExecutor.kt"
@@ -156,49 +185,77 @@ class DemoWorldRenderEffectOptionsContractTest {
         val instance = readProjectFile(
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/runtime/RenderEntityInstance.kt"
         )
+        val input = readProjectFile(
+            "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/runtime/RenderInput.kt"
+        )
         val vertexShader = readProjectFile(
             "common/src/main/resources/assets/cooparticlesapi/shaders/core/vertex/render_entity_model.vsh"
         )
         val fragmentShader = readProjectFile(
             "common/src/main/resources/assets/cooparticlesapi/shaders/core/fragment/render_entity_model.fsh"
         )
-        val maskBloomExecutor = readProjectFile(
-            "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/effects/builtin/OpenGlMaskBloomEffectExecutor.kt"
-        )
         val maskBloomDescriptors = readProjectFile(
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/effects/builtin/BuiltinRenderEffectDescriptors.kt"
         )
-        val maskBloomComposite = readProjectFile(
-            "common/src/main/resources/assets/cooparticlesapi/shaders/post/mask_bloom_composite.fsh"
-        )
-        val texturedBillboardFragment = readProjectFile(
-            "common/src/main/resources/assets/cooparticlesapi/shaders/core/fragment/mask_bloom_textured_billboard.fsh"
-        )
 
-        assertTrue("fun pipe(id: String" in builder)
+        assertTrue("fun layer(id: String)" in builder)
         assertTrue("fun addVertex(" in builder)
         assertTrue("fun addTriangle(" in builder)
         assertTrue("fun addQuad(" in builder)
         assertTrue("RenderEntityModelPrimitiveMode.TRIANGLES" in builder)
+        assertTrue("data class RenderEntityModelLayer" in layer)
+        assertFalse("val shader:" in layer)
+        assertFalse("val postEffect" in layer)
+        assertFalse("val params:" in layer)
+        assertTrue("val layer: RenderEntityModelLayer" in primitive)
         assertTrue("val primitiveMode: RenderEntityModelPrimitiveMode" in primitive)
         assertTrue("enum class RenderEntityModelPrimitiveMode" in primitiveMode)
         assertTrue("LINES" in primitiveMode)
         assertTrue("TRIANGLES" in primitiveMode)
-        assertTrue("fun post(type: ResourceLocation)" in pipeBuilder)
-        assertTrue("fun graph(block: RenderEntityModelPipeGraphBuilder.() -> Unit)" in pipeBuilder)
-        assertTrue("fun connect(" in graphBuilder)
-        assertTrue("RenderEntityModelRenderer" in instance)
-        assertTrue("RenderEntityModelExecutors.active().draw" in instance)
+        listOf(
+            "RenderEntityModelPipe.kt",
+            "RenderEntityModelPipeBuilder.kt",
+            "RenderEntityModelPipeGraph.kt",
+            "RenderEntityModelPipeGraphBuilder.kt",
+            "RenderEntityModelPipeNode.kt",
+            "RenderEntityModelPipeEdge.kt",
+            "RenderEntityModelPipeline.kt",
+            "RenderEntityModelPipelineBuilder.kt",
+            "RenderEntityModelPipelineGraph.kt",
+            "RenderEntityModelPipelineGraphBuilder.kt",
+            "RenderEntityModelPipelineNode.kt",
+            "RenderEntityModelPipelineEdge.kt",
+            "RenderEntityModelRenderer.kt",
+            "RenderTypeRenderEntityModelExecutor.kt"
+        ).forEach { fileName ->
+            assertFalse(projectFile(
+                "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/model/$fileName"
+            ).toFile().exists(), fileName)
+        }
+        assertTrue("renderer.render(" in instance)
+        assertTrue("CooPipelineCompiler.compile(renderer.pipeline)" in instance)
+        assertTrue("worldNodes.forEach { node" in instance)
+        assertTrue("pipeline = renderer.pipeline" in instance)
+        assertTrue("node = node" in instance)
+        assertTrue("internal val pipeline: CooRenderPipeline<T>" in input)
+        assertTrue("internal val node: CooPipelineNode" in input)
         assertFalse("collectModelPostContributions" in instance)
-        assertFalse("CooPostEffectTypes.get(pipe.postEffectType" in instance)
+        assertFalse("CooPostEffectTypes.get(pipeline.postEffectType" in instance)
         assertFalse("PostEffectBinding.WorldPos(null, entity.pos.x" in instance)
         assertTrue("object OpenGlRenderEntityModelExecutor : RenderEntityModelExecutor" in executor)
-        assertTrue("pipe.postEffectType == null" in executor)
+        assertTrue("input.node.shader" in executor)
+        assertTrue("is CooPipelineShader.Stages" in executor)
+        assertTrue("is CooPipelineShader.Core" in executor)
+        assertTrue("input.pipeline.lines.filter" in executor)
+        assertTrue("input.node.uniforms.forEach" in executor)
+        assertTrue("CooPipelineTextureSource.SceneColor" in executor)
+        assertTrue("CooPipelineTextureSource.SceneDepth" in executor)
+        assertFalse("pipeline.postEffectType" in executor)
         assertTrue("DynamicVertexBuffer" in executor)
         assertTrue("GL_LINES" in executor)
         assertTrue("GL_TRIANGLES" in executor)
         assertTrue("primitive.primitiveMode.toGlMode()" in executor)
-        assertTrue("CooVertexFormat.POINT_COLOR_FORMAT" in executor)
+        assertTrue("CooVertexFormat.POINT_COLOR_TEXTURE_UV_FORMAT" in executor)
         assertTrue("glEnable(GL_DEPTH_TEST)" in executor)
         assertTrue("glDepthFunc(GL_LEQUAL)" in executor)
         assertTrue("glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE" in executor)
@@ -206,53 +263,16 @@ class DemoWorldRenderEffectOptionsContractTest {
         assertFalse("BufferUploader" in executor)
         assertFalse("GameRenderer" in executor)
         assertTrue("RenderEntityModelExecutors.install(OpenGlRenderEntityModelExecutor)" in client)
-        assertTrue("RenderEffectRegistry.register(BuiltinRenderEffectTypes.MASK_BLOOM, OpenGlMaskBloomEffectExecutor)" in client)
         assertTrue("OpenGlRenderEntityModelExecutor.release()" in client)
-        assertTrue("OpenGlMaskBloomEffectExecutor.release()" in client)
         assertTrue("RenderEntityModelExecutors.reset()" in client)
         assertTrue("layout (location = 1) in vec4 vertexColor" in vertexShader)
+        assertTrue("layout (location = 2) in vec2 vertexUv" in vertexShader)
         assertTrue("uniform mat4 transMat" in vertexShader)
         assertTrue("uniform float intensity" in fragmentShader)
-        assertTrue("object OpenGlMaskBloomEffectExecutor : RenderEffectExecutor" in maskBloomExecutor)
-        assertTrue("MaskBloomRenderRequest" in maskBloomExecutor)
-        assertTrue("request.renderMask(maskContext(context, request))" in maskBloomExecutor)
-        assertTrue("sceneDepthFramebuffer?.let { copyDepthBuffer(it) }" in maskBloomExecutor)
-        val maskBloomCapabilityBlock = maskBloomDescriptors
-            .substringAfter("private val maskBloomCapabilities = setOf(")
-            .substringBefore(")")
-        assertTrue("private val maskBloomCapabilities = setOf" in maskBloomDescriptors)
-        assertTrue("RenderBackendCapability.FINAL_FRAME_POST" in maskBloomCapabilityBlock)
-        assertTrue("RenderBackendCapability.SAFE_WORLD_COMPOSITE" in maskBloomCapabilityBlock)
-        assertFalse("RenderBackendCapability.SCENE_COLOR_COPY" in maskBloomCapabilityBlock)
-        assertFalse("RenderBackendCapability.SCENE_DEPTH_READ" in maskBloomCapabilityBlock)
-        assertTrue("requiredCapabilities: Set<RenderBackendCapability> = maskBloomCapabilities" in maskBloomDescriptors)
-        assertTrue("Supplier { -1 }" in maskBloomExecutor)
-        assertTrue("TARGET_SCALE_DIVISOR = 2" in maskBloomExecutor)
-        assertTrue("post/bloom_bright_extract.fsh" in maskBloomExecutor)
-        assertTrue("drawBrightExtract(" in maskBloomExecutor)
-        assertTrue("setFloat(\"threshold\", config.threshold)" in maskBloomExecutor)
-        assertTrue("setFloat(\"softKnee\", config.thresholdSoftness)" in maskBloomExecutor)
-        assertTrue("post/bloom_blur_horizontal.fsh" in maskBloomExecutor)
-        assertTrue("post/bloom_blur_vertical.fsh" in maskBloomExecutor)
-        assertTrue("post/mask_bloom_composite.fsh" in maskBloomExecutor)
-        assertTrue("glBlendFuncSeparate(GL_ONE, GL_ONE, GL_ZERO, GL_ONE)" in maskBloomExecutor)
-        assertFalse("Supplier { depthTexture ?: -1 }" in maskBloomExecutor)
-        assertFalse("Mask bloom textured billboard helper is not implemented" in maskBloomExecutor)
-        assertTrue("drawTexturedBillboard(context, content)" in maskBloomExecutor)
-        assertTrue("texturedBillboardProgram()" in maskBloomExecutor)
-        assertTrue("core/vertex/billboard_from_model_uv.vsh" in maskBloomExecutor)
-        assertTrue("core/fragment/mask_bloom_textured_billboard.fsh" in maskBloomExecutor)
-        assertTrue("content.textures.drawWith" in maskBloomExecutor)
-        assertTrue("CooVertexFormat.POINT_TEXTURE_UV_FORMAT" in maskBloomExecutor)
-        assertTrue("glDepthFunc(GL_LEQUAL)" in maskBloomExecutor)
-        assertTrue("uniform sampler2D bloom" in maskBloomComposite)
-        assertTrue("uniform sampler2D mask" in maskBloomComposite)
-        assertTrue("uniform sampler2D tex" in texturedBillboardFragment)
-        assertTrue("uniform vec4 tint" in texturedBillboardFragment)
-        assertTrue("uniform float sourceBoost" in texturedBillboardFragment)
-        assertTrue("uniform bool fullQuadMask" in texturedBillboardFragment)
-        assertTrue("smoothstep(alphaCutoff" in texturedBillboardFragment)
-        assertTrue("discard" in texturedBillboardFragment)
+        assertFalse("MaskBloom" in maskBloomDescriptors)
+        assertFalse(projectFile(
+            "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/effects/builtin/OpenGlMaskBloomEffectExecutor.kt"
+        ).toFile().exists())
     }
 
     private fun readProjectFile(relativePath: String): String {

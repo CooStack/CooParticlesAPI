@@ -29,90 +29,21 @@ import kotlin.reflect.KProperty
  * - 覆盖 `getRenderID()`，并在客户端完成注册。
  * - 如果实体有额外同步字段，需要覆盖 `loadProfileFromEntity(...)` 把这些字段回写到客户端镜像。
  *
- * Iris / shaderpack 兼容说明：
- * - 需要被 Iris 的 entity / gbuffer 后续阶段看到的几何，优先让客户端 renderer 实现
- *   `RenderTypeBackedRenderEntityModelRenderer`。renderer 仍然用原来的 `buildModel(...)`
- *   生成 `RenderEntityModel`，兼容层会把模型顶点转换成 `VertexConsumer` 调用并写入
- *   `MultiBufferSource`。如果确实要完全控制 vanilla buffer 输出，再直接实现
- *   `RenderTypeBackedRenderEntityRenderer`。
- * - 自定义 OpenGL shader、FBO、compute 和 frame-post 效果仍走本地 RenderEntity 管线；
- *   它们适合复杂特效，但不会自动拥有 shaderpack 的材质、阴影、法线或 gbuffer 语义。
- * - 如果要让 shaderpack 正确理解材质，renderer 需要按 vanilla / Iris 预期写入对应顶点格式、
- *   light / overlay / texture / normal 等数据。只包一层 RenderType 只能保证进入合适的渲染阶段，
- *   不能凭空生成 PBR、法线、阴影或材质 id。
- *
- * 如果要做 Iris 特殊材质效果，例如法线贴图、金属质感、粗糙度、反射：
- * 1. 先区分两类 shader。RenderEntity 模型自己的 OpenGL shader 可以按 Coo 的资源组织来写，
- *    例如 `assets/<modid>/shaders/core/vertex/foo.vsh` 和
- *    `assets/<modid>/shaders/core/fragment/foo.fsh`，再通过 `ShaderProgramBuilder` 或
- *    `IdentifierShader` 加载。它适合写激光流动、颜色覆盖、扭曲、噪声采样等模型自身效果。
- * 2. 如果目标是让 Iris / shaderpack 进一步理解这个模型的材质，则优先走
- *    `RenderTypeBackedRenderEntityModelRenderer`。这时关注的是 vanilla / Iris 看到的
- *    RenderType、VertexFormat、贴图和顶点语义，而不是把模型 fsh 直接塞进 shaderpack 语义里。
- *    只有明确使用 vanilla `ShaderInstance` / `RenderType` 的 core shader 路线时，才需要按
- *    vanilla loader 的资源规则放置对应 shader。
- * 3. renderer 应使用 entity 兼容的 `RenderType` / `VertexFormat`，例如能携带 uv、light、
- *    overlay、normal 的格式。只有 `POSITION_COLOR` 的 glow 类型不够表达法线贴图和大部分材质。
- * 4. renderer 写顶点时必须写清楚 `uv`、`light`、`overlay`、`normal`。Iris/shaderpack 后续
- *    的 `gbuffers_entities` 等阶段通常依赖这些数据和基础贴图来解释实体材质。
- * 5. 法线、金属、粗糙度等材质数据通常放在资源包贴图里，而不是 per-entity uniform。
- *    常见 LabPBR 组织方式是：
- *    `textures/entity/foo.png` 作为 albedo/alpha，
- *    `textures/entity/foo_n.png` 作为 normal map，
- *    `textures/entity/foo_s.png` 作为 specular/material map。
- *    `_n` 常用 red/green 存切线空间法线 xy，blue/alpha 是否表示 AO、高度等取决于 shaderpack；
- *    `_s` 常用 red 表示 smoothness，green 表示 F0/reflectance 或金属编码区间，其他通道
- *    是否用于 emission、porosity、SSS 等也取决于 shaderpack。目标 shaderpack 必须支持
- *    对应 PBR 约定，否则这些贴图只会是普通资源文件。
- * 6. 如果要直接控制 Iris gbuffer 输出，那是 shaderpack 开发：需要在 shaderpack 里写
- *    `shaders/gbuffers_entities.vsh/.fsh` 或相关 fallback program，并按该 shaderpack 的
- *    buffer layout 输出。普通 `RenderEntityRenderer` 只负责把实体提交到合适的 RenderType 阶段。
- *
- * 模型到 RenderType 的最小形态：
+ * 客户端 renderer 只声明不可变 pipeline 并绘制几何：
  * ```kotlin
- * class FooRenderer : RenderTypeBackedRenderEntityModelRenderer<FooEntity> {
- *     override fun initialize(instance: RenderEntityInstance<FooEntity>) = Unit
+ * class FooRenderer : RenderEntityRenderer<FooEntity> {
+ *     override val pipeline = CooPipelines.MASK_BLOOM
+ *         .blurSigma(15F)
+ *         .blurRange(10F)
+ *         .intensity { entity: FooEntity -> 2.8F * entity.bright.coerceAtLeast(0F) }
  *
- *     override fun renderTypeMode(entity: FooEntity): RenderTypeBackedRenderMode {
- *         return RenderTypeBackedRenderMode.IRIS_FIRST_OPENGL_FALLBACK
- *     }
- *
- *     override fun renderTypeForPrimitive(
- *         input: RenderTypeRenderInput<FooEntity>,
- *         primitive: RenderEntityModelPrimitive
- *     ): RenderType? {
- *         val texture = ResourceLocation.fromNamespaceAndPath("mymod", "textures/entity/foo.png")
- *         return CooParticlesRenderTypes.entityCutoutEmissive(texture)
- *     }
- *
- *     override fun buildModel(entity: FooEntity, tickDelta: Float): RenderEntityModel {
- *         val builder = RenderEntityModelBuilder()
- *         val body = builder.pipe("body")
- *         builder.addQuad(body, v0, v1, v2, v3)
- *         return builder.build()
+ *     override fun render(input: RenderInput<FooEntity>) {
+ *         drawFoo(input.entity, input.viewMatrix, input.projMatrix, input.modelMatrix)
  *     }
  * }
  * ```
- * `RenderTypeBackedRenderEntityModelRenderer` 会自动写入 position、color、uv、overlay、
- * light 和 normal。Iris 材质能不能生效，取决于 `renderTypeForPrimitive(...)` 返回的
- * RenderType 是否匹配模型 primitive 的顶点模式，以及资源包里是否提供 shaderpack 能理解的
- * albedo / normal / specular 贴图。当前模型 primitive 是 `LINES` 或 `TRIANGLES`；
- * 如果要接入只接受 quad 的 vanilla entity RenderType，需要用匹配的模型构建方式或新增对应
- * primitive 支持，不能把任意三角形直接当成 quad 材质提交。
- *
- * 如果写的是 Coo 自己的模型 shader，通常在 renderer 的 `renderLocal(...)` 中绑定 program，
- * 然后逐次写入 uniform，例如 `setFloat("time", entity.getTime(delta))`、
- * `setFloat3("color", entity.color)`、`setInt("noiseTex", 0)`，贴图则通过
- * `RenderSystem.setShaderTexture(...)` 或 Coo texture helper 绑定到对应通道。
- * 这类参数是当前 draw call 的本地 OpenGL 状态，适合每个实体都有不同时间、颜色、半径、
- * phase、collapse 的模型效果。
- *
- * 如果写的是 vanilla `ShaderInstance` / `RenderType` core shader，参数通常通过 shader json
- * 声明，并在平台 `RenderTypesProvider` 的 shader supplier 中设置，例如
- * `shader.getUniform("Brightness")?.set(value)`。注意这类 uniform 是共享 `ShaderInstance`
- * 状态；RenderType 会批处理，同一个 RenderType 内不适合随意塞入每个实体都不同的材质参数。
- * 动态材质更适合用贴图、顶点色、uv 变体、不同 RenderType，或者回到本地 OpenGL /
- * frame-post 路线。
+ * `CooPipelines.DEFAULT` 用于不需要后处理的实体。pipeline compiler 根据节点和连线推导
+ * stage、scene 资源、mask 与临时 target；renderer 不再声明单独的能力接口。
  *
  * 一般业务请优先继承 [AutoRenderEntity]：它能基于 `@CodecField` 注解自动生成 codec
  * 并自动回写字段。直接继承 `RenderEntity` 适用于需要完全自定义同步格式的少数场景。

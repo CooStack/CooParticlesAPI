@@ -1,24 +1,17 @@
 package cn.coostack.cooparticlesapi.items
 
-import cn.coostack.cooparticlesapi.CooParticlesAPI
-import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableParticleData
+import cn.coostack.cooparticlesapi.extend.ofID
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersManager
 import cn.coostack.cooparticlesapi.network.particle.emitters.PhysicConstant
-import cn.coostack.cooparticlesapi.network.particle.emitters.type.EmittersShootTypes
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleStyleManager
-import cn.coostack.cooparticlesapi.particles.impl.ControlableCloudEffect
-import cn.coostack.cooparticlesapi.particles.impl.ControlableEndRodEffect
 import cn.coostack.cooparticlesapi.test.APITestGroupBuilder
 import cn.coostack.cooparticlesapi.test.TestManager
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestEventEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.event.TestCollideEventHandler
 import cn.coostack.cooparticlesapi.test.options.particle.style.RomaMagicTestStyle
 import cn.coostack.cooparticlesapi.test.options.particle.style.RotateTestStyle
-import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.ServerCameraUtil
-import net.minecraft.client.particle.ParticleRenderType
 import net.minecraft.network.chat.Component
-import net.minecraft.network.chat.Style
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.item.TooltipFlag
 import net.minecraft.world.InteractionHand
@@ -66,7 +59,7 @@ class APIGroupTestingItem(settings: Properties) : Item(settings) {
         val test = TestManager.getGamingTestFromServer(user)
         if (test == null) {
             user.sendSystemMessage(Component.literal("开始测试"))
-            TestManager.startTest(APITestGroupBuilder.ID, user)
+            TestManager.startTest(ofID(APITestGroupBuilder.ID), user)
             user.sendSystemMessage(
                 Component.literal(
                     "控制: 右键=通过并继续, 潜行右键=快进+5, 冲刺右键=跳到最后, PageUp/PageDown 可回退/前进"

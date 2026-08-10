@@ -15,6 +15,14 @@ configurations {
     embed
     implementation.extendsFrom(embed)
 }
+repositories {
+    maven {
+        url = uri("https://api.modrinth.com/maven")
+        content {
+            includeGroup("maven.modrinth")
+        }
+    }
+}
 dependencies {
     minecraft "com.mojang:minecraft:${minecraft_version}"
 //    mappings loom.layered {
@@ -30,6 +38,7 @@ dependencies {
     modImplementation fileTree(dir: "../depend", includes: ["*.jar"])
     modImplementation 'io.github.classgraph:classgraph:4.8.184'
     modCompileOnly fileTree(dir: "../compile_only_depend", includes: ["*.jar"])
+    modCompileOnly "maven.modrinth:sodium:mc1.21.1-0.6.13-fabric"
     testImplementation 'org.jetbrains.kotlin:kotlin-test'
 
 }

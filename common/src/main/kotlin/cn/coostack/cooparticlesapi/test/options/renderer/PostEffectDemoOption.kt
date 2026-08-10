@@ -1,7 +1,8 @@
 package cn.coostack.cooparticlesapi.test.options.renderer
 
-import cn.coostack.cooparticlesapi.renderer.post.CooPostEffects
-import cn.coostack.cooparticlesapi.renderer.post.PostEffectInstance
+import cn.coostack.cooparticlesapi.renderer.pipeline.CooShaderEffect
+import cn.coostack.cooparticlesapi.renderer.pipeline.CooShaderEffectPlayBuilder
+import cn.coostack.cooparticlesapi.renderer.pipeline.CooShaderEffectPlayback
 import cn.coostack.cooparticlesapi.test.api.TestOption
 import cn.coostack.cooparticlesapi.test.api.TestReviewMode
 import net.minecraft.server.level.ServerPlayer
@@ -13,19 +14,19 @@ import net.minecraft.world.entity.player.Player
  * @property player 绑定后处理的玩家
  * @property displayName 测试项 ID；不传时使用通用后处理 ID
  * @property testingTick 最长运行时间，`-1` 表示不限时
- * @property instanceFactory 后处理实例工厂
- * @property useTrackingChunkSpawn 是否向区块跟踪者广播
+ * @property effect 新 Pipeline API 注册的屏幕效果
+ * @property configure 每次播放时写入的动态 uniform
  * @property description 人工检查提示
  */
 class PostEffectDemoOption(
     private val player: Player,
     private val displayName: String = "post-effect-demo",
     private val testingTick: Int = 80,
-    private val instanceFactory: (Player) -> PostEffectInstance,
-    private val useTrackingChunkSpawn: Boolean = false,
+    private val effect: CooShaderEffect,
+    private val configure: CooShaderEffectPlayBuilder.(Player) -> Unit = {},
     private val description: String = "Verify the post effect binding, lifecycle, and fallback behavior visually."
 ) : TestOption<PostEffectDemoOption> {
-    private var active: PostEffectInstance? = null
+    private var active: CooShaderEffectPlayback? = null
     private var remainingTicks = testingTick
 
     override fun paramTarget(): PostEffectDemoOption {
@@ -33,29 +34,22 @@ class PostEffectDemoOption(
     }
 
     override fun start() {
-        val instance = instanceFactory(player)
-            .duration(testingTick.coerceAtLeast(1))
-        active = instance
         val serverPlayer = player as? ServerPlayer
-        if (serverPlayer == null) {
-            CooPostEffects.client.add(instance)
-            return
-        }
-        if (useTrackingChunkSpawn) {
-            CooPostEffects.server.spawn(serverPlayer.serverLevel(), instance)
+        active = if (serverPlayer == null) {
+            effect.play {
+                duration(testingTick.coerceAtLeast(1))
+                configure(player)
+            }
         } else {
-            CooPostEffects.server.send(serverPlayer, instance)
+            effect.play(serverPlayer) {
+                duration(testingTick.coerceAtLeast(1))
+                configure(player)
+            }
         }
     }
 
     override fun stop() {
-        val instanceId = active?.instanceId ?: return
-        val serverPlayer = player as? ServerPlayer
-        if (serverPlayer == null) {
-            CooPostEffects.client.remove(instanceId)
-        } else {
-            CooPostEffects.server.remove(serverPlayer, instanceId)
-        }
+        active?.stop()
         active = null
     }
 

@@ -6,7 +6,6 @@ interface DemoWorldRenderEffectSpec {
     val radius: Float
     val intensity: Float
     val durationTicks: Int
-    val modelPipeKey: String
     val displayName: String
     val effectColor: Vector4f
 }

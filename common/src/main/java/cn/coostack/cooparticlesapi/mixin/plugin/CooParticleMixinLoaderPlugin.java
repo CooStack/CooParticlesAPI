@@ -29,6 +29,11 @@ public class CooParticleMixinLoaderPlugin implements IMixinConfigPlugin {
         if ("cn.coostack.cooparticlesapi.mixin.ParticleManagerRenderMixin".equals(mixinClassName)) {
             return CooParticlesServices.API_CONFIG_MANAGER.getConfig().getEnabledParticleAsync();
         }
+        if ("cn.coostack.cooparticlesapi.mixin.SectionCompilerMixin".equals(mixinClassName)) {
+            return CooParticleMixinLoaderPlugin.class.getClassLoader().getResource(
+                    "net/neoforged/neoforge/common/NeoForge.class"
+            ) == null;
+        }
         return true;
     }
 

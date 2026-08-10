@@ -15,7 +15,7 @@ import java.util.UUID
  *
  * 这个类型替代了调用方在每个 shader 里重复实现“实体/方块/世界坐标投影到屏幕坐标”的样板。
  */
-sealed interface PostEffectBinding {
+internal sealed interface PostEffectBinding {
     fun write(buf: FriendlyByteBuf)
 
     /** 绑定整屏效果，`center` 默认为屏幕中心。 */
@@ -137,7 +137,7 @@ sealed interface PostEffectBinding {
     }
 }
 
-val PostEffectBinding.typeId: String
+internal val PostEffectBinding.typeId: String
     get() = when (this) {
         is PostEffectBinding.Screen -> "screen"
         is PostEffectBinding.ScreenPoint -> "screen_point"
@@ -150,7 +150,7 @@ val PostEffectBinding.typeId: String
     }
 
 /** 物品绑定的语义位置。当前默认 backend 只保留语义，后续可扩展为不同投影方式。 */
-enum class PostEffectItemContext {
+internal enum class PostEffectItemContext {
     /** 物品在 GUI 中渲染，例如背包或 JEI 类界面。 */
     GUI,
     /** 第一人称手持物品。 */

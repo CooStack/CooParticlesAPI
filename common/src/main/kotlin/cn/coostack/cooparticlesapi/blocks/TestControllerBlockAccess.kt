@@ -56,12 +56,18 @@ object TestControllerBlockAccess {
 
         val resolved = bindings.map { binding ->
             val blockEntity = find(player.server, binding.dimension, binding.pos)
+            val currentIndex = blockEntity?.currentIndex() ?: 0
             BoundControllerEntry(
                 dimension = binding.dimension,
                 pos = binding.pos,
                 groupId = blockEntity?.groupId?.ifBlank { "未配置" } ?: "未加载",
                 status = blockEntity?.statusText() ?: "区块未加载或方块不存在",
-                currentIndex = blockEntity?.currentIndex() ?: 0,
+                currentIndex = currentIndex,
+                currentOptionId = if (currentIndex > 0) {
+                    blockEntity?.optionIds()?.getOrNull(currentIndex - 1).orEmpty()
+                } else {
+                    ""
+                },
                 optionCount = blockEntity?.optionCount() ?: 0,
                 loaded = blockEntity != null,
                 running = blockEntity?.isRunning() ?: false
@@ -139,6 +145,7 @@ data class BoundControllerEntry(
     val groupId: String,
     val status: String,
     val currentIndex: Int,
+    val currentOptionId: String,
     val optionCount: Int,
     val loaded: Boolean,
     val running: Boolean,

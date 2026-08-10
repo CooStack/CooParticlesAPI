@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi.test.block.client
 
+import cn.coostack.cooparticlesapi.blocks.defaultTestControllerGroupId
 import cn.coostack.cooparticlesapi.network.packet.api.CooClientPacketManager
 import cn.coostack.cooparticlesapi.network.packet.testblock.PacketOpenTestControllerScreenS2C
 import cn.coostack.cooparticlesapi.network.packet.testblock.PacketReviewTestControllerC2S
@@ -19,6 +20,7 @@ import net.minecraft.client.gui.components.Button
 import net.minecraft.client.gui.components.EditBox
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
+import net.minecraft.resources.ResourceLocation
 import org.lwjgl.glfw.GLFW
 import java.util.Locale
 import kotlin.math.floor
@@ -41,7 +43,11 @@ class TestControllerScreen internal constructor(
     private val sharedHistory: TestControllerUndoHistory<TestControllerPacketDrafts.TestControllerConfigSnapshot>? = null,
     private val initialPrecisionUnlocked: Boolean = false,
 ) : Screen(Component.literal("测试方块")) {
-    private lateinit var groupBox: EditBox
+    /** 当前测试组的 MOD 命名空间输入。 */
+    private lateinit var modIdBox: EditBox
+
+    /** 当前测试组在 MOD 命名空间下的 path 输入。 */
+    private lateinit var groupPathBox: EditBox
     private lateinit var indexBox: EditBox
     private lateinit var delayBox: EditBox
     private lateinit var offsetXBox: EditBox
@@ -100,6 +106,8 @@ class TestControllerScreen internal constructor(
     private val colorRgbBoxes = ArrayList<EditBox>()
     private val paramAbsoluteModes = ArrayList<Boolean>()
     private val paramValues = LinkedHashMap<String, String>()
+    /** 服务端按注册顺序同步的合法方块测试组 ID。 */
+    private val registeredGroupIds = packet.registeredIds.mapNotNull(ResourceLocation::tryParse)
     private val maxVisibleSuggestions = 3
     private var mode = BlockTestMode.fromId(packet.mode)
     private var repeatIndex = packet.repeatIndex
@@ -125,6 +133,8 @@ class TestControllerScreen internal constructor(
     private var colorPickerDrag = ColorPickerDrag.NONE
     private var updatingColorHex = false
     private var updatingColorRgb = false
+    /** 防止自动写入唯一 path 时再次进入输入响应回调。 */
+    private var updatingGroupInputs = false
 
     /**
      * 标记当前是否正由缩放后的 [Screen.render] 绘制内容控件。
@@ -181,10 +191,15 @@ class TestControllerScreen internal constructor(
         paramModeButtons.clear()
         paramPickButtons.clear()
         colorRgbBoxes.clear()
-        groupBox = editBox(left + 92, y, 220, packet.groupId)
-        groupBox.setMaxLength(256)
-        groupBox.setResponder { updateSuggestions() }
-        addRenderableWidget(groupBox)
+        val initialGroupId = ResourceLocation.tryParse(packet.groupId) ?: defaultTestControllerGroupId()
+        modIdBox = editBox(left + 52, y, 100, initialGroupId.namespace)
+        groupPathBox = editBox(left + 190, y, 122, initialGroupId.path)
+        modIdBox.setMaxLength(256)
+        groupPathBox.setMaxLength(256)
+        modIdBox.setResponder { updateGroupSuggestions(completeSinglePath = true) }
+        groupPathBox.setResponder { updateGroupSuggestions() }
+        addRenderableWidget(modIdBox)
+        addRenderableWidget(groupPathBox)
 
         undoButton = Button.builder(Component.literal("撤回")) {
             recordCurrentState()
@@ -383,7 +398,7 @@ class TestControllerScreen internal constructor(
             addRenderableWidget(rgbBox)
         }
 
-        updateSuggestions()
+        updateGroupSuggestions()
         updateIndexSuggestion()
         updateParamBoxes(syncVisible = false)
         updateAnimationButtons()
@@ -429,7 +444,7 @@ class TestControllerScreen internal constructor(
             layoutWidgets()
             return true
         }
-        if (groupBox.isFocused && suggestions.isNotEmpty()) {
+        if (focusedGroupBox() != null && suggestions.isNotEmpty()) {
             when (keyCode) {
                 GLFW.GLFW_KEY_TAB, GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> {
                     return acceptSelectedSuggestion()
@@ -459,7 +474,12 @@ class TestControllerScreen internal constructor(
                 }
             }
         }
-        return super.keyPressed(keyCode, scanCode, modifiers)
+        val previousGroupBox = focusedGroupBox()
+        val handled = super.keyPressed(keyCode, scanCode, modifiers)
+        if (focusedGroupBox() !== previousGroupBox) {
+            updateGroupSuggestions()
+        }
+        return handled
     }
 
     override fun charTyped(codePoint: Char, modifiers: Int): Boolean {
@@ -507,11 +527,14 @@ class TestControllerScreen internal constructor(
         val pickedIndex = suggestionAt(contentMouseX.toInt(), contentMouseY.toInt())
         if (pickedIndex != null) {
             selectedSuggestionIndex = pickedIndex
-            groupBox.value = suggestions[pickedIndex]
-            updateSuggestions()
+            acceptGroupSuggestion(suggestions[pickedIndex])
             return true
         }
+        val previousGroupBox = focusedGroupBox()
         val handled = super.mouseClicked(contentMouseX, contentMouseY, button)
+        if (focusedGroupBox() !== previousGroupBox) {
+            updateGroupSuggestions()
+        }
         updateParamSuggestion()
         return handled
     }
@@ -653,7 +676,8 @@ class TestControllerScreen internal constructor(
         var y = 16
         graphics.drawString(font, title, left, y, 0xFFFFFF, true)
         y = 38
-        graphics.drawString(font, "TestGroupID", left, y, 0xE0E0E0, true)
+        graphics.drawString(font, "所属模组", left, y, 0xE0E0E0, true)
+        graphics.drawString(font, "组ID", left + 160, y, 0xE0E0E0, true)
         y += 28
         graphics.drawString(font, "模式", left, y, 0xE0E0E0, true)
         if (mode == BlockTestMode.INDEX) {
@@ -749,7 +773,7 @@ class TestControllerScreen internal constructor(
         return PacketUpdateTestControllerC2S().also {
             it.dimension = packet.dimension
             it.blockPos = packet.blockPos
-            it.groupId = groupBox.value
+            it.groupId = currentGroupId()
             it.mode = mode.id
             it.selectedIndex = indexBox.value.toIntOrNull() ?: 0
             it.repeatIndex = repeatIndex
@@ -773,38 +797,94 @@ class TestControllerScreen internal constructor(
     }
 
     /**
-     * 根据分组输入刷新补全项，并同步依赖当前分组的参数状态。
+     * 根据当前输入框刷新 MOD_ID 或 path 补全，并同步测试项参数。
      *
-     * 示例：输入分组 ID 的中间片段时仍会显示包含匹配，前缀项排在最前。
-     * 禁止在这里按字母重排同级候选；注册顺序用于打破同优先级平局。
+     * MOD_ID 完整匹配后才会启用 path 补全；该命名空间只有一个 path 时直接写入。
      */
-    private fun updateSuggestions() {
-        val input = groupBox.value.trim()
-        suggestions = searchTestControllerSuggestions(packet.registeredIds, input)
+    private fun updateGroupSuggestions(completeSinglePath: Boolean = false) {
+        if (updatingGroupInputs) return
+        val modIds = testControllerModIds(registeredGroupIds)
+        val namespace = modIds.firstOrNull { modId ->
+            modId.equals(modIdBox.value.trim(), ignoreCase = true)
+        }
+        val paths = testControllerPaths(registeredGroupIds, modIdBox.value)
+        val singlePath = testControllerSinglePath(registeredGroupIds, modIdBox.value)
+        if (completeSinglePath) {
+            updatingGroupInputs = true
+            when {
+                namespace == null -> groupPathBox.value = ""
+                singlePath != null -> groupPathBox.value = singlePath
+                paths.none { path -> path.equals(groupPathBox.value.trim(), ignoreCase = true) } -> {
+                    groupPathBox.value = ""
+                }
+            }
+            updatingGroupInputs = false
+        }
+        val box = focusedGroupBox()
+        val candidates = when (box) {
+            modIdBox -> testControllerModIdSuggestions(registeredGroupIds, modIdBox.value)
+            groupPathBox -> paths
+            else -> emptyList()
+        }
+        val input = box?.value?.trim().orEmpty()
+        suggestions = searchTestControllerSuggestions(candidates, input)
         selectedSuggestionIndex = if (suggestions.isEmpty()) -1 else 0
         suggestionScroll = 0
+        modIdBox.setSuggestion(null)
+        groupPathBox.setSuggestion(null)
         val first = suggestions.firstOrNull()
-        groupBox.setSuggestion(if (input.isNotBlank() && first?.startsWith(input, ignoreCase = true) == true) first.drop(input.length) else null)
+        box?.setSuggestion(
+            if (input.isNotBlank() && first?.startsWith(input, ignoreCase = true) == true) {
+                first.drop(input.length)
+            } else {
+                null
+            }
+        )
         updateIndexSuggestion()
         updateParamBoxes()
     }
 
+    private fun focusedGroupBox(): EditBox? {
+        return when {
+            modIdBox.isFocused && modIdBox.active -> modIdBox
+            groupPathBox.isFocused && groupPathBox.active -> groupPathBox
+            else -> null
+        }
+    }
+
+    private fun acceptGroupSuggestion(suggestion: String) {
+        when (focusedGroupBox()) {
+            modIdBox -> modIdBox.value = suggestion
+            groupPathBox -> groupPathBox.value = suggestion
+            else -> return
+        }
+        updateGroupSuggestions(completeSinglePath = modIdBox.isFocused)
+    }
+
+    /** @return 两个输入框组成并规范化后的完整测试组资源 ID */
+    private fun currentGroupId(): String {
+        return testControllerGroupId(registeredGroupIds, modIdBox.value, groupPathBox.value)
+            ?.toString()
+            .orEmpty()
+    }
+
     private fun renderSuggestions(graphics: GuiGraphics, mouseX: Int, mouseY: Int) {
         if (page != ControllerPage.MAIN) return
-        if (!groupBox.isFocused || suggestions.isEmpty()) return
-        val x = groupBox.x
-        var y = groupBox.y + groupBox.height + 2
+        val box = focusedGroupBox() ?: return
+        if (suggestions.isEmpty()) return
+        val x = box.x
+        var y = box.y + box.height + 2
         val end = minOf(suggestions.size, suggestionScroll + maxVisibleSuggestions)
         for (index in suggestionScroll until end) {
             val suggestion = suggestions[index]
-            val hovered = mouseX in x..(x + groupBox.width) && mouseY in y..(y + 13)
+            val hovered = mouseX in x..(x + box.width) && mouseY in y..(y + 13)
             val selected = index == selectedSuggestionIndex
             val color = when {
                 hovered -> 0xCC224422.toInt()
                 selected -> 0xCC1A331A.toInt()
                 else -> 0xCC000000.toInt()
             }
-            graphics.fill(x, y, x + groupBox.width, y + 13, color)
+            graphics.fill(x, y, x + box.width, y + 13, color)
             graphics.drawString(font, suggestion, x + 3, y + 3, 0xE0FFE0, true)
             y += 13
         }
@@ -812,12 +892,13 @@ class TestControllerScreen internal constructor(
 
     private fun suggestionAt(mouseX: Int, mouseY: Int): Int? {
         if (page != ControllerPage.MAIN) return null
-        if (!groupBox.isFocused || suggestions.isEmpty()) return null
-        val x = groupBox.x
-        var y = groupBox.y + groupBox.height + 2
+        val box = focusedGroupBox() ?: return null
+        if (suggestions.isEmpty()) return null
+        val x = box.x
+        var y = box.y + box.height + 2
         val end = minOf(suggestions.size, suggestionScroll + maxVisibleSuggestions)
         for (index in suggestionScroll until end) {
-            if (mouseX in x..(x + groupBox.width) && mouseY in y..(y + 13)) return index
+            if (mouseX in x..(x + box.width) && mouseY in y..(y + 13)) return index
             y += 13
         }
         return null
@@ -825,8 +906,7 @@ class TestControllerScreen internal constructor(
 
     private fun acceptSelectedSuggestion(): Boolean {
         val index = selectedSuggestionIndex.takeIf { it in suggestions.indices } ?: return false
-        groupBox.value = suggestions[index]
-        updateSuggestions()
+        acceptGroupSuggestion(suggestions[index])
         updateIndexSuggestion()
         return true
     }
@@ -928,7 +1008,7 @@ class TestControllerScreen internal constructor(
     }
 
     private fun currentParamSetKey(): String {
-        return "${mode.id}|${groupBox.value.trim().lowercase(Locale.ROOT)}|${currentOptionIndex()}"
+        return "${mode.id}|${currentGroupId().lowercase(Locale.ROOT)}|${currentOptionIndex()}"
     }
 
     private fun actualParamIndex(row: Int): Int {
@@ -976,7 +1056,7 @@ class TestControllerScreen internal constructor(
     }
 
     private fun currentOptionIds(): List<String> {
-        val groupId = groupBox.value.trim()
+        val groupId = currentGroupId()
         if (groupId.isBlank()) {
             return emptyList()
         }
@@ -1008,7 +1088,7 @@ class TestControllerScreen internal constructor(
         if (mode != BlockTestMode.INDEX) {
             return emptyMap()
         }
-        if (!groupBox.value.trim().equals(packet.groupId, ignoreCase = true)) {
+        if (!currentGroupId().equals(packet.groupId, ignoreCase = true)) {
             return emptyMap()
         }
         return packet.optionParamValues.getOrNull(currentOptionIndex())
@@ -1017,7 +1097,7 @@ class TestControllerScreen internal constructor(
     }
 
     private fun currentGroupOptionParamSpecs(): List<ByteArray> {
-        val groupId = groupBox.value.trim()
+        val groupId = currentGroupId()
         if (groupId.isBlank()) {
             return emptyList()
         }
@@ -1742,11 +1822,20 @@ class TestControllerScreen internal constructor(
 
     private fun displayStatus(): String {
         if (packet.pendingReview) {
-            return "等待人工复核"
+            return testControllerStatusWithOptionId(
+                "等待人工复核",
+                packet.currentIndex,
+                packet.optionCount,
+                packet.optionIds.getOrNull(packet.currentIndex - 1).orEmpty()
+            )
         }
         if (packet.running) {
             return if (packet.currentIndex > 0 && packet.optionCount > 0) {
-                "运行中 当前索引: ${packet.currentIndex}/${packet.optionCount}"
+                testControllerRunningStatus(
+                    packet.currentIndex,
+                    packet.optionCount,
+                    packet.optionIds.getOrNull(packet.currentIndex - 1).orEmpty()
+                )
             } else {
                 compactStatus(packet.status).takeIf { it.isNotBlank() } ?: "运行中"
             }
@@ -1835,7 +1924,7 @@ class TestControllerScreen internal constructor(
      * 禁止通过改变按钮尺寸表达 hover 或动态状态，以免向量行发生位移。
      */
     private fun layoutWidgets() {
-        if (!::groupBox.isInitialized) return
+        if (!::modIdBox.isInitialized || !::groupPathBox.isInitialized) return
         val left = layoutWidth / 2 - 170
         val mainPage = page == ControllerPage.MAIN
         val paramPage = page == ControllerPage.PARAMS
@@ -1856,10 +1945,14 @@ class TestControllerScreen internal constructor(
         redoButton.visible = true
         updateHistoryButtons()
 
-        groupBox.setX(left + 92)
-        groupBox.setY(34)
-        groupBox.visible = mainPage
-        groupBox.active = mainPage
+        modIdBox.setX(left + 52)
+        modIdBox.setY(34)
+        modIdBox.visible = mainPage
+        modIdBox.active = mainPage
+        groupPathBox.setX(left + 190)
+        groupPathBox.setY(34)
+        groupPathBox.visible = mainPage
+        groupPathBox.active = mainPage && isTestControllerModIdValid(modIdBox.value)
         modeButton.setX(left + 92)
         modeButton.setY(62)
         modeButton.visible = mainPage
@@ -2084,7 +2177,7 @@ class TestControllerScreen internal constructor(
 
     /** 将当前控件值记录为一条配置历史，供主界面和曲线编辑器共享。 */
     internal fun recordCurrentState() {
-        if (!::groupBox.isInitialized) return
+        if (!::modIdBox.isInitialized || !::groupPathBox.isInitialized) return
         history.record(TestControllerPacketDrafts.snapshotFrom(packet, updatePacket()))
     }
 

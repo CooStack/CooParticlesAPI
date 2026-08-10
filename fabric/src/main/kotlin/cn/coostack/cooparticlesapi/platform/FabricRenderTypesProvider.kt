@@ -12,15 +12,21 @@ import cn.coostack.cooparticlesapi.display.CooRenderTypeShaderPreset
 import cn.coostack.cooparticlesapi.display.CooRenderTypesProvider
 import cn.coostack.cooparticlesapi.display.CooShaderStateResolver
 import cn.coostack.cooparticlesapi.test.options.display.MCShaders
+import cn.coostack.cooparticlesapi.renderer.pipeline.CooRenderPipeline
+import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainPipelineManager
+import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainVertexFormats
 import com.mojang.blaze3d.vertex.DefaultVertexFormat
 import com.mojang.blaze3d.vertex.VertexFormat
 import net.minecraft.client.renderer.RenderStateShard
 import net.minecraft.client.renderer.RenderType
 import net.minecraft.resources.ResourceLocation
+import net.minecraft.client.renderer.texture.TextureAtlas
+import net.minecraft.world.level.block.state.BlockState
 
 object FabricRenderTypesProvider : CooRenderTypesProvider {
     private val cache = LinkedHashMap<CooRenderTypeDescriptor, RenderType>()
     private val entityCutoutEmissiveCache = LinkedHashMap<Pair<ResourceLocation, Float>, RenderType>()
+    private val terrainCache = LinkedHashMap<Pair<CooRenderPipeline<BlockState>, RenderType>, RenderType>()
     private val glowId = ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "glow")
 
     private val glowDescriptor = CooRenderTypeDescriptor.builder("coo_glow")
@@ -36,7 +42,7 @@ object FabricRenderTypesProvider : CooRenderTypesProvider {
         get() = named(glowId) ?: create(glowDescriptor)
 
     override fun entityCutoutEmissive(texture: ResourceLocation, brightness: Float): RenderType {
-        val resolvedBrightness = brightness.coerceAtLeast(0f)
+        val resolvedBrightness = brightness.coerceAtLeast(0F)
         val renderType = entityCutoutEmissiveCache.getOrPut(texture to resolvedBrightness) {
             val renderTypeName = "coo_entity_cutout_emissive_$resolvedBrightness"
             RenderTypeIrisSupposerRegistry.register(renderTypeName, "coo_entity_cutout_emissive")
@@ -112,6 +118,45 @@ object FabricRenderTypesProvider : CooRenderTypesProvider {
             )
         }
         return IrisCompat.wrapEntityRenderType(renderType)
+    }
+
+    override fun terrain(pipeline: CooRenderPipeline<BlockState>, baseLayer: RenderType): RenderType {
+        return synchronized(terrainCache) { terrainCache.getOrPut(pipeline to baseLayer) {
+            val sorted = baseLayer.sortOnUpload()
+            val mipmap = baseLayer === RenderType.solid() ||
+                baseLayer === RenderType.cutoutMipped() || baseLayer === RenderType.tripwire()
+            RenderType.create(
+                "coo_terrain_overlay_${pipeline.id.namespace}_${pipeline.id.path.replace('/', '_')}",
+                CooTerrainVertexFormats.BLOCK_EFFECT,
+                VertexFormat.Mode.QUADS,
+                RenderType.BIG_BUFFER_SIZE,
+                baseLayer.affectsCrumbling(),
+                sorted,
+                RenderType.CompositeState.builder()
+                    .setShaderState(RenderStateShard.ShaderStateShard {
+                        CooTerrainPipelineManager.shaderFor(pipeline, baseLayer)
+                            ?.also(IrisCompat::markUnskippable)
+                    })
+                    .setTextureState(RenderStateShard.TextureStateShard(TextureAtlas.LOCATION_BLOCKS, false, mipmap))
+                    .setTransparencyState(
+                        if (sorted) RenderStateShard.TRANSLUCENT_TRANSPARENCY else RenderStateShard.NO_TRANSPARENCY
+                    )
+                    .setCullState(RenderStateShard.CULL)
+                    .setDepthTestState(RenderStateShard.LEQUAL_DEPTH_TEST)
+                    .setLightmapState(RenderStateShard.LIGHTMAP)
+                    .setWriteMaskState(
+                        if (sorted) RenderStateShard.COLOR_WRITE else RenderStateShard.COLOR_DEPTH_WRITE
+                    )
+                    .setOutputState(
+                        when (baseLayer) {
+                            RenderType.translucent() -> RenderStateShard.TRANSLUCENT_TARGET
+                            RenderType.tripwire() -> RenderStateShard.WEATHER_TARGET
+                            else -> RenderStateShard.MAIN_TARGET
+                        }
+                    )
+                    .createCompositeState(true)
+            )
+        } }
     }
 
     override fun glow(): RenderType = glow

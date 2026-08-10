@@ -2,7 +2,7 @@ package cn.coostack.cooparticlesapi.renderer.utils
 
 import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModel
 import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelBuilder
-import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelPipe
+import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelLayer
 import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelPrimitive
 import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelPrimitiveMode
 import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelVertex
@@ -463,23 +463,23 @@ class RenderVertexBuilder {
         return create().map { VertexData(it.position, it.color, it.uv) }
     }
 
-    fun createPrimitives(pipe: RenderEntityModelPipe): List<RenderEntityModelPrimitive> {
+    fun createPrimitives(layer: RenderEntityModelLayer): List<RenderEntityModelPrimitive> {
         return batches
             .filter { it.vertices.isNotEmpty() }
             .map { batch ->
                 RenderEntityModelPrimitive(
-                    pipe = pipe,
+                    layer = layer,
                     vertices = batch.vertices.map { cloneVertex(it) },
                     primitiveMode = batch.primitiveMode
                 )
             }
     }
 
-    fun addTo(model: RenderEntityModelBuilder, pipe: RenderEntityModelPipe): RenderVertexBuilder {
+    fun addTo(model: RenderEntityModelBuilder, layer: RenderEntityModelLayer): RenderVertexBuilder {
         batches.forEach { batch ->
             batch.vertices.forEach { vertex ->
                 model.addVertex(
-                    pipe = pipe,
+                    layer = layer,
                     position = Vector3f(vertex.position),
                     color = Vector4f(vertex.color),
                     uv = Vector2f(vertex.uv),
@@ -491,8 +491,8 @@ class RenderVertexBuilder {
         return this
     }
 
-    fun buildModel(pipe: RenderEntityModelPipe): RenderEntityModel {
-        return RenderEntityModel(listOf(pipe), createPrimitives(pipe))
+    fun buildModel(layer: RenderEntityModelLayer): RenderEntityModel {
+        return RenderEntityModel(listOf(layer), createPrimitives(layer))
     }
 
     fun cloneBuilder(): RenderVertexBuilder {

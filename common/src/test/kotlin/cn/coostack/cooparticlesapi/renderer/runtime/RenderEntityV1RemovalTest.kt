@@ -19,21 +19,34 @@ class RenderEntityV1RemovalTest {
     }
 
     @Test
-    fun `v2 docs no longer instruct users to bind render entities to global pipes`() {
+    fun `render docs no longer expose removed render apis`() {
         val docsDir = findRepoRoot().resolve("docs")
         if (!Files.isDirectory(docsDir)) {
             return
         }
+        val removedApis = listOf(
+            "bindEntityRenderPipe(",
+            "ShaderPipe",
+            "LegacyRenderEntityRenderer",
+            "FramePostRenderEntityRenderer",
+            "SharedModelMaskBloomRenderEntityRenderer",
+            "DedicatedGlowMaskRenderEntityRenderer",
+            "describeFeatures",
+            "glowMaskConfig",
+            "RenderEntityModelPipe"
+        )
         Files.walk(docsDir).use { stream ->
             stream
                 .filter { Files.isRegularFile(it) }
                 .filter { it.fileName.toString().endsWith(".md") }
                 .forEach { docPath ->
                     val text = Files.readString(docPath)
-                    assertFalse(
-                        "bindEntityRenderPipe(" in text,
-                        "doc still references v1 bindEntityRenderPipe: $docPath"
-                    )
+                    removedApis.forEach { removedApi ->
+                        assertFalse(
+                            removedApi in text,
+                            "doc still references removed API $removedApi: $docPath"
+                        )
+                    }
                 }
         }
     }

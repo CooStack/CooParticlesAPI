@@ -34,8 +34,7 @@ data class TrailSample(
  * 记录目标最近一段时间经过的世界坐标，并在渲染时转换为
  * “以插值渲染原点为原点”的局部点列，供 [TrailModelBuilder] 每帧生成动态拖尾模型。
  *
- * 由于 [cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelRenderer.buildModel]
- * 每帧都会被调用、模型顶点由 DynamicVertexBuffer 每帧重传，
+ * renderer 每帧重建模型，模型顶点由 DynamicVertexBuffer 重传，
  * 用它构建的拖尾天然就是“点在不断变化的动态模型”。
  *
  * 典型用法（在客户端 renderer 中持有一个实例）：
@@ -47,8 +46,8 @@ data class TrailSample(
  *     tracker.record(emitterWorldPos, entity.age + tickDelta)
  *     val sample = tracker.sample(entity, tickDelta)
  *     val model = RenderEntityModelBuilder()
- *     val pipe = model.pipe("trail")
- *     TrailModelBuilder.buildRibbon(model, pipe, sample, TrailRibbonStyle(...))
+ *     val layer = model.layer("trail")
+ *     TrailModelBuilder.buildRibbon(model, layer, sample, TrailRibbonStyle(...))
  *     return model.build()
  * }
  * ```

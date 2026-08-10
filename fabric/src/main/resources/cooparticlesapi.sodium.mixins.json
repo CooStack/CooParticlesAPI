@@ -1,0 +1,20 @@
+{
+  "required": false,
+  "package": "cn.coostack.cooparticlesapi.mixin.compat.sodium",
+  "plugin": "cn.coostack.cooparticlesapi.mixin.plugin.CooSodiumMixinPlugin",
+  "compatibilityLevel": "JAVA_21",
+  "refmap": "cooparticlesapi.refmap.json",
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "client": [
+    "BlockRendererMixin",
+    "ChunkBuilderMeshingTaskMixin",
+    "ChunkBuildOutputMixin",
+    "GameRendererMixin",
+    "RenderRegionManagerMixin",
+    "RenderSectionMixin",
+    "RenderSectionManagerMixin",
+    "SodiumWorldRendererMixin"
+  ]
+}

@@ -4,11 +4,12 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.exists
 import kotlin.test.Test
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class RenderEntityInstanceLifecycleTest {
     @Test
-    fun `render entity instance type owns mirrored entity renderer and lifecycle hooks`() {
+    fun `render entity instance owns mirrored entity renderer and compiled pipeline`() {
         val instancePath = projectFile("common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/runtime/RenderEntityInstance.kt")
 
         assertTrue(instancePath.exists(), "Expected RenderEntityInstance.kt to exist")
@@ -17,11 +18,15 @@ class RenderEntityInstanceLifecycleTest {
         assertTrue("class RenderEntityInstance" in instanceSource)
         assertTrue("val entity" in instanceSource)
         assertTrue("val renderer" in instanceSource)
-        assertTrue("var visualProfile" in instanceSource)
-        assertTrue("fun initialize()" in instanceSource)
+        assertTrue("private var compiledPipeline" in instanceSource)
+        assertFalse("visualProfile" in instanceSource)
+        assertFalse("featureSet" in instanceSource)
+        assertTrue("internal fun reinitialize()" in instanceSource)
         assertTrue("fun updateFrom(" in instanceSource)
+        assertTrue("fun render(" in instanceSource)
+        assertTrue("fun collectEffects(" in instanceSource)
         assertTrue("fun markRemoved()" in instanceSource)
-        assertTrue("fun release()" in instanceSource)
+        assertFalse("fun release()" in instanceSource)
     }
 
     @Test

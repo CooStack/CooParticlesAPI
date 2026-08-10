@@ -18,17 +18,16 @@ class DemoWaterBallRenderEntity() : AutoRenderEntity(null, Vec3.ZERO), DemoWorld
     }
 
     @CodecField
-    override var radius: Float = 1.45f
+    override var radius: Float = 1.45F
 
     @CodecField
-    override var intensity: Float = 0.92f
+    override var intensity: Float = 0.92F
 
     @CodecField
     override var durationTicks: Int = 160
 
-    override val modelPipeKey: String = "water_ball"
     override val displayName: String = "render_entity/water_ball"
-    override val effectColor: Vector4f = Vector4f(0.025f, 0.22f, 0.34f, 0.50f)
+    override val effectColor: Vector4f = Vector4f(0.025F, 0.22F, 0.34F, 0.50F)
 
     override fun serverTick() {
         if (durationTicks in 1..age) remove()

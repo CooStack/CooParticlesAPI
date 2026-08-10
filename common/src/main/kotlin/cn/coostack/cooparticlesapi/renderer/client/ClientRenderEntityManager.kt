@@ -4,22 +4,12 @@ import cn.coostack.cooparticlesapi.renderer.RenderEntity
 import cn.coostack.cooparticlesapi.renderer.backend.RenderBackendCapability
 import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameContext
 import cn.coostack.cooparticlesapi.renderer.effects.RenderEffectGraph
+import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainPipelineManager
 import cn.coostack.cooparticlesapi.renderer.post.CooPostEffects
-import cn.coostack.cooparticlesapi.renderer.runtime.ClientRenderEntityRegistry
-import cn.coostack.cooparticlesapi.renderer.runtime.LegacyRenderEntityRenderer
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityInstance
 import cn.coostack.cooparticlesapi.renderer.state.RenderStateGuard
-import cn.coostack.cooparticlesapi.utils.MinecraftRendererUtil
-import com.mojang.blaze3d.vertex.PoseStack
-import net.minecraft.client.Camera
 import net.minecraft.client.Minecraft
 import net.minecraft.client.Minecraft.getInstance
-import net.minecraft.client.renderer.MultiBufferSource
-import net.minecraft.network.FriendlyByteBuf
-import net.minecraft.network.codec.StreamCodec
-import net.minecraft.resources.ResourceLocation
-import net.minecraft.util.Mth
-import net.minecraft.world.phys.Vec3
 import org.joml.Matrix4f
 import org.joml.Matrix4fStack
 import java.util.UUID
@@ -29,39 +19,10 @@ object ClientRenderEntityManager {
     val minecraft: Minecraft = getInstance()
     private val entities = HashMap<UUID, RenderEntityInstance<RenderEntity>>()
     private var frameStatePrepared = false
-    private var cachedTickDelta = 0f
+    private var cachedTickDelta = 0F
     private val cachedViewMatrix = Matrix4f()
     private val cachedProjMatrix = Matrix4f()
     private val renderStateGuard = RenderStateGuard()
-    private val entityPipeTypes = HashMap<ResourceLocation, ResourceLocation>()
-
-    fun register(id: ResourceLocation, codec: StreamCodec<FriendlyByteBuf, RenderEntity>) {
-        val existing = ClientRenderEntityRegistry.get(id)
-        if (existing == null) {
-            ClientRenderEntityRegistry.register(id, codec) { LegacyRenderEntityRenderer() }
-            return
-        }
-        if (existing.rendererFactory == null) {
-            ClientRenderEntityRegistry.registerRenderer(id) { LegacyRenderEntityRenderer() }
-        }
-    }
-
-    fun register(entity: RenderEntity) {
-        register(entity.getRenderID(), entity.getCodec())
-    }
-
-    fun bindEntityRenderPipe(type: ResourceLocation, pipeID: ResourceLocation) {
-        entityPipeTypes[type] = pipeID
-    }
-
-    fun getPipeIDFromType(type: ResourceLocation): ResourceLocation {
-        return entityPipeTypes[type] ?: ShaderPipeManagers.default.pipeID
-    }
-
-    fun getCodecFromID(id: ResourceLocation): StreamCodec<FriendlyByteBuf, RenderEntity>? {
-        return ClientRenderEntityRegistry.get(id)?.codec
-    }
-
     fun getFrom(uuid: UUID): RenderEntityInstance<RenderEntity>? {
         return entities[uuid]
     }
@@ -78,10 +39,9 @@ object ClientRenderEntityManager {
     fun loadedEntityCount(): Int = entities.size
 
     fun clear() {
-        entities.values.forEach { it.release() }
         entities.clear()
         frameStatePrepared = false
-        cachedTickDelta = 0f
+        cachedTickDelta = 0F
         cachedViewMatrix.identity()
         cachedProjMatrix.identity()
         CooPostEffects.client.clear()
@@ -89,7 +49,7 @@ object ClientRenderEntityManager {
 
     fun onShaderReload() {
         frameStatePrepared = false
-        cachedTickDelta = 0f
+        cachedTickDelta = 0F
         cachedViewMatrix.identity()
         cachedProjMatrix.identity()
         entities.values.forEach { instance ->
@@ -100,38 +60,11 @@ object ClientRenderEntityManager {
     fun add(instance: RenderEntityInstance<RenderEntity>) {
         instance.entity.world = minecraft.level
         instance.entity.lastRenderPos = instance.entity.pos
-        instance.initialize()
         entities[instance.entity.uuid] = instance
     }
 
-    fun renderTick(tickDelta: Float, viewMatrix: Matrix4f, projMatrix: Matrix4f) {
-        renderWorldPass(tickDelta, viewMatrix, projMatrix)
-    }
-
-    fun renderRenderTypePass(
-        tickDelta: Float,
-        viewMatrix: Matrix4f,
-        projMatrix: Matrix4f,
-        poseStack: PoseStack,
-        bufferSource: MultiBufferSource,
-        camera: Camera,
-        irisShaderPackInUse: Boolean
-    ) {
-        entities.values.forEach { instance ->
-            val entity = instance.entity
-            instance.beginWorldRenderFrame()
-            MinecraftRendererUtil.transformTo(camera, entity.renderPosition(tickDelta), poseStack) {
-                instance.renderRenderType(
-                    tickDelta,
-                    viewMatrix,
-                    projMatrix,
-                    this,
-                    bufferSource,
-                    camera,
-                    irisShaderPackInUse
-                )
-            }
-        }
+    fun beginWorldRenderFrame() {
+        entities.values.forEach(RenderEntityInstance<RenderEntity>::beginWorldRenderFrame)
     }
 
     fun renderWorldPass(tickDelta: Float, viewMatrix: Matrix4f, projMatrix: Matrix4f) {
@@ -140,7 +73,7 @@ object ClientRenderEntityManager {
             val entity = instance.entity
             stack.pushMatrix()
             RenderUtil.setRenderStackWithEntity(stack, entity, tickDelta)
-            instance.renderLocal(tickDelta, viewMatrix, projMatrix, stack, renderStateGuard)
+            instance.render(tickDelta, viewMatrix, projMatrix, stack, renderStateGuard)
             stack.popMatrix()
             entity.lastRenderPos = entity.pos
         }
@@ -180,7 +113,7 @@ object ClientRenderEntityManager {
 
     fun flushFrameComposites() {
         frameStatePrepared = false
-        cachedTickDelta = 0f
+        cachedTickDelta = 0F
     }
 
     fun runFramePost(context: RenderFrameContext) {
@@ -189,8 +122,9 @@ object ClientRenderEntityManager {
         }
         val graph = RenderEffectGraph(context.backend.capabilities, context)
         entities.values.forEach { instance ->
-            instance.collectRenderContributions(context, graph)
+            instance.collectEffects(context, graph)
         }
+        CooTerrainPipelineManager.collectPostEffects(context, graph)
         CooPostEffects.client.collectFramePost(context, graph)
         graph.execute()
     }
@@ -203,20 +137,10 @@ object ClientRenderEntityManager {
             val entity = instance.entity
             entity.tick()
             if (entity.canceled) {
-                instance.release()
                 iterator.remove()
             }
         }
         CooPostEffects.client.tick()
     }
 
-    private fun RenderEntity.renderPosition(tickDelta: Float): Vec3 {
-        val last = lastRenderPos
-        val current = pos
-        return Vec3(
-            Mth.lerp(tickDelta.toDouble(), last.x, current.x),
-            Mth.lerp(tickDelta.toDouble(), last.y, current.y),
-            Mth.lerp(tickDelta.toDouble(), last.z, current.z)
-        )
-    }
 }

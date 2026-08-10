@@ -2,85 +2,65 @@ package cn.coostack.cooparticlesapi.test.options.renderer.world
 
 import cn.coostack.cooparticlesapi.annotations.CooAutoRegisterRenderer
 import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModel
-import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelRenderer
-import cn.coostack.cooparticlesapi.renderer.runtime.AutoRegisteredRenderEntityRenderer
-import cn.coostack.cooparticlesapi.renderer.runtime.FramePostRenderEntityRenderer
-import cn.coostack.cooparticlesapi.renderer.runtime.RenderContributionCollector
-import cn.coostack.cooparticlesapi.renderer.runtime.RenderContributionInput
-import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityFeatureSet
-import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityInstance
-import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityVisualProfile
+import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelines
+import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityRenderer
+import cn.coostack.cooparticlesapi.renderer.runtime.RenderInput
 
 /** 护盾演示实体的模型与遮罩泛光 renderer。 */
 @CooAutoRegisterRenderer
-class DemoShieldRenderEntityRenderer :
-    RenderEntityModelRenderer<DemoShieldRenderEntity>,
-    FramePostRenderEntityRenderer<DemoShieldRenderEntity>,
-    AutoRegisteredRenderEntityRenderer<DemoShieldRenderEntity> {
-    override fun initialize(instance: RenderEntityInstance<DemoShieldRenderEntity>) {
+class DemoShieldRenderEntityRenderer : RenderEntityRenderer<DemoShieldRenderEntity> {
+    override val pipeline = CooPipelines.MASK_BLOOM
+        .blurSigma(5.5F)
+        .blurRange(5.5F)
+        .intensity { entity: DemoShieldRenderEntity -> entity.intensity }
+
+    override fun render(input: RenderInput<DemoShieldRenderEntity>) {
+        DemoWorldRenderModelSupport.renderModel(input, buildModel(input.entity, input.tickDelta))
     }
 
-    override fun describeFeatures(entity: DemoShieldRenderEntity): RenderEntityFeatureSet {
-        return DemoWorldRenderModelSupport.describeFeatures()
-    }
-
-    override fun createVisualProfile(entity: DemoShieldRenderEntity): RenderEntityVisualProfile {
-        return DemoWorldRenderModelSupport.createVisualProfile()
-    }
-
-    override fun buildModel(entity: DemoShieldRenderEntity, tickDelta: Float): RenderEntityModel {
-        return DemoWorldRenderModelSupport.buildModel(entity) { model, basePipe ->
-            val shellColor = DemoWorldRenderModelSupport.alpha(entity.effectColor, 0.32f)
-            val ridgeColor = DemoWorldRenderModelSupport.boosted(entity.effectColor, 1.18f, 0.9f)
+    private fun buildModel(entity: DemoShieldRenderEntity, tickDelta: Float): RenderEntityModel {
+        return DemoWorldRenderModelSupport.buildModel { model, baseLayer ->
+            val shellColor = DemoWorldRenderModelSupport.alpha(entity.effectColor, 0.32F)
+            val ridgeColor = DemoWorldRenderModelSupport.boosted(entity.effectColor, 1.18F, 0.9F)
             DemoWorldRenderModelSupport.sphereShell(
                 model,
-                basePipe,
+                baseLayer,
                 entity.radius,
                 shellColor,
                 latSegments = 10,
                 lonSegments = 40,
-                yScale = 1.0f
+                yScale = 1.0F
             )
             DemoWorldRenderModelSupport.sphereGuideRings(
                 model,
-                basePipe,
-                entity.radius * 1.02f,
+                baseLayer,
+                entity.radius * 1.02F,
                 ridgeColor
             )
             DemoWorldRenderModelSupport.circle(
                 model,
-                basePipe,
-                entity.radius * 1.18f,
-                DemoWorldRenderModelSupport.alpha(entity.effectColor, 0.26f),
-                y = entity.radius * 0.28f
+                baseLayer,
+                entity.radius * 1.18F,
+                DemoWorldRenderModelSupport.alpha(entity.effectColor, 0.26F),
+                y = entity.radius * 0.28F
             )
             DemoWorldRenderModelSupport.circle(
                 model,
-                basePipe,
-                entity.radius * 1.18f,
-                DemoWorldRenderModelSupport.alpha(entity.effectColor, 0.26f),
-                y = -entity.radius * 0.28f
+                baseLayer,
+                entity.radius * 1.18F,
+                DemoWorldRenderModelSupport.alpha(entity.effectColor, 0.26F),
+                y = -entity.radius * 0.28F
             )
             DemoWorldRenderModelSupport.sphereShell(
                 model,
-                basePipe,
-                entity.radius * 1.13f,
-                DemoWorldRenderModelSupport.alpha(entity.effectColor, 0.12f),
+                baseLayer,
+                entity.radius * 1.13F,
+                DemoWorldRenderModelSupport.alpha(entity.effectColor, 0.12F),
                 latSegments = 6,
                 lonSegments = 24,
-                yScale = 1.0f
+                yScale = 1.0F
             )
         }
     }
 
-    override fun collectRenderContributions(
-        input: RenderContributionInput<DemoShieldRenderEntity>,
-        collector: RenderContributionCollector
-    ) {
-        DemoWorldRenderModelSupport.collectModelMaskBloom(
-            input,
-            collector,
-            buildModel(input.instance.entity, input.frameContext.tickDelta)
-        )
-    }
 }

@@ -2,7 +2,6 @@ package cn.coostack.cooparticlesapi.compat
 
 import cn.coostack.cooparticlesapi.CooParticlesAPIClient
 import cn.coostack.cooparticlesapi.cparticle.CParticleRenderPass
-import cn.coostack.cooparticlesapi.renderer.runtime.IrisWorldPassMode
 import com.mojang.blaze3d.systems.RenderSystem
 import com.mojang.blaze3d.vertex.VertexFormat
 import net.minecraft.client.Minecraft
@@ -19,8 +18,21 @@ import org.slf4j.LoggerFactory
 import java.lang.invoke.MethodHandle
 import java.lang.invoke.MethodHandles
 import java.lang.invoke.MethodType
+import java.lang.reflect.Field
 import java.lang.reflect.Method
 import java.util.Optional
+
+internal enum class IrisShadowPassState {
+    ACTIVE,
+    INACTIVE,
+    UNKNOWN,
+}
+
+internal data class IrisTerrainDepthTexture(
+    val textureId: Int,
+    val width: Int,
+    val height: Int,
+)
 
 /**
  * 与 IRIS 互操作的反射桥接，不依赖 IRIS 类型也不需要 mixin。
@@ -70,6 +82,21 @@ object IrisCompat {
 
     @Volatile
     private var particleTranslucentShaderMethod: Method? = null
+
+    @Volatile
+    private var shadowActiveFieldResolved = false
+
+    @Volatile
+    private var shadowActiveField: Field? = null
+
+    @Volatile
+    private var shadowPassStateFailureLogged = false
+
+    @Volatile
+    private var terrainDepthMethodsResolved = false
+
+    @Volatile
+    private var terrainDepthMethods: TerrainDepthMethods? = null
 
     /** 单例 MethodHandle：永远返回 false (= "请不要跳过我")。 */
     private val NEVER_SKIP: MethodHandle by lazy {
@@ -124,6 +151,60 @@ object IrisCompat {
         } catch (t: Throwable) {
             LOGGER.warn("Failed to query Iris particle rendering mode", t)
             false
+        }
+    }
+
+    /** 当前是否正在执行 Iris shadow terrain pass。 */
+    @JvmStatic
+    fun isShadowPassActive(): Boolean {
+        return shadowPassState() == IrisShadowPassState.ACTIVE
+    }
+
+    internal fun shadowPassState(): IrisShadowPassState {
+        if (!CooParticlesAPIClient.checkIrisShaderPackUsed()) return IrisShadowPassState.INACTIVE
+        val field = resolveShadowActiveField()
+        if (field == null) {
+            logShadowPassStateFailure(null)
+            return IrisShadowPassState.UNKNOWN
+        }
+        return try {
+            if (field.getBoolean(null)) IrisShadowPassState.ACTIVE else IrisShadowPassState.INACTIVE
+        } catch (t: Throwable) {
+            logShadowPassStateFailure(t)
+            IrisShadowPassState.UNKNOWN
+        }
+    }
+
+    private fun logShadowPassStateFailure(error: Throwable?) {
+        if (shadowPassStateFailureLogged) return
+        synchronized(this) {
+            if (shadowPassStateFailureLogged) return
+            shadowPassStateFailureLogged = true
+            if (error == null) {
+                LOGGER.error("Iris shadow pass state is unavailable; terrain overlays will use the vanilla fallback")
+            } else {
+                LOGGER.error("Failed to query Iris shadow pass state; terrain overlays will use the vanilla fallback", error)
+            }
+        }
+    }
+
+    internal fun currentTerrainDepthTexture(): IrisTerrainDepthTexture? {
+        if (!CooParticlesAPIClient.checkIrisShaderPackUsed()) return null
+        val methods = resolveTerrainDepthMethods() ?: return null
+        return try {
+            val manager = methods.getPipelineManager.invoke(null)
+            val pipeline = (methods.getPipeline.invoke(manager) as Optional<*>).orElse(null) ?: return null
+            val renderTargets = methods.renderTargetsField.get(pipeline)
+            val textureId = methods.getDepthTexture.invoke(renderTargets) as Int
+            if (textureId <= 0) return null
+            IrisTerrainDepthTexture(
+                textureId,
+                methods.getCurrentWidth.invoke(renderTargets) as Int,
+                methods.getCurrentHeight.invoke(renderTargets) as Int,
+            )
+        } catch (t: Throwable) {
+            LOGGER.error("Failed to resolve Iris terrain depth texture", t)
+            null
         }
     }
 
@@ -241,19 +322,14 @@ object IrisCompat {
         return "$name(loc=$location,unit=$unit,tex2D=$texture2d)"
     }
 
-    /** 在 Iris 对应的 entity framebuffer 中执行 RenderEntity 的本地 world pass。 */
-    @JvmStatic
-    fun runWithEntityShader(mode: IrisWorldPassMode, draw: () -> Unit) {
+    /** 在 Iris 的半透明 entity framebuffer 中执行 RenderEntity world pass。 */
+    internal fun runWithRenderEntityShader(draw: () -> Unit) {
         if (!CooParticlesAPIClient.checkIrisShaderPackUsed()) {
             draw()
             return
         }
 
-        val entityShader = when (mode) {
-            IrisWorldPassMode.ENTITY_SOLID -> GameRenderer.getRendertypeEntitySolidShader()
-            IrisWorldPassMode.ENTITY_CUTOUT -> GameRenderer.getRendertypeEntityCutoutShader()
-            IrisWorldPassMode.ENTITY_TRANSLUCENT -> GameRenderer.getRendertypeEntityTranslucentShader()
-        }
+        val entityShader = GameRenderer.getRendertypeEntityTranslucentShader()
         if (entityShader == null) {
             draw()
             return
@@ -381,10 +457,72 @@ object IrisCompat {
         }
     }
 
+    private fun resolveShadowActiveField(): Field? {
+        if (shadowActiveFieldResolved) return shadowActiveField
+        synchronized(this) {
+            if (shadowActiveFieldResolved) return shadowActiveField
+            shadowActiveFieldResolved = true
+            shadowActiveField = try {
+                Class.forName("net.irisshaders.iris.shadows.ShadowRenderer").getField("ACTIVE")
+            } catch (_: ClassNotFoundException) {
+                null
+            } catch (_: NoSuchFieldException) {
+                null
+            } catch (t: Throwable) {
+                LOGGER.warn("Unexpected failure resolving Iris shadow pass state", t)
+                null
+            }
+            return shadowActiveField
+        }
+    }
+
+    private fun resolveTerrainDepthMethods(): TerrainDepthMethods? {
+        if (terrainDepthMethodsResolved) return terrainDepthMethods
+        synchronized(this) {
+            if (terrainDepthMethodsResolved) return terrainDepthMethods
+            terrainDepthMethodsResolved = true
+            terrainDepthMethods = try {
+                val irisClass = Class.forName("net.irisshaders.iris.Iris")
+                val pipelineManagerClass = Class.forName("net.irisshaders.iris.pipeline.PipelineManager")
+                val pipelineClass = Class.forName("net.irisshaders.iris.pipeline.IrisRenderingPipeline")
+                val renderTargetsClass = Class.forName("net.irisshaders.iris.targets.RenderTargets")
+                val renderTargetsField = pipelineClass.getDeclaredField("renderTargets")
+                check(renderTargetsField.trySetAccessible()) { "Iris renderTargets field is not accessible" }
+                TerrainDepthMethods(
+                    irisClass.getMethod("getPipelineManager"),
+                    pipelineManagerClass.getMethod("getPipeline"),
+                    renderTargetsField,
+                    renderTargetsClass.getMethod("getDepthTexture"),
+                    renderTargetsClass.getMethod("getCurrentWidth"),
+                    renderTargetsClass.getMethod("getCurrentHeight"),
+                )
+            } catch (_: ClassNotFoundException) {
+                null
+            } catch (_: NoSuchFieldException) {
+                null
+            } catch (_: NoSuchMethodException) {
+                null
+            } catch (t: Throwable) {
+                LOGGER.warn("Unexpected failure resolving Iris terrain depth access", t)
+                null
+            }
+            return terrainDepthMethods
+        }
+    }
+
     private data class ParticleRenderingMethods(
         val getPipelineManager: Method,
         val getPipeline: Method,
         val getParticleRenderingSettings: Method,
+    )
+
+    private data class TerrainDepthMethods(
+        val getPipelineManager: Method,
+        val getPipeline: Method,
+        val renderTargetsField: Field,
+        val getDepthTexture: Method,
+        val getCurrentWidth: Method,
+        val getCurrentHeight: Method,
     )
 
 }

@@ -16,7 +16,7 @@ enum class RenderFrameStage {
     /**
      * 世界几何绘制阶段。
      *
-     * 这里对应 `renderLocal(...)` 这类直接向世界目标绘制几何的路径。
+     * 这里对应 `RenderEntityRenderer.render(...)` 的直接世界绘制路径。
      */
     WORLD_PASS,
 
@@ -27,11 +27,7 @@ enum class RenderFrameStage {
      */
     POST_PROCESS_PREPARE,
 
-    /**
-     * 帧尾后处理与 descriptor graph 执行阶段。
-     *
-     * 这里是 `collectRenderContributions(...)` 产物真正生效的主阶段。
-     */
+    /** Pipeline 后处理节点的帧尾执行阶段。 */
     FRAME_POST,
 
     /**

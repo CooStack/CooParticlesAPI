@@ -18,6 +18,7 @@ struct Particle {
     vec4 appearance;
 };
 
+
 layout(std430, binding = 0) buffer ParticleBuffer {
     Particle particles[];
 };

@@ -33,9 +33,12 @@ class PostEffectSyncContractTest {
     }
 
     @Test
-    fun `server post effect tracking chunk spawn is implemented on both loaders`() {
+    fun `server shader effect play reuses the common packet on both loaders`() {
         val runtimeSource = readProjectFile(
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/post/CooPostEffects.kt"
+        )
+        val shaderEffectSource = readProjectFile(
+            "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/pipeline/CooShaderEffects.kt"
         )
         val fabricSource = readProjectFile(
             "fabric/src/main/kotlin/cn/coostack/cooparticlesapi/platform/FabricServerNetworking.kt"
@@ -44,10 +47,12 @@ class PostEffectSyncContractTest {
             "neoforge/src/main/kotlin/cn/coostack/cooparticlesapi/platform/NeoForgeServerNetworking.kt"
         )
 
-        assertTrue("CooParticlesServices.SERVER_NETWORK.sendToPlayersTrackingChunk" in runtimeSource)
-        assertTrue("PlayerLookup.tracking(world, chunk)" in fabricSource)
+        assertTrue("fun play(" in shaderEffectSource)
+        assertTrue("player: ServerPlayer" in shaderEffectSource)
+        assertTrue("CooPostEffects.server.send(player, instance)" in shaderEffectSource)
+        assertTrue("CooParticlesServices.SERVER_NETWORK.send(PacketRendererPostEffectS2C.create" in runtimeSource)
         assertTrue("ServerPlayNetworking.send(player, packet)" in fabricSource)
-        assertTrue("PacketDistributor.sendToPlayersTrackingChunk(world, chunk, packet)" in neoForgeSource)
+        assertTrue("PacketDistributor.sendToPlayer(to, packet)" in neoForgeSource)
     }
 
     @Test
@@ -59,7 +64,7 @@ class PostEffectSyncContractTest {
         assertTrue("internal fun apply(packet: PacketRendererPostEffectS2C)" in source)
         assertTrue("context.client().execute" in source)
         assertTrue("apply(packet)" in source)
-        assertTrue("if (!CooPostEffectTypes.contains(state.effectType))" in source)
+        assertTrue("if (!PostEffectRuntimeRegistry.containsType(state.effectType))" in source)
         assertTrue("Skipping synced post effect id={} because type={} is not registered on the client" in source)
         assertTrue("return" in source)
         assertTrue("state.instantiate(serverSynced = true) ?: return" in source)

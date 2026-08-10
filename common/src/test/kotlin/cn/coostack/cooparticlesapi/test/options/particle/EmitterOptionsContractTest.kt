@@ -7,7 +7,7 @@ import kotlin.test.assertTrue
 
 class EmitterOptionsContractTest {
     @Test
-    fun `test options expose display entity render entity and auto emitters examples`() {
+    fun `test options expose display entity pipeline render entity and auto emitters examples`() {
         val apiBuilder = readProjectFile(
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/test/APITestGroupBuilder.kt"
         )
@@ -16,6 +16,9 @@ class EmitterOptionsContractTest {
         )
         val renderSource = readProjectFile(
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/test/options/renderer/world/DemoBlackHoleRenderEntity.kt"
+        )
+        val renderRendererSource = readProjectFile(
+            "common/src/main/kotlin/cn/coostack/cooparticlesapi/test/options/renderer/world/DemoBlackHoleRenderEntityRenderer.kt"
         )
         val autoEmittersSource = readProjectFile(
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/test/options/particle/emitter/TestDisplayEntityAutoEmitters.kt"
@@ -45,7 +48,7 @@ class EmitterOptionsContractTest {
         assertTrue("remove()" in displaySource)
         assertTrue("manageRotation = false" in displaySource)
         assertTrue("MinecraftRendererUtil.axialBillboardBasis(direction, camera, pos)" in displaySource)
-        assertTrue("RenderType.lightning()" in displaySource)
+        assertTrue("CooParticlesRenderTypes.entityCutoutEmissive(" in displaySource)
         assertTrue("addBoard(" in displaySource)
         assertTrue("data class AxialBillboardBasis" in rendererUtilSource)
         assertTrue("fun axialBillboardBasis(axisDirection: Vec3, camera: Camera, center: Vec3)" in rendererUtilSource)
@@ -54,6 +57,10 @@ class EmitterOptionsContractTest {
         assertTrue("@CooAutoRegister" in renderSource)
         assertTrue("AutoRenderEntity" in renderSource)
         assertTrue("override fun getRenderID()" in renderSource)
+        assertTrue("RenderEntityRenderer<DemoBlackHoleRenderEntity>" in renderRendererSource)
+        assertTrue("override val pipeline = CooPipelines.MASK_BLOOM" in renderRendererSource)
+        assertTrue(".intensity { entity: DemoBlackHoleRenderEntity -> entity.intensity }" in renderRendererSource)
+        assertTrue("override fun render(input: RenderInput<DemoBlackHoleRenderEntity>)" in renderRendererSource)
 
         assertTrue("@CooAutoRegister" in autoEmittersSource)
         assertTrue("AutoEmitters" in autoEmittersSource)

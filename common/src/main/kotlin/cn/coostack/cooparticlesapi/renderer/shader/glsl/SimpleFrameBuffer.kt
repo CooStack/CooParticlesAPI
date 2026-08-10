@@ -3,8 +3,6 @@ package cn.coostack.cooparticlesapi.renderer.shader.glsl
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.renderer.client.ClientRenderPipelineManager
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlFrameBuffer
-import cn.coostack.cooparticlesapi.renderer.shader.api.pipe.PipeChannels
-import cn.coostack.cooparticlesapi.renderer.shader.pipe.manager.FramePipeChannels
 import net.minecraft.client.Minecraft
 import org.lwjgl.opengl.GL33.*
 import java.nio.ByteBuffer
@@ -34,13 +32,13 @@ open class SimpleFrameBuffer(
     private var useMipmap = false
     private var depthAttachment = -1
     private var fbo = 0
-    private var prevFBO = 0
+    private var previousReadFramebuffer = 0
+    private var previousDrawFramebuffer = 0
     private var initialized = false
     private var newDepth = false
     private var textureFilterMod = GL_LINEAR
     private var fixedWidth: Int? = null
     private var fixedHeight: Int? = null
-    private lateinit var output: PipeChannels
 
 
     override fun fbo(): Int {
@@ -69,44 +67,43 @@ open class SimpleFrameBuffer(
         }
         initialized = true
         fbo = glGenFramebuffers()
-        bindFramebuffer()
-        prevFBO = 0
-        initColorChannel()
-        initDepthChannel()
-        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-            val mc = Minecraft.getInstance()
-            val target = mc.mainRenderTarget
-            // 逆天NF概率性崩端
-            CooParticlesConstants.logger.error(
-                """
-                    Failed to bind framebuffer $fbo 
-                    depth: $depthAttachment 
-                    color:${colorAttachments.contentToString()} 
-                    status undefined: ${glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_UNDEFINED}
-                    status incomplete attachment: ${glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT}
-                    status missing attachment: ${glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT}
-                    height: ${height()} width: ${width()} 
-                    mc_height:${target.height} mc_width: ${target.width}
-                    vew mc_height:${target.viewHeight} mc_width: ${target.viewWidth}
-                    window h: ${mc.window.screenHeight} w ${mc.window.screenWidth}
-                """
-            )
-            depthAttachment = depthSupplier.get()
-        }
-        reset()
-        if (!::output.isInitialized) {
-            output = FramePipeChannels().apply {
-                repeat(colorChannelCount) { addChannel { colorAttachments[it] } }
+        val previousRead = glGetInteger(GL_READ_FRAMEBUFFER_BINDING)
+        val previousDraw = glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING)
+        try {
+            glBindFramebuffer(GL_FRAMEBUFFER, fbo)
+            initColorChannel()
+            initDepthChannel()
+            if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+                val mc = Minecraft.getInstance()
+                val target = mc.mainRenderTarget
+                // NeoForge 偶发创建出不完整 FBO；保留完整状态，供日志定位实际 attachment。
+                CooParticlesConstants.logger.error(
+                    """
+                        Failed to bind framebuffer $fbo
+                        depth: $depthAttachment
+                        color:${colorAttachments.contentToString()}
+                        status undefined: ${glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_UNDEFINED}
+                        status incomplete attachment: ${glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT}
+                        status missing attachment: ${glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT}
+                        height: ${height()} width: ${width()}
+                        mc_height:${target.height} mc_width: ${target.width}
+                        vew mc_height:${target.viewHeight} mc_width: ${target.viewWidth}
+                        window h: ${mc.window.screenHeight} w ${mc.window.screenWidth}
+                    """
+                )
+                depthAttachment = depthSupplier.get()
             }
+        } catch (error: Throwable) {
+            release()
+            throw error
+        } finally {
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, previousRead)
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, previousDraw)
         }
     }
 
     override fun setTextureFilterMod(mod: Int) {
         textureFilterMod = mod
-    }
-
-    override fun outputChannels(): PipeChannels {
-        return output
     }
 
     override fun clear() {
@@ -118,7 +115,8 @@ open class SimpleFrameBuffer(
     }
 
     override fun bindFramebuffer() {
-        prevFBO = glGetInteger(GL_FRAMEBUFFER_BINDING)
+        previousReadFramebuffer = glGetInteger(GL_READ_FRAMEBUFFER_BINDING)
+        previousDrawFramebuffer = glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING)
         glBindFramebuffer(GL_FRAMEBUFFER, fbo)
     }
 
@@ -130,27 +128,36 @@ open class SimpleFrameBuffer(
             return
         }
         val previousViewport = IntArray(4)
+        val previousRead = glGetInteger(GL_READ_FRAMEBUFFER_BINDING)
+        val previousDraw = glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING)
         glGetIntegerv(GL_VIEWPORT, previousViewport)
-        bindFramebuffer()
-        glViewport(0, 0, width(), height())
-        if (newDepth) {
-            clear()
-        } else {
-            clear(GL_COLOR_BUFFER_BIT)
-        }
-        writeScope()
-
-        // 生成 mipmap
-        if (useMipmap) {
-            val current = glGetInteger(GL_TEXTURE_BINDING_2D)
-            colorAttachments.forEach {
-                glBindTexture(GL_TEXTURE_2D, it)
-                glGenerateMipmap(GL_TEXTURE_2D)
+        try {
+            glBindFramebuffer(GL_FRAMEBUFFER, fbo)
+            glViewport(0, 0, width(), height())
+            if (newDepth) {
+                clear()
+            } else {
+                clear(GL_COLOR_BUFFER_BIT)
             }
-            glBindTexture(GL_TEXTURE_2D, current)
+            writeScope()
+
+            // 生成 mipmap
+            if (useMipmap) {
+                val current = glGetInteger(GL_TEXTURE_BINDING_2D)
+                try {
+                    colorAttachments.forEach {
+                        glBindTexture(GL_TEXTURE_2D, it)
+                        glGenerateMipmap(GL_TEXTURE_2D)
+                    }
+                } finally {
+                    glBindTexture(GL_TEXTURE_2D, current)
+                }
+            }
+        } finally {
+            glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3])
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, previousRead)
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, previousDraw)
         }
-        glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3])
-        reset()
     }
 
     override fun readFrameBufferWith(readScope: GlFrameBuffer.() -> Unit) {
@@ -161,23 +168,33 @@ open class SimpleFrameBuffer(
         val activeChannels = IntArray(colorChannelCount)
         val prevActive = glGetInteger(GL_ACTIVE_TEXTURE)
         val prevTexture = glGetInteger(GL_TEXTURE_BINDING_2D)
-        repeat(colorChannelCount) {
-            val channel = zero + it
-            glActiveTexture(channel)
-            activeChannels[it] = glGetInteger(GL_TEXTURE_BINDING_2D)
-            glBindTexture(GL_TEXTURE_2D, colorAttachments[it])
+        val previousRead = glGetInteger(GL_READ_FRAMEBUFFER_BINDING)
+        val previousDraw = glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING)
+        var capturedChannels = 0
+        try {
+            repeat(colorChannelCount) {
+                val channel = zero + it
+                glActiveTexture(channel)
+                activeChannels[it] = glGetInteger(GL_TEXTURE_BINDING_2D)
+                capturedChannels++
+                glBindTexture(GL_TEXTURE_2D, colorAttachments[it])
+            }
+            readScope()
+        } finally {
+            repeat(capturedChannels) { channel ->
+                glActiveTexture(zero + channel)
+                glBindTexture(GL_TEXTURE_2D, activeChannels[channel])
+            }
+            glActiveTexture(prevActive)
+            glBindTexture(GL_TEXTURE_2D, prevTexture)
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, previousRead)
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, previousDraw)
         }
-        readScope()
-        activeChannels.forEachIndexed { channel, texture ->
-            glActiveTexture(zero + channel)
-            glBindTexture(GL_TEXTURE_2D, texture)
-        }
-        glActiveTexture(prevActive)
-        glBindTexture(GL_TEXTURE_2D, prevTexture)
     }
 
     override fun reset() {
-        glBindFramebuffer(GL_FRAMEBUFFER, prevFBO)
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, previousReadFramebuffer)
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, previousDrawFramebuffer)
     }
 
 
@@ -255,9 +272,12 @@ open class SimpleFrameBuffer(
 
     private fun bindTextureTo(textureID: Int, fc: Runnable) {
         val prev = glGetInteger(GL_TEXTURE_BINDING_2D)
-        glBindTexture(GL_TEXTURE_2D, textureID)
-        fc.run()
-        glBindTexture(GL_TEXTURE_2D, prev)
+        try {
+            glBindTexture(GL_TEXTURE_2D, textureID)
+            fc.run()
+        } finally {
+            glBindTexture(GL_TEXTURE_2D, prev)
+        }
     }
 
     private fun normalizeMagFilter(filter: Int): Int {
@@ -280,9 +300,22 @@ open class SimpleFrameBuffer(
         if (!initialized) {
             return
         }
-        release()
-        prevFBO = 0
-        init()
+        val resizedFramebuffer = fbo
+        val previousRead = glGetInteger(GL_READ_FRAMEBUFFER_BINDING)
+        val previousDraw = glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING)
+        try {
+            release()
+            init()
+        } finally {
+            glBindFramebuffer(
+                GL_READ_FRAMEBUFFER,
+                if (previousRead == resizedFramebuffer) fbo else previousRead
+            )
+            glBindFramebuffer(
+                GL_DRAW_FRAMEBUFFER,
+                if (previousDraw == resizedFramebuffer) fbo else previousDraw
+            )
+        }
     }
 
     override fun copyDepthBuffer(srcFBO: Int) {
@@ -294,16 +327,19 @@ open class SimpleFrameBuffer(
         val targetHeight = height()
 
         // 绑定读和写的FBO
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, srcFBO)
-        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fbo)
-        glBlitFramebuffer(
-            0, 0, sourceWidth, sourceHeight,  // 源区域
-            0, 0, targetWidth, targetHeight,  // 目标区域
-            GL_DEPTH_BUFFER_BIT,
-            GL_NEAREST
-        )
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, lastReadReader)
-        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, lastDrawReader)
+        try {
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, srcFBO)
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fbo)
+            glBlitFramebuffer(
+                0, 0, sourceWidth, sourceHeight,  // 源区域
+                0, 0, targetWidth, targetHeight,  // 目标区域
+                GL_DEPTH_BUFFER_BIT,
+                GL_NEAREST
+            )
+        } finally {
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, lastReadReader)
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, lastDrawReader)
+        }
     }
 
 }

@@ -5,25 +5,24 @@ import org.joml.Vector3f
 import org.joml.Vector4f
 
 class RenderEntityModelBuilder {
-    private val pipes = linkedMapOf<String, RenderEntityModelPipe>()
+    private val layers = linkedMapOf<String, RenderEntityModelLayer>()
     private val primitiveVertices =
-        linkedMapOf<Pair<RenderEntityModelPipe, RenderEntityModelPrimitiveMode>, MutableList<RenderEntityModelVertex>>()
+        linkedMapOf<Pair<RenderEntityModelLayer, RenderEntityModelPrimitiveMode>, MutableList<RenderEntityModelVertex>>()
 
-    fun pipe(id: String, block: RenderEntityModelPipeBuilder.() -> Unit = {}): RenderEntityModelPipe {
-        return pipes.getOrPut(id) {
-            RenderEntityModelPipeBuilder(id).apply(block).build()
-        }
+    /** 获取同名几何层；shader 和后处理由 renderer 的 pipeline 声明。 */
+    fun layer(id: String): RenderEntityModelLayer {
+        return layers.getOrPut(id) { RenderEntityModelLayer(id) }
     }
 
     fun addVertex(
-        pipe: RenderEntityModelPipe,
+        layer: RenderEntityModelLayer,
         position: Vector3f,
-        color: Vector4f = Vector4f(1f, 1f, 1f, 1f),
-        uv: Vector2f = Vector2f(0f, 0f),
-        normal: Vector3f = Vector3f(0f, 1f, 0f),
+        color: Vector4f = Vector4f(1F, 1F, 1F, 1F),
+        uv: Vector2f = Vector2f(0F, 0F),
+        normal: Vector3f = Vector3f(0F, 1F, 0F),
         primitiveMode: RenderEntityModelPrimitiveMode = RenderEntityModelPrimitiveMode.LINES
     ): RenderEntityModelBuilder {
-        primitiveVertices.getOrPut(pipe to primitiveMode) { mutableListOf() } += RenderEntityModelVertex(
+        primitiveVertices.getOrPut(layer to primitiveMode) { mutableListOf() } += RenderEntityModelVertex(
             position = position,
             color = color,
             uv = uv,
@@ -33,12 +32,12 @@ class RenderEntityModelBuilder {
     }
 
     fun addTriangle(
-        pipe: RenderEntityModelPipe,
+        layer: RenderEntityModelLayer,
         first: RenderEntityModelVertex,
         second: RenderEntityModelVertex,
         third: RenderEntityModelVertex
     ): RenderEntityModelBuilder {
-        val vertices = primitiveVertices.getOrPut(pipe to RenderEntityModelPrimitiveMode.TRIANGLES) { mutableListOf() }
+        val vertices = primitiveVertices.getOrPut(layer to RenderEntityModelPrimitiveMode.TRIANGLES) { mutableListOf() }
         vertices += first
         vertices += second
         vertices += third
@@ -46,25 +45,25 @@ class RenderEntityModelBuilder {
     }
 
     fun addQuad(
-        pipe: RenderEntityModelPipe,
+        layer: RenderEntityModelLayer,
         first: RenderEntityModelVertex,
         second: RenderEntityModelVertex,
         third: RenderEntityModelVertex,
         fourth: RenderEntityModelVertex
     ): RenderEntityModelBuilder {
-        addTriangle(pipe, first, second, third)
-        addTriangle(pipe, first, third, fourth)
+        addTriangle(layer, first, second, third)
+        addTriangle(layer, first, third, fourth)
         return this
     }
 
     fun addRenderTypeQuad(
-        pipe: RenderEntityModelPipe,
+        layer: RenderEntityModelLayer,
         first: RenderEntityModelVertex,
         second: RenderEntityModelVertex,
         third: RenderEntityModelVertex,
         fourth: RenderEntityModelVertex
     ): RenderEntityModelBuilder {
-        val vertices = primitiveVertices.getOrPut(pipe to RenderEntityModelPrimitiveMode.QUADS) { mutableListOf() }
+        val vertices = primitiveVertices.getOrPut(layer to RenderEntityModelPrimitiveMode.QUADS) { mutableListOf() }
         vertices += first
         vertices += second
         vertices += third
@@ -74,10 +73,10 @@ class RenderEntityModelBuilder {
 
     fun build(): RenderEntityModel {
         return RenderEntityModel(
-            pipes = pipes.values.toList(),
+            layers = layers.values.toList(),
             primitives = primitiveVertices.map { (key, vertices) ->
                 RenderEntityModelPrimitive(
-                    pipe = key.first,
+                    layer = key.first,
                     vertices = vertices.toList(),
                     primitiveMode = key.second
                 )

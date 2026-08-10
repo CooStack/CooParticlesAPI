@@ -65,6 +65,18 @@ if (repoFile.exists()) {
 }
 repositories {
     maven {
+        url = uri("https://api.modrinth.com/maven")
+        content {
+            includeGroup("maven.modrinth")
+        }
+    }
+    maven {
+        url = uri("https://maven.su5ed.dev/releases")
+        content {
+            includeGroup("org.sinytra.forgified-fabric-api")
+        }
+    }
+    maven {
         name = "Kotlin for Forge"
         setUrl("https://thedarkcolour.github.io/KotlinForForge/")
     }
@@ -120,6 +132,8 @@ publishing {
 
 dependencies {
     compileOnly fileTree(dir: "../compile_only_depend", includes: ["*.jar"])
+    compileOnly "maven.modrinth:sodium:mc1.21.1-0.6.13-neoforge"
+    compileOnly "org.sinytra.forgified-fabric-api:fabric-renderer-api-v1:3.4.0+9c40919e19"
     implementation "thedarkcolour:kotlinforforge-neoforge:5.10.0"
     jarJar(implementation "com.ezylang:EvalEx:3.5.0")
     jarJar(implementation 'io.github.classgraph:classgraph:4.8.184')

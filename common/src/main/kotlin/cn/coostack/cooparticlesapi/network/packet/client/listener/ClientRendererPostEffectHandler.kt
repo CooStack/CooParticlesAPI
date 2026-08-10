@@ -3,8 +3,8 @@ package cn.coostack.cooparticlesapi.network.packet.client.listener
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.network.packet.server.PacketRendererPostEffectS2C
 import cn.coostack.cooparticlesapi.platform.network.ClientContext
-import cn.coostack.cooparticlesapi.renderer.post.CooPostEffectTypes
 import cn.coostack.cooparticlesapi.renderer.post.CooPostEffects
+import cn.coostack.cooparticlesapi.renderer.post.PostEffectRuntimeRegistry
 
 object ClientRendererPostEffectHandler {
     fun receive(packet: PacketRendererPostEffectS2C, context: ClientContext) {
@@ -23,7 +23,7 @@ object ClientRendererPostEffectHandler {
 
     private fun applyState(packet: PacketRendererPostEffectS2C) {
         val state = packet.state ?: return
-        if (!CooPostEffectTypes.contains(state.effectType)) {
+        if (!PostEffectRuntimeRegistry.containsType(state.effectType)) {
             CooParticlesConstants.logger.warn(
                 "Skipping synced post effect id={} because type={} is not registered on the client",
                 state.instanceId,

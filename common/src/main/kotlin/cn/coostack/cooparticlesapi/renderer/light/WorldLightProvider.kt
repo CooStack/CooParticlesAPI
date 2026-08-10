@@ -1,11 +1,6 @@
 package cn.coostack.cooparticlesapi.renderer.light
 
-/**
- * V2 built-in descriptor source for world light composite.
- *
- * 它不再依赖帧尾全局实体扫描，而是在实例级别提交到
- * `RenderEffectGraph` 的 descriptor 执行链。
- */
+/** 为当前渲染实例提供世界光源，由 Pipeline runtime 在对应帧阶段收集。 */
 interface WorldLightProvider {
     /**
      * 收集这一帧需要提交的世界光源。

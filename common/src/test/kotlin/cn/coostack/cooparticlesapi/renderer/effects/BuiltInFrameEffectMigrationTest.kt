@@ -24,18 +24,21 @@ class BuiltInFrameEffectMigrationTest {
     }
 
     @Test
-    fun `glow is exposed through post effect chains instead of legacy providers`() {
-        val postTypesSource = readProjectFile(
-            "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/post/BuiltinPostEffectTypes.kt"
+    fun `glow is exposed through immutable pipeline graph instead of legacy providers`() {
+        val pipelinesSource = readProjectFile(
+            "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/pipeline/CooPipelines.kt"
         )
         val descriptorSource = readProjectFile(
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/effects/builtin/BuiltinRenderEffectDescriptors.kt"
         )
 
-        assertTrue("val BLOOM: PostEffectType" in postTypesSource)
-        assertTrue("val HALO: PostEffectType" in postTypesSource)
-        assertTrue("bright_extract" in postTypesSource)
-        assertTrue("halo_composite" in postTypesSource)
+        assertTrue("val MASK_BLOOM" in pipelinesSource)
+        assertTrue("blur_horizontal" in pipelinesSource)
+        assertTrue("blur_vertical" in pipelinesSource)
+        assertTrue("line(" in pipelinesSource)
+        assertFalse(projectFile(
+            "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/post/BuiltinPostEffectTypes.kt"
+        ).toFile().exists())
         assertFalse("ScreenGlowProvider" in descriptorSource)
         assertFalse("PersistentBloomContextProvider" in descriptorSource)
         assertFalse("postGlowSphere(" in descriptorSource)

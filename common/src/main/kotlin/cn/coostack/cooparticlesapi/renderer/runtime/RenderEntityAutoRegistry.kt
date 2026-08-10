@@ -22,7 +22,7 @@ import java.lang.reflect.TypeVariable
  * RenderEntity codec 与客户端 renderer 的自动注册器。
  *
  * 实体继续使用 [CooAutoRegister]，renderer 使用 [CooAutoRegisterRenderer] 并实现
- * [AutoRegisteredRenderEntityRenderer]。注册器会先收集并校验两侧描述，最后统一提交，
+ * [RenderEntityRenderer]。注册器会先收集并校验两侧描述，最后统一提交，
  * 因此不依赖其他模组的客户端生命周期监听器顺序。
  */
 object RenderEntityAutoRegistry {
@@ -171,9 +171,9 @@ object RenderEntityAutoRegistry {
     }
 
     private fun describeRenderer(clazz: Class<*>): RendererDescriptor {
-        if (!AutoRegisteredRenderEntityRenderer::class.java.isAssignableFrom(clazz)) {
+        if (!RenderEntityRenderer::class.java.isAssignableFrom(clazz)) {
             throw IllegalStateException(
-                "Auto renderer must implement AutoRegisteredRenderEntityRenderer: ${clazz.name}"
+                "Auto renderer must implement RenderEntityRenderer: ${clazz.name}"
             )
         }
         if (clazz.isInterface || Modifier.isAbstract(clazz.modifiers)) {
@@ -214,7 +214,7 @@ object RenderEntityAutoRegistry {
             else -> return null
         }
 
-        if (rawClass == AutoRegisteredRenderEntityRenderer::class.java) {
+        if (rawClass == RenderEntityRenderer::class.java) {
             val parameter = rawClass.typeParameters.single()
             return resolveType(bindings[parameter] ?: return null, bindings)
         }

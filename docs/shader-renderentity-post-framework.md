@@ -1,900 +1,446 @@
-# Shader / RenderEntity / Post 开发框架
+# Pipeline、RenderEntity 与 ShaderEffect
 
-适用范围：CooParticlesAPI-MultiPlatform 当前 RenderEntity V2、ShaderProgram、Texture、RenderEffectGraph、PostEffectChain 体系。
+适用版本：Minecraft 1.21.1，Fabric / NeoForge，Mojmap + Parchment。
 
-本文档面向框架接入、效果开发、问题排查。RenderEntity 负责服务端同步和客户端实例生命周期；客户端渲染由 Renderer 完成；帧尾效果由 RenderEffectGraph 收集后交给 PostEffectFrameExecutor；独立后处理由 PostEffectType / PostEffectChain 描述并由 CooPostEffects 调度。
+公开 Render API 入口：
 
-## 1. 框架分层
+- `CooPipelines`：实体、方块和通用 Pipeline。
+- `CooBlockPipelines`：真实世界方块的 Pipeline 绑定。
+- `CooTerrainEffectManager`：按位置批量应用持久或临时的 terrain 效果组。
+- `CooShaderEffects`：独立屏幕 ShaderEffect 的注册和播放。
 
-| 层级 | 主要类型 | 责任 |
-| --- | --- | --- |
-| 同步实体 | `RenderEntity`、`AutoRenderEntity` | 跨端同步位置、年龄、取消状态、业务字段 |
-| 客户端实例 | `RenderEntityInstance` | 持有客户端镜像实体、Renderer、可见性、tick 状态 |
-| 客户端 Renderer | `RenderEntityRenderer` 及子接口 | 声明渲染能力、初始化资源、执行世界渲染、提交帧尾效果 |
-| 模型 DSL | `RenderEntityModelBuilder`、`RenderEntityModel` | 描述点、三角形、四边形、材质管线和元数据 |
-| Shader | `AdvancedShaderProgramBuilder`、`SimpleShaderProgram`、`CooShaderProgram` | 编译、链接、绑定 uniform、执行绘制 |
-| 纹理 | `IdentifierTexture`、`SimpleTextures`、`SpriteSheetTexture` | 加载资源纹理、绑定 sampler、精灵图帧选择 |
-| 帧尾效果 | `RenderContribution`、`RenderEffectDescriptor`、`RenderEffectGraph` | Renderer 向帧级后处理提交效果描述 |
-| Post 链 | `PostEffectType`、`PostEffectChain`、`PostEffectPassRef` | 描述多 pass 后处理、输入输出、pass 拓扑链接 |
-| 执行后端 | `OpenGlPostEffectExecutionBackend`、`PostEffectFrameExecutor` | 按拓扑顺序执行 fsh pass，维护 pass 输出纹理 |
+`Pipeline` 是由 shader 节点和 `line` 组成的有向无环图。节点输出是 FBO attachment，节点输入是 sampler 端口。编译器根据连线推导执行顺序、scene color、scene depth、mask、临时 target 和后处理阶段。
 
-## 2. RenderEntity 基础生命周期
+## 最小用法
 
-`RenderEntity` 是同步对象，不等同于 Minecraft 原生 `Entity`。服务端创建后，通过 `ServerRenderEntityManager` 向可见玩家发送 CREATE / TOGGLE / REMOVE 包；客户端解码后创建 `RenderEntityInstance`，再由注册的 Renderer 处理视觉表现。
-
-基础字段包括：
-
-- `uuid`：跨端唯一标识。
-- `pos`：世界位置。
-- `canceled`：取消标记。
-- `age`：tick 年龄。
-- `world`：运行时所在世界引用。
-- `durationTicks`：非空时到期自动取消。
-- `renderRange`：服务端可见性同步范围。
-
-基础实现方式：
+不需要后处理：
 
 ```kotlin
-class ArcOrbEntity(
-    world: Level?,
-    pos: Vec3,
-    private var radius: Float,
-    private var color: Vector4f
-) : RenderEntity(world, pos) {
-
-    override fun getRenderID(): ResourceLocation = ID
-
-    override fun getCodec(): StreamCodec<FriendlyByteBuf, RenderEntity> = CODEC
-
-    override fun loadProfileFromEntity(old: RenderEntity) {
-        super.loadProfileFromEntity(old)
-        if (old is ArcOrbEntity) {
-            radius = old.radius
-            color = Vector4f(old.color)
-        }
-    }
-
-    fun radius(): Float = radius
-    fun color(): Vector4f = color
-
-    companion object {
-        val ID: ResourceLocation = ResourceLocation.fromNamespaceAndPath(MOD_ID, "arc_orb")
-
-        val CODEC: StreamCodec<FriendlyByteBuf, RenderEntity> = RenderEntity.createCodec(
-            factory = { ArcOrbEntity(null, Vec3.ZERO, 1.0f, Vector4f(1f, 1f, 1f, 1f)) },
-            encodeExtra = { buf, entity ->
-                buf.writeFloat(entity.radius)
-                buf.writeFloat(entity.color.x)
-                buf.writeFloat(entity.color.y)
-                buf.writeFloat(entity.color.z)
-                buf.writeFloat(entity.color.w)
-            },
-            decodeExtra = { buf, entity ->
-                entity.radius = buf.readFloat()
-                entity.color = Vector4f(
-                    buf.readFloat(),
-                    buf.readFloat(),
-                    buf.readFloat(),
-                    buf.readFloat()
-                )
-            }
-        )
-    }
-}
+override val pipeline = CooPipelines.DEFAULT
 ```
 
-`RenderEntity.createCodec` 已包含 `uuid`、`pos`、`canceled`、`age` 的基础同步字段，业务字段通过 `encodeExtra` / `decodeExtra` 追加。字段变化后通过 `tracked(...)` 或显式逻辑标记 dirty，服务端同步包到达客户端后会调用 `loadProfileFromEntity` 将新状态合并到客户端对象。
-
-`AutoRenderEntity` 适合字段较多的同步实体。字段加 `@CodecField` 后，框架负责 codec 和 profile 合并字段：
+使用内置 mask bloom：
 
 ```kotlin
-@CooAutoRegister
-class ArcPulseEntity() : AutoRenderEntity(null, Vec3.ZERO) {
-
-    constructor(world: Level?, pos: Vec3) : this() {
-        this.world = world
-        this.pos = pos
+override val pipeline = CooPipelines.MASK_BLOOM
+    .blurSigma(15F)
+    .blurRange(10F)
+    .intensity { entity: MyRenderEntity ->
+        2.8F * entity.bright.coerceAtLeast(0F)
     }
-
-    @CodecField
-    var radius: Float = 2.0f
-
-    @CodecField
-    var intensity: Float = 1.0f
-
-    override fun getRenderID(): ResourceLocation = ID
-
-    companion object {
-        val ID: ResourceLocation = ResourceLocation.fromNamespaceAndPath(MOD_ID, "arc_pulse")
-    }
-}
 ```
 
-自动注册只覆盖 RenderEntity codec。客户端 Renderer 仍需要显式注册。
-
-## 3. 注册 RenderEntity 与 Renderer
-
-客户端接收 CREATE 包时，会先通过 `ClientRenderEntityRegistry` 解码实体，再解析 Renderer：
-
-1. 实体自身实现 `RenderEntityRenderer` 时，直接使用实体作为 Renderer。
-2. 注册表存在 rendererFactory 时，创建 Renderer。
-3. 两者都不存在时抛出 `RenderEntity renderer not registered: <id>`。
-
-常见注册方式：
+绑定真实世界方块：
 
 ```kotlin
-ClientRenderEntityRegistry.register(
-    ArcOrbEntity.ID,
-    ArcOrbEntity.CODEC
-) { ArcOrbRenderer() }
+CooBlockPipelines.bind(Blocks.STONE, STONE_PIPELINE)
+
+CooBlockPipelines.bind(MyBlocks.ENERGY_BLOCK) { state ->
+    if (state.getValue(POWERED)) ENERGY_PIPELINE else CooPipelines.BLOCK_DEFAULT
+}
+
+val LIT_LAMP = Blocks.REDSTONE_LAMP.defaultBlockState()
+    .setValue(RedstoneLampBlock.LIT, true)
+CooBlockPipelines.bind(LIT_LAMP, LIT_LAMP_PIPELINE)
+
+CooBlockPipelines.bindBlocks(listOf(Blocks.STONE, Blocks.DEEPSLATE), STONE_PIPELINE)
+CooBlockPipelines.bindStates(poweredStates, ENERGY_PIPELINE)
 ```
 
-或在 codec 已由自动注册处理时，仅注册 Renderer：
+`CooBlockPipelines.bind` 是持久的类型/状态绑定。它只影响命中的 `Block`、精确 `BlockState` 或 `BlockState` predicate，不会替换整张方块图集。精确 `BlockState` 优先于 `Block`，`Block` 优先于 predicate。每个 terrain shader 默认可以读取 `BaseSampler` 和原始 `BaseUV`；`EffectUV` 是另一组坐标，供自定义纹理或 FBO 使用。
+
+terrain shader 的公开输入是 Kotlin Pipeline DSL。用户不需要编写 `ShaderInstance` JSON；客户端仅在调用 Vanilla/Iris terrain hook 时生成内存 descriptor，shader 源文件始终放在 `assets/cooparticlesapi/shaders/core/terrain` 或对应 Pipeline 所属 namespace 下，不创建 `assets/minecraft/shaders/core/cooparticlesapi` 资源目录。Coo shader 的公共 include 语法是 `#coo_import <文件名>`，它读取 `cooparticlesapi:shader/include/文件名`；`#coo_import <modid:path>` 读取 `modid:shader/path`。两种写法都由 Coo 的 source loader 展开，不能使用 `#moj_import`。
+
+terrain shader 会自动获得 `CooAlphaCutoff`。`CUTOUT_MIPPED`、`CUTOUT` 与 tripwire 使用 `0.1F`，solid 和 translucent 使用 `0F`。自定义 fragment shader 采样 `BaseSampler` 后必须先按该 uniform 丢弃透明像素；Iris 下即使随后改用 `SceneColor`，也必须保留这一步。
+
+按位置批量应用持久效果：
 
 ```kotlin
-ClientRenderEntityRegistry.registerRenderer(ArcPulseEntity.ID) {
-    ArcPulseRenderer()
+val group = CooTerrainEffectGroup(id("charged_area"), ENERGY_PIPELINE) {
+    positions(areaBlocks)
+    uniform("EffectTint", CooUniformValue.Vec3Value(0.72F, 0.28F, 0.12F))
+    uniform("EffectStrength", 0.8F)
 }
+CooTerrainEffectManager.apply(level, group)
 ```
 
-服务端创建实体：
+临时效果只需增加 `duration(120)`。同一个组继续扩大时调用 `append`，只移除一部分位置时调用 `removePositions`，更新整组共享颜色时调用 `updateUniforms`；这些包都不重复发送 Pipeline 和未变化的位置。持久组会在玩家登录或切换维度后补发，直到显式调用 `remove`。这里的“持久”指服务器本次运行期间持续，不表示写入世界存档。
+
+也可以直接使用批量重载；单个位置仍然走同一套协议：
 
 ```kotlin
-val entity = ArcPulseEntity(serverLevel, center).apply {
-    radius = 4.0f
-    intensity = 0.8f
-    durationTicks = 80
-    renderRange = 96.0
-}
-entity.spawn(serverLevel, center)
-```
-
-`spawn` 只在 `ServerLevel` 上生效。客户端世界直接调用不会进入同步管理器。
-
-## 4. Renderer 能力声明
-
-`RenderEntityRenderer<T>` 是基础接口。Renderer 通过 `describeFeatures` 声明需要的阶段、场景资源和后处理能力，通过 `initialize` 初始化 GL 资源，通过具体子接口执行渲染。
-
-常用子接口：
-
-| 接口 | 用途 |
-| --- | --- |
-| `WorldPassRenderEntityRenderer<T>` | 在世界渲染阶段直接绘制实体 |
-| `RenderTypeBackedRenderEntityRenderer<T>` | 使用 vanilla `MultiBufferSource` / `RenderType` 提交几何，适合 Iris entity pass 兼容 |
-| `FramePostRenderEntityRenderer<T>` | 在帧尾提交后处理贡献 |
-| `RenderEntityModelRenderer<T>` | 使用模型 DSL 构建几何体 |
-| `SharedModelMaskBloomRenderEntityRenderer<T>` | 世界模型和 mask bloom 复用同一个模型 |
-| `DedicatedGlowMaskRenderEntityRenderer<T>` | 世界绘制和发光 mask 分离 |
-
-能力声明示例：
-
-```kotlin
-class ArcOrbRenderer : WorldPassRenderEntityRenderer<ArcOrbEntity>,
-    FramePostRenderEntityRenderer<ArcOrbEntity> {
-
-    override fun describeFeatures(entity: ArcOrbEntity): RenderEntityFeatureSet {
-        return RenderEntityFeatureSet(
-            stages = setOf(RenderFrameStage.WORLD_PASS, RenderFrameStage.FRAME_POST),
-            requestedSceneTargets = setOf(RenderSceneTargets.SCENE_COLOR, RenderSceneTargets.SCENE_DEPTH),
-            effectTypes = setOf(BuiltinRenderEffectTypes.MASK_BLOOM),
-            localRendererEnabled = true,
-            effectGraphEnabled = true
-        )
-    }
-
-    override fun initialize(instance: RenderEntityInstance<ArcOrbEntity>) {
-        ensureResources()
-    }
-
-    override fun renderLocal(input: LocalRenderInput<ArcOrbEntity>) {
-        renderWorldGeometry(input)
-    }
-
-    override fun collectRenderContributions(
-        input: RenderContributionInput<ArcOrbEntity>,
-        collector: RenderContributionCollector
-    ) {
-        submitFramePostEffects(input, collector)
-    }
-}
-```
-
-`requestedSceneTargets` 决定后端是否准备 scene color / depth。效果需要采样屏幕或深度时，应在这里声明，否则某些后端不会提供对应纹理。
-
-### Iris / RenderType 双路径
-
-RenderEntity 现在支持两条渲染路线：
-
-- `RenderTypeBackedRenderEntityRenderer`：早于本地 OpenGL world pass，把顶点写入 Minecraft 的 `MultiBufferSource`。使用 `CooParticlesRenderTypes` 创建的 RenderType 会复用现有 Iris 兼容逻辑，自定义 shader 会尝试标记为不可跳过，entity cutout/emissive 会尝试包进 Iris entity pass。适合贴图面片、简单模型、发光层和希望被 shaderpack 后续 pass 处理的内容。
-- `WorldPassRenderEntityRenderer` / `FramePostRenderEntityRenderer`：保留原本的 OpenGL、FBO、mask bloom、frame-post 路线。适合 compute、自定义缓冲、多 pass 后处理和无法表达成 vanilla 顶点流的效果。
-
-默认 `RenderTypeBackedRenderMode.IRIS_FIRST_OPENGL_FALLBACK` 的行为是：Iris shaderpack 启用时优先提交 RenderType；没有 Iris 时，如果 renderer 也实现了本地 OpenGL world pass，就回到本地 OpenGL；如果没有本地 world pass，则仍然绘制 RenderType，避免实体不可见。需要双层输出时覆盖为 `DUAL`；只想走 vanilla buffer 时覆盖为 `ALWAYS_RENDER_TYPE`；临时关闭时用 `DISABLED`。
-
-材质绑定要按目标路径来写。RenderType 路线只保证几何进入 vanilla / Iris 能识别的阶段，不会自动生成 shaderpack 需要的材质语义。要让 shaderpack 正确处理材质，renderer 需要提供匹配的 `VertexFormat`，并写入 texture、light、overlay、normal 等数据；PBR、法线、阴影、材质 id 仍取决于对应 RenderType、shader 和 shaderpack 约定。OpenGL/FBO 路线则由 CooParticlesAPI 自己合成，能做复杂后处理，但通常不会参与 Iris 的实体材质、阴影和 gbuffer 解释。
-
-Iris 特殊材质、fsh 边界和 renderer 写法写在 `RenderEntity` 类注释里，避免 API 语义散落在多处。
-
-## 5. 使用 RenderEntityModel 构建基础模型
-
-`RenderEntityModelBuilder` 用于声明几何体、管线参数、post 元数据。适合粒子面片、能量罩、简单网格等结构化模型。
-
-```kotlin
-class ArcModelRenderer : RenderEntityModelRenderer<ArcPulseEntity> {
-
-    override fun initialize(instance: RenderEntityInstance<ArcPulseEntity>) = Unit
-
-    override fun buildModel(entity: ArcPulseEntity, tickDelta: Float): RenderEntityModel {
-        return RenderEntityModelBuilder().apply {
-            val pipe = pipe("arc_shell") {
-                param("alpha", 0.55f)
-                param("radius", entity.radius)
-            }
-
-            val color = Vector4f(0.3f, 0.85f, 1.0f, 0.65f)
-            val r = entity.radius
-
-            addQuad(
-                pipe,
-                RenderEntityModelVertex(Vector3f(-r, 0f, -r), color, Vector2f(0f, 0f)),
-                RenderEntityModelVertex(Vector3f( r, 0f, -r), color, Vector2f(1f, 0f)),
-                RenderEntityModelVertex(Vector3f( r, 0f,  r), color, Vector2f(1f, 1f)),
-                RenderEntityModelVertex(Vector3f(-r, 0f,  r), color, Vector2f(0f, 1f))
-            )
-        }.build()
-    }
-}
-```
-
-模型 DSL 中的 `pipe.shader(...)` 当前作为管线元数据存在；当前 `OpenGlRenderEntityModelExecutor` 使用内置 `render_entity_model.vsh` / `render_entity_model.fsh` 执行模型绘制，不会按每个 pipe 动态切换自定义 shader。需要完全控制 vertex / fragment shader 时，应实现 `WorldPassRenderEntityRenderer` 并手动绘制。
-
-模型执行器默认处理：
-
-- 使用 `GL_LEQUAL` 深度测试。
-- 关闭深度写入。
-- 使用 `SRC_ALPHA, ONE` 混合。
-- 关闭 cull。
-- 绘制点、三角形和四边形拆分出的三角形。
-
-## 6. 给 Entity 绑定自定义顶点着色器和片元着色器
-
-自定义 shader 的核心流程：加载 shader、创建 vertex buffer、设置矩阵和 sampler、绘制。
-
-资源路径约定：
-
-```text
-vertex("core/vertex/arc_orb.vsh")
--> assets/cooparticlesapi/shaders/core/vertex/arc_orb.vsh
-
-fragment("core/fragment/arc_orb.fsh")
--> assets/cooparticlesapi/shaders/core/fragment/arc_orb.fsh
-```
-
-Renderer 示例：
-
-```kotlin
-class ArcOrbRenderer : WorldPassRenderEntityRenderer<ArcOrbEntity> {
-
-    private var program: CooShaderProgram? = null
-    private var buffer: DynamicVertexBuffer? = null
-    private var textures: SimpleTextures? = null
-    private var sprite: SpriteSheetTexture? = null
-
-    override fun initialize(instance: RenderEntityInstance<ArcOrbEntity>) {
-        ensureResources()
-    }
-
-    override fun renderLocal(input: LocalRenderInput<ArcOrbEntity>) {
-        ensureResources()
-
-        val program = program ?: return
-        val buffer = buffer ?: return
-        val textures = textures ?: return
-        val sprite = sprite ?: return
-        val entity = input.instance.entity
-
-        val vertices = buildBillboardVertices(entity, input.tickDelta)
-        buffer.setVertexes(vertices, CooVertexFormat.POINT_COLOR_TEXTURE_UV_FORMAT)
-
-        program.use()
-        program.setMatrix4("projMat", input.projMatrix)
-        program.setMatrix4("viewMat", input.viewMatrix)
-        program.setMatrix4("transMat", Matrix4f(input.modelMatrix))
-        program.setFloat("time", entity.getTime(input.tickDelta))
-        program.setFloat("radius", entity.radius())
-        program.setFloat4("tint", entity.color())
-        program.setInt("spriteTex", 0)
-
-        sprite.uploadSpriteUniforms(program, entity.getTime(input.tickDelta))
-
-        textures.drawWith(Runnable {
-            buffer.draw()
-        })
-
-        program.reset()
-    }
-
-    private fun ensureResources() {
-        if (program == null) {
-            program = AdvancedShaderProgramBuilder()
-                .vertex("core/vertex/arc_orb.vsh")
-                .fragment("core/fragment/arc_orb.fsh")
-                .managedId("render_entity/arc_orb")
-                .build()
-                .also { it.init() }
-        }
-
-        if (buffer == null) {
-            buffer = DynamicVertexBuffer().also { it.init() }
-        }
-
-        if (textures == null) {
-            val sheet = SpriteSheetTexture(
-                IdentifierTexture(ResourceLocation.fromNamespaceAndPath(MOD_ID, "effect/arc_orb_sheet.png")),
-                columns = 4,
-                rows = 4,
-                frameCount = 16,
-                framesPerSecond = 12.0f
-            )
-            sprite = sheet
-            textures = SimpleTextures().apply {
-                addTexture(sheet)
-                init()
-            }
-        }
-    }
-}
-```
-
-`CooVertexFormat.POINT_COLOR_TEXTURE_UV_FORMAT` 的 attribute 约定：
-
-| location | 数据 | GLSL 类型 |
-| --- | --- | --- |
-| 0 | position | `vec3` |
-| 1 | color | `vec4` |
-| 2 | uv | `vec2` |
-
-对应 vertex shader：
-
-```glsl
-#version 330 core
-
-layout(location = 0) in vec3 Position;
-layout(location = 1) in vec4 Color;
-layout(location = 2) in vec2 UV;
-
-uniform mat4 projMat;
-uniform mat4 viewMat;
-uniform mat4 transMat;
-
-out vec4 vertexColor;
-out vec2 texCoord;
-
-void main() {
-    vertexColor = Color;
-    texCoord = UV;
-    gl_Position = projMat * viewMat * transMat * vec4(Position, 1.0);
-}
-```
-
-对应 fragment shader：
-
-```glsl
-#version 330 core
-
-in vec4 vertexColor;
-in vec2 texCoord;
-
-uniform sampler2D spriteTex;
-uniform bool useSpriteUv;
-uniform vec4 spriteUvRect;
-uniform vec4 tint;
-
-out vec4 FragColor;
-
-void main() {
-    vec2 uv = useSpriteUv ? spriteUvRect.xy + texCoord * spriteUvRect.zw : texCoord;
-    vec4 tex = texture(spriteTex, uv);
-    FragColor = tex * vertexColor * tint;
-}
-```
-
-## 7. 绑定纹理
-
-`IdentifierTexture` 按 Minecraft 资源路径加载纹理。传入：
-
-```kotlin
-ResourceLocation.fromNamespaceAndPath(MOD_ID, "effect/arc_orb_sheet.png")
-```
-
-实际资源路径为：
-
-```text
-assets/<modid>/textures/effect/arc_orb_sheet.png
-```
-
-`SimpleTextures` 会按添加顺序绑定到连续纹理槽：
-
-```kotlin
-val textures = SimpleTextures().apply {
-    addTexture(IdentifierTexture(ResourceLocation.fromNamespaceAndPath(MOD_ID, "effect/base.png")))
-    addTexture(IdentifierTexture(ResourceLocation.fromNamespaceAndPath(MOD_ID, "effect/noise.png")))
-    init()
+CooTerrainEffectManager.apply(
+    level,
+    id("highlighted_blocks"),
+    ENERGY_PIPELINE,
+    positions
+) {
+    uniform("EffectStrength", 0.8F)
+    duration(40)
 }
 
-program.setInt("baseTex", 0)
-program.setInt("noiseTex", 1)
-
-textures.drawWith(Runnable {
-    buffer.draw()
-})
-```
-
-对应 fsh：
-
-```glsl
-uniform sampler2D baseTex;
-uniform sampler2D noiseTex;
-
-in vec2 texCoord;
-out vec4 FragColor;
-
-void main() {
-    vec4 base = texture(baseTex, texCoord);
-    float noise = texture(noiseTex, texCoord * 2.0).r;
-    FragColor = vec4(base.rgb * (0.7 + noise * 0.3), base.a);
-}
-```
-
-`SimpleTextures.drawWith` 会保存并恢复当前绑定状态，适合局部绘制。直接使用 OpenGL 绑定纹理时，需要自行恢复 active texture、binding、blend、depth 等状态。
-
-## 8. 精灵图案例
-
-精灵图通过 `SpriteSheetTexture` 包装普通纹理，并在每帧上传 `spriteUvRect`、`spriteFrame`、`useSpriteUv`。
-
-```kotlin
-val sprite = SpriteSheetTexture(
-    IdentifierTexture(ResourceLocation.fromNamespaceAndPath(MOD_ID, "effect/fire_sheet.png")),
-    columns = 4,
-    rows = 4,
-    frameCount = 16,
-    framesPerSecond = 10.0f,
-    looping = true,
-    rowsStartFromTop = true
+CooTerrainEffectManager.removePositions(level, id("highlighted_blocks"), positionsToClear)
+CooTerrainEffectManager.updateUniforms(
+    level,
+    id("highlighted_blocks"),
+    mapOf("EffectStrength" to CooUniformValue.FloatValue(0.3F))
 )
-
-val textures = SimpleTextures().apply {
-    addTexture(sprite)
-    init()
-}
-
-program.setInt("spriteTex", 0)
-sprite.uploadSpriteUniforms(program, entity.getTime(tickDelta))
-textures.drawWith(Runnable { buffer.draw() })
 ```
 
-fsh 中将基础 uv 映射到当前帧：
-
-```glsl
-uniform sampler2D spriteTex;
-uniform bool useSpriteUv;
-uniform vec4 spriteUvRect;
-uniform int spriteFrame;
-
-in vec2 texCoord;
-out vec4 FragColor;
-
-void main() {
-    vec2 uv = texCoord;
-    if (useSpriteUv) {
-        uv = spriteUvRect.xy + texCoord * spriteUvRect.zw;
-    }
-
-    vec4 color = texture(spriteTex, uv);
-    if (color.a <= 0.001) {
-        discard;
-    }
-
-    FragColor = color;
-}
-```
-
-## 9. PostEffectType 基础
-
-独立后处理使用 `PostEffectType` 描述类型，`PostEffectInstance` 表示一次正在运行的效果。
-
-注册方式：
+如果 Pipeline 需要按每个位置的激活 tick 动画，使用 `terrainEffect` 声明通用时间帧。它不是传播专用接口，`CooTerrainEffectContext` 同时提供方块状态、位置、组开始 tick、激活 tick、当前 tick 和组共享 uniform：
 
 ```kotlin
-val ARC_FLASH: PostEffectType = CooPostEffectTypes.register(
-    ResourceLocation.fromNamespaceAndPath(MOD_ID, "arc_flash")
-) {
-    screenQuad()
-    require(RenderBackendCapability.SCENE_COLOR_COPY)
-    require(RenderBackendCapability.FINAL_FRAME_POST)
-
-    pass("compose", ResourceLocation.fromNamespaceAndPath(MOD_ID, "post/arc_flash.fsh")) {
-        inputSceneColor("scene", textureSlot = 0)
-        inputCustomTexture("noiseTex", textureSlot = 1)
-        outputToFinalScreen()
-        uniform("intensity") { instance ->
-            val base = (instance.params["intensity"] as? PostEffectParamValue.FloatValue)?.value ?: 1.0f
-            PostEffectParamValue.FloatValue(base * (1.0f - instance.progress))
-        }
-    }
-}
-```
-
-`ResourceLocation.fromNamespaceAndPath(MOD_ID, "post/arc_flash.fsh")` 对应：
-
-```text
-assets/<modid>/shaders/post/arc_flash.fsh
-```
-
-创建并播放实例：
-
-```kotlin
-val instance = ARC_FLASH.create()
-    .bindWorld(center.x, center.y, center.z, level.dimension().location())
-    .duration(30)
-    .params {
-        float("intensity", 1.2f)
-        resource("noiseTex", ResourceLocation.fromNamespaceAndPath(MOD_ID, "effect/noise.png"))
-    }
-
-CooPostEffects.client.add(instance)
-```
-
-服务端同步：
-
-```kotlin
-CooPostEffects.server.spawn(serverLevel, instance)
-```
-
-或定向发送：
-
-```kotlin
-CooPostEffects.server.send(serverPlayer, instance)
-```
-
-常用 binding：
-
-| Binding | 场景 |
-| --- | --- |
-| `bindScreen()` | 全屏 UI / 纯屏幕效果 |
-| `bindScreen(x, y)` | 屏幕坐标效果 |
-| `bindWorld(x, y, z, level)` | 世界坐标效果 |
-| `bindEntity(entityId)` | 绑定 Minecraft 原生实体 |
-| `bindBlock(pos, level)` | 绑定方块位置 |
-| `bindCustom(...)` | 自定义绑定数据 |
-
-## 10. 多 fsh 拓扑链接
-
-`PostEffectChain` 支持多个 fsh pass 形成有向无环图。每个 pass 可以输出到临时纹理、mask、bright color 或屏幕输出目标；后续 pass 通过 `asInputTo` / `asInputFrom` 读取前序 pass 的输出。
-
-拓扑链示例：提取高亮、噪声 mask、模糊、合成。
-
-```kotlin
-val ARC_BLOOM: PostEffectType = CooPostEffectTypes.register(
-    ResourceLocation.fromNamespaceAndPath(MOD_ID, "arc_bloom")
-) {
-    screenQuad()
-    require(RenderBackendCapability.SCENE_COLOR_COPY)
-    require(RenderBackendCapability.SCENE_DEPTH_READ)
-    require(RenderBackendCapability.FINAL_FRAME_POST)
-
-    val extract = pass("extract", ResourceLocation.fromNamespaceAndPath(MOD_ID, "post/arc_extract.fsh")) {
-        inputSceneColor("scene", textureSlot = 0)
-        outputToTemporary()
-        uniform("threshold") { it.params["threshold"] ?: PostEffectParamValue.FloatValue(0.65f) }
-    }
-
-    val noiseMask = pass("noise_mask", ResourceLocation.fromNamespaceAndPath(MOD_ID, "post/arc_noise_mask.fsh")) {
-        inputCustomTexture("noiseTex", textureSlot = 0)
-        outputToTemporary()
-        uniform("noiseScale") { it.params["noiseScale"] ?: PostEffectParamValue.FloatValue(2.5f) }
-    }
-
-    val blur = pass("blur", ResourceLocation.fromNamespaceAndPath(MOD_ID, "post/arc_blur.fsh")) {
-        outputToTemporary()
-        uniform("radius") { instance ->
-            val base = (instance.params["blurRadius"] as? PostEffectParamValue.FloatValue)?.value ?: 6.0f
-            PostEffectParamValue.FloatValue(base * (1.0f - instance.progress * 0.25f))
-        }
-    }
-
-    val compose = pass("compose", ResourceLocation.fromNamespaceAndPath(MOD_ID, "post/arc_compose.fsh")) {
-        inputSceneColor("scene", textureSlot = 0)
-        inputSceneDepth("depthTex", optional = true, textureSlot = 3)
-        outputToFinalScreen()
-        uniform("intensity") { instance ->
-            val base = (instance.params["intensity"] as? PostEffectParamValue.FloatValue)?.value ?: 1.0f
-            PostEffectParamValue.FloatValue(base * (1.0f - instance.progress))
-        }
-    }
-
-    extract.asInputTo(blur, "sourceTex", textureSlot = 0)
-    noiseMask.asInputTo(blur, "maskTex", textureSlot = 1)
-    blur.asInputTo(compose, "bloomTex", textureSlot = 1)
-    noiseMask.asInputTo(compose, "maskTex", textureSlot = 2)
-}
-```
-
-执行规则：
-
-- pass 名称必须唯一。
-- pass 输出依赖自动参与拓扑排序。
-- 循环依赖会被拒绝。
-- 同一 pass 内显式 `textureSlot` 不能重复。
-- 未显式指定的 sampler 会自动分配空闲槽位。
-- `inputSceneColor` 依赖 `SCENE_COLOR_COPY`。
-- `inputSceneDepth` 依赖 `SCENE_DEPTH_READ`，可使用 `optional = true` 允许缺失。
-- `inputCustomTexture("noiseTex")` 从 instance params 中读取同名纹理参数。
-
-合成 pass fsh 示例：
-
-```glsl
-#version 330 core
-
-uniform sampler2D scene;
-uniform sampler2D bloomTex;
-uniform sampler2D maskTex;
-uniform sampler2D depthTex;
-
-uniform float intensity;
-uniform bool hasDepth;
-uniform vec2 screenSize;
-uniform vec2 texelSize;
-uniform float sourceDepth;
-
-in vec2 texCoord;
-out vec4 FragColor;
-
-void main() {
-    vec4 sceneColor = texture(scene, texCoord);
-    vec4 bloom = texture(bloomTex, texCoord);
-    float mask = texture(maskTex, texCoord).r;
-
-    float depthFade = 1.0;
-    if (hasDepth) {
-        float sceneDepth = texture(depthTex, texCoord).r;
-        depthFade = smoothstep(-0.002, 0.004, sceneDepth - sourceDepth);
-    }
-
-    vec3 color = sceneColor.rgb + bloom.rgb * mask * intensity * depthFade;
-    FragColor = vec4(color, sceneColor.a);
-}
-```
-
-## 11. 在 post 链上绑定纹理
-
-post 链中的纹理输入使用 `inputCustomTexture` 声明，运行实例通过 `params.resource` 绑定资源纹理。
-
-注册类型：
-
-```kotlin
-pass("distort", ResourceLocation.fromNamespaceAndPath(MOD_ID, "post/arc_distort.fsh")) {
-    inputSceneColor("scene", textureSlot = 0)
-    inputCustomTexture("noiseTex", textureSlot = 1)
-    outputToFinalScreen()
-}
-```
-
-创建实例：
-
-```kotlin
-val instance = ARC_DISTORT.create()
-    .bindScreen()
-    .duration(40)
-    .params {
-        resource("noiseTex", ResourceLocation.fromNamespaceAndPath(MOD_ID, "effect/noise.png"))
-        float("strength", 0.025f)
-    }
-```
-
-对应资源路径：
-
-```text
-assets/<modid>/textures/effect/noise.png
-```
-
-fsh：
-
-```glsl
-uniform sampler2D scene;
-uniform sampler2D noiseTex;
-uniform float strength;
-
-in vec2 texCoord;
-out vec4 FragColor;
-
-void main() {
-    vec2 noise = texture(noiseTex, texCoord * 2.0).rg * 2.0 - 1.0;
-    vec2 uv = texCoord + noise * strength;
-    FragColor = texture(scene, uv);
-}
-```
-
-`inputCustomTexture` 也接受 raw GL texture id：`IntValue` / `LongValue`。资源纹理通常使用 `ResourceValue`，由后端通过 `IdentifierTexture` 维护生命周期。
-
-## 12. 给 RenderEntity 绑定后处理效果
-
-RenderEntity 的后处理分为两类。
-
-### 12.1 Renderer 提交帧尾效果
-
-实体自身参与世界渲染后，在 `FramePostRenderEntityRenderer.collectRenderContributions` 中提交后处理描述。适合实体发光、屏幕冲击波、mask bloom 等和实体生命周期一致的效果。
-
-```kotlin
-class ArcOrbPostRenderer : FramePostRenderEntityRenderer<ArcOrbEntity> {
-
-    private lateinit var arcOrbTextures: SimpleTextures
-
-    override fun initialize(instance: RenderEntityInstance<ArcOrbEntity>) {
-        arcOrbTextures = SimpleTextures().apply {
-            addTexture(IdentifierTexture(ResourceLocation.fromNamespaceAndPath(MOD_ID, "effect/arc_orb_sheet.png")))
-            init()
-        }
-    }
-
-    override fun collectRenderContributions(
-        input: RenderContributionInput<ArcOrbEntity>,
-        collector: RenderContributionCollector
-    ) {
-        val entity = input.instance.entity
-        val modelMatrix = RenderUtil.buildModelMatrix(entity, input.frameContext)
-
-        collector.submit(
-            BuiltinRenderEffectDescriptors.maskBloomTexturedBillboard(
-                effectId = "arc_orb_bloom",
-                sourceInstanceId = entity.uuid.toString(),
-                frameContext = input.frameContext,
-                textures = arcOrbTextures,
-                modelMatrix = modelMatrix,
-                sourceEntity = entity,
-                config = MaskBloomConfig(
-                    blurSigma = 12.0f,
-                    blurRange = 8.0f,
-                    intensity = entity.intensity(),
-                    threshold = 0.05f
-                ),
-                tint = entity.color()
-            )
+val ENERGY_PIPELINE = CooPipelines.block(id("energy")) {
+    shader(id("terrain/energy"))
+    inputBlockAtlas("BaseSampler")
+    uniform("EffectTint", CooUniformValue.Vec3Value(1F, 1F, 1F))
+    terrainEffect { context ->
+        val amount = (context.localTick / 20F).coerceIn(0F, 1F)
+        CooTerrainEffectFrame(
+            uniforms = mapOf("EffectTint" to CooUniformValue.Vec3Value(1F, amount, 0F))
         )
     }
 }
 ```
 
-该路径由 RenderEntity 框架统一收集，并在当前帧的 post 阶段执行。需要 depth occlusion 时，描述符或 shader 必须使用深度资源，并在合成阶段比较 `sourceDepth` 与 scene depth。
+帧返回 `null` 时该位置在当前 tick 不绘制这条效果，底层会继续检查更早应用且仍有效的效果组。当前帧和下一帧的 uniform 会由 terrain 渲染器按 `partialTick` 插值。
 
-### 12.2 独立 PostEffectInstance 绑定世界或原生实体
+传播测试在前 60 tick 每 5 tick 向外发现一层。每个方块从自己的发现 tick 开始独立运行 120 tick：先淡入白色，经过铜红到铜锈绿；之后保持铜锈绿 30 tick，再经过铜红、白色并淡回原纹理。首次创建组只发一个组包，每 5 tick 只追加新一层的位置；客户端自己推进时间线和 section 刷新，不再每 tick 重发完整位置表。颜色化使用原纹理亮度乘目标色相，并按目标色相的亮度归一化。
 
-全屏或世界位置型效果不一定依附 RenderEntity Renderer，可以直接创建 `PostEffectInstance`：
+```glsl
+uniform float CooAlphaCutoff;
 
-```kotlin
-val instance = ARC_FLASH.create()
-    .bindWorld(entity.pos.x, entity.pos.y, entity.pos.z, level.dimension().location())
-    .duration(24)
-    .params {
-        float("intensity", entity.intensity())
-        resource("noiseTex", ResourceLocation.fromNamespaceAndPath(MOD_ID, "effect/noise.png"))
-    }
-
-CooPostEffects.server.spawn(serverLevel, instance)
+vec4 atlasColor = texture(BaseSampler, baseUv) * vertexColor * ColorModulator;
+if (atlasColor.a < CooAlphaCutoff) {
+    discard;
+}
 ```
 
-`bindEntity` 绑定的是 Minecraft 原生实体 id，不是 RenderEntity 的 uuid。RenderEntity 专属效果通常放在 Renderer 的 `collectRenderContributions` 中；需要跨网络同步的独立 post 效果，可以用稳定 `instanceId` 创建、更新、移除。
+```kotlin
+val ENERGY_PIPELINE = CooPipelines.block(id("energy")) {
+    shader(MyShaders.ENERGY)
+    inputBlockAtlas("BaseSampler")
+    inputSceneColor("SceneColor", optional = true)
+}
+```
 
-## 13. Post 内置 uniform
+BlockTest 的传播示例在 `BlockAPITestGroupBuilder` 注册：
 
-OpenGL post 后端会为 pass 注入常用 uniform：
+```kotlin
+BlockTexturePropagationTestOption(player)
+```
 
-| uniform | 含义 |
+它调用 `BlockUtil.BlockStepSpareData` 每 5 tick 发现一层，并使用 `CooTerrainEffectManager.apply/append/remove` 管理一个效果组。Option 只负责传播策略；位置批量同步、玩家登录补发、生命周期和 section 局部重建都由通用 terrain 效果 API 处理。
+
+注册并播放屏幕效果：
+
+```kotlin
+val HEAT_HAZE = CooShaderEffects.register(id("heat_haze")) {
+    fragment(id("post/heat_haze.fsh"))
+    inputSceneColor("SceneColor")
+    inputSceneDepth("SceneDepth", optional = true)
+    outputToScreen()
+}
+
+HEAT_HAZE.play {
+    duration(30)
+    uniform("strength", 0.12F)
+    uniform("radius", 0.35F)
+}
+```
+
+`DEFAULT`、`MASK_BLOOM` 和 `BLOCK_DEFAULT` 都是不可变模板。`blurSigma`、`blurRange`、`intensity` 和 `uniform` 返回新 Pipeline，不会改写共享 preset。
+
+## RenderEntity
+
+Renderer 只声明 Pipeline，并在回调中提交几何：
+
+```kotlin
+interface RenderEntityRenderer<T : RenderEntity> {
+    val pipeline: CooRenderPipeline<T>
+    fun render(input: RenderInput<T>)
+}
+```
+
+示例：
+
+```kotlin
+@CooAutoRegisterRenderer
+class MyRenderEntityRenderer : RenderEntityRenderer<MyRenderEntity> {
+    override val pipeline = CooPipelines.MASK_BLOOM
+        .blurSigma(15F)
+        .blurRange(10F)
+        .intensity { entity: MyRenderEntity -> entity.brightness }
+
+    override fun render(input: RenderInput<MyRenderEntity>) {
+        val entity = input.entity
+        // 在这里提交实体几何。Pipeline runtime 负责当前节点的 shader、输入和 uniform。
+    }
+}
+```
+
+调用方不再实现额外的阶段描述、mask 配置或专用后处理能力接口。一个含 world 节点和 fullscreen 节点的 Pipeline 会自动产生世界绘制和帧尾阶段。
+
+## 节点与 line
+
+下面的图有三个卡片。`extract.color()` 是 `extract` 的 color attachment 0；它通过 `line` 直接接到 `blur` 的 `Bright` sampler。
+
+```text
+sceneColor -> extract.SceneColor
+extract.Color[0] -> blur.Bright
+blur.Color[0] -> composite.Blurred
+sceneColor -> composite.SceneColor
+composite.Color[0] -> final screen
+```
+
+对应代码：
+
+```kotlin
+val pipeline = CooPipelines.generic<FrameData>(id("soft_bloom")) {
+    val extract = pass("extract") {
+        fragment(id("post/bright_extract.fsh"))
+        input("SceneColor")
+    }
+    val blur = pass("blur") {
+        fragment(id("post/blur.fsh"))
+        input("Bright")
+    }
+    val composite = pass("composite") {
+        fragment(id("post/composite.fsh"))
+        input("SceneColor")
+        input("Blurred")
+    }
+
+    line(sceneColor(), extract.input("SceneColor"))
+    line(extract.color(), blur.input("Bright"))
+    line(sceneColor(), composite.input("SceneColor"))
+    line(blur.color(), composite.input("Blurred"))
+    line(composite.color(), screenTarget())
+}
+```
+
+`order(...)` 只处理没有依赖关系时的稳定排序。只要存在 `line(A.color(), B.input(...))`，编译器就会保证 A 在 B 前执行。环、重复输入连线和缺失的必需输入会在构建或编译时失败。
+
+## 多 attachment 与命名 FBO
+
+一个节点可以声明多个 color attachment：
+
+```kotlin
+val gbuffer = pass("gbuffer") {
+    fragment(id("post/gbuffer.fsh"))
+    inputSceneColor("SceneColor")
+    colorAttachments(2)
+}
+val lighting = pass("lighting") {
+    fragment(id("post/lighting.fsh"))
+    input("Normal")
+}
+
+line(gbuffer.color(1), lighting.input("Normal"))
+line(lighting.color(), screenTarget())
+```
+
+`color(1)` 明确表示 attachment 1。它不会被压缩成一个没有 attachment 身份的“上一个 pass 输出”。后端按这条连线绑定对应纹理。
+
+命名 FBO 通过 `ResourceLocation` 标识：
+
+```kotlin
+val target = id("framebuffer/custom_gbuffer")
+
+line(gbuffer.color(1), framebufferTarget(target, attachment = 1))
+
+val resolve = pass("resolve") {
+    fragment(id("post/resolve.fsh"))
+    inputFramebuffer("Normal", target, attachment = 1)
+}
+```
+
+可用资源包括：
+
+- `texture(id)`：`ResourceLocation` 纹理。
+- `blockAtlas()`：原版方块图集。
+- `sceneColor()`、`sceneDepth()`：当前场景颜色和深度。
+- `framebuffer(id, attachment)`：命名 FBO 的颜色 attachment。
+- `mask()`、`temporary()`、`bloom()`：框架管理的场景资源。
+- `node.color(attachment)`、`node.mask()`：某个节点的输出。
+- `worldTarget()`、`screenTarget()`、`maskTarget()`、`temporaryTarget()`、`bloomTarget()` 和 `framebufferTarget(...)`：图的输出端。
+
+FBO、窗口 resize 和资源释放继续由 `SimpleFrameBuffer`、`RenderSceneResources` 和 OpenGL 后端处理。业务代码不创建另一套 framebuffer 生命周期。
+
+## PingPong 卡片
+
+PingPong 是一个节点，不需要手写两组 pass。第一轮从外部 `line` 读取，后续轮交替读取前一轮输出。编译器只分配两组物理 target。
+
+```kotlin
+val blur = pingPong(
+    name = "blur",
+    iterations = 8,
+    feedbackSampler = "Input"
+) {
+    fragment(id("post/blur_ping_pong.fsh"))
+    alternate(
+        "Axis",
+        CooUniformValue.Vec2Value(1F, 0F),
+        CooUniformValue.Vec2Value(0F, 1F)
+    )
+    iterationUniform("Iteration") { iteration ->
+        CooUniformValue.IntValue(iteration.index)
+    }
+}
+
+line(sceneColor(), blur.input("Input"))
+line(blur.color(), composite.input("Blurred"))
+```
+
+`iterations` 必须大于零。`alternate` 根据 ping/pong 轮次交变参数；`iterationUniform` 可读取当前索引、总轮数和 `isPing`。最后一轮也会使用独立 target，避免同一个 framebuffer 同时作为采样输入和绘制输出。
+
+## 动态 uniform
+
+实体和方块 Pipeline 的 provider 在绘制时按当前对象求值：
+
+```kotlin
+val pipeline = CooPipelines.entity<MyRenderEntity>(id("charged_entity")) {
+    world("geometry") {
+        shader(id("charged_entity"))
+        uniform("Charge") { entity: MyRenderEntity -> entity.charge }
+    }
+}
+```
+
+屏幕效果在每次 `play` 时生成独立参数快照：
+
+```kotlin
+HEAT_HAZE.play {
+    duration(30)
+    uniform("strength", 0.12F)
+    texture("NoiseSampler", id("textures/effect/noise.png"))
+}
+```
+
+一次播放写入的值不会修改注册后的 ShaderEffect 模板，也不会影响其他播放实例。
+
+## 真实 terrain 方块 Pipeline
+
+使用原方块图集的 Pipeline：
+
+```kotlin
+val ORIGINAL_TEXTURE_BLOCK = CooPipelines.block(id("original_texture_block")) {
+    shader(id("terrain/original_texture"))
+    inputBlockAtlas("BaseSampler")
+    effectUv(CooEffectUvMode.FACE_LOCAL)
+    uniform("TintStrength", 0.35F)
+}
+
+CooBlockPipelines.bind(MyBlocks.ENERGY_BLOCK, ORIGINAL_TEXTURE_BLOCK)
+```
+
+不采样原纹理的原版方块绑定：
+
+```kotlin
+val SOLID_TINT = CooPipelines.block(id("solid_tint")) {
+    shader(id("terrain/solid_tint"))
+    effectUv(CooEffectUvMode.WORLD_XZ)
+    uniform("EffectTint", CooUniformValue.Vec3Value(0.1F, 0.85F, 0.35F))
+}
+
+CooBlockPipelines.bind(Blocks.STONE, SOLID_TINT)
+```
+
+仓库示例不会在客户端启动时绑定任何原版方块。测试代码需要显式调用 `RenderPipelineExamples.bindVanillaBlockExample(Blocks.STONE)`，避免示例污染整张地图的固定方块类型。
+
+精确 `BlockState` 绑定优先于精确 `Block`，精确 `Block` 优先于全局 `BlockState` predicate；相同级别中后绑定的规则优先。批量绑定只增加一次修订号并触发一次 section rebuild。
+
+绑定按需生效，不要求替换整套方块纹理。未命中的方块会解析为 `CooPipelines.BLOCK_DEFAULT`，继续走原版 terrain batch。
+
+自定义方块仍由区块编译器烘焙。框架按 Pipeline 分 section buffer 和 terrain draw batch，不为每个方块发起 draw call。原本的面剔除、AO、lightmap、normal、破坏覆盖层和透明层顺序仍由 vanilla terrain 路径提供。
+
+### 顶点输入
+
+自定义格式保留两套 UV：
+
+| shader 输入 | 含义 |
 | --- | --- |
-| `progress` | 实例生命周期进度，通常为 0 到 1 |
-| `center` | 绑定点在屏幕空间或语义空间中的位置 |
-| `sourceDepth` | 绑定源深度 |
-| `hasDepth` | 当前 pass 是否拿到可用深度 |
-| `screenSize` | 当前输出尺寸 |
-| `texelSize` | `1.0 / screenSize` |
+| `Position` | section-local 位置，可结合 section/camera 数据还原世界位置 |
+| `Color` | 原版烘焙颜色和 AO |
+| `BaseUV` | 原方块图集 UV |
+| `EffectUV` | 独立效果 UV |
+| `LightUV` | lightmap UV |
+| `Normal` | 烘焙法线 |
 
-业务参数通过 `uniform("name") { instance -> ... }` 注入。provider 返回 `PostEffectParamValue`，可读取 `instance.params` 和 `instance.progress`。fsh 中声明同名 uniform 即可使用。
+`BaseSampler + BaseUV` 读取原方块纹理。`EffectSampler + EffectUV` 读取自定义纹理或 FBO attachment。`EffectUV` 不覆盖 `BaseUV`。
 
-## 14. 渲染阶段与后端兼容
+`CooEffectUvMode` 支持：
 
-客户端管线阶段由 `ClientRenderPipelineManager` 管理：
+- `BASE_UV`
+- `FACE_LOCAL`
+- `WORLD_XZ`
+- `WORLD_XY`
+- `WORLD_YZ`
 
-| 阶段 | 用途 |
-| --- | --- |
-| `FRAME_BEGIN` | 帧开始，重置上下文 |
-| `WORLD_PASS` | RenderEntity 世界渲染 |
-| `POST_PROCESS_PREPARE` | 准备 scene color / depth 等资源 |
-| `FRAME_POST` | RenderEffectGraph 和 PostEffectChain 执行 |
-| `FRAME_END` | 帧结束清理 |
+三种 `WORLD_*` 模式直接从连续世界位置生成 UV，不会覆盖 `BaseUV`。为避免接近世界边界时丢失亚方块精度，坐标以 1024 方块为周期；相邻方块和负坐标保持连续。它是周期坐标，跨过周期边界时效果相位会重新开始；需要全局无限连续的效果时，shader 应自行提供高低位或分块相位。
 
-`CooParticlesAPIClient.syncRenderBackend()` 会根据 Iris shader pack 状态选择 `IrisSafeRenderBackend` 或 `VanillaSafeRenderBackend`。两者都通过 `RenderFrameContext`、`RenderSceneTargets` 暴露资源，效果代码不应直接假设 Minecraft 主 FBO 恒定可用。
+shader 没有声明 `BaseSampler` 时可以不采样原图集。
 
-## 15. 使用注意事项
+## Iris、Sodium 与 NeoForge
 
-- RenderEntity codec 和 Renderer 注册是两个独立步骤。
-- `AutoRenderEntity` 的自动注册不代表 Renderer 自动注册。
-- 自定义字段同步后需要合并到客户端对象；手写 `RenderEntity` 时不要遗漏 `loadProfileFromEntity`。
-- `spawn` 必须发生在服务端世界。
-- `durationTicks` 到期后实体会被取消。
-- `renderRange` 过小会导致服务端不向玩家同步。
-- 模型 DSL 当前不负责逐 pipe 切换自定义 shader。
-- 自定义 shader 绘制需要保证 vertex format 与 GLSL layout 完全一致。
-- `SimpleTextures` 的 sampler 槽位按添加顺序从 0 开始。
-- `IdentifierTexture` 参数是 textures 目录下的相对路径，不需要写 `textures/` 前缀。
-- post pass 内显式 texture slot 不能重复。
-- 多 pass 链需要保持无环依赖。
-- 深度相关效果应声明 `SCENE_DEPTH_READ`，shader 内根据 `hasDepth` 做降级。
-- 屏幕合成 pass 需要采样 scene 并混合，不应只输出效果纹理。
-- 需要方块遮挡时，世界绘制应保持深度测试，后处理应使用 depth-aware 逻辑。
-- shader pack 环境中，外部 FBO 和 scene copy 来源可能变化，避免直接绑定固定 framebuffer。
-- 手动改 OpenGL 状态后必须恢复，尤其是 depth test、depth mask、blend、cull、active texture、framebuffer。
+自定义 terrain shader 不复用 `iris:entity` wrapper。
 
-## 16. 常见错误与原因
+Fabric/Sodium 未启用 shader pack 时，区块编译会把命中绑定的几何从原 batch 移到对应 Pipeline batch。原几何不会重复提交，因此没有两层共面 draw。每个 section 仍按 Pipeline 批量绘制，不会退化为逐方块 draw call。
 
-| 现象 | 常见原因 | 检查点 |
-| --- | --- | --- |
-| RenderEntity 不渲染 | codec 未注册 | `ClientRenderEntityRegistry` 或自动注册扫描是否生效 |
-| RenderEntity 不渲染 | Renderer 未注册 | 日志或异常是否出现 `RenderEntity renderer not registered` |
-| RenderEntity 不渲染 | 在客户端世界 spawn | `spawn` 调用是否传入 `ServerLevel` |
-| RenderEntity 不渲染 | `renderRange` 太小 | 玩家到实体距离是否超出同步范围 |
-| RenderEntity 不渲染 | `durationTicks` 到期 | 实体是否已被 cancel |
-| RenderEntity 不渲染 | Renderer 未声明阶段 | `describeFeatures` 是否包含 `WORLD_PASS` 或 `FRAME_POST` |
-| shader 无输出 | shader 编译或链接失败 | 日志中的 shader compile / link 信息 |
-| shader 无输出 | attribute 不匹配 | vertex format 与 GLSL `layout(location=...)` 是否一致 |
-| shader 无输出 | uniform 名称不匹配 | Kotlin `set*` 名称与 GLSL 声明是否一致 |
-| 纹理为空 | 资源路径错误 | `IdentifierTexture` 是否对应 `assets/<modid>/textures/...` |
-| 纹理为空 | sampler 槽位错误 | `program.setInt` 和 `SimpleTextures` 添加顺序是否一致 |
-| 精灵图不动 | 未上传 sprite uniform | 是否调用 `sprite.uploadSpriteUniforms(program, time)` |
-| Post 不执行 | type 未注册 | 客户端日志是否有 synced post effect type not registered 类信息 |
-| Post 不执行 | capability 缺失 | `require(...)` 和后端 capability 是否匹配 |
-| Post 不执行 | binding 不在当前维度 | binding 维度、实体 id、方块位置是否可解析 |
-| 全屏黑屏 | 合成 pass 未采样 scene | final pass 是否把 scene color 混合回输出 |
-| 全屏黑屏 | sampler 名称错误 | `inputSceneColor("scene")` 与 `uniform sampler2D scene` 是否一致 |
-| 全屏黑屏 | pass 输入依赖断开 | `asInputTo` sampler 名称是否与 fsh uniform 对应 |
-| 全屏黑屏 | 显式 texture slot 冲突 | 同一 pass 内是否重复使用 slot |
-| 全屏黑屏 | 自定义纹理缺失 | `params.resource("noiseTex", ...)` 名称是否对应 `inputCustomTexture("noiseTex")` |
-| 深度错误 | 未声明 depth 输入 | PostEffectType 是否 `require(SCENE_DEPTH_READ)` 并 `inputSceneDepth` |
-| 深度错误 | `hasDepth=false` 未降级 | shader 是否在无深度时使用合理 fallback |
-| 深度错误 | 屏幕空间合成误当世界遮挡 | 需要遮挡时是否使用 depth-aware 合成或世界 pass 深度测试 |
-| 深度错误 | OpenGL 状态泄漏 | 自定义绘制后 depth / blend / framebuffer 是否恢复 |
-| 穿墙发光 | 效果允许 throughWalls | 描述符参数和 shader 深度比较逻辑 |
-| 光影不兼容 | 直接假设 vanilla main target | 是否改用 `RenderFrameContext` / `RenderSceneTargets` 提供的资源 |
-| 光影不兼容 | scene copy 不可用 | 日志是否出现 scene color copy unavailable |
-| 光影不兼容 | 外部 FBO 变化 | 日志是否出现 external post framebuffer / fallback target 信息 |
-| 光影不兼容 | 手动 FBO 或 GL 状态未恢复 | 是否污染 shader pack 后续 pass |
+启用 Iris shader pack 时，绑定方块的原几何先进入 Iris terrain/gbuffer。Iris 完成最终合成后，框架读取最终 scene color 和 terrain depth，再批量覆盖这些方块的可见像素。深度测试使用 terrain depth、`LEQUAL` 和 polygon offset，避免与原表面争夺同一深度值。`BaseSampler` 仍是原方块 atlas；声明 `inputSceneColor` 的 shader 收到 Iris 处理后的画面。
 
-## 17. 接入顺序建议
+这个覆盖 pass 不是 Iris gbuffer program，不写 shader pack 的 PBR、normal、material、shadow MRT。shader pack 若修改 terrain 顶点位置，覆盖几何可能无法完全贴合。透明 Pipeline 会随相机重新排序自己的 quad，但无法与其他 terrain 材质做跨 batch 的逐 quad 交错。这两项是当前限制。
 
-1. 先定义 RenderEntity 数据和 codec。
-2. 注册 codec 与 Renderer。
-3. 使用模型 DSL 或自定义 shader 完成世界渲染。
-4. 纹理和精灵图在 `initialize` 中创建并初始化。
-5. 后处理需求先判断属于 Renderer 帧尾贡献，还是独立 `PostEffectInstance`。
-6. 单 pass post 跑通后，再扩展到多 fsh 拓扑链。
-7. 引入深度和 shader pack 场景前，先确认 scene color、depth、final output 均正常。
+无法取得 Iris terrain depth、创建 shader 或上传 Sodium batch 时，兼容层会记录错误、停用自定义覆盖并触发 section rebuild，恢复原版/Iris terrain。不会静默隐藏绑定方块。
 
-## 18. 参考源码入口
+NeoForge 在未安装 Sodium 时使用 vanilla section terrain pass；安装 Sodium 后通过同一套可选的 section overlay 接入 Pipeline batch。Sodium 只作为编译期依赖，模组运行时不会强制要求它。未安装时条件 mixin 不生效，绑定仍走 vanilla fallback。这个路径同样不复用实体 shader wrapper。Pipeline 只有显式声明 `inputSceneColor` 或 `inputSceneDepth` 时才复制场景 attachment，避免在当前 framebuffer 上同时读写。
 
-| 功能 | 路径 |
-| --- | --- |
-| RenderEntity 基类 | `common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/RenderEntity.kt` |
-| AutoRenderEntity | `common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/AutoRenderEntity.kt` |
-| 客户端实例 | `common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/runtime/RenderEntityInstance.kt` |
-| Renderer 接口 | `common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/runtime/RenderEntityRenderer.kt` |
-| 客户端注册表 | `common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/runtime/ClientRenderEntityRegistry.kt` |
-| 模型 DSL | `common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/model/RenderEntityModelBuilder.kt` |
-| 模型执行器 | `common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/model/OpenGlRenderEntityModelExecutor.kt` |
-| shader builder | `common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/shader/AdvancedShaderProgramBuilder.kt` |
-| vertex format | `common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/shader/data/CooVertexFormat.kt` |
-| texture | `common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/shader/texture/` |
-| post chain | `common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/post/PostEffectChain.kt` |
-| post type | `common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/post/PostEffectType.kt` |
-| post executor | `common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/post/PostEffectFrameExecutor.kt` |
-| OpenGL post backend | `common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/post/OpenGlPostEffectExecutionBackend.kt` |
-| 内置效果描述符 | `common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/effects/builtin/BuiltinRenderEffectDescriptors.kt` |
-| 示例 RenderEntity | `common/src/main/kotlin/cn/coostack/cooparticlesapi/examples/` |
-| 示例 shader | `common/src/main/resources/assets/cooparticlesapi/shaders/` |
+资源 reload 时 shader 实例会释放并重新创建；窗口大小变化时后处理 target 会按新尺寸重建。客户端 terrain、shader 和 OpenGL 类只从客户端初始化路径安装，不能被 dedicated server 类加载。
+
+## ShaderEffect 多 pass
+
+普通效果使用默认全屏 quad 和通用 vertex shader，只声明 fragment 和输入即可。高级效果直接声明多张卡片：
+
+```kotlin
+val BLOOM = CooShaderEffects.register(id("bloom")) {
+    val extract = pass("extract") {
+        fragment(id("post/bright_extract.fsh"))
+        inputSceneColor("SceneColor")
+    }
+    val blur = pingPong("blur", iterations = 6, feedbackSampler = "Input") {
+        fragment(id("post/blur_ping_pong.fsh"))
+        alternate("Axis", 0, 1)
+    }
+    val composite = pass("composite") {
+        fragment(id("post/composite.fsh"))
+        inputSceneColor("SceneColor")
+        input("Bloom")
+        outputToScreen()
+    }
+
+    line(extract.color(), blur.input("Input"))
+    line(blur.color(), composite.input("Bloom"))
+}
+```
+
+普通调用方不接触 execution plan、backend 或底层后处理模型。这些内容只由 Pipeline compiler 和运行时使用。
+
+## Shader 约定
+
+- 文件路径使用 `assets/<namespace>/shaders/...`。
+- terrain core shader 使用当前方块顶点格式声明的 attribute 名称。
+- 全屏 fragment sampler 名必须与 Pipeline 输入端口一致。
+- 多 attachment fragment 使用 `layout(location = N)`，并与 `colorAttachments(count)` 和 `color(N)` 对应。
+- scene depth 可以声明为 optional；shader 必须能处理没有有效深度纹理的回退路径。
+- uniform 名区分大小写，必须与 Pipeline 中的声明一致。
+
+## 排查顺序
+
+1. 检查 Pipeline 构建是否因缺失输入、重复 line 或环而失败。
+2. 检查 shader 资源 ID、sampler 名、uniform 名和 attachment 下标。
+3. 检查节点输出是否真的通过 `line` 接到下游输入或最终 target。
+4. terrain 问题先确认绑定命中、section rebuild 和对应 base layer。
+5. Iris/Sodium 环境查看兼容日志，确认显式 scene 输入拿到安全副本或进入回退；`BaseSampler` 应始终使用方块 atlas。
+6. resize 或 reload 后出现黑屏时，检查 FBO 重建、资源释放和 framebuffer 恢复。
+
+仓库内可运行示例在 `common/src/main/kotlin/cn/coostack/cooparticlesapi/test/options/renderer/pipeline/RenderPipelineExamples.kt`，APITest 的屏幕效果位于 `PostEffectDemoOptions.kt`。

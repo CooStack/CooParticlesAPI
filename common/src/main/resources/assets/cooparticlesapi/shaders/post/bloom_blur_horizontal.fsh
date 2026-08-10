@@ -3,19 +3,23 @@
 in vec2 screen_uv;
 out vec4 FragColor;
 
-uniform sampler2D bright;
-uniform float blurRadius = 3.0;
-uniform int iterations = 1;
+uniform sampler2D Input;
+uniform float Sigma = 14.0;
+uniform float Range = 10.0;
 
 void main() {
-    vec2 texel = 1.0 / vec2(textureSize(bright, 0));
-    vec4 color = texture(bright, screen_uv) * 0.227027;
-    int radius = max(1, min(12, int(blurRadius) * max(1, iterations)));
+    vec2 texel = 1.0 / vec2(textureSize(Input, 0));
+    float sigma = max(Sigma, 0.1);
+    int radius = max(1, min(32, int(Range)));
+    vec4 color = texture(Input, screen_uv);
+    float totalWeight = 1.0;
     for (int i = 1; i <= radius; i++) {
-        float weight = 0.316216 / float(i + 1);
+        float sampleOffset = float(i);
+        float weight = exp(-0.5 * sampleOffset * sampleOffset / (sigma * sigma));
         vec2 offset = vec2(texel.x * float(i), 0.0);
-        color += texture(bright, screen_uv + offset) * weight;
-        color += texture(bright, screen_uv - offset) * weight;
+        color += texture(Input, screen_uv + offset) * weight;
+        color += texture(Input, screen_uv - offset) * weight;
+        totalWeight += weight * 2.0;
     }
-    FragColor = color;
+    FragColor = color / totalWeight;
 }

@@ -65,6 +65,7 @@ object MathDataUtil {
      * @return 存储于 int array的编号
      */
     fun getStoragePageInt(index: Int): Int {
+
         return index / 32
     }
 

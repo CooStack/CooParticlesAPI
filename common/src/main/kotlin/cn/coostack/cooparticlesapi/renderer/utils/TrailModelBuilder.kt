@@ -1,7 +1,7 @@
 package cn.coostack.cooparticlesapi.renderer.utils
 
 import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelBuilder
-import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelPipe
+import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelLayer
 import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelVertex
 import net.minecraft.client.Minecraft
 import org.joml.Vector2f
@@ -36,7 +36,7 @@ data class TrailRibbonStyle(
  * 生成的是一条始终朝向相机的三角形条带（billboard ribbon）：
  * 每个采样点根据行进方向与相机方向计算横向扩展轴，
  * 宽度与颜色随 progress 衰减，UV 的 u 分量沿拖尾方向为 progress、v 分量横跨条带 0..1，
- * 因此同一个 pipe 也可以配自定义 shader 做流动贴图。
+ * 自定义 shader 由 RenderEntity 的 pipeline 声明，模型只负责生成几何。
  *
  * 顶点每帧由调用方重建（buildModel 每帧调用 + DynamicVertexBuffer 每帧上传），
  * 天然支持“点在不断变化”的拖尾模型；是否启用完全由调用方决定。
@@ -51,11 +51,11 @@ object TrailModelBuilder {
     @JvmStatic
     fun buildRibbon(
         model: RenderEntityModelBuilder,
-        pipe: RenderEntityModelPipe,
+        layer: RenderEntityModelLayer,
         sample: TrailSample,
         style: TrailRibbonStyle = TrailRibbonStyle()
     ) {
-        buildRibbon(model, pipe, sample.points, cameraLocalPos(sample), style)
+        buildRibbon(model, layer, sample.points, cameraLocalPos(sample), style)
     }
 
     /**
@@ -64,7 +64,7 @@ object TrailModelBuilder {
     @JvmStatic
     fun buildRibbon(
         model: RenderEntityModelBuilder,
-        pipe: RenderEntityModelPipe,
+        layer: RenderEntityModelLayer,
         points: List<TrailSamplePoint>,
         cameraLocalPos: Vector3f,
         style: TrailRibbonStyle = TrailRibbonStyle()
@@ -73,7 +73,7 @@ object TrailModelBuilder {
         var index = 0
         while (index + 3 < strip.size) {
             // strip 排列为 [L0, R0, L1, R1, ...]，按周向 L0 -> R0 -> R1 -> L1 组四边形
-            model.addQuad(pipe, strip[index], strip[index + 1], strip[index + 3], strip[index + 2])
+            model.addQuad(layer, strip[index], strip[index + 1], strip[index + 3], strip[index + 2])
             index += 2
         }
     }
@@ -121,7 +121,7 @@ object TrailModelBuilder {
     @JvmStatic
     fun buildCameraFacingQuad(
         model: RenderEntityModelBuilder,
-        pipe: RenderEntityModelPipe,
+        layer: RenderEntityModelLayer,
         centerLocal: Vector3f,
         size: Float,
         color: Vector4f,
@@ -144,7 +144,7 @@ object TrailModelBuilder {
         right.mul(half)
         up.mul(half)
         model.addQuad(
-            pipe,
+            layer,
             vertex(Vector3f(centerLocal).sub(right).sub(up), color, Vector2f(0f, 0f), forward),
             vertex(Vector3f(centerLocal).add(right).sub(up), color, Vector2f(1f, 0f), forward),
             vertex(Vector3f(centerLocal).add(right).add(up), color, Vector2f(1f, 1f), forward),

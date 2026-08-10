@@ -3,6 +3,7 @@ package cn.coostack.cooparticlesapi.renderer.post
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class PostEffectChainExecutionTest {
@@ -16,7 +17,7 @@ class PostEffectChainExecutionTest {
         )
 
         assertTrue("private val frameContext: RenderFrameContext" in graphSource)
-        assertTrue("executor.render(frameContext, grouped.map { it.descriptor })" in graphSource)
+        assertTrue("executor.render(frameContext, currentBatch.toList())" in graphSource)
         assertTrue("fun render(context: RenderFrameContext, effects: List<RenderEffectDescriptor>)" in descriptorSource)
     }
 
@@ -39,7 +40,7 @@ class PostEffectChainExecutionTest {
     }
 
     @Test
-    fun `post effect graph supports pass to pass fan in inputs`() {
+    fun `compiled pipeline keeps line connected pass inputs`() {
         val chainSource = readProjectFile(
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/post/PostEffectChain.kt"
         )
@@ -50,14 +51,14 @@ class PostEffectChainExecutionTest {
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/post/OpenGlPostEffectExecutionBackend.kt"
         )
 
-        assertTrue("fun asInputTo(" in chainSource)
-        assertTrue("fun asInputFrom(" in chainSource)
+        assertTrue("val sourcePassName: String?" in chainSource)
+        assertTrue("val sourcePassAttachment: Int" in chainSource)
         assertTrue("PostEffectInputSource.PASS_OUTPUT" in chainSource)
         assertTrue("PostEffectInputSource.SCENE_RESOURCE" in chainSource)
         assertTrue("sourcePassName in producedPasses" in executorSource)
         assertTrue("private fun orderPasses(passes: List<PostEffectPass>)" in executorSource)
         assertTrue("lastPassOutputTextures" in backendSource)
-        assertTrue("input.producedByPassName?.let { state.lastPassOutputTextures[it] }" in backendSource)
+        assertTrue("PassAttachment(passName, input.producedByPassAttachment)" in backendSource)
         assertTrue("val explicitSlots = step.inputs.mapNotNull { it.textureSlot }.toSet()" in backendSource)
         assertTrue("program.setInt(input.samplerName, input.textureSlot)" in backendSource)
         assertTrue("while (nextAutoSlot in explicitSlots || nextAutoSlot in usedSlots)" in backendSource)
@@ -98,28 +99,25 @@ class PostEffectChainExecutionTest {
         assertTrue("it.useMipmap()" in backendSource)
         assertTrue("step.output.targetKey" in backendSource)
         assertTrue("step.output.scaleDivisor" in backendSource)
-        assertTrue("SimpleFrameBuffer(1, Supplier { -1 }, width, height)" in backendSource)
+        assertTrue("SimpleFrameBuffer(attachmentCount, Supplier { -1 }, width, height)" in backendSource)
         assertTrue("PostEffectFrameExecutor.installBackend(OpenGlPostEffectExecutionBackend)" in clientSource)
         assertTrue("PostEffectFrameExecutor.prepareFrame(context)" in pipelineSource)
     }
 
     @Test
-    fun `builtin bloom expands into explicit mip target chain and repeated blur passes`() {
-        val source = readProjectFile(
+    fun `pipeline compiler owns ping pong expansion without builtin bloom branches`() {
+        val executor = readProjectFile(
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/post/PostEffectFrameExecutor.kt"
         )
+        val compiler = readProjectFile(
+            "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/pipeline/CooPipelinePostEffectCompiler.kt"
+        )
 
-        assertTrue("private const val MAX_BLOOM_MIP_LEVELS = 6" in source)
-        assertTrue("private const val MAX_BLOOM_ITERATIONS = 8" in source)
-        assertTrue("ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, \"post/bloom_downsample.fsh\")" in source)
-        assertTrue("ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, \"post/bloom_upsample.fsh\")" in source)
-        assertTrue("for (level in 1..levels)" in source)
-        assertTrue("repeat(iterations)" in source)
-        assertTrue("\"blur_horizontal_l${'$'}{level}_i${'$'}{iteration + 1}\"" in source)
-        assertTrue("\"blur_vertical_l${'$'}{level}_i${'$'}{iteration + 1}\"" in source)
-        assertTrue("for (level in levels downTo 1)" in source)
-        assertTrue("targetKey = \"bloom/downsample/${'$'}level\"" in source)
-        assertTrue("scaleDivisor = scaleDivisor" in source)
+        assertFalse("builtinBloomId" in executor)
+        assertFalse("bloomDownsamplePass" in executor)
+        assertTrue("repeat(pingPong.iterations)" in compiler)
+        assertTrue("previousPass = passName" in compiler)
+        assertTrue("reuseOutputTarget = true" in compiler)
     }
 
     @Test

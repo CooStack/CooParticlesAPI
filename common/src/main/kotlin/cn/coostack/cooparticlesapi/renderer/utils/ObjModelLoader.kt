@@ -1,7 +1,7 @@
 package cn.coostack.cooparticlesapi.renderer.utils
 
 import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModel
-import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelPipe
+import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelLayer
 import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelVertex
 import net.minecraft.resources.ResourceLocation
 import org.joml.Vector2f
@@ -25,7 +25,7 @@ import java.io.InputStream
  * - `f` 面
  *
  * `f` 会自动扇形三角化，所以三角面、四边面和多边形都会被拆成三角形批次。
- * 这里不解析 `.mtl` 材质文件，材质、颜色、shader 等由 [RenderEntityModelPipe] 和渲染器负责。
+ * 这里不解析 `.mtl` 材质文件。颜色由调用方指定，shader 由 RenderEntity 的 pipeline 声明。
  */
 object ObjModelLoader {
     /**
@@ -128,12 +128,12 @@ object ObjModelLoader {
     fun addTo(
         id: ResourceLocation,
         model: cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelBuilder,
-        pipe: RenderEntityModelPipe,
+        layer: RenderEntityModelLayer,
         color: Vector4f = Vector4f(1f, 1f, 1f, 1f),
         flipV: Boolean = false,
         classLoader: ClassLoader = ObjModelLoader::class.java.classLoader
     ): RenderVertexBuilder {
-        return load(id, color, flipV, classLoader).addTo(model, pipe)
+        return load(id, color, flipV, classLoader).addTo(model, layer)
     }
 
     /**
@@ -144,12 +144,12 @@ object ObjModelLoader {
         namespace: String,
         path: String,
         model: cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelBuilder,
-        pipe: RenderEntityModelPipe,
+        layer: RenderEntityModelLayer,
         color: Vector4f = Vector4f(1f, 1f, 1f, 1f),
         flipV: Boolean = false,
         classLoader: ClassLoader = ObjModelLoader::class.java.classLoader
     ): RenderVertexBuilder {
-        return load(namespace, path, color, flipV, classLoader).addTo(model, pipe)
+        return load(namespace, path, color, flipV, classLoader).addTo(model, layer)
     }
 
     /**
@@ -158,12 +158,12 @@ object ObjModelLoader {
     @JvmStatic
     fun buildModel(
         id: ResourceLocation,
-        pipe: RenderEntityModelPipe,
+        layer: RenderEntityModelLayer,
         color: Vector4f = Vector4f(1f, 1f, 1f, 1f),
         flipV: Boolean = false,
         classLoader: ClassLoader = ObjModelLoader::class.java.classLoader
     ): RenderEntityModel {
-        return load(id, color, flipV, classLoader).buildModel(pipe)
+        return load(id, color, flipV, classLoader).buildModel(layer)
     }
 
     /**
@@ -173,12 +173,12 @@ object ObjModelLoader {
     fun buildModel(
         namespace: String,
         path: String,
-        pipe: RenderEntityModelPipe,
+        layer: RenderEntityModelLayer,
         color: Vector4f = Vector4f(1f, 1f, 1f, 1f),
         flipV: Boolean = false,
         classLoader: ClassLoader = ObjModelLoader::class.java.classLoader
     ): RenderEntityModel {
-        return load(namespace, path, color, flipV, classLoader).buildModel(pipe)
+        return load(namespace, path, color, flipV, classLoader).buildModel(layer)
     }
 
     private data class ObjPosition(

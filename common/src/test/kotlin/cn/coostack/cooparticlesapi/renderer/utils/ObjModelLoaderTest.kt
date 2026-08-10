@@ -25,15 +25,15 @@ class ObjModelLoaderTest {
             vn 0 0 1
             f 1/1/1 2/2/1 3/3/1
             """.trimIndent(),
-            color = Vector4f(0.2f, 0.3f, 0.4f, 0.8f)
+            color = Vector4f(0.2F, 0.3F, 0.4F, 0.8F)
         ).create()
 
         assertEquals(3, vertices.size)
-        assertEquals(1f, vertices[0].color.x, 1.0E-5f)
-        assertEquals(0.5f, vertices[0].color.w, 1.0E-5f)
-        assertEquals(0.2f, vertices[1].color.x, 1.0E-5f)
-        assertEquals(1f, vertices[2].uv.y, 1.0E-5f)
-        assertEquals(1f, vertices[0].normal.z, 1.0E-5f)
+        assertEquals(1F, vertices[0].color.x, 1.0E-5F)
+        assertEquals(0.5F, vertices[0].color.w, 1.0E-5F)
+        assertEquals(0.2F, vertices[1].color.x, 1.0E-5F)
+        assertEquals(1F, vertices[2].uv.y, 1.0E-5F)
+        assertEquals(1F, vertices[0].normal.z, 1.0E-5F)
     }
 
     @Test
@@ -49,12 +49,12 @@ class ObjModelLoaderTest {
         ).create()
 
         assertEquals(6, vertices.size)
-        assertEquals(0f, vertices[0].position.x, 1.0E-5f)
-        assertEquals(0f, vertices[0].position.y, 1.0E-5f)
-        assertEquals(1f, vertices[2].position.x, 1.0E-5f)
-        assertEquals(1f, vertices[2].position.y, 1.0E-5f)
-        assertEquals(0f, vertices[5].position.x, 1.0E-5f)
-        assertEquals(1f, vertices[5].position.y, 1.0E-5f)
+        assertEquals(0F, vertices[0].position.x, 1.0E-5F)
+        assertEquals(0F, vertices[0].position.y, 1.0E-5F)
+        assertEquals(1F, vertices[2].position.x, 1.0E-5F)
+        assertEquals(1F, vertices[2].position.y, 1.0E-5F)
+        assertEquals(0F, vertices[5].position.x, 1.0E-5F)
+        assertEquals(1F, vertices[5].position.y, 1.0E-5F)
     }
 
     @Test
@@ -68,19 +68,19 @@ class ObjModelLoaderTest {
             """.trimIndent()
         ).create()
 
-        assertEquals(1f, vertices[0].normal.z, 1.0E-5f)
-        assertEquals(1f, vertices[1].normal.z, 1.0E-5f)
-        assertEquals(1f, vertices[2].normal.z, 1.0E-5f)
+        assertEquals(1F, vertices[0].normal.z, 1.0E-5F)
+        assertEquals(1F, vertices[1].normal.z, 1.0E-5F)
+        assertEquals(1F, vertices[2].normal.z, 1.0E-5F)
     }
 
     @Test
     fun `resource loader builds model primitives`() {
         val builder = RenderEntityModelBuilder()
-        val pipe = builder.pipe("obj")
+        val layer = builder.layer("obj")
         val model = ObjModelLoader.buildModel(
             CooParticlesConstants.MOD_ID,
             "models/obj/test_quad.obj",
-            pipe,
+            layer,
             classLoader = testResourceClassLoader()
         )
 

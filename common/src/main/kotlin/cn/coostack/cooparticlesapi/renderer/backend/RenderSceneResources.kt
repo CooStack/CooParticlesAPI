@@ -16,11 +16,17 @@ data class RenderSceneResource(
     val label: String,
     /** 对应的底层 RenderTarget；为空时表示该资源当前只有逻辑声明。 */
     val target: RenderTarget? = null,
-    /** 从 target 推导出的颜色纹理 id。 */
-    val colorTextureId: Int? = target?.colorTextureId,
+    /** FBO 的全部颜色 attachment；普通 Minecraft RenderTarget 只有 attachment 0。 */
+    val colorTextureIds: List<Int> = target?.colorTextureId?.let(::listOf) ?: emptyList(),
+    /** attachment 0 的兼容读取入口。 */
+    val colorTextureId: Int? = colorTextureIds.firstOrNull(),
     /** 从 target 推导出的深度纹理 id。 */
     val depthTextureId: Int? = target?.depthTextureId
-)
+) {
+    fun colorTextureId(attachment: Int): Int? {
+        return colorTextureIds.getOrNull(attachment)
+    }
+}
 
 /**
  * 一组按 `ResourceLocation` 编址的场景资源表。

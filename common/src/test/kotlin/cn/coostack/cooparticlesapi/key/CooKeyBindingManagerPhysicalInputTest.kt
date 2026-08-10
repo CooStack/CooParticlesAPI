@@ -49,7 +49,7 @@ class CooKeyBindingManagerPhysicalInputTest {
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/key/CooKeyBindingManager.kt"
         )
 
-        assertTrue("state.mapping.setDown(down)" in source)
+        assertTrue("state.mapping.setDown(activeDown)" in source)
         assertFalse("syncClickMappingsWithSameKey" in source)
         assertFalse("cooparticlesapi\$setClickCount" in source)
     }

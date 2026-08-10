@@ -13,7 +13,7 @@ import net.minecraft.resources.ResourceLocation
  * 主要用于调试和测试：可以看到本帧为哪些 instance 建了 plan、执行了多少 pass、
  * 又因为缺输入或缺 backend 能力跳过了多少 pass。
  */
-data class PostEffectExecutionSummary(
+internal data class PostEffectExecutionSummary(
     val plans: List<PostEffectExecutionPlan>,
     val executedPasses: Int,
     val skippedPasses: Int
@@ -25,7 +25,7 @@ data class PostEffectExecutionSummary(
  * 自定义 post 出问题时，优先检查这里的 [steps]：
  * pass 是否按预期排序、输入是否 available、uniform 是否解析到了值。
  */
-data class PostEffectExecutionPlan(
+internal data class PostEffectExecutionPlan(
     val instance: PostEffectInstance,
     val steps: List<PostEffectExecutionStep>
 )
@@ -40,7 +40,7 @@ data class PostEffectExecutionPlan(
  * - [output] 已经解析出 target key、缩放等级和逻辑输出
  * - [skippedReason] 非空时 backend 不会执行这个 pass
  */
-data class PostEffectExecutionStep(
+internal data class PostEffectExecutionStep(
     val context: RenderFrameContext,
     val instance: PostEffectInstance,
     val pass: PostEffectPass,
@@ -61,7 +61,7 @@ data class PostEffectExecutionStep(
  * [textureId] 可能仍为空，因为某些输入需要 backend 在执行时生成或读取，例如 scene color copy、
  * binding mask 或上游 pass output。
  */
-data class PostEffectResolvedInput(
+internal data class PostEffectResolvedInput(
     val samplerName: String,
     val source: PostEffectInputSource,
     val optional: Boolean,
@@ -70,7 +70,9 @@ data class PostEffectResolvedInput(
     val resource: RenderSceneResource? = null,
     val producedBy: PostEffectOutput? = null,
     val producedByPassName: String? = null,
+    val producedByPassAttachment: Int = 0,
     val sourceResourceId: ResourceLocation? = null,
+    val sourceResourceAttachment: Int = 0,
     val sourceResourceChannel: PostEffectResourceChannel = PostEffectResourceChannel.COLOR,
     val textureSlot: Int? = null
 )
@@ -81,13 +83,14 @@ data class PostEffectResolvedInput(
  * [targetKey] 用于区分同一类 [PostEffectOutput] 下的多个实际 FBO，例如 bloom 多级 downsample/blur。
  * [scaleDivisor] 用于低分辨率 target，例如 bloom mip。
  */
-data class PostEffectResolvedOutput(
+internal data class PostEffectResolvedOutput(
     val output: PostEffectOutput,
     val targetId: ResourceLocation,
     val label: String,
     val textureId: Int? = null,
     val targetKey: String = label,
-    val scaleDivisor: Int = 1
+    val scaleDivisor: Int = 1,
+    val colorAttachmentCount: Int = 1
 )
 
 /**
@@ -97,22 +100,48 @@ data class PostEffectResolvedOutput(
  * 自定义 backend 可以用这个接口接管执行，但仍复用 [PostEffectFrameExecutor] 的 plan 构建、
  * 输入解析、uniform 解析和跳过逻辑。
  */
-fun interface PostEffectExecutionBackend {
+internal fun interface PostEffectExecutionBackend {
     fun execute(step: PostEffectExecutionStep)
 }
 
 /** 可选接口：backend 可在每帧开始时清理临时状态或准备 scene copy。 */
-interface PostEffectFramePreparationBackend {
+internal interface PostEffectFramePreparationBackend {
     fun prepareFrame(context: RenderFrameContext)
 }
 
 /** 可选接口：backend 可在 shader reload、客户端关闭或测试结束时释放 GL 资源。 */
-interface PostEffectResourceBackend {
+internal interface PostEffectResourceBackend {
     fun release()
 }
 
+/** Pipeline world 节点把一个逻辑 FBO attachment 准备为后续 sampler 输入时使用。 */
+internal interface PostEffectAttachmentPreparationBackend {
+    fun captureAttachment(
+        context: RenderFrameContext,
+        owner: String,
+        target: ResourceLocation,
+        attachment: Int,
+        render: () -> Unit
+    ): Boolean
+
+    /** 同一次 draw 捕获一个 FBO 的全部颜色 attachment。 */
+    fun captureAttachments(
+        context: RenderFrameContext,
+        owner: String,
+        target: ResourceLocation,
+        attachmentCount: Int,
+        render: () -> Unit
+    ): Boolean {
+        return (0 until attachmentCount).all { attachment ->
+            captureAttachment(context, owner, target, attachment, render)
+        }
+    }
+
+    fun hasAttachment(target: ResourceLocation, attachment: Int): Boolean
+}
+
 /** 无 OpenGL 环境下的安全默认 backend，便于测试和服务端侧加载。 */
-object LoggingPostEffectExecutionBackend : PostEffectExecutionBackend {
+internal object LoggingPostEffectExecutionBackend : PostEffectExecutionBackend {
     override fun execute(step: PostEffectExecutionStep) {
         CooParticlesConstants.logger.debug(
             "Executing post effect type={} id={} pass={} output={} inputs={} uniforms={}",
@@ -135,20 +164,10 @@ object LoggingPostEffectExecutionBackend : PostEffectExecutionBackend {
  * - 根据当前 [RenderFrameContext] 判断 scene color、scene depth、scene resource 是否可用
  * - 根据 [PostEffectInstance] 解析普通 uniform
  * - 为输出 target 决定 label、targetKey、scaleDivisor
- * - 对内置 bloom 展开多级 downsample / blur / upsample
  *
  * 这个对象不直接调用 OpenGL。它替代的是“每个效果自己写一套执行顺序和输入检查”的代码。
  */
-object PostEffectFrameExecutor {
-    private const val MAX_BLOOM_MIP_LEVELS = 6
-    private const val MAX_BLOOM_ITERATIONS = 8
-
-    private val builtinBloomId = ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "post/bloom")
-    private val bloomDownsampleFragment =
-        ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "post/bloom_downsample.fsh")
-    private val bloomUpsampleFragment =
-        ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "post/bloom_upsample.fsh")
-
+internal object PostEffectFrameExecutor {
     private var backend: PostEffectExecutionBackend = LoggingPostEffectExecutionBackend
 
     /**
@@ -178,6 +197,28 @@ object PostEffectFrameExecutor {
     /** 释放 backend 持有的临时纹理、FBO、shader program 等资源。 */
     fun releaseBackendResources() {
         (backend as? PostEffectResourceBackend)?.release()
+    }
+
+    internal fun captureAttachment(
+        context: RenderFrameContext,
+        owner: String,
+        target: ResourceLocation,
+        attachment: Int,
+        render: () -> Unit
+    ): Boolean {
+        val attachmentBackend = backend as? PostEffectAttachmentPreparationBackend ?: return false
+        return attachmentBackend.captureAttachment(context, owner, target, attachment, render)
+    }
+
+    internal fun captureAttachments(
+        context: RenderFrameContext,
+        owner: String,
+        target: ResourceLocation,
+        attachmentCount: Int,
+        render: () -> Unit
+    ): Boolean {
+        val attachmentBackend = backend as? PostEffectAttachmentPreparationBackend ?: return false
+        return attachmentBackend.captureAttachments(context, owner, target, attachmentCount, render)
     }
 
     /**
@@ -229,7 +270,7 @@ object PostEffectFrameExecutor {
                 .filter { !it.optional && !it.available }
                 .map { it.samplerName }
             val missingCapabilities = pass.requiredCapabilities - context.backend.capabilities
-            val output = resolveOutput(context, pass.output, expandedPass.targetKey, expandedPass.scaleDivisor)
+            val output = resolveOutput(context, pass, expandedPass.targetKey, expandedPass.scaleDivisor)
             val skippedReason = if (missingCapabilities.isNotEmpty()) {
                 "missing required capability(s): ${missingCapabilities.joinToString()}"
             } else if (missingRequiredInputs.isEmpty()) {
@@ -254,161 +295,7 @@ object PostEffectFrameExecutor {
     }
 
     private fun expandPasses(instance: PostEffectInstance): List<ExpandedPostEffectPass> {
-        if (instance.type.id != builtinBloomId) {
-            return orderPasses(instance.type.chain.passes).map { ExpandedPostEffectPass(it) }
-        }
-
-        val passes = instance.type.chain.passes
-        val brightExtract = passes.firstOrNull { it.name == "bright_extract" }
-        val blurHorizontal = passes.firstOrNull { it.name == "blur_horizontal" }
-        val blurVertical = passes.firstOrNull { it.name == "blur_vertical" }
-        val composite = passes.firstOrNull { it.name == "composite" }
-        if (brightExtract == null || blurHorizontal == null || blurVertical == null || composite == null) {
-            return passes.map { ExpandedPostEffectPass(it) }
-        }
-
-        val mipLevels = instance.intParam("mipLevels")
-            ?: instance.intParam("mipLevel")
-            ?: 4
-        val levels = mipLevels.coerceIn(1, MAX_BLOOM_MIP_LEVELS)
-        val iterations = (instance.intParam("iterations") ?: 1).coerceIn(1, MAX_BLOOM_ITERATIONS)
-        val expanded = mutableListOf<ExpandedPostEffectPass>()
-
-        expanded += ExpandedPostEffectPass(
-            pass = brightExtract,
-            targetKey = "bloom/bright/full",
-            scaleDivisor = 1
-        )
-
-        var previousPassName = brightExtract.name
-        val perLevelFinalPass = mutableMapOf<Int, String>()
-
-        for (level in 1..levels) {
-            val scaleDivisor = 1 shl level
-            val downsampleName = "downsample_$level"
-            expanded += ExpandedPostEffectPass(
-                pass = bloomDownsamplePass(downsampleName, sourcePassName = previousPassName),
-                targetKey = "bloom/downsample/$level",
-                scaleDivisor = scaleDivisor
-            )
-            previousPassName = downsampleName
-
-            repeat(iterations) { iteration ->
-                val blurHName = "blur_horizontal_l${level}_i${iteration + 1}"
-                val blurVName = "blur_vertical_l${level}_i${iteration + 1}"
-                expanded += ExpandedPostEffectPass(
-                    pass = bloomSingleIterationBlurPass(
-                        blurHorizontal,
-                        blurHName,
-                        sourcePassName = previousPassName
-                    ),
-                    targetKey = "bloom/blur_h/$level/${iteration + 1}",
-                    scaleDivisor = scaleDivisor
-                )
-                expanded += ExpandedPostEffectPass(
-                    pass = bloomSingleIterationBlurPass(
-                        blurVertical,
-                        blurVName,
-                        sourcePassName = blurHName
-                    ),
-                    targetKey = "bloom/blur_v/$level/${iteration + 1}",
-                    scaleDivisor = scaleDivisor
-                )
-                previousPassName = blurVName
-            }
-            perLevelFinalPass[level] = previousPassName
-        }
-
-        for (level in levels downTo 1) {
-            val targetScale = if (level == 1) 1 else 1 shl (level - 1)
-            val upsampleName = "upsample_$level"
-            // Read the lower (coarser) mip just produced. For the deepest level we read the
-            // last blur of that level; for higher levels we read the previous upsample (one mip
-            // smaller) so the chain telescopes back up to full resolution.
-            val sourcePass = if (level == levels) {
-                perLevelFinalPass.getValue(level)
-            } else {
-                "upsample_${level + 1}"
-            }
-            expanded += ExpandedPostEffectPass(
-                pass = bloomUpsamplePass(upsampleName, sourcePassName = sourcePass),
-                targetKey = "bloom/upsample/$level",
-                scaleDivisor = targetScale
-            )
-            previousPassName = upsampleName
-        }
-
-        // Composite reads the full-size upsample explicitly so the resolution does not depend on
-        // "last write to BLOOM target" semantics. The OpenGL backend regenerates mipmaps on the
-        // upsample_1 texture so bloom_composite's textureLod chain is real.
-        expanded += ExpandedPostEffectPass(
-            pass = withBrightSourcePass(composite, sourcePassName = previousPassName)
-        )
-        return expanded
-    }
-
-    private fun bloomDownsamplePass(name: String, sourcePassName: String): PostEffectPass {
-        return PostEffectPass(
-            name = name,
-            fragment = bloomDownsampleFragment,
-            inputs = listOf(
-                PostEffectInput(
-                    samplerName = "bright",
-                    source = PostEffectInputSource.PASS_OUTPUT,
-                    sourcePassName = sourcePassName
-                )
-            ),
-            output = PostEffectOutput.BLOOM
-        )
-    }
-
-    private fun bloomUpsamplePass(name: String, sourcePassName: String): PostEffectPass {
-        return PostEffectPass(
-            name = name,
-            fragment = bloomUpsampleFragment,
-            inputs = listOf(
-                PostEffectInput(
-                    samplerName = "bright",
-                    source = PostEffectInputSource.PASS_OUTPUT,
-                    sourcePassName = sourcePassName
-                )
-            ),
-            output = PostEffectOutput.BLOOM
-        )
-    }
-
-    private fun bloomSingleIterationBlurPass(
-        pass: PostEffectPass,
-        name: String,
-        sourcePassName: String
-    ): PostEffectPass {
-        val rewiredInputs = pass.inputs.map { input ->
-            if (input.source == PostEffectInputSource.BRIGHT_COLOR) {
-                input.copy(
-                    source = PostEffectInputSource.PASS_OUTPUT,
-                    sourcePassName = sourcePassName
-                )
-            } else {
-                input
-            }
-        }
-        val uniforms = pass.uniforms.filterNot { it.name == "iterations" } +
-            PostEffectUniform("iterations") { PostEffectParamValue.IntValue(1) }
-        return pass.copy(name = name, inputs = rewiredInputs, uniforms = uniforms)
-    }
-
-    private fun withBrightSourcePass(pass: PostEffectPass, sourcePassName: String): PostEffectPass {
-        val rewiredInputs = pass.inputs.map { input ->
-            if (input.source == PostEffectInputSource.BRIGHT_COLOR) {
-                input.copy(
-                    source = PostEffectInputSource.PASS_OUTPUT,
-                    sourcePassName = sourcePassName
-                )
-            } else {
-                input
-            }
-        }
-        return pass.copy(inputs = rewiredInputs)
+        return orderPasses(instance.type.chain.passes).map(::ExpandedPostEffectPass)
     }
 
     private fun resolveInput(
@@ -469,6 +356,7 @@ object PostEffectFrameExecutor {
                     optional = input.optional,
                     available = input.sourcePassName in producedPasses || input.optional,
                     producedByPassName = input.sourcePassName,
+                    producedByPassAttachment = input.sourcePassAttachment,
                     textureSlot = input.textureSlot
                 )
             }
@@ -476,22 +364,30 @@ object PostEffectFrameExecutor {
                 val resourceId = input.sourceResourceId
                 val resource = resourceId?.let { context.sceneResources[it] }
                 val textureId = when (input.sourceResourceChannel) {
-                    PostEffectResourceChannel.COLOR -> resource?.colorTextureId
+                    PostEffectResourceChannel.COLOR -> resource?.colorTextureId(input.sourceResourceAttachment)
                     PostEffectResourceChannel.DEPTH -> resource?.depthTextureId
                 }
                 PostEffectResolvedInput(
                     samplerName = input.samplerName,
                     source = input.source,
                     optional = input.optional,
-                    available = textureId != null || resource != null || input.optional,
+                    available = textureId != null || resource != null ||
+                        resourceId?.let { hasCapturedAttachment(it, input.sourceResourceAttachment) } == true ||
+                        input.optional,
                     textureId = textureId,
                     resource = resource,
                     sourceResourceId = resourceId,
+                    sourceResourceAttachment = input.sourceResourceAttachment,
                     sourceResourceChannel = input.sourceResourceChannel,
                     textureSlot = input.textureSlot
                 )
             }
         }
+    }
+
+    private fun hasCapturedAttachment(target: ResourceLocation, attachment: Int): Boolean {
+        val attachmentBackend = backend as? PostEffectAttachmentPreparationBackend ?: return false
+        return attachmentBackend.hasAttachment(target, attachment)
     }
 
     private fun resolveProducedInput(
@@ -517,20 +413,22 @@ object PostEffectFrameExecutor {
 
     private fun resolveOutput(
         context: RenderFrameContext,
-        output: PostEffectOutput,
+        pass: PostEffectPass,
         targetKey: String? = null,
         scaleDivisor: Int = 1
     ): PostEffectResolvedOutput {
-        val targetId = targetIdFor(output)
+        val output = pass.output
+        val targetId = pass.outputTargetId ?: targetIdFor(output)
         val resource = context.sceneResources[targetId]
-        val label = targetKey ?: resource?.label ?: output.name.lowercase()
+        val label = targetKey ?: pass.outputTargetKey ?: resource?.label ?: output.name.lowercase()
         return PostEffectResolvedOutput(
             output = output,
             targetId = targetId,
             label = label,
             textureId = resource?.colorTextureId,
             targetKey = targetKey ?: label,
-            scaleDivisor = scaleDivisor.coerceAtLeast(1)
+            scaleDivisor = scaleDivisor.coerceAtLeast(1),
+            colorAttachmentCount = pass.colorAttachmentCount
         )
     }
 
