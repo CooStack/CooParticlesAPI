@@ -7,6 +7,7 @@ import cn.coostack.cooparticlesapi.event.api.CooEvent
 import cn.coostack.cooparticlesapi.event.api.EventExecutor
 import cn.coostack.cooparticlesapi.event.api.EventInterruptible
 import cn.coostack.cooparticlesapi.event.api.EventPriority
+import cn.coostack.cooparticlesapi.event.events.EventsInitializationEvent
 import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
 import java.lang.reflect.Modifier
 import java.util.TreeMap
@@ -102,6 +103,9 @@ object CooEventBus {
                 findListenerHandlers(it, modId)
             }
         }
+
+        // 初始化监听器后的事件
+        call(EventsInitializationEvent())
     }
 
     private fun findListenerHandlers(target: String, modId: String) {

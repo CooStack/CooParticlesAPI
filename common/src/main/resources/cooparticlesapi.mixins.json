@@ -14,6 +14,7 @@
   },
   "client": [
     "CooParticleCameraMixin",
+    "GameRendererTerrainFinishMixin",
     "LevelRendererMixin",
     "MainTargetMixin",
     "MutableSpriteSetAccessor",
@@ -27,6 +28,8 @@
     "compat.iris.ShaderInstanceIrisCompatMixin",
     "SoundEngineMixin",
     "TestControllerPickKeyboardMixin",
+    "TestControllerPickMouseMixin",
+    "TestControllerPickUseMixin",
     "events.world.client.ItemRendererInvoker",
     "events.world.client.LevelRendererMixin"
   ]

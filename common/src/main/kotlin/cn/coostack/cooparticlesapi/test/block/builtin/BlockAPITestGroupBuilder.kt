@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi.test.block.builtin
 
+import cn.coostack.cooparticlesapi.extend.ofID
 import cn.coostack.cooparticlesapi.network.particle.emitters.PhysicConstant
 import cn.coostack.cooparticlesapi.particles.CooParticleTextureSheet
 import cn.coostack.cooparticlesapi.particles.impl.ControlableEndRodEffect
@@ -20,8 +21,8 @@ import cn.coostack.cooparticlesapi.test.api.TextureSheetsEnumTestOptionValue
 import cn.coostack.cooparticlesapi.test.api.Vec3TestOptionValue
 import cn.coostack.cooparticlesapi.test.api.Vector3fTestOptionValue
 import cn.coostack.cooparticlesapi.test.block.BlockTestGroup
-import cn.coostack.cooparticlesapi.test.block.BlockTestPlayer
 import cn.coostack.cooparticlesapi.test.block.BlockTexturePropagationTestOption
+import cn.coostack.cooparticlesapi.test.block.StarfieldFboBlockTypeTestOption
 import cn.coostack.cooparticlesapi.test.options.display.TestBlockDisplayEntity
 import cn.coostack.cooparticlesapi.test.options.particle.composition.DynamicCParticleComposition
 import cn.coostack.cooparticlesapi.test.options.particle.composition.SequenceTestGPUComposition
@@ -41,15 +42,14 @@ import cn.coostack.cooparticlesapi.test.options.particle.style.RomaMagicTestStyl
 import cn.coostack.cooparticlesapi.extend.asRelative
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
+import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
 import kotlin.math.PI
 
-class BlockAPITestGroupBuilder(player: Player) : TestGroupBuilder {
-    private val player = player as? BlockTestPlayer ?: BlockTestPlayer(player)
-
-    override fun groupID(): String {
+class BlockAPITestGroupBuilder(private val player: Player) : TestGroupBuilder {
+    override fun groupID(): ResourceLocation {
         return ID
     }
 
@@ -57,7 +57,7 @@ class BlockAPITestGroupBuilder(player: Player) : TestGroupBuilder {
         return BlockTestGroup(player, groupID())
             .appendOption {
                 SimpleCompositionOption(
-                    SequenceTestGPUComposition(player.position,player.level)
+                    SequenceTestGPUComposition(player.position(), player.level())
                 ).onPlayerUpdate { player, composition ->
                     composition.direction = player.forward
                     composition.teleportTo(player.position())
@@ -66,13 +66,13 @@ class BlockAPITestGroupBuilder(player: Player) : TestGroupBuilder {
             }
             .appendOption {
                 SimpleEmitterOption(
-                    TestGPUEmitter(player.position, player.level)
+                    TestGPUEmitter(player.position(), player.level())
                 )
             }
             .appendOption {
                 // GPU 粒子发射器: 默认稳态 ≈ 600 × 170 ≈ 10.2 万粒子
                 SimpleEmitterOption(
-                    TestCParticleEmitter(player.position.add(Vec3(0.0, 0.2, 0.0)), player.level).apply {
+                    TestCParticleEmitter(player.position().add(Vec3(0.0, 0.2, 0.0)), player.level()).apply {
                         maxTick = -1
                         delay = 1
                     },
@@ -126,7 +126,7 @@ class BlockAPITestGroupBuilder(player: Player) : TestGroupBuilder {
             .appendOption {
                 // GPU 粒子 composition: 多层旋转法阵, 验证 composition 控制语义仍然生效
                 SimpleCompositionOption(
-                    TestCParticleComposition(player.position.add(player.forward.scale(3.0)), player.level),
+                    TestCParticleComposition(player.position().add(player.forward.scale(3.0)), player.level()),
                     200
                 )
                     .applyParam(IntTestOptionValue("cpc_ring_count", "圆环层数"), 4)
@@ -155,7 +155,7 @@ class BlockAPITestGroupBuilder(player: Player) : TestGroupBuilder {
                     }
             }
             .appendOption {
-                SimpleCompositionOption(TestGPURotationComposition(player.position, player.level))
+                SimpleCompositionOption(TestGPURotationComposition(player.position(), player.level()))
                     .applyParam(RelativeLocationTestOptionValue("to", "相对向量"), RelativeLocation(0, 0, 1))
                     .applyTo {
                         it.to = getParamOrThrow("to")
@@ -163,30 +163,30 @@ class BlockAPITestGroupBuilder(player: Player) : TestGroupBuilder {
             }
             .appendOption {
                 SimpleCompositionOption(
-                    UsefulMagicTestComposition(player.position, player.level)
+                    UsefulMagicTestComposition(player.position(), player.level())
                 )
             }
             .appendOption {
                 SimpleCompositionOption(
-                    DynamicCParticleComposition(player.position.add(player.forward.scale(3.0)), player.level),
+                    DynamicCParticleComposition(player.position().add(player.forward.scale(3.0)), player.level()),
                     400
                 )
             }
             .appendOption {
                 SimpleCompositionOption(
-                    TestSimpleParticleComposition(player.position.add(player.forward.scale(3.0)), player.level),
+                    TestSimpleParticleComposition(player.position().add(player.forward.scale(3.0)), player.level()),
                     160
                 )
             }
             .appendOption {
                 SimpleDisplayEntityOption(
-                    TestBlockDisplayEntity(player.position.add(Vec3(0.0, 1.0, 0.0)), player.level),
+                    TestBlockDisplayEntity(player.position().add(Vec3(0.0, 1.0, 0.0)), player.level()),
                     160
                 )
             }
             .appendOption {
                 SimpleCompositionOption(
-                    TestComposition(player.position.add(player.forward.scale(2.0)), player.level).apply {
+                    TestComposition(player.position().add(player.forward.scale(2.0)), player.level()).apply {
                         movement = RelativeLocation.of(player.forward)
                     },
                     140
@@ -194,7 +194,7 @@ class BlockAPITestGroupBuilder(player: Player) : TestGroupBuilder {
             }
             .appendOption {
                 SimpleEmitterOption(
-                    TestAlphaShaderEmitter(player.position.add(Vec3(0.0, 1.0, 0.0)), player.level).apply {
+                    TestAlphaShaderEmitter(player.position().add(Vec3(0.0, 1.0, 0.0)), player.level()).apply {
                         maxTick = -1
                         delay = 25
                     },
@@ -203,7 +203,7 @@ class BlockAPITestGroupBuilder(player: Player) : TestGroupBuilder {
             }
             .appendOption {
                 SimpleEmitterOption(
-                    TestEventEmitter(player.position.add(Vec3(0.0, 1.0, 0.0)), player.level).apply {
+                    TestEventEmitter(player.position().add(Vec3(0.0, 1.0, 0.0)), player.level()).apply {
                         gravity = PhysicConstant.EARTH_GRAVITY
                         shootDirection = player.forward.scale(1.0)
                         templateData.color = Math3DUtil.colorOf(255, 0, 0)
@@ -215,14 +215,14 @@ class BlockAPITestGroupBuilder(player: Player) : TestGroupBuilder {
             .appendOption {
                 SimpleStyleOption(
                     RomaMagicTestStyle(),
-                    player.level,
-                    player.position.add(Vec3(0.0, 1.0, 0.0)),
+                    player.level(),
+                    player.position().add(Vec3(0.0, 1.0, 0.0)),
                     120
                 )
             }
             .appendOption {
                 SimpleEmitterOption(
-                    TestSpreadPointEmitter(player.position.add(Vec3(0.0, 1.0, 0.0)), player.level).apply {
+                    TestSpreadPointEmitter(player.position().add(Vec3(0.0, 1.0, 0.0)), player.level()).apply {
                         maxTick = -1
                         delay = 1
                     },
@@ -254,7 +254,7 @@ class BlockAPITestGroupBuilder(player: Player) : TestGroupBuilder {
             }
             .appendOption {
                 SimpleEmitterOption(
-                    TestCommandEmitter(player.position.add(Vec3(0.0, 1.0, 0.0)), player.level).apply {
+                    TestCommandEmitter(player.position().add(Vec3(0.0, 1.0, 0.0)), player.level()).apply {
                         direction = player.forward
                         gravity = 0.05
                         template.setTextureSheet(CooParticleTextureSheet.ADDITION_BLEND_TRANSLUCENT)
@@ -297,9 +297,14 @@ class BlockAPITestGroupBuilder(player: Player) : TestGroupBuilder {
             .appendOption {
                 BlockTexturePropagationTestOption(player)
             }
+            .appendOption {
+                StarfieldFboBlockTypeTestOption(player)
+            }
     }
 
     companion object {
-        const val ID = "block-api-test-group-builder"
+        /** 注册与构建结果共同使用的方块测试组 ID。 */
+        @JvmField
+        val ID: ResourceLocation = ofID("block-api-test-group-builder")
     }
 }

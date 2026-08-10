@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi.test.block
 
+import cn.coostack.cooparticlesapi.extend.ofID
 import cn.coostack.cooparticlesapi.test.api.TestOption
 import cn.coostack.cooparticlesapi.test.api.TestReviewMode
 import net.minecraft.world.entity.player.Player
@@ -102,6 +103,32 @@ class BlockTestGroupTest {
         assertNull(group.currentOption)
     }
 
+    @Test
+    fun `cancel marks the active option failed so it can release resources`() {
+        val option = RecordingOption(TestReviewMode.AUTO)
+        val group = groupOf(option)
+
+        group.start()
+        group.cancel()
+
+        assertTrue(group.isDone())
+        assertEquals(0, option.successCount)
+        assertEquals(1, option.failedCount)
+    }
+
+    @Test
+    fun `cancel marks a pending review option failed so it can release resources`() {
+        val option = RecordingOption(TestReviewMode.MANUAL_VISUAL)
+        val group = pendingGroup(option)
+
+        group.cancel()
+
+        assertTrue(group.isDone())
+        assertFalse(group.hasPendingReview())
+        assertEquals(0, option.successCount)
+        assertEquals(1, option.failedCount)
+    }
+
     /**
      * 玩家更新回调应在 Option tick 前收到当前模拟玩家和参数目标。
      *
@@ -153,7 +180,7 @@ class BlockTestGroupTest {
     }
 
     private fun groupOf(option: TestOption<*>): BlockTestGroup {
-        return BlockTestGroup(uninitializedBlockTestPlayer(), "test")
+        return BlockTestGroup(uninitializedBlockTestPlayer(), ofID("test"))
             .also {
                 it.statusAnnouncer = {}
                 it.announceGroupFinished = false

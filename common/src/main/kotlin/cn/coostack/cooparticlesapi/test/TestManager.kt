@@ -1,11 +1,9 @@
 package cn.coostack.cooparticlesapi.test
 
-import cn.coostack.cooparticlesapi.extend.ofID
 import cn.coostack.cooparticlesapi.test.api.TestGroup
 import cn.coostack.cooparticlesapi.test.api.TestGroupBuilder
 import cn.coostack.cooparticlesapi.test.api.TestOptionParamSpec
 import cn.coostack.cooparticlesapi.test.block.BlockTestGroup
-import cn.coostack.cooparticlesapi.test.block.BlockTestPlayer
 import cn.coostack.cooparticlesapi.test.block.builtin.BlockAPITestGroupBuilder
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.entity.player.Player
@@ -40,10 +38,10 @@ object TestManager {
             return
         }
         builtinsRegistered = true
-        register(ofID(BlockAPITestGroupBuilder.ID)) {
+        register(BlockAPITestGroupBuilder.ID) {
             BlockAPITestGroupBuilder(it)
         }
-        register(ofID(APITestGroupBuilder.ID)) {
+        register(APITestGroupBuilder.ID) {
             APITestGroupBuilder(it)
         }
     }
@@ -54,19 +52,11 @@ object TestManager {
     }
 
     /**
-     * @param user 用于验证构建结果的方块测试玩家
-     * @return 可为该玩家构建的测试组资源 ID
-     */
-    fun registeredBlockIds(user: BlockTestPlayer): List<ResourceLocation> {
-        return builders.keys.filter { id -> buildBlock(id, user) != null }
-    }
-
-    /**
      * @param user 用于验证构建结果的玩家
      * @return 可为该玩家构建的方块测试组资源 ID
      */
     fun registeredBlockIds(user: Player): List<ResourceLocation> {
-        return registeredBlockIds(user as? BlockTestPlayer ?: BlockTestPlayer(user))
+        return builders.keys.filter { id -> buildBlock(id, user) != null }
     }
 
     /**
@@ -75,15 +65,6 @@ object TestManager {
      */
     fun contains(id: ResourceLocation): Boolean {
         return builders.containsKey(id)
-    }
-
-    /**
-     * @param id 待检查的测试组资源 ID
-     * @param user 用于构建的方块测试玩家
-     * @return 该 ID 是否能构建方块测试组
-     */
-    fun containsBlock(id: ResourceLocation, user: BlockTestPlayer): Boolean {
-        return buildBlock(id, user) != null
     }
 
     /**
@@ -106,29 +87,11 @@ object TestManager {
 
     /**
      * @param id 待构建的测试组资源 ID
-     * @param user 测试组使用的方块测试玩家
-     * @return 已构建的方块测试组；目标不是方块测试组时返回 `null`
-     */
-    fun buildBlock(id: ResourceLocation, user: BlockTestPlayer): BlockTestGroup? {
-        return build(id, user) as? BlockTestGroup
-    }
-
-    /**
-     * @param id 待构建的测试组资源 ID
      * @param user 测试组使用的玩家
      * @return 已构建的方块测试组；目标不是方块测试组时返回 `null`
      */
     fun buildBlock(id: ResourceLocation, user: Player): BlockTestGroup? {
-        return build(id, user as? BlockTestPlayer ?: BlockTestPlayer(user)) as? BlockTestGroup
-    }
-
-    /**
-     * @param id 方块测试组资源 ID
-     * @param user 测试组使用的方块测试玩家
-     * @return 测试项数量，无法构建时返回 `0`
-     */
-    fun optionCount(id: ResourceLocation, user: BlockTestPlayer): Int {
-        return buildBlock(id, user)?.optionCount() ?: 0
+        return build(id, user) as? BlockTestGroup
     }
 
     /**
@@ -142,29 +105,11 @@ object TestManager {
 
     /**
      * @param id 方块测试组资源 ID
-     * @param user 测试组使用的方块测试玩家
-     * @return 测试项 ID，无法构建时返回空列表
-     */
-    fun optionIds(id: ResourceLocation, user: BlockTestPlayer): List<String> {
-        return buildBlock(id, user)?.optionIds() ?: emptyList()
-    }
-
-    /**
-     * @param id 方块测试组资源 ID
      * @param user 测试组使用的玩家
      * @return 测试项 ID，无法构建时返回空列表
      */
     fun optionIds(id: ResourceLocation, user: Player): List<String> {
         return buildBlock(id, user)?.optionIds() ?: emptyList()
-    }
-
-    /**
-     * @param id 方块测试组资源 ID
-     * @param user 测试组使用的方块测试玩家
-     * @return 参数定义，无法构建时返回空列表
-     */
-    fun optionParamSpecs(id: ResourceLocation, user: BlockTestPlayer): List<List<TestOptionParamSpec<*>>> {
-        return buildBlock(id, user)?.optionParamSpecs() ?: emptyList()
     }
 
     /**

@@ -6,6 +6,7 @@ import cn.coostack.cooparticlesapi.compat.IrisShadowPassState
 import cn.coostack.cooparticlesapi.renderer.terrain.CooEffectUvResolver
 import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainPipelineManager
 import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainVertexFormats
+import cn.coostack.cooparticlesapi.renderer.post.OpenGlPostEffectExecutionBackend
 import com.mojang.blaze3d.systems.RenderSystem
 import com.mojang.blaze3d.vertex.BufferBuilder
 import com.mojang.blaze3d.vertex.ByteBufferBuilder
@@ -36,17 +37,12 @@ import org.lwjgl.opengl.GL11.GL_DEPTH_FUNC
 import org.lwjgl.opengl.GL11.GL_DEPTH_TEST
 import org.lwjgl.opengl.GL11.GL_DEPTH_WRITEMASK
 import org.lwjgl.opengl.GL11.GL_LEQUAL
-import org.lwjgl.opengl.GL11.GL_POLYGON_OFFSET_FACTOR
-import org.lwjgl.opengl.GL11.GL_POLYGON_OFFSET_FILL
-import org.lwjgl.opengl.GL11.GL_POLYGON_OFFSET_UNITS
 import org.lwjgl.opengl.GL11.GL_VIEWPORT
 import org.lwjgl.opengl.GL11.glDisable
 import org.lwjgl.opengl.GL11.glEnable
 import org.lwjgl.opengl.GL11.glGetBoolean
-import org.lwjgl.opengl.GL11.glGetFloat
 import org.lwjgl.opengl.GL11.glGetIntegerv
 import org.lwjgl.opengl.GL11.glIsEnabled
-import org.lwjgl.opengl.GL11.glPolygonOffset
 import org.lwjgl.opengl.GL11.glViewport
 import org.lwjgl.opengl.GL30.GL_DRAW_FRAMEBUFFER
 import org.lwjgl.opengl.GL30.GL_DRAW_FRAMEBUFFER_BINDING
@@ -55,13 +51,28 @@ import org.lwjgl.opengl.GL30.GL_READ_FRAMEBUFFER_BINDING
 import org.lwjgl.opengl.GL30.glBindFramebuffer
 import org.lwjgl.opengl.GL30.glGetInteger
 
-/** Sodium 0.6.x 的 section 级 terrain overlay 构建、上传和绘制协调器。 */
+/**
+ * 管理 Sodium 0.6.x 的 section 级地形覆盖构建、GPU 上传和绘制。
+ *
+ * 区块工作线程按 [beginBuild]、多次 [captureQuad]、[markRenderPasses]、[finishBuild] 的顺序生成
+ * CPU 批次；渲染线程通过 [uploadResults] 将批次绑定到 RenderSection，再由 [renderOrDefer] 绘制。
+ * Iris shader pack 激活时绘制会暂存到 [flushDeferred]，等最终合成结束后使用 Iris 深度重放。
+ * 所有 CPU 和 GPU 资源分别跟随 ChunkBuildOutput 与 RenderSection 生命周期释放。
+ */
 internal object CooSodiumTerrainOverlay {
     private val activeBuild = ThreadLocal<BuildCollector?>()
     private val pending = CooIdentityResourceStore<ChunkBuildOutput, BuiltBatch>()
     private val uploaded = CooIdentityResourceStore<RenderSection, UploadedBatch>()
     private val deferredDraws = ArrayList<DeferredDraw>()
 
+    /**
+     * 把 Sodium terrain pass 还原为对应的原版 RenderType。
+     *
+     * @param original 方块原本使用的 RenderType，用于保留 tripwire 或未知 pass
+     * @param material Sodium 为当前方块面选择的材质
+     * @param pass 当前 Sodium terrain pass
+     * @return 与 pass 和材质 mipmap 规则对应的原版 terrain layer
+     */
     @JvmStatic
     fun resolveBaseLayer(original: RenderType, material: Material, pass: TerrainRenderPass): RenderType {
         return when (pass) {
@@ -76,12 +87,29 @@ internal object CooSodiumTerrainOverlay {
         }
     }
 
+    /**
+     * 开始当前区块构建线程的一次地形覆盖收集。
+     *
+     * 同一线程上未结束的旧收集器会先被关闭，避免异常构建遗留本地缓冲。
+     */
     @JvmStatic
     fun beginBuild() {
         activeBuild.get()?.close()
         activeBuild.set(BuildCollector())
     }
 
+    /**
+     * 把一个已解析为地形 Pipeline 的 Sodium 方块面复制到扩展顶点缓冲。
+     *
+     * 方法保留原 UV、颜色、AO、光照和法线，并额外写入 EffectUV 与绝对生效 tick。
+     * 未处于构建阶段或 RenderType 未登记时直接忽略。
+     *
+     * @param renderType 当前方块面解析到的 Coo 地形 RenderType
+     * @param pass 当前 Sodium terrain pass
+     * @param blockPos 当前方块的世界坐标
+     * @param quad Sodium 方块面及其逐顶点法线、sprite 数据
+     * @param vertices Sodium 编码前的四个区块顶点
+     */
     @JvmStatic
     fun captureQuad(
         renderType: RenderType,
@@ -94,6 +122,7 @@ internal object CooSodiumTerrainOverlay {
         val collector = activeBuild.get() ?: return
         val faceNormal = quad.faceNormal()
         val sprite = quad.sprite(SpriteFinderCache.forBlockAtlas())
+        val activatedAt = CooTerrainPipelineManager.activationAt(renderType, blockPos)
         collector.append(renderType, pass, sprite) { builder ->
             vertices.forEachIndexed { index, vertex ->
                 val normalX = if (quad.hasNormal(index)) quad.normalX(index) else faceNormal.x()
@@ -115,12 +144,17 @@ internal object CooSodiumTerrainOverlay {
                     .setColor(ColorARGB.mulRGB(vertex.color, vertex.ao))
                     .setUv(vertex.u, vertex.v)
                     .setUv1(CooEffectUvResolver.pack(effectUv.u), CooEffectUvResolver.pack(effectUv.v))
-                    .setLight(vertex.light)
+                    .setLight(CooEffectUvResolver.packLightWithActivation(vertex.light, activatedAt))
                     .setNormal(normalX, normalY, normalZ)
             }
         }
     }
 
+    /**
+     * 把当前收集器使用的 terrain pass 标记到 Sodium 构建结果。
+     *
+     * @param renderData 当前 section 的构建元数据
+     */
     @JvmStatic
     fun markRenderPasses(renderData: BuiltSectionInfo.Builder) {
         activeBuild.get()?.renderPasses()?.forEach { pass ->
@@ -128,6 +162,11 @@ internal object CooSodiumTerrainOverlay {
         }
     }
 
+    /**
+     * 结束当前线程的覆盖收集，并把生成批次关联到 ChunkBuildOutput。
+     *
+     * @param output 成功的 Sodium 区块构建结果；为 `null` 时只释放收集器
+     */
     @JvmStatic
     fun finishBuild(output: ChunkBuildOutput?) {
         val collector = activeBuild.get() ?: return
@@ -140,11 +179,24 @@ internal object CooSodiumTerrainOverlay {
         pending.replace(output, batches, BuiltBatch::close)
     }
 
+    /**
+     * 丢弃尚未上传的区块构建结果及其 CPU 顶点缓冲。
+     *
+     * @param output 被 Sodium 取消或替换的构建结果
+     */
     @JvmStatic
     fun discardBuildOutput(output: ChunkBuildOutput) {
         pending.release(output, BuiltBatch::close)
     }
 
+    /**
+     * 在渲染线程把一批 Sodium 构建结果上传为 section 级 GPU 顶点缓冲。
+     *
+     * 同一 RenderSection 的旧覆盖批次会在替换时释放。
+     *
+     * @param outputs 本轮 Sodium 上传队列，非 ChunkBuildOutput 项会被忽略
+     * @throws IllegalStateException 当前不在渲染线程时抛出
+     */
     @JvmStatic
     fun uploadResults(outputs: Collection<BuilderTaskOutput>) {
         check(RenderSystem.isOnRenderThread()) { "Sodium terrain overlays must upload on the render thread" }
@@ -156,6 +208,18 @@ internal object CooSodiumTerrainOverlay {
         }
     }
 
+    /**
+     * 绘制当前 Sodium pass 的可见地形覆盖，或在 Iris 模式下保存为延迟绘制。
+     *
+     * 阴影 pass 不绘制覆盖层；无法可靠判断 Iris 阴影状态时会触发原版几何降级。
+     *
+     * @param renderLists Sodium 已排序的可见 section 列表
+     * @param matrices 当前区块渲染矩阵
+     * @param pass 当前 terrain pass
+     * @param cameraX 相机世界 X 坐标
+     * @param cameraY 相机世界 Y 坐标
+     * @param cameraZ 相机世界 Z 坐标
+     */
     @JvmStatic
     fun renderOrDefer(
         renderLists: SortedRenderLists,
@@ -204,6 +268,11 @@ internal object CooSodiumTerrainOverlay {
         )
     }
 
+    /**
+     * 在 Iris 最终合成后绘制并清空本帧延迟的 Sodium 地形覆盖。
+     *
+     * 该入口负责包围最终合成状态与 overlay batch；兼容条件失效时只清空队列。
+     */
     @JvmStatic
     fun flushDeferred() {
         val draws = synchronized(deferredDraws) {
@@ -216,23 +285,14 @@ internal object CooSodiumTerrainOverlay {
             return
         }
         val renderTypes = draws.flatMap { it.drawGroups.keys }.distinct()
-        CooTerrainPipelineManager.beginOverlayBatch(renderTypes)
+        CooTerrainPipelineManager.beginFinalCompositeTerrainOverlay()
         try {
-            if (!CooTerrainPipelineManager.isSodiumTerrainOverlayEnabled()) return
-            drawLoop@ for (draw in draws) {
-                for ((renderType, entries) in draw.drawGroups) {
-                    if (!drawSafely(
-                        renderType,
-                        entries,
-                        draw.modelView,
-                        draw.projection,
-                        draw.cameraX,
-                        draw.cameraY,
-                        draw.cameraZ,
-                        true
-                    )) break@drawLoop
-                    CooTerrainPipelineManager.recordPostDraw(renderType) {
-                        drawSafely(
+            if (!CooTerrainPipelineManager.beginOverlayBatch(renderTypes)) return
+            try {
+                if (!CooTerrainPipelineManager.isSodiumTerrainOverlayEnabled()) return
+                drawLoop@ for (draw in draws) {
+                    for ((renderType, entries) in draw.drawGroups) {
+                        if (!drawSafely(
                             renderType,
                             entries,
                             draw.modelView,
@@ -240,13 +300,27 @@ internal object CooSodiumTerrainOverlay {
                             draw.cameraX,
                             draw.cameraY,
                             draw.cameraZ,
-                            false
-                        )
+                            true
+                        )) break@drawLoop
+                        CooTerrainPipelineManager.recordPostDraw(renderType) {
+                            drawSafely(
+                                renderType,
+                                entries,
+                                draw.modelView,
+                                draw.projection,
+                                draw.cameraX,
+                                draw.cameraY,
+                                draw.cameraZ,
+                                false
+                            )
+                        }
                     }
                 }
+            } finally {
+                CooTerrainPipelineManager.endOverlayBatch()
             }
         } finally {
-            CooTerrainPipelineManager.endOverlayBatch()
+            CooTerrainPipelineManager.endFinalCompositeTerrainOverlay()
         }
     }
 
@@ -260,7 +334,7 @@ internal object CooSodiumTerrainOverlay {
         irisComposite: Boolean
     ) {
         val renderTypes = drawGroups.keys.toList()
-        CooTerrainPipelineManager.beginOverlayBatch(renderTypes)
+        if (!CooTerrainPipelineManager.beginOverlayBatch(renderTypes)) return
         try {
             if (!CooTerrainPipelineManager.isSodiumTerrainOverlayEnabled()) return
             for ((renderType, entries) in drawGroups) {
@@ -292,11 +366,21 @@ internal object CooSodiumTerrainOverlay {
         }
     }
 
+    /**
+     * 释放单个 Sodium RenderSection 持有的全部地形覆盖 GPU 资源。
+     *
+     * @param section 已删除、重建或离开缓存的 RenderSection
+     */
     @JvmStatic
     fun releaseSection(section: RenderSection) {
         uploaded.release(section, ::closeUploaded)
     }
 
+    /**
+     * 释放所有线程本地构建器、待上传批次、GPU 批次和延迟绘制记录。
+     *
+     * 由客户端资源重载或关闭生命周期调用。
+     */
     @JvmStatic
     fun releaseAll() {
         activeBuild.get()?.close()
@@ -386,6 +470,42 @@ internal object CooSodiumTerrainOverlay {
         cameraZ: Double,
         irisComposite: Boolean
     ) {
+        OpenGlPostEffectExecutionBackend.withPreservedGlState {
+            drawRenderTypePreserved(
+                renderType,
+                entries,
+                modelView,
+                projection,
+                cameraX,
+                cameraY,
+                cameraZ,
+                irisComposite
+            )
+        }
+    }
+
+    /**
+     * 在调用方 GL 状态保护范围内绘制一个 Sodium 地形覆盖批次。
+     *
+     * @param renderType 当前覆盖 RenderType
+     * @param entries 可见 section 及其 GPU 批次
+     * @param modelView 当前模型视图矩阵
+     * @param projection 当前投影矩阵
+     * @param cameraX 相机世界 X 坐标
+     * @param cameraY 相机世界 Y 坐标
+     * @param cameraZ 相机世界 Z 坐标
+     * @param irisComposite 是否在 Iris 最终合成结果上绘制
+     */
+    private fun drawRenderTypePreserved(
+        renderType: RenderType,
+        entries: List<DrawEntry>,
+        modelView: Matrix4f,
+        projection: Matrix4f,
+        cameraX: Double,
+        cameraY: Double,
+        cameraZ: Double,
+        irisComposite: Boolean
+    ) {
         val drawFramebuffer = glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING)
         val readFramebuffer = glGetInteger(GL_READ_FRAMEBUFFER_BINDING)
         val viewport = IntArray(4)
@@ -393,9 +513,6 @@ internal object CooSodiumTerrainOverlay {
         val previousDepthFunc = glGetInteger(GL_DEPTH_FUNC)
         val previousDepthMask = glGetBoolean(GL_DEPTH_WRITEMASK)
         val depthTestEnabled = glIsEnabled(GL_DEPTH_TEST)
-        val polygonOffsetEnabled = glIsEnabled(GL_POLYGON_OFFSET_FILL)
-        val previousPolygonOffsetFactor = glGetFloat(GL_POLYGON_OFFSET_FACTOR)
-        val previousPolygonOffsetUnits = glGetFloat(GL_POLYGON_OFFSET_UNITS)
         var setupCompleted = false
         try {
             renderType.setupRenderState()
@@ -405,8 +522,6 @@ internal object CooSodiumTerrainOverlay {
                 RenderSystem.enableDepthTest()
                 RenderSystem.depthMask(false)
                 RenderSystem.depthFunc(GL_LEQUAL)
-                glEnable(GL_POLYGON_OFFSET_FILL)
-                glPolygonOffset(-1F, -10F)
             }
             val shader = requireNotNull(RenderSystem.getShader()) {
                 "Sodium terrain overlay has no active shader"
@@ -435,12 +550,6 @@ internal object CooSodiumTerrainOverlay {
                     RenderSystem.enableDepthTest()
                 } else {
                     RenderSystem.disableDepthTest()
-                }
-                glPolygonOffset(previousPolygonOffsetFactor, previousPolygonOffsetUnits)
-                if (polygonOffsetEnabled) {
-                    glEnable(GL_POLYGON_OFFSET_FILL)
-                } else {
-                    glDisable(GL_POLYGON_OFFSET_FILL)
                 }
                 restoreTarget(drawFramebuffer, readFramebuffer, viewport)
             }

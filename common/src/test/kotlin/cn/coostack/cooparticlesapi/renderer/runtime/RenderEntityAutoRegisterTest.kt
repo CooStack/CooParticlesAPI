@@ -14,6 +14,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
+import kotlin.test.assertNotSame
 import kotlin.test.assertSame
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -42,6 +43,34 @@ class RenderEntityAutoRegisterTest {
         assertEquals(0, TestRenderer.createdCount)
         assertIs<TestRenderer>(rendererFactory())
         assertEquals(1, TestRenderer.createdCount)
+    }
+
+    /** 验证同一类型的多个实体不会重复构造 renderer。 */
+    @Test
+    fun `registry creates one renderer for all entities of the same type`() {
+        RenderEntityAutoRegistry.registerClasses(
+            entityClasses = listOf(TestRenderEntity::class.java),
+            rendererClasses = listOf(TestRenderer::class.java)
+        )
+
+        val first = assertNotNull(ClientRenderEntityRegistry.resolveRenderer(TestRenderEntity.ID))
+        val second = assertNotNull(ClientRenderEntityRegistry.resolveRenderer(TestRenderEntity.ID))
+
+        assertSame(first, second)
+        assertEquals(1, TestRenderer.createdCount)
+    }
+
+    /** 验证替换 renderer 工厂会使该类型的共享实例失效。 */
+    @Test
+    fun `register renderer replacement invalidates cached renderer`() {
+        ClientRenderEntityRegistry.register(TestRenderEntity.ID, TestRenderEntity.CODEC) { TestRenderer() }
+        val original = assertNotNull(ClientRenderEntityRegistry.resolveRenderer(TestRenderEntity.ID))
+
+        ClientRenderEntityRegistry.registerRenderer(TestRenderEntity.ID) { DuplicateTestRenderer() }
+        val replacement = assertNotNull(ClientRenderEntityRegistry.resolveRenderer(TestRenderEntity.ID))
+
+        assertNotSame(original, replacement)
+        assertIs<DuplicateTestRenderer>(replacement)
     }
 
     @Test

@@ -19,11 +19,11 @@ import org.lwjgl.glfw.GLFW
 import kotlin.math.sqrt
 
 object TestControllerPickClient {
-    private const val MAX_LINE_DISTANCE = 96.0
     private var request: TestControllerPickRequest? = null
     private var reopenParamPageOnNextController = false
     private var escWasDown = false
     private var useWasDown = false
+    private var suppressUseUntilRelease = false
 
     /**
      * 开始一次世界取点请求，并显示与主控制器一致的操作提示。
@@ -103,6 +103,7 @@ object TestControllerPickClient {
         request = null
         escWasDown = false
         useWasDown = false
+        suppressUseUntilRelease = false
     }
 
     fun consumeOpenParamPage(): Boolean {
@@ -119,9 +120,46 @@ object TestControllerPickClient {
         return true
     }
 
-    fun tick() {
-        val current = request ?: return
+    /**
+     * 在 Minecraft 分发方块使用逻辑前完成当前拾取。
+     *
+     * @return 本次 Shift + 右键是否已由拾取模式消费
+     */
+    @JvmStatic
+    fun consumePickUseInput(): Boolean {
+        if (suppressUseUntilRelease) {
+            return true
+        }
+        val current = request ?: return false
+        if (!Screen.hasShiftDown()) {
+            return false
+        }
         val client = Minecraft.getInstance()
+        if (client.screen != null) {
+            return false
+        }
+        val level = client.level ?: return false
+        val player = client.player ?: return false
+        if (level.dimension().location().toString() != current.packet.dimension) {
+            cancel()
+            return false
+        }
+        val target = currentTarget(client, current) ?: return false
+        completePick(current, target, player.lookAngle)
+        return true
+    }
+
+    @JvmStatic
+    fun releaseUseSuppression() {
+        suppressUseUntilRelease = false
+    }
+
+    fun tick() {
+        val client = Minecraft.getInstance()
+        if (suppressUseUntilRelease && !isUseDown(client)) {
+            suppressUseUntilRelease = false
+        }
+        val current = request ?: return
         val level = client.level ?: return cancel()
         val player = client.player ?: return cancel()
         if (level.dimension().location().toString() != current.packet.dimension) {
@@ -142,27 +180,14 @@ object TestControllerPickClient {
             return
         }
         escWasDown = escDown
-        val useDown = GLFW.glfwGetMouseButton(client.window.window, GLFW.GLFW_MOUSE_BUTTON_RIGHT) == GLFW.GLFW_PRESS ||
-                client.options.keyUse.isDown
+        val useDown = isUseDown(client)
         val useClicked = client.options.keyUse.consumeClick() || (useDown && !useWasDown)
         useWasDown = useDown
         if (!Screen.hasShiftDown() || !useClicked) {
             return
         }
         val target = currentTarget(client, current) ?: return
-        val callback = current.onPicked
-        if (callback != null) {
-            val lookAngle = player.lookAngle
-            cancel()
-            callback(target.point, target.fromBlock, lookAngle)
-            return
-        }
-        applyTarget(current, target, player.lookAngle)
-        current.history?.record(TestControllerPacketDrafts.snapshotFrom(current.screenPacket, current.packet))
-        reopenParamPageOnNextController = current.kind == TestControllerPickKind.PARAM_POSITION
-        current.packet.reopen = true
-        CooClientPacketManager.sendTo(current.packet)
-        cancel()
+        completePick(current, target, player.lookAngle)
     }
 
     fun render(event: ClientWorldRenderEvent) {
@@ -178,9 +203,9 @@ object TestControllerPickClient {
         val camera = event.camera.position
         val consumer = event.buffer.getBuffer(RenderType.lines())
         val box = target.box.move(-camera.x, -camera.y, -camera.z)
-        LevelRenderer.renderLineBox(event.poseStack, consumer, box, 0.2f, 1.0f, 0.2f, 1.0f)
+        LevelRenderer.renderLineBox(event.poseStack, consumer, box, 0.2F, 1.0F, 0.2F, 1.0F)
         val origin = origin(current.packet)
-        if (origin.distanceTo(target.point) <= MAX_LINE_DISTANCE) {
+        if (origin.distanceTo(target.point) <= 96.0) {
             val start = origin.subtract(camera)
             val end = target.point.subtract(camera)
             val normal = end.subtract(start).normal()
@@ -227,6 +252,28 @@ object TestControllerPickClient {
                 packet.optionParamValues = TestOptionParamCodec.encodeOptionValues(values)
             }
         }
+    }
+
+    private fun completePick(current: TestControllerPickRequest, target: TestControllerPickTarget, lookAngle: Vec3) {
+        val callback = current.onPicked
+        if (callback != null) {
+            cancel()
+            suppressUseUntilRelease = true
+            callback(target.point, target.fromBlock, lookAngle)
+            return
+        }
+        applyTarget(current, target, lookAngle)
+        current.history?.record(TestControllerPacketDrafts.snapshotFrom(current.screenPacket, current.packet))
+        reopenParamPageOnNextController = current.kind == TestControllerPickKind.PARAM_POSITION
+        current.packet.reopen = true
+        CooClientPacketManager.sendTo(current.packet)
+        cancel()
+        suppressUseUntilRelease = true
+    }
+
+    private fun isUseDown(client: Minecraft): Boolean {
+        return GLFW.glfwGetMouseButton(client.window.window, GLFW.GLFW_MOUSE_BUTTON_RIGHT) == GLFW.GLFW_PRESS ||
+                client.options.keyUse.isDown
     }
 
     private fun currentTarget(client: Minecraft, current: TestControllerPickRequest): TestControllerPickTarget? {

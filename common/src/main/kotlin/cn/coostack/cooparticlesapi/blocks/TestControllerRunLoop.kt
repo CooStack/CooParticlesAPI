@@ -52,7 +52,7 @@ internal class TestControllerRunLoop(
      *
      * @return 当前组玩家，没有活动组时返回 `null`
      */
-    fun activeTestPlayer(): BlockTestPlayer? = activeGroup?.testPlayer
+    fun activeTestPlayer(): BlockTestPlayer? = activeGroup?.testPlayer as? BlockTestPlayer
 
     fun start(): Boolean {
         cancel(clearWait = true)

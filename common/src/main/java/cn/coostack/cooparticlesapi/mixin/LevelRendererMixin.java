@@ -20,6 +20,12 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+/**
+ * 把 Coo 粒子系统、地形 Pipeline 和统一后处理生命周期接入原版世界渲染器。
+ *
+ * <p>地形覆盖在对应原版 section layer 绘制后提交；Sodium 使用独立兼容路径，
+ * Iris shader pack 激活时则把覆盖绘制推迟到最终合成之后。
+ */
 @Mixin(LevelRenderer.class)
 public class LevelRendererMixin {
     @Shadow
@@ -190,6 +196,17 @@ public class LevelRendererMixin {
         renderTerrainPipelines(RenderType.tripwire(), camera, frustumMatrix, projectionMatrix);
     }
 
+    /**
+     * 绘制建立在一个原版 terrain layer 上的全部 Coo 覆盖层。
+     *
+     * <p>Sodium 已接管时不进入原版路径。Iris 最终合成模式会保存绘制回调；其他模式立即准备
+     * overlay batch、绘制各扩展层并记录需要重放的后处理输入。任一覆盖层失败都会切回原版几何。
+     *
+     * @param baseLayer 刚完成绘制的原版 terrain layer
+     * @param camera 当前世界相机
+     * @param frustumMatrix 当前视锥矩阵
+     * @param projectionMatrix 当前投影矩阵
+     */
     private void renderTerrainPipelines(RenderType baseLayer,
                                         Camera camera,
                                         Matrix4f frustumMatrix,
@@ -204,7 +221,22 @@ public class LevelRendererMixin {
         if (layers.isEmpty()) {
             return;
         }
-        CooTerrainPipelineManager.beginOverlayBatch(layers);
+        if (CooTerrainPipelineManager.shouldDeferVanillaTerrainOverlay()) {
+            for (RenderType renderType : layers) {
+                CooTerrainPipelineManager.deferVanillaTerrainOverlay(renderType, () -> renderSectionLayer(
+                        renderType,
+                        camera.getPosition().x,
+                        camera.getPosition().y,
+                        camera.getPosition().z,
+                        frustumMatrix,
+                        projectionMatrix
+                ));
+            }
+            return;
+        }
+        if (!CooTerrainPipelineManager.beginOverlayBatch(layers)) {
+            return;
+        }
         try {
             if (!CooTerrainPipelineManager.isTerrainOverlayEnabled()) {
                 return;

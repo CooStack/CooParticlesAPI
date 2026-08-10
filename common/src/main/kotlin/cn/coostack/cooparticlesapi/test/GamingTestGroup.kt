@@ -4,10 +4,11 @@ import cn.coostack.cooparticlesapi.test.api.TestGroup
 import cn.coostack.cooparticlesapi.test.api.TestOption
 import cn.coostack.cooparticlesapi.test.api.TestReviewMode
 import net.minecraft.network.chat.Component
+import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.entity.player.Player
 import java.util.function.Supplier
 
-class GamingTestGroup(val testPlayer: Player, val id: String) : TestGroup {
+class GamingTestGroup(val testPlayer: Player, val id: ResourceLocation) : TestGroup {
     enum class OptionResult(val displayName: String) {
         PASSED("通过"),
         FAILED("失败"),
@@ -117,7 +118,7 @@ class GamingTestGroup(val testPlayer: Player, val id: String) : TestGroup {
     }
 
 
-    override fun groupID(): String {
+    override fun groupID(): ResourceLocation {
         return id
     }
 

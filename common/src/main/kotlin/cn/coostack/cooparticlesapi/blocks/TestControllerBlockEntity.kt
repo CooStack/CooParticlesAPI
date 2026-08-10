@@ -445,7 +445,9 @@ class TestControllerBlockEntity(
             }
             else -> built
         }
-        runtimeGroup.optionStartListener = { player, _ -> resetOnceAnimations(player) }
+        runtimeGroup.optionStartListener = { player, _ ->
+            (player as? BlockTestPlayer)?.let(::resetOnceAnimations)
+        }
         return runtimeGroup
     }
 

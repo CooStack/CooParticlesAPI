@@ -3,6 +3,7 @@ package cn.coostack.cooparticlesapi.test
 import cn.coostack.cooparticlesapi.animation.Animate
 import cn.coostack.cooparticlesapi.animation.AnimateNode
 import cn.coostack.cooparticlesapi.extend.asRelative
+import cn.coostack.cooparticlesapi.extend.ofID
 import cn.coostack.cooparticlesapi.extend.plus
 import cn.coostack.cooparticlesapi.extend.random
 import cn.coostack.cooparticlesapi.extend.times
@@ -38,6 +39,7 @@ import cn.coostack.cooparticlesapi.test.options.particle.style.RomaMagicTestStyl
 import cn.coostack.cooparticlesapi.test.options.renderer.PostEffectDemoOptions
 import cn.coostack.cooparticlesapi.test.options.renderer.world.DemoWorldRenderEffectOptions
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
+import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
@@ -45,10 +47,12 @@ import kotlin.random.Random
 
 class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
     companion object {
-        const val ID = "api-test-group-builder"
+        /** 注册与构建结果共同使用的测试组 ID。 */
+        @JvmField
+        val ID: ResourceLocation = ofID("api-test-group-builder")
     }
 
-    override fun groupID(): String {
+    override fun groupID(): ResourceLocation {
         return ID
     }
 

@@ -5,17 +5,24 @@ import net.minecraft.world.level.block.state.BlockState
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
+import java.util.UUID
 
 /**
  * 真实世界方块的 pipeline 绑定入口。
  *
- * 精确 [BlockState] 绑定优先于精确 [Block] 绑定，精确 [Block] 绑定优先于全局 predicate；
- * 同一优先级内后绑定的规则优先。
+ * 临时 [Block] 绑定优先于精确 [BlockState] 绑定，精确状态绑定优先于永久 [Block] 绑定，
+ * 永久方块绑定优先于全局 predicate；同一优先级内后绑定的规则优先。
  * 绑定只保存不可变快照，区块编译线程可以无锁读取。
  */
 object CooBlockPipelines {
+    /**
+     * @property block 要匹配的方块类型
+     * @property owner 临时绑定所有者；永久规则为 `null`
+     * @property selector 按方块状态选择 Pipeline 的逻辑
+     */
     private data class BlockBinding(
         val block: Block,
+        val owner: UUID?,
         val selector: (BlockState) -> CooRenderPipeline<BlockState>
     )
 
@@ -47,7 +54,12 @@ object CooBlockPipelines {
     /** 把任意原版或模组方块绑定到固定 pipeline。 */
     @JvmStatic
     fun bind(block: Block, pipeline: CooRenderPipeline<BlockState>) {
-        bind(block) { pipeline }
+        update { current ->
+            current.copy(
+                blocks = current.blocks.filterNot { it.owner == null && it.block === block } +
+                    BlockBinding(block, null) { pipeline }
+            )
+        }
     }
 
     /** 批量绑定多个方块类型，只发布一次绑定快照和修订号。 */
@@ -60,9 +72,26 @@ object CooBlockPipelines {
         update { current ->
             current.copy(
                 blocks = current.blocks.filterNot { binding ->
-                    distinctBlocks.any { block -> binding.block === block }
-                } + distinctBlocks.map { block -> BlockBinding(block) { pipeline } }
+                    binding.owner == null && distinctBlocks.any { block -> binding.block === block }
+                } + distinctBlocks.map { block -> BlockBinding(block, null) { pipeline } }
             )
+        }
+    }
+
+    /** 添加带所有者的临时方块类型绑定，不覆盖已有永久规则或其他临时规则。 */
+    internal fun bindScoped(owner: UUID, block: Block, pipeline: CooRenderPipeline<BlockState>) {
+        update { current ->
+            current.copy(
+                blocks = current.blocks.filterNot { binding -> binding.owner == owner } +
+                    BlockBinding(block, owner) { pipeline }
+            )
+        }
+    }
+
+    /** 撤销指定所有者的临时绑定，先前规则会重新参与匹配。 */
+    internal fun unbindScoped(owner: UUID) {
+        update { current ->
+            current.copy(blocks = current.blocks.filterNot { binding -> binding.owner == owner })
         }
     }
 
@@ -93,7 +122,8 @@ object CooBlockPipelines {
     fun bind(block: Block, selector: (BlockState) -> CooRenderPipeline<BlockState>) {
         update { current ->
             current.copy(
-                blocks = current.blocks.filterNot { it.block === block } + BlockBinding(block, selector)
+                blocks = current.blocks.filterNot { it.owner == null && it.block === block } +
+                    BlockBinding(block, null, selector)
             )
         }
     }
@@ -112,10 +142,13 @@ object CooBlockPipelines {
 
     internal fun resolve(state: BlockState): CooRenderPipeline<BlockState> {
         val current = snapshot.get()
+        current.blocks.asReversed().firstOrNull { it.owner != null && it.block === state.block }?.let {
+            return it.selector(state)
+        }
         current.states.asReversed().firstOrNull { it.state == state }?.let {
             return it.pipeline
         }
-        current.blocks.asReversed().firstOrNull { it.block === state.block }?.let {
+        current.blocks.asReversed().firstOrNull { it.owner == null && it.block === state.block }?.let {
             return it.selector(state)
         }
         current.predicates.asReversed().firstOrNull { it.predicate(state) }?.let {
@@ -136,10 +169,18 @@ object CooBlockPipelines {
         update { BindingSnapshot() }
     }
 
+    /** 清除世界切换或断线时遗留的临时绑定，并保留公开 API 注册的永久规则。 */
+    internal fun clearScopedBindings() {
+        update { current ->
+            current.copy(blocks = current.blocks.filter { binding -> binding.owner == null })
+        }
+    }
+
     private fun update(transform: (BindingSnapshot) -> BindingSnapshot) {
         while (true) {
             val current = snapshot.get()
             val updated = transform(current)
+            if (updated == current) return
             if (snapshot.compareAndSet(current, updated)) {
                 val revision = revisionCounter.incrementAndGet()
                 changeListeners.forEach { it(revision) }

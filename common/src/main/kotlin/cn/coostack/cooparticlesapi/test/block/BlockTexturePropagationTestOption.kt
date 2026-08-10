@@ -9,18 +9,22 @@ import cn.coostack.cooparticlesapi.test.api.TestReviewMode
 import cn.coostack.cooparticlesapi.utils.BlockUtil
 import net.minecraft.core.BlockPos
 import net.minecraft.resources.ResourceLocation
+import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.entity.player.Player
 
 /**
  * 演示地形颜色传播和恢复，不对方块类型做全局替换。
  * 每五个 tick 发现一层，客户端按帧插值颜色和效果强度。
  *
- * @property player 当前方块测试使用的模拟玩家，只负责提供服务端世界和传播中心。
+ * @property player 当前方块测试使用的玩家，只负责提供服务端世界和传播中心
  */
 class BlockTexturePropagationTestOption(
-    private val player: BlockTestPlayer
-) : TestOption<BlockTestPlayer> {
-    /** 传播中心，创建测试项时固定为模拟玩家所在方块。 */
-    private val center: BlockPos = player.blockPos.immutable()
+    private val player: Player
+) : TestOption<Player> {
+    private var activeLevel: ServerLevel? = null
+
+    /** 传播中心，创建测试项时固定为玩家所在方块。 */
+    private val center: BlockPos = player.blockPosition().immutable()
 
     /** 通用地形效果组 ID，同一测试宿主只维护一组批量位置。 */
     private val effectGroupId: ResourceLocation = ResourceLocation.fromNamespaceAndPath(
@@ -42,31 +46,36 @@ class BlockTexturePropagationTestOption(
 
     /** 创建新的分层传播状态并发布空快照。 */
     override fun start() {
-        startedAt = player.level.gameTime
+        val level = player.level() as? ServerLevel
+            ?: error("BlockTexturePropagationTestOption requires a server-side player")
+        activeLevel = level
+        startedAt = level.gameTime
         elapsed = 0L
         discoveredAt.clear()
         spread = createSpread()
         CooTerrainEffectManager.apply(
-            player.level,
+            level,
             CooTerrainEffectGroup(effectGroupId, CooTerrainPropagation.pipeline) {}
         )
     }
 
     /** 停止传播并移除当前测试产生的效果组。 */
     override fun stop() {
-        CooTerrainEffectManager.remove(player.level, effectGroupId)
+        activeLevel?.let { level -> CooTerrainEffectManager.remove(level, effectGroupId) }
+        activeLevel = null
         spread = null
         discoveredAt.clear()
     }
 
     /**
      * @return 传播和所有已发现方块的本地恢复阶段是否仍在有效时间内。
-     * 每个方块从自己的发现 tick 开始运行 120 tick，因此测试总时长最多为 180 tick。
+     * 每个方块从自己的发现 tick 开始运行 90 tick，因此测试总时长最多为 150 tick。
      */
     override fun isValid(): Boolean {
-        val latestFinish = discoveredAt.values.maxOrNull()?.plus(TOTAL_TICKS)
+        val level = activeLevel ?: return false
+        val latestFinish = discoveredAt.values.maxOrNull()?.plus(90L)
             ?: (startedAt + PROPAGATION_TICKS)
-        return player.level.gameTime < latestFinish
+        return level.gameTime < latestFinish
     }
 
     /** 失败时清理传播状态。 */
@@ -80,14 +89,15 @@ class BlockTexturePropagationTestOption(
 
     /** 按服务端 tick 推进传播，并把新位置追加到通用效果组。 */
     override fun doTick() {
+        val level = activeLevel ?: return
         val propagationStepTicks = 5L
-        elapsed = (player.level.gameTime - startedAt).coerceAtLeast(0L)
+        elapsed = (level.gameTime - startedAt).coerceAtLeast(0L)
         if (elapsed < PROPAGATION_TICKS && elapsed % propagationStepTicks == 0L) {
-            val additions = spread?.stepOnMainThread(player.level).orEmpty()
+            val additions = spread?.stepOnMainThread(level).orEmpty()
                 .map(BlockPos::immutable)
                 .filter { position -> discoveredAt.putIfAbsent(position, startedAt + elapsed) == null }
             if (additions.isNotEmpty()) {
-                CooTerrainEffectManager.append(player.level, effectGroupId, additions)
+                CooTerrainEffectManager.append(level, effectGroupId, additions)
             }
         }
     }
@@ -99,8 +109,8 @@ class BlockTexturePropagationTestOption(
     override fun reviewDescription(): String =
         "观察方块由白色、铜红色、铜锈绿色渐变，再在恢复阶段回到原纹理"
 
-    /** @return 与构造参数相同的模拟玩家。 */
-    override fun paramTarget(): BlockTestPlayer = player
+    /** @return 与构造参数相同的玩家。 */
+    override fun paramTarget(): Player = player
 
     /** 创建一段从中心开始的主线程传播。 */
     private fun createSpread(): BlockUtil.BlockStepSpareData {
@@ -114,7 +124,5 @@ class BlockTexturePropagationTestOption(
 
     companion object {
         private const val PROPAGATION_TICKS = 60L
-        /** 单个方块从发现到恢复完成的总时长，与 [isValid] 共享。 */
-        private const val TOTAL_TICKS = 120L
     }
 }

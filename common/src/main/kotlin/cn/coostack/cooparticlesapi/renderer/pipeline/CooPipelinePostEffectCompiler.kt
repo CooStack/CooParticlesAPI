@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi.renderer.pipeline
 
+import cn.coostack.cooparticlesapi.renderer.backend.RenderSceneTargets
 import cn.coostack.cooparticlesapi.renderer.post.PostEffectChain
 import cn.coostack.cooparticlesapi.renderer.post.PostEffectInput
 import cn.coostack.cooparticlesapi.renderer.post.PostEffectInputSource
@@ -21,8 +22,30 @@ internal data class CooCompiledPostEffect(
 
 /** 把统一 pipeline 的 fullscreen 子图翻译给现有 post 执行后端。 */
 internal object CooPipelinePostEffectCompiler {
+    /**
+     * 编译 pipeline 的静态图和当前 subject 对应的后处理定义。
+     *
+     * @param pipeline 待转换的渲染 pipeline
+     * @param subject uniform provider 读取的当前对象
+     * @return 后处理定义；pipeline 没有全屏节点时返回 `null`
+     */
     fun compile(pipeline: CooRenderPipeline<*>, subject: Any = Unit): CooCompiledPostEffect? {
-        val compiled = CooPipelineCompiler.compile(pipeline)
+        return compile(pipeline, CooPipelineCompiler.compile(pipeline), subject)
+    }
+
+    /**
+     * 使用已有静态图编译结果生成当前 subject 的后处理定义。
+     *
+     * @param pipeline 待转换的渲染 pipeline
+     * @param compiled 已完成的静态 pipeline 图编译结果
+     * @param subject uniform provider 读取的当前对象
+     * @return 后处理定义；pipeline 没有全屏节点时返回 `null`
+     */
+    fun compile(
+        pipeline: CooRenderPipeline<*>,
+        compiled: CooCompiledPipeline,
+        subject: Any = Unit
+    ): CooCompiledPostEffect? {
         val fullscreenNodes = compiled.nodes.filter { it.kind != CooPipelineNodeKind.WORLD }
         if (fullscreenNodes.isEmpty()) return null
 
@@ -55,8 +78,7 @@ internal object CooPipelinePostEffectCompiler {
                             line.toPostInput(compiled, nodesByName, outputPasses, defaults)
                         },
                         output = finalOutput,
-                        framebuffer = framebuffer,
-                        subject = subject
+                        framebuffer = framebuffer
                     )
                 )
                 outputPasses[node.name] = node.name
@@ -94,7 +116,6 @@ internal object CooPipelinePostEffectCompiler {
                         inputs = inputs,
                         output = if (isLast) finalOutput else PostEffectOutput.TEMPORARY,
                         framebuffer = framebuffer,
-                        subject = subject,
                         iteration = iteration,
                         outputTargetKey = targetKey,
                         reuseOutputTarget = true
@@ -111,7 +132,8 @@ internal object CooPipelinePostEffectCompiler {
                 model = PostEffectModel.SCREEN_QUAD,
                 chain = PostEffectChain(passes),
                 requiredCapabilities = compiled.requiredCapabilities,
-                optionalCapabilities = compiled.optionalCapabilities
+                optionalCapabilities = compiled.optionalCapabilities,
+                defaultSubject = subject
             ),
             defaultParams = defaults.build()
         )
@@ -130,7 +152,7 @@ internal object CooPipelinePostEffectCompiler {
             CooPipelineTextureSource.Mask -> input.input(PostEffectInputSource.MASK)
             CooPipelineTextureSource.Bloom -> input.input(PostEffectInputSource.BRIGHT_COLOR)
             CooPipelineTextureSource.Temporary -> input.inputSceneResource(
-                cn.coostack.cooparticlesapi.renderer.backend.RenderSceneTargets.TEMPORARY
+                RenderSceneTargets.TEMPORARY
             )
             is CooPipelineTextureSource.Texture -> {
                 defaults.resource(input.sampler, source.texture)
@@ -207,14 +229,13 @@ internal object CooPipelinePostEffectCompiler {
         inputs: List<PostEffectInput>,
         output: PostEffectOutput,
         framebuffer: ResourceLocation?,
-        subject: Any,
         iteration: CooPipelineIteration? = null,
         outputTargetKey: String? = framebuffer?.toString(),
         reuseOutputTarget: Boolean = false
     ): PostEffectPass {
         val staticUniforms = uniforms.map { (uniformName, provider) ->
             PostEffectUniform(uniformName) { instance ->
-                instance.params[uniformName] ?: provider.resolve(subject).toPostValue()
+                instance.params[uniformName] ?: provider.resolve(instance.subject).toPostValue()
             }
         }
         val iterationUniforms = if (iteration == null) {

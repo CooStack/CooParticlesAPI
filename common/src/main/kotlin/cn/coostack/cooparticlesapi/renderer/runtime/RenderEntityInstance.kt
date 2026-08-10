@@ -7,38 +7,34 @@ import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameStage
 import cn.coostack.cooparticlesapi.renderer.client.RenderUtil
 import cn.coostack.cooparticlesapi.renderer.effects.RenderEffectCollector
 import cn.coostack.cooparticlesapi.renderer.effects.builtin.BuiltinRenderEffectDescriptors
-import cn.coostack.cooparticlesapi.renderer.pipeline.CooCompiledAttachment
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooCompiledPostEffect
-import cn.coostack.cooparticlesapi.renderer.pipeline.CooCompiledPipeline
-import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelineCompiler
-import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelineInputPort
-import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelineNode
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelineNodeKind
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelineOutputPort
-import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelinePostEffectCompiler
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelineRuntimeEffect
-import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelineTarget
 import cn.coostack.cooparticlesapi.renderer.state.RenderStateGuard
 import org.joml.Matrix4f
 import org.joml.Matrix4fStack
 
-/** 单个 RenderEntity 的客户端运行时实例。 */
+/**
+ * 单个 RenderEntity 的客户端运行时实例。
+ *
+ * @property entity 当前客户端镜像实体
+ * @property renderer 该实体类型共享的 renderer
+ */
 class RenderEntityInstance<T : RenderEntity>(
     val entity: T,
     val renderer: RenderEntityRenderer<T>
 ) {
-    private var compiledPipeline: CooCompiledPipeline = CooPipelineCompiler.compile(renderer.pipeline)
-    private var compiledPostEffect: CooCompiledPostEffect? = compilePostEffect()
-    private var worldNodes: List<CooPipelineNode> = collectWorldNodes()
-    private var worldAttachments: List<CooCompiledAttachment> = collectWorldAttachments()
+    /** V2 renderer 共享的静态编译结果；旧式实体自带 renderer 时保持实例隔离。 */
+    private var pipelineRuntime = resolvePipelineRuntime()
+    /** 当前共享 runtime 提供的后处理定义引用。 */
+    private var compiledPostEffect: CooCompiledPostEffect? = pipelineRuntime.compiledPostEffect
     private val offscreenStateGuard = RenderStateGuard()
     private var irisWorldPassSubmitted = false
 
     internal fun reinitialize() {
-        compiledPipeline = CooPipelineCompiler.compile(renderer.pipeline)
-        compiledPostEffect = compilePostEffect()
-        worldNodes = collectWorldNodes()
-        worldAttachments = collectWorldAttachments()
+        pipelineRuntime = resolvePipelineRuntime()
+        compiledPostEffect = pipelineRuntime.compiledPostEffect
     }
 
     internal fun updateFrom(profile: RenderEntity) {
@@ -78,7 +74,7 @@ class RenderEntityInstance<T : RenderEntity>(
         stateGuard: RenderStateGuard
     ) {
         if (!hasWorldPass()) return
-        worldNodes.forEach { node ->
+        pipelineRuntime.worldNodes.forEach { node ->
             stateGuard.use { renderState ->
                 renderer.render(
                     RenderInput(
@@ -108,7 +104,8 @@ class RenderEntityInstance<T : RenderEntity>(
     }
 
     private fun hasWorldPass(): Boolean {
-        return RenderFrameStage.WORLD_PASS in compiledPipeline.stages && worldNodes.isNotEmpty()
+        return RenderFrameStage.WORLD_PASS in pipelineRuntime.compiledPipeline.stages &&
+            pipelineRuntime.worldNodes.isNotEmpty()
     }
 
     internal fun markRemoved() {
@@ -121,14 +118,15 @@ class RenderEntityInstance<T : RenderEntity>(
             val instance = postEffect.type.create(
                 instanceId = "${entity.uuid}:pipeline",
                 params = postEffect.defaultParams,
-                sourceId = entity.uuid.toString()
+                sourceId = entity.uuid.toString(),
+                subject = entity
             )
             collector.submit(
                 CooPipelineRuntimeEffect.descriptor(
                     owner = entity.uuid.toString(),
-                    compiled = compiledPipeline,
+                    compiled = pipelineRuntime.compiledPipeline,
                     postEffect = instance,
-                    attachments = worldAttachments
+                    attachments = pipelineRuntime.worldAttachments
                 ) { output ->
                     renderOffscreen(context, output)
                 }
@@ -138,7 +136,7 @@ class RenderEntityInstance<T : RenderEntity>(
     }
 
     private fun renderOffscreen(context: RenderFrameContext, output: CooPipelineOutputPort) {
-        val node = requireNotNull(compiledPipeline.nodes.firstOrNull { it.name == output.node }) {
+        val node = requireNotNull(pipelineRuntime.compiledPipeline.nodes.firstOrNull { it.name == output.node }) {
             "Pipeline output '${output.node}.${output.name}' has no source node"
         }
         require(node.kind == CooPipelineNodeKind.WORLD) {
@@ -164,34 +162,12 @@ class RenderEntityInstance<T : RenderEntity>(
         }
     }
 
-    private fun compilePostEffect(): CooCompiledPostEffect? {
-        return CooPipelinePostEffectCompiler.compile(renderer.pipeline, entity)
-    }
-
-    private fun collectWorldNodes(): List<CooPipelineNode> {
-        val worldNodeNames = compiledPipeline.lines.mapNotNull { line ->
-            val output = line.output as? CooPipelineOutputPort ?: return@mapNotNull null
-            if (line.input !is CooPipelineTarget.World) {
-                return@mapNotNull null
-            }
-            output.node
-        }.toSet()
-        return compiledPipeline.nodes.filter { node ->
-            node.kind == CooPipelineNodeKind.WORLD && node.name in worldNodeNames
+    /** @return 共享 renderer 的缓存 runtime；旧式实体 renderer 使用独立 runtime */
+    private fun resolvePipelineRuntime(): RenderEntityPipelineRuntime {
+        return if (renderer === entity) {
+            RenderEntityPipelineRuntime(renderer.pipeline)
+        } else {
+            RenderEntityPipelineRuntimeCache.get(renderer)
         }
-    }
-
-    private fun collectWorldAttachments(): List<CooCompiledAttachment> {
-        val nodes = compiledPipeline.nodes.associateBy { it.name }
-        return compiledPipeline.lines.mapNotNull { line ->
-            val output = line.output as? CooPipelineOutputPort ?: return@mapNotNull null
-            val input = line.input as? CooPipelineInputPort ?: return@mapNotNull null
-            if (nodes.getValue(output.node).kind != CooPipelineNodeKind.WORLD ||
-                nodes.getValue(input.node).kind == CooPipelineNodeKind.WORLD
-            ) {
-                return@mapNotNull null
-            }
-            compiledPipeline.attachment(output)
-        }.distinctBy { it.output }
     }
 }

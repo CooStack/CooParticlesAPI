@@ -14,6 +14,7 @@ import cn.coostack.cooparticlesapi.display.CooShaderStateResolver
 import cn.coostack.cooparticlesapi.test.options.display.MCShaders
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooRenderPipeline
 import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainPipelineManager
+import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainRenderStateShard
 import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainVertexFormats
 import com.mojang.blaze3d.vertex.DefaultVertexFormat
 import com.mojang.blaze3d.vertex.VertexFormat
@@ -23,10 +24,16 @@ import net.minecraft.resources.ResourceLocation
 import net.minecraft.client.renderer.texture.TextureAtlas
 import net.minecraft.world.level.block.state.BlockState
 
+/**
+ * 在 NeoForge 客户端创建、缓存并适配 Iris 的 Coo RenderType。
+ *
+ * 通用描述按值缓存，terrain layer 按批次键和原版基础层缓存；资源重载时由 [clearTerrainCache]
+ * 只清除依赖动态 shader 状态的地形缓存。
+ */
 object NeoRenderTypesProvider : CooRenderTypesProvider {
     private val cache = LinkedHashMap<CooRenderTypeDescriptor, RenderType>()
     private val entityCutoutEmissiveCache = LinkedHashMap<EntityCutoutEmissiveKey, RenderType>()
-    private val terrainCache = LinkedHashMap<Pair<CooRenderPipeline<BlockState>, RenderType>, RenderType>()
+    private val terrainCache = LinkedHashMap<Pair<Any, RenderType>, RenderType>()
     private val glowId = ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "glow")
 
     private val glowDescriptor = CooRenderTypeDescriptor.builder("coo_glow")
@@ -38,13 +45,29 @@ object NeoRenderTypesProvider : CooRenderTypesProvider {
         .depthTestMode(CooRenderDepthTestMode.LEQUAL)
         .build()
 
+    /** 默认加法混合发光 RenderType，优先使用资源注册表中的同名描述。 */
     val glow: RenderType
         get() = named(glowId) ?: create(glowDescriptor)
 
+    /**
+     * 创建或复用不透明的 NeoForge 实体裁剪发光 RenderType。
+     *
+     * @param texture 实体纹理资源
+     * @param brightness 发光亮度倍率，负值按 `0` 处理
+     * @return 已经过 Iris 实体兼容包装的 RenderType
+     */
     override fun entityCutoutEmissive(texture: ResourceLocation, brightness: Float): RenderType {
         return entityCutoutEmissive(texture, brightness, 1F, true)
     }
 
+    /**
+     * 创建或复用带透明度的 NeoForge 实体裁剪发光 RenderType。
+     *
+     * @param texture 实体纹理资源
+     * @param brightness 发光亮度倍率，负值按 `0` 处理
+     * @param alpha 透明度，限制到 `0.0F..1.0F`
+     * @return 已经过 Iris 实体兼容包装的 RenderType
+     */
     override fun entityCutoutEmissive(texture: ResourceLocation, brightness: Float, alpha: Float): RenderType {
         return entityCutoutEmissive(texture, brightness, alpha, alpha < 1F)
     }
@@ -96,6 +119,12 @@ object NeoRenderTypesProvider : CooRenderTypesProvider {
         return IrisCompat.wrapEntityRenderType(renderType)
     }
 
+    /**
+     * 把通用描述转换为 NeoForge RenderType 并按描述复用实例。
+     *
+     * @param descriptor 完整 RenderType 描述
+     * @return 已经过 Iris 实体兼容包装的 RenderType
+     */
     override fun create(descriptor: CooRenderTypeDescriptor): RenderType {
         val renderType = cache.getOrPut(descriptor) {
             RenderTypeIrisSupposerRegistry.register(descriptor.name, null)
@@ -141,12 +170,25 @@ object NeoRenderTypesProvider : CooRenderTypesProvider {
         return IrisCompat.wrapEntityRenderType(renderType)
     }
 
-    override fun terrain(pipeline: CooRenderPipeline<BlockState>, baseLayer: RenderType): RenderType {
-        return synchronized(terrainCache) { terrainCache.getOrPut(pipeline to baseLayer) {
+    /**
+     * 创建或复用 NeoForge 地形覆盖 RenderType。
+     *
+     * @param pipeline 提供地形 shader 和渲染配置的 Pipeline
+     * @param baseLayer 原版基础 terrain layer
+     * @param batchKey 标识可共享同一 RenderType 的地形批次
+     * @return 使用扩展地形顶点格式的覆盖 RenderType
+     */
+    override fun terrain(
+        pipeline: CooRenderPipeline<BlockState>,
+        baseLayer: RenderType,
+        batchKey: Any
+    ): RenderType {
+        return synchronized(terrainCache) { terrainCache.getOrPut(batchKey to baseLayer) {
             val sorted = baseLayer.sortOnUpload()
             val mipmap = baseLayer === RenderType.solid() ||
                 baseLayer === RenderType.cutoutMipped() || baseLayer === RenderType.tripwire()
-            RenderType.create(
+            lateinit var renderType: RenderType
+            renderType = RenderType.create(
                 "coo_terrain_overlay_${pipeline.id.namespace}_${pipeline.id.path.replace('/', '_')}",
                 CooTerrainVertexFormats.BLOCK_EFFECT,
                 VertexFormat.Mode.QUADS,
@@ -155,7 +197,7 @@ object NeoRenderTypesProvider : CooRenderTypesProvider {
                 sorted,
                 RenderType.CompositeState.builder()
                     .setShaderState(RenderStateShard.ShaderStateShard {
-                        CooTerrainPipelineManager.shaderFor(pipeline, baseLayer)
+                        CooTerrainPipelineManager.shaderFor(renderType, baseLayer)
                             ?.also(IrisCompat::markUnskippable)
                     })
                     .setTextureState(RenderStateShard.TextureStateShard(TextureAtlas.LOCATION_BLOCKS, false, mipmap))
@@ -165,21 +207,23 @@ object NeoRenderTypesProvider : CooRenderTypesProvider {
                     .setCullState(RenderStateShard.CULL)
                     .setDepthTestState(RenderStateShard.LEQUAL_DEPTH_TEST)
                     .setLightmapState(RenderStateShard.LIGHTMAP)
-                    .setWriteMaskState(
-                        if (sorted) RenderStateShard.COLOR_WRITE else RenderStateShard.COLOR_DEPTH_WRITE
-                    )
-                    .setOutputState(
-                        when (baseLayer) {
-                            RenderType.translucent() -> RenderStateShard.TRANSLUCENT_TARGET
-                            RenderType.tripwire() -> RenderStateShard.WEATHER_TARGET
-                            else -> RenderStateShard.MAIN_TARGET
-                        }
-                    )
+                    .setLayeringState(CooTerrainRenderStateShard.terrainLayering())
+                    .setWriteMaskState(CooTerrainRenderStateShard.terrainWriteMask(baseLayer))
+                    .setOutputState(CooTerrainRenderStateShard.terrainOutput(baseLayer))
                     .createCompositeState(true)
             )
+            renderType
         } }
     }
 
+    /** 清空 NeoForge 地形 RenderType 缓存，使后续区块重建使用新的 shader 资源。 */
+    override fun clearTerrainCache() {
+        synchronized(terrainCache) {
+            terrainCache.clear()
+        }
+    }
+
+    /** @return 默认加法混合发光 RenderType。 */
     override fun glow(): RenderType = glow
 
     private data class EntityCutoutEmissiveKey(

@@ -1,8 +1,10 @@
 package cn.coostack.cooparticlesapi.test.block
 
+import cn.coostack.cooparticlesapi.extend.ofID
 import cn.coostack.cooparticlesapi.test.api.TestOption
 import cn.coostack.cooparticlesapi.test.api.TestReviewMode
 import sun.misc.Unsafe
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -13,6 +15,11 @@ import kotlin.test.assertEquals
  * 禁止把该测试当作网络同步或客户端渲染测试。
  */
 class BlockTestGroupOptionStartTest {
+    @BeforeTest
+    fun bootstrapMinecraftRegistries() {
+        bootstrapMinecraft()
+    }
+
     /**
      * 检查重置、构造、启动的顺序。
      *
@@ -22,7 +29,7 @@ class BlockTestGroupOptionStartTest {
     @Test
     fun resetsBeforeSupplierCreatesOption() {
         val events = ArrayList<String>()
-        val group = BlockTestGroup(uninitializedBlockTestPlayer(), "order").also {
+        val group = BlockTestGroup(uninitializedBlockTestPlayer(), ofID("order")).also {
             it.announceGroupFinished = false
             it.optionStartListener = { _, _ -> events += "reset" }
         }.appendOption {
@@ -67,5 +74,12 @@ class BlockTestGroupOptionStartTest {
         val field = Unsafe::class.java.getDeclaredField("theUnsafe")
         field.isAccessible = true
         return (field.get(null) as Unsafe).allocateInstance(BlockTestPlayer::class.java) as BlockTestPlayer
+    }
+
+    private fun bootstrapMinecraft() {
+        val sharedConstants = Class.forName("net.minecraft.SharedConstants")
+        sharedConstants.getMethod("tryDetectVersion").invoke(null)
+        val bootstrap = Class.forName("net.minecraft.server.Bootstrap")
+        bootstrap.getMethod("bootStrap").invoke(null)
     }
 }

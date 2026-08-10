@@ -350,6 +350,25 @@ class CooRenderPipelineBuilder<T : Any> internal constructor(
         lines += CooPipelineLine(output, input)
     }
 
+    /**
+     * 按颜色附件和纹理单元连接两个节点。
+     *
+     * `fromChannel` 对应源 fragment shader 的 `layout(location = n)`，
+     * `toChannel` 对应目标 sampler 声明的 `textureSlot = n`。
+     *
+     * @param from 输出颜色附件的源节点
+     * @param fromChannel 源节点的颜色附件序号
+     * @param to 接收纹理输入的目标节点
+     * @param toChannel 目标节点的纹理单元序号
+     * @return 当前 pipeline builder
+     */
+    fun line(
+        from: CooPipelineNode,
+        fromChannel: Int,
+        to: CooPipelineNode,
+        toChannel: Int
+    ) = line(from.color(fromChannel), to.input(toChannel))
+
     fun texture(texture: ResourceLocation): CooPipelineTextureSource = CooPipelineTextureSource.Texture(texture)
     fun blockAtlas(): CooPipelineTextureSource = CooPipelineTextureSource.BlockAtlas
     fun sceneColor(): CooPipelineTextureSource = CooPipelineTextureSource.SceneColor

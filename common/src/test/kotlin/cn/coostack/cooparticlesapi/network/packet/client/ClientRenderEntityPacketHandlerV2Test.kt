@@ -17,6 +17,7 @@ class ClientRenderEntityPacketHandlerV2Test {
         assertFalse("ClientRenderEntityManager.getCodecFromID(id)" in source)
     }
 
+    /** 验证 CREATE 路径通过注册表取得共享 renderer。 */
     @Test
     fun `packet handler create toggle and remove paths operate on instance wrappers`() {
         val source = readProjectFile(
@@ -24,6 +25,8 @@ class ClientRenderEntityPacketHandlerV2Test {
         )
 
         assertTrue("RenderEntityInstance(" in source)
+        assertTrue("ClientRenderEntityRegistry.resolveRenderer(id)" in source)
+        assertFalse("factory.invoke()" in source)
         assertTrue("ClientRenderEntityManager.add(instance)" in source)
         assertTrue(".updateFrom(entity)" in source)
         assertTrue(".markRemoved()" in source)

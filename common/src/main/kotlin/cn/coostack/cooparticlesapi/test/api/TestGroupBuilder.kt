@@ -1,5 +1,7 @@
 package cn.coostack.cooparticlesapi.test.api
 
+import net.minecraft.resources.ResourceLocation
+
 /**
  * 按照自定义的方式去构建 group
  * 在manager里 使用代码注册
@@ -8,8 +10,8 @@ package cn.coostack.cooparticlesapi.test.api
  */
 interface TestGroupBuilder {
 
-
-    fun groupID(): String
+    /** @return 待构建测试组的资源 ID */
+    fun groupID(): ResourceLocation
 
     fun build(): TestGroup
 }

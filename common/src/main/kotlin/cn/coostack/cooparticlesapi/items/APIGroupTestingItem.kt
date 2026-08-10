@@ -1,6 +1,5 @@
 package cn.coostack.cooparticlesapi.items
 
-import cn.coostack.cooparticlesapi.extend.ofID
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersManager
 import cn.coostack.cooparticlesapi.network.particle.emitters.PhysicConstant
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleStyleManager
@@ -59,7 +58,7 @@ class APIGroupTestingItem(settings: Properties) : Item(settings) {
         val test = TestManager.getGamingTestFromServer(user)
         if (test == null) {
             user.sendSystemMessage(Component.literal("开始测试"))
-            TestManager.startTest(ofID(APITestGroupBuilder.ID), user)
+            TestManager.startTest(APITestGroupBuilder.ID, user)
             user.sendSystemMessage(
                 Component.literal(
                     "控制: 右键=通过并继续, 潜行右键=快进+5, 冲刺右键=跳到最后, PageUp/PageDown 可回退/前进"

@@ -162,6 +162,7 @@ class DemoWorldRenderEffectOptionsContractTest {
         assertFalse("DynamicVertexBuffer" in renderer)
     }
 
+    /** 验证模型渲染继续使用统一 pipeline，并复用静态图编译结果。 */
     @Test
     fun `render entity model layers use unified pipeline nodes`() {
         val builder = readProjectFile(
@@ -184,6 +185,9 @@ class DemoWorldRenderEffectOptionsContractTest {
         )
         val instance = readProjectFile(
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/runtime/RenderEntityInstance.kt"
+        )
+        val pipelineRuntime = readProjectFile(
+            "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/runtime/RenderEntityPipelineRuntime.kt"
         )
         val input = readProjectFile(
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/runtime/RenderInput.kt"
@@ -233,7 +237,9 @@ class DemoWorldRenderEffectOptionsContractTest {
             ).toFile().exists(), fileName)
         }
         assertTrue("renderer.render(" in instance)
-        assertTrue("CooPipelineCompiler.compile(renderer.pipeline)" in instance)
+        assertTrue("RenderEntityPipelineRuntimeCache.get(renderer)" in instance)
+        assertFalse("CooPipelineCompiler.compile(renderer.pipeline)" in instance)
+        assertTrue("CooPipelineCompiler.compile(pipeline)" in pipelineRuntime)
         assertTrue("worldNodes.forEach { node" in instance)
         assertTrue("pipeline = renderer.pipeline" in instance)
         assertTrue("node = node" in instance)

@@ -7,6 +7,7 @@ import cn.coostack.cooparticlesapi.renderer.effects.RenderEffectGraph
 import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainPipelineManager
 import cn.coostack.cooparticlesapi.renderer.post.CooPostEffects
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityInstance
+import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityPipelineRuntimeCache
 import cn.coostack.cooparticlesapi.renderer.state.RenderStateGuard
 import net.minecraft.client.Minecraft
 import net.minecraft.client.Minecraft.getInstance
@@ -47,11 +48,13 @@ object ClientRenderEntityManager {
         CooPostEffects.client.clear()
     }
 
+    /** 失效渲染缓存，并让当前实体按共享 pipeline 重新初始化。 */
     fun onShaderReload() {
         frameStatePrepared = false
         cachedTickDelta = 0F
         cachedViewMatrix.identity()
         cachedProjMatrix.identity()
+        RenderEntityPipelineRuntimeCache.invalidate()
         entities.values.forEach { instance ->
             instance.reinitialize()
         }

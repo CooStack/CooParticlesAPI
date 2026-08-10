@@ -77,6 +77,23 @@ class PostEffectCoreContractTest {
         assertTrue("types[type.id] = type" in runtimeSource)
     }
 
+    @Test
+    fun `default fullscreen vertex writes clip position and forwards screen uv`() {
+        val backend = readProjectFile(
+            "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/post/" +
+                "OpenGlPostEffectExecutionBackend.kt"
+        )
+        val vertex = readProjectFile(
+            "common/src/main/resources/assets/cooparticlesapi/shaders/pipeline/vertexes/screen.vsh"
+        )
+
+        assertTrue("pipeline/vertexes/screen.vsh" in backend)
+        assertTrue("layout(location = 0) in vec3 position" in vertex)
+        assertTrue("layout(location = 1) in vec2 uv" in vertex)
+        assertTrue("gl_Position = vec4(position, 1.0)" in vertex)
+        assertTrue("screen_uv = uv" in vertex)
+    }
+
     private fun readProjectFile(relativePath: String): String {
         return Files.readString(projectFile(relativePath))
     }

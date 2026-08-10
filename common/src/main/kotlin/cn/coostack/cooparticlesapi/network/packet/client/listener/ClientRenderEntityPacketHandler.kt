@@ -9,8 +9,16 @@ import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityRenderer
 import cn.coostack.cooparticlesapi.renderer.RenderEntity
 import io.netty.buffer.Unpooled
 import net.minecraft.network.FriendlyByteBuf
+import net.minecraft.resources.ResourceLocation
 
+/** 把服务端 RenderEntity 同步包应用到客户端实体运行时。 */
 object ClientRenderEntityPacketHandler {
+    /**
+     * 解码同步数据，并在客户端线程执行创建、更新或移除操作。
+     *
+     * @param packet 服务端发送的 RenderEntity 操作和序列化数据
+     * @param context 提供客户端线程与当前客户端实例的网络上下文
+     */
     fun receive(
         packet: PacketRenderEntityS2C,
         context: ClientContext
@@ -25,7 +33,7 @@ object ClientRenderEntityPacketHandler {
             entity.world = context.client().level
             when (method) {
                 PacketRenderEntityS2C.Method.CREATE -> {
-                    val renderer = resolveRenderer(entity, type, id)
+                    val renderer = resolveRenderer(entity, id)
                     val instance = RenderEntityInstance(entity, renderer)
                     ClientRenderEntityManager.add(instance)
                 }
@@ -41,17 +49,24 @@ object ClientRenderEntityPacketHandler {
         }
     }
 
+    /**
+     * 解析实体使用的 renderer。旧式实体自带 renderer 时保留实例行为，V2 类型从注册表取共享实例。
+     *
+     * @param entity 已解码的客户端实体
+     * @param id 实体类型注册 id
+     * @return 可渲染当前实体的 renderer
+     * @throws IllegalStateException 类型没有注册 renderer 时抛出
+     */
     @Suppress("UNCHECKED_CAST")
     private fun resolveRenderer(
         entity: RenderEntity,
-        type: cn.coostack.cooparticlesapi.renderer.runtime.ClientRenderEntityType,
-        id: net.minecraft.resources.ResourceLocation
+        id: ResourceLocation
     ): RenderEntityRenderer<RenderEntity> {
         if (entity is RenderEntityRenderer<*>) {
             return entity as RenderEntityRenderer<RenderEntity>
         }
-        val factory = type.rendererFactory
+        val renderer = ClientRenderEntityRegistry.resolveRenderer(id)
             ?: throw IllegalStateException("RenderEntity renderer not registered: $id")
-        return factory.invoke() as RenderEntityRenderer<RenderEntity>
+        return renderer as RenderEntityRenderer<RenderEntity>
     }
 }

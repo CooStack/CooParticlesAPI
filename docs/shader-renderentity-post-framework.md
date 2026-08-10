@@ -87,25 +87,15 @@ CooTerrainEffectManager.updateUniforms(
 )
 ```
 
-如果 Pipeline 需要按每个位置的激活 tick 动画，使用 `terrainEffect` 声明通用时间帧。它不是传播专用接口，`CooTerrainEffectContext` 同时提供方块状态、位置、组开始 tick、激活 tick、当前 tick 和组共享 uniform：
+需要按每个位置的激活 tick 播放动画时，`CooTerrainEffectGroupBuilder.position/positions` 负责记录延迟，服务端只同步每个位置的激活 tick。terrain vertex shader 会自动计算带 `partialTick` 的经过时间：
 
-```kotlin
-val ENERGY_PIPELINE = CooPipelines.block(id("energy")) {
-    shader(id("terrain/energy"))
-    inputBlockAtlas("BaseSampler")
-    uniform("EffectTint", CooUniformValue.Vec3Value(1F, 1F, 1F))
-    terrainEffect { context ->
-        val amount = (context.localTick / 20F).coerceIn(0F, 1F)
-        CooTerrainEffectFrame(
-            uniforms = mapOf("EffectTint" to CooUniformValue.Vec3Value(1F, amount, 0F))
-        )
-    }
-}
+```glsl
+flat in float effectElapsedTicks;
 ```
 
-帧返回 `null` 时该位置在当前 tick 不绘制这条效果，底层会继续检查更早应用且仍有效的效果组。当前帧和下一帧的 uniform 会由 terrain 渲染器按 `partialTick` 插值。
+fragment shader 直接用 `effectElapsedTicks` 计算连续变化。整个效果组仍是一个 Pipeline batch，不会按方块创建 Pipeline 或 draw call。激活 tick 以 65536 tick 为周期编码，适合有限时长的局部效果。
 
-传播测试在前 60 tick 每 5 tick 向外发现一层。每个方块从自己的发现 tick 开始独立运行 120 tick：先淡入白色，经过铜红到铜锈绿；之后保持铜锈绿 30 tick，再经过铜红、白色并淡回原纹理。首次创建组只发一个组包，每 5 tick 只追加新一层的位置；客户端自己推进时间线和 section 刷新，不再每 tick 重发完整位置表。颜色化使用原纹理亮度乘目标色相，并按目标色相的亮度归一化。
+传播测试在前 60 tick 每 5 tick 向外发现一层。每个方块从自己的发现 tick 开始独立运行 90 tick：10 tick 淡入白色，10 tick 变为铜红，10 tick 变为铜锈绿，固定 30 tick，再各用 10 tick 经过铜红、白色并淡回原纹理。首次创建组只发一个组包，每 5 tick 只追加新一层的位置；客户端自己推进时间线和 section 刷新，不再每 tick 重发完整位置表。颜色化使用原纹理亮度乘目标色相，并按目标色相的亮度归一化。
 
 ```glsl
 uniform float CooAlphaCutoff;
@@ -267,6 +257,8 @@ val resolve = pass("resolve") {
 
 FBO、窗口 resize 和资源释放继续由 `SimpleFrameBuffer`、`RenderSceneResources` 和 OpenGL 后端处理。业务代码不创建另一套 framebuffer 生命周期。
 
+命名 FBO 只能保存和采样当前 Pipeline 已生成的 attachment。目前不支持从任意相机离屏重绘完整世界，包括另一视角下的地形、实体和透明层；fragment shader 也不能自行补足这些内容。实现这类摄像机画面需要单独的世界渲染生命周期和渲染状态隔离，不属于现有 FBO API 的能力范围。
+
 ## PingPong 卡片
 
 PingPong 是一个节点，不需要手写两组 pass。第一轮从外部 `line` 读取，后续轮交替读取前一轮输出。编译器只分配两组物理 target。
@@ -387,7 +379,7 @@ shader 没有声明 `BaseSampler` 时可以不采样原图集。
 
 Fabric/Sodium 未启用 shader pack 时，区块编译会把命中绑定的几何从原 batch 移到对应 Pipeline batch。原几何不会重复提交，因此没有两层共面 draw。每个 section 仍按 Pipeline 批量绘制，不会退化为逐方块 draw call。
 
-启用 Iris shader pack 时，绑定方块的原几何先进入 Iris terrain/gbuffer。Iris 完成最终合成后，框架读取最终 scene color 和 terrain depth，再批量覆盖这些方块的可见像素。深度测试使用 terrain depth、`LEQUAL` 和 polygon offset，避免与原表面争夺同一深度值。`BaseSampler` 仍是原方块 atlas；声明 `inputSceneColor` 的 shader 收到 Iris 处理后的画面。
+启用 Iris shader pack 时，绑定方块的原几何先进入 Iris terrain/gbuffer。Iris 完成最终合成后，框架读取最终 scene color 和 terrain depth，再批量覆盖这些方块的可见像素。深度测试直接使用 terrain depth 和 `LEQUAL`，不再使用 polygon offset 或全局 depth range 偏移，避免覆盖层穿过前景。`BaseSampler` 仍是原方块 atlas；声明 `inputSceneColor` 的 shader 收到 Iris 处理后的画面。
 
 这个覆盖 pass 不是 Iris gbuffer program，不写 shader pack 的 PBR、normal、material、shadow MRT。shader pack 若修改 terrain 顶点位置，覆盖几何可能无法完全贴合。透明 Pipeline 会随相机重新排序自己的 quad，但无法与其他 terrain 材质做跨 batch 的逐 quad 交错。这两项是当前限制。
 

@@ -30,10 +30,12 @@ import org.lwjgl.opengl.GL33.GL_BLEND_EQUATION_RGB
 import org.lwjgl.opengl.GL33.GL_BLEND_SRC_ALPHA
 import org.lwjgl.opengl.GL33.GL_BLEND_SRC_RGB
 import org.lwjgl.opengl.GL33.GL_COLOR_BUFFER_BIT
+import org.lwjgl.opengl.GL33.GL_COLOR_WRITEMASK
 import org.lwjgl.opengl.GL33.GL_COLOR_ATTACHMENT0
 import org.lwjgl.opengl.GL33.GL_CULL_FACE
 import org.lwjgl.opengl.GL33.GL_CURRENT_PROGRAM
 import org.lwjgl.opengl.GL33.GL_DEPTH_BUFFER_BIT
+import org.lwjgl.opengl.GL33.GL_DEPTH_FUNC
 import org.lwjgl.opengl.GL33.GL_DEPTH_ATTACHMENT
 import org.lwjgl.opengl.GL33.GL_DEPTH_TEST
 import org.lwjgl.opengl.GL33.GL_DEPTH_WRITEMASK
@@ -51,27 +53,36 @@ import org.lwjgl.opengl.GL33.GL_NONE
 import org.lwjgl.opengl.GL33.GL_READ_FRAMEBUFFER
 import org.lwjgl.opengl.GL33.GL_READ_FRAMEBUFFER_BINDING
 import org.lwjgl.opengl.GL33.GL_READ_BUFFER
+import org.lwjgl.opengl.GL33.GL_SCISSOR_BOX
 import org.lwjgl.opengl.GL33.GL_SCISSOR_TEST
 import org.lwjgl.opengl.GL33.GL_TEXTURE0
 import org.lwjgl.opengl.GL33.GL_TEXTURE
 import org.lwjgl.opengl.GL33.GL_TEXTURE_2D
 import org.lwjgl.opengl.GL33.GL_TEXTURE_BINDING_2D
 import org.lwjgl.opengl.GL33.GL_VIEWPORT
+import org.lwjgl.opengl.GL33.GL_VERTEX_ARRAY_BINDING
+import org.lwjgl.opengl.GL11.GL_POLYGON_OFFSET_FACTOR
+import org.lwjgl.opengl.GL11.GL_POLYGON_OFFSET_FILL
+import org.lwjgl.opengl.GL11.GL_POLYGON_OFFSET_UNITS
 import org.lwjgl.opengl.GL33.glActiveTexture
 import org.lwjgl.opengl.GL33.glBindFramebuffer
 import org.lwjgl.opengl.GL33.glBindTexture
+import org.lwjgl.opengl.GL33.glBindVertexArray
 import org.lwjgl.opengl.GL33.glBlendEquationSeparate
 import org.lwjgl.opengl.GL33.glBlendFuncSeparate
 import org.lwjgl.opengl.GL33.glBlitFramebuffer
 import org.lwjgl.opengl.GL33.glCheckFramebufferStatus
 import org.lwjgl.opengl.GL33.glDepthMask
+import org.lwjgl.opengl.GL33.glDepthFunc
 import org.lwjgl.opengl.GL33.glDisable
 import org.lwjgl.opengl.GL33.glEnable
 import org.lwjgl.opengl.GL33.glGetBoolean
+import org.lwjgl.opengl.GL11.glGetFloat
 import org.lwjgl.opengl.GL33.glGetFramebufferAttachmentParameteri
 import org.lwjgl.opengl.GL33.glGetInteger
 import org.lwjgl.opengl.GL33.glGetIntegerv
 import org.lwjgl.opengl.GL33.glIsEnabled
+import org.lwjgl.opengl.GL11.glPolygonOffset
 import org.lwjgl.opengl.GL33.glReadBuffer
 import org.lwjgl.opengl.GL33.glUseProgram
 import org.lwjgl.opengl.GL33.glViewport
@@ -218,6 +229,12 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
      *
      * 返回值只允许在复制完成后作为 sampler 输入使用；源 FBO 始终保持为后续绘制目标，
      * 因而不会形成同一 attachment 的读写反馈。
+     *
+     * @param sourceFramebufferId 当前 terrain 输出所在的 framebuffer 对象名，必须大于 `0`
+     * @param width 源 framebuffer 宽度，最小按 `1` 处理
+     * @param height 源 framebuffer 高度，最小按 `1` 处理
+     * @param sceneResources 当前帧已有的场景资源，用于补齐复制上下文
+     * @return 包含独立颜色和可用深度纹理的场景资源；源目标无效或复制失败时返回 `null`
      */
     internal fun captureTerrainScene(
         sourceFramebufferId: Int,
@@ -315,6 +332,7 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         }
     }
 
+    /** 释放地形场景副本，并重置相关帧标记和一次性告警状态。 */
     internal fun releaseTerrainColorCapture() {
         sceneCopy?.buffer?.release()
         sceneCopy = null
@@ -322,6 +340,13 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         warnedTerrainSceneCopyFailure = false
     }
 
+    /**
+     * 查询后处理后端当前保存的命名颜色 attachment。
+     *
+     * @param target 命名渲染目标 ID
+     * @param attachment 颜色 attachment 索引
+     * @return 有效 OpenGL 纹理对象名；尚未捕获或对象名无效时返回 `null`
+     */
     internal fun resolveNamedColorTexture(target: ResourceLocation, attachment: Int): Int? {
         return namedTargetTextures[NamedAttachment(target, attachment)]?.takeIf { it > 0 }
     }
@@ -816,43 +841,93 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         }
     }
 
-    private fun withFlatPostState(block: () -> Unit) {
-        // 全屏绘制会改动 program、混合、深度、viewport、FBO 和活动纹理，进入前必须保存这些状态。
+    /**
+     * 执行自定义绘制，并在离开作用域时恢复调用方的 RenderSystem 与底层 OpenGL 状态。
+     *
+     * 保存范围包括混合、深度、裁剪、颜色写入、polygon offset、shader、VAO、前 12 个纹理单元、
+     * framebuffer 和 viewport。即使 [block] 抛出异常也会执行恢复。
+     *
+     * 示例：`withPreservedGlState { drawTerrainOverlay() }`。
+     *
+     * @param block 允许临时修改上述状态的绘制代码
+     */
+    internal fun withPreservedGlState(block: () -> Unit) {
+        // 自定义绘制会改动 program、混合、深度、viewport、FBO 和活动纹理，进入前必须保存这些状态。
         val depthEnabled = glIsEnabled(GL_DEPTH_TEST)
         val cullEnabled = glIsEnabled(GL_CULL_FACE)
         val scissorEnabled = glIsEnabled(GL_SCISSOR_TEST)
         val blendEnabled = glIsEnabled(GL_BLEND)
         val depthMask = glGetBoolean(GL_DEPTH_WRITEMASK)
+        val depthFunc = glGetInteger(GL_DEPTH_FUNC)
+        val polygonOffsetEnabled = glIsEnabled(GL_POLYGON_OFFSET_FILL)
+        val previousPolygonOffsetFactor = glGetFloat(GL_POLYGON_OFFSET_FACTOR)
+        val previousPolygonOffsetUnits = glGetFloat(GL_POLYGON_OFFSET_UNITS)
         val blendSrcRgb = glGetInteger(GL_BLEND_SRC_RGB)
         val blendDstRgb = glGetInteger(GL_BLEND_DST_RGB)
         val blendSrcAlpha = glGetInteger(GL_BLEND_SRC_ALPHA)
         val blendDstAlpha = glGetInteger(GL_BLEND_DST_ALPHA)
         val blendEqRgb = glGetInteger(GL_BLEND_EQUATION_RGB)
         val blendEqAlpha = glGetInteger(GL_BLEND_EQUATION_ALPHA)
+        val previousShader = RenderSystem.getShader()
         val previousProgram = glGetInteger(GL_CURRENT_PROGRAM)
         val previousActive = glGetInteger(org.lwjgl.opengl.GL33.GL_ACTIVE_TEXTURE)
+        val previousVertexArray = glGetInteger(GL_VERTEX_ARRAY_BINDING)
+        val previousShaderTextures = IntArray(12) { RenderSystem.getShaderTexture(it) }
+        val previousTextureBindings = IntArray(previousShaderTextures.size) { index ->
+            glActiveTexture(GL_TEXTURE0 + index)
+            glGetInteger(GL_TEXTURE_BINDING_2D)
+        }
+        glActiveTexture(previousActive)
+        val previousColorMask = IntArray(4)
+        glGetIntegerv(GL_COLOR_WRITEMASK, previousColorMask)
+        val previousScissorBox = IntArray(4)
+        glGetIntegerv(GL_SCISSOR_BOX, previousScissorBox)
         val previousReadFbo = glGetInteger(GL_READ_FRAMEBUFFER_BINDING)
         val previousDrawFbo = glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING)
         val previousViewport = IntArray(4)
         glGetIntegerv(GL_VIEWPORT, previousViewport)
-        RenderSystem.disableBlend()
-        RenderSystem.disableDepthTest()
-        RenderSystem.disableCull()
-        if (scissorEnabled) {
-            glDisable(GL_SCISSOR_TEST)
-        }
         try {
             block()
         } finally {
-            // 先恢复底层 GL 状态，再同步 RenderSystem 缓存，避免两者在离开作用域后不一致。
+            // 同时恢复 RenderSystem 缓存和真实 GL 状态，避免 Iris 绕过缓存后留下错误绑定。
+            RenderSystem.blendFuncSeparate(blendSrcRgb, blendDstRgb, blendSrcAlpha, blendDstAlpha)
             glBlendFuncSeparate(blendSrcRgb, blendDstRgb, blendSrcAlpha, blendDstAlpha)
             glBlendEquationSeparate(blendEqRgb, blendEqAlpha)
+            RenderSystem.depthMask(depthMask)
             glDepthMask(depthMask)
+            RenderSystem.depthFunc(depthFunc)
+            glDepthFunc(depthFunc)
+            RenderSystem.polygonOffset(previousPolygonOffsetFactor, previousPolygonOffsetUnits)
+            glPolygonOffset(previousPolygonOffsetFactor, previousPolygonOffsetUnits)
+            if (polygonOffsetEnabled) {
+                RenderSystem.enablePolygonOffset()
+                glEnable(GL_POLYGON_OFFSET_FILL)
+            } else {
+                RenderSystem.disablePolygonOffset()
+                glDisable(GL_POLYGON_OFFSET_FILL)
+            }
             glUseProgram(previousProgram)
+            RenderSystem.setShader { previousShader }
+            glBindVertexArray(previousVertexArray)
+            previousShaderTextures.forEachIndexed { index, texture ->
+                RenderSystem.setShaderTexture(index, texture)
+                RenderSystem.activeTexture(GL_TEXTURE0 + index)
+                glActiveTexture(GL_TEXTURE0 + index)
+                RenderSystem.bindTexture(previousTextureBindings[index])
+                glBindTexture(GL_TEXTURE_2D, previousTextureBindings[index])
+            }
+            RenderSystem.activeTexture(previousActive)
             glActiveTexture(previousActive)
             glBindFramebuffer(GL_READ_FRAMEBUFFER, previousReadFbo)
             glBindFramebuffer(GL_DRAW_FRAMEBUFFER, previousDrawFbo)
+            RenderSystem.viewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3])
             glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3])
+            RenderSystem.colorMask(
+                previousColorMask[0] != 0,
+                previousColorMask[1] != 0,
+                previousColorMask[2] != 0,
+                previousColorMask[3] != 0
+            )
             if (blendEnabled) {
                 RenderSystem.enableBlend()
             } else {
@@ -869,10 +944,28 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
                 RenderSystem.disableCull()
             }
             if (scissorEnabled) {
-                glEnable(GL_SCISSOR_TEST)
+                RenderSystem.enableScissor(
+                    previousScissorBox[0],
+                    previousScissorBox[1],
+                    previousScissorBox[2],
+                    previousScissorBox[3]
+                )
             } else {
-                glDisable(GL_SCISSOR_TEST)
+                RenderSystem.disableScissor()
             }
+        }
+    }
+
+    /** 在完整状态保护内切换到全屏后处理使用的无混合、无深度、无裁剪状态。 */
+    private fun withFlatPostState(block: () -> Unit) {
+        withPreservedGlState {
+            RenderSystem.disableBlend()
+            RenderSystem.disableDepthTest()
+            RenderSystem.disableCull()
+            if (glIsEnabled(GL_SCISSOR_TEST)) {
+                RenderSystem.disableScissor()
+            }
+            block()
         }
     }
 

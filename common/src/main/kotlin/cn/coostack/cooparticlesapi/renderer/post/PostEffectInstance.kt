@@ -2,7 +2,11 @@ package cn.coostack.cooparticlesapi.renderer.post
 
 import net.minecraft.resources.ResourceLocation
 
-/** 一次 Pipeline 后处理播放的内部执行快照。 */
+/**
+ * 一次 Pipeline 后处理播放的内部执行快照。
+ *
+ * @property subject 本地 uniform provider 读取的对象；不写入网络状态
+ */
 internal data class PostEffectInstance(
     val type: PostEffectType,
     val instanceId: String,
@@ -11,7 +15,8 @@ internal data class PostEffectInstance(
     val params: PostEffectParams = PostEffectParams.EMPTY,
     val sourceId: String = "",
     val priority: Int = type.defaultPriority,
-    val serverSynced: Boolean = false
+    val serverSynced: Boolean = false,
+    val subject: Any = Unit
 ) {
     val progress: Float get() = lifecycle.progress
     val expired: Boolean get() = lifecycle.expired

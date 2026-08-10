@@ -33,7 +33,10 @@ class RenderEntityV1RemovalTest {
             "DedicatedGlowMaskRenderEntityRenderer",
             "describeFeatures",
             "glowMaskConfig",
-            "RenderEntityModelPipe"
+            "RenderEntityModelPipe",
+            "terrainEffect",
+            "CooTerrainEffectContext",
+            "CooTerrainEffectFrame"
         )
         Files.walk(docsDir).use { stream ->
             stream

@@ -6,17 +6,17 @@ import cn.coostack.cooparticlesapi.test.api.TestOptionParamSpec
 import cn.coostack.cooparticlesapi.test.api.TestOptionPlayerUpdateSupport
 import cn.coostack.cooparticlesapi.test.api.TestReviewMode
 import net.minecraft.network.chat.Component
+import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.entity.player.Player
 import java.util.function.Supplier
 
 class BlockTestGroup(
-    val testPlayer: BlockTestPlayer,
-    private val id: String
+    val testPlayer: Player,
+    private val id: ResourceLocation
 ) : TestGroup {
     internal var statusAnnouncer: (String) -> Unit = { message ->
-        testPlayer.level.server.sendSystemMessage(Component.literal(message))
+        testPlayer.level().server?.sendSystemMessage(Component.literal(message))
     }
-    constructor(testPlayer: Player, id: String) : this(BlockTestPlayer(testPlayer), id)
 
     /**
      * 保留给旧版调用方的测试项复核结果。
@@ -49,12 +49,12 @@ class BlockTestGroup(
     var announceGroupFinished: Boolean = true
     var reviewMode: BlockTestReviewMode = BlockTestReviewMode.MANUAL_VISUAL
     /**
-     * 在 Option supplier 构造前通知外部重置模拟玩家。
+     * 在 Option supplier 构造前通知外部重置测试玩家。
      *
      * 示例：控制器在此回调中把 ONCE 轨道放回当前测试项起点。
      * 禁止在回调中推进测试组或调用当前 Option。
      */
-    var optionStartListener: (BlockTestPlayer, Int) -> Unit = { _, _ -> }
+    var optionStartListener: (Player, Int) -> Unit = { _, _ -> }
     private var lastStatus = "未开始"
 
     override fun getUser(): Player {
@@ -88,7 +88,7 @@ class BlockTestGroup(
 
     fun hasPendingReview(): Boolean = pendingReviewOption != null
 
-    override fun groupID(): String = id
+    override fun groupID(): ResourceLocation = id
 
     fun statusLine(): String = buildCurrentStatusLine() ?: lastStatus
 
@@ -131,9 +131,13 @@ class BlockTestGroup(
     }
 
     fun cancel() {
-        currentOption?.stop()
+        val option = currentOption ?: pendingReviewOption
+        if (currentOption != null) {
+            option?.stop()
+        }
         currentOption = null
         pendingReviewOption = null
+        option?.onFailed()
         activeOptionIndex = -1
         nextOptionIndex = options.size
         lastStatus = "已停止"
@@ -157,7 +161,7 @@ class BlockTestGroup(
     }
 
     /**
-     * 更新当前测试项，并在其 tick 前派发最新的模拟玩家姿态。
+     * 更新当前测试项，并在其 tick 前派发最新的测试玩家姿态。
      *
      * 示例：控制器先设置玩家位置和 forward，再由本方法调用玩家更新回调与 Option tick。
      * 禁止在等待人工复核时继续派发玩家更新事件。

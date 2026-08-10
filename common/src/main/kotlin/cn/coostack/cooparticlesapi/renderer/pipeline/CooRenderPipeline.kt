@@ -150,6 +150,18 @@ class CooPipelineNode internal constructor(
         }
     }
 
+    /**
+     * 返回绑定到指定纹理单元的输入端口。
+     *
+     * @param textureSlot shader sampler 使用的纹理单元序号
+     * @return 对应纹理单元的输入端口
+     */
+    fun input(textureSlot: Int): CooPipelineInputPort {
+        return requireNotNull(inputs.singleOrNull { it.textureSlot == textureSlot }) {
+            "Node '$name' has no unique input port at texture slot $textureSlot"
+        }
+    }
+
     fun output(name: String): CooPipelineOutputPort {
         return requireNotNull(outputs.firstOrNull { it.name == name }) {
             "Node '${this.name}' has no output port '$name'"

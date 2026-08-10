@@ -3,70 +3,26 @@ package cn.coostack.cooparticlesapi.renderer.terrain
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooEffectUvMode
 import com.mojang.blaze3d.vertex.VertexConsumer
 import net.minecraft.core.BlockPos
-import net.minecraft.core.SectionPos
-import kotlin.math.abs
-import kotlin.math.floor
 
-internal data class CooEffectUv(
-    val u: Float,
-    val v: Float
-)
-
-internal object CooEffectUvResolver {
-    fun resolve(
-        mode: CooEffectUvMode,
-        blockPos: BlockPos,
-        x: Float,
-        y: Float,
-        z: Float,
-        baseU: Float,
-        baseV: Float,
-        normalX: Float,
-        normalY: Float,
-        normalZ: Float
-    ): CooEffectUv {
-        val localX = x - SectionPos.sectionRelative(blockPos.x)
-        val localY = y - SectionPos.sectionRelative(blockPos.y)
-        val localZ = z - SectionPos.sectionRelative(blockPos.z)
-        val worldX = blockPos.x + localX
-        val worldY = blockPos.y + localY
-        val worldZ = blockPos.z + localZ
-        return when (mode) {
-            CooEffectUvMode.BASE_UV -> CooEffectUv(fractional(baseU), fractional(baseV))
-            CooEffectUvMode.FACE_LOCAL -> when {
-                abs(normalX) >= abs(normalY) && abs(normalX) >= abs(normalZ) ->
-                    CooEffectUv(fractional(localZ), fractional(localY))
-
-                abs(normalY) >= abs(normalZ) -> CooEffectUv(fractional(localX), fractional(localZ))
-                else -> CooEffectUv(fractional(localX), fractional(localY))
-            }
-
-            CooEffectUvMode.WORLD_XZ -> CooEffectUv(fractional(worldX), fractional(worldZ))
-            CooEffectUvMode.WORLD_XY -> CooEffectUv(fractional(worldX), fractional(worldY))
-            CooEffectUvMode.WORLD_YZ -> CooEffectUv(fractional(worldY), fractional(worldZ))
-        }
-    }
-
-    fun pack(value: Float): Int {
-        return (value.coerceIn(0F, 1F) * 65535F).toInt() - 32768
-    }
-
-    fun periodicWorldCoordinate(value: Double): Float {
-        val period = 1024.0
-        return (value - floor(value / period) * period).toFloat()
-    }
-
-    private fun fractional(value: Float): Float = value - floor(value)
-}
-
-/** 保留 UV0，在 UV1 写入 EffectUV，并把生效 tick 写入 light UV 的空闲高位。 */
+/**
+ * 在原版区块顶点写入过程中补充地形效果数据。
+ *
+ * 包装器原样转发位置、颜色和 UV0，在法线提交时根据完整顶点状态计算 UV1，
+ * 并把位置生效 tick 写入 light UV 两个分量的空闲高位。调用顺序遵循原版 [VertexConsumer] 契约。
+ *
+ * @property delegate 接收最终顶点数据的原始消费者
+ * @property mode 当前 Pipeline 的效果 UV 计算模式
+ * @property blockPos 当前方块的世界坐标
+ * @param activatedAt 该位置的绝对生效 tick；静态 Pipeline 使用 `0`
+ */
 internal class CooEffectUvVertexConsumer(
     private val delegate: VertexConsumer,
     private val mode: CooEffectUvMode,
     private val blockPos: BlockPos,
     activatedAt: Long
 ) : VertexConsumer {
-    private val activationTick = (activatedAt and 0xFFFFL).toInt()
+    /** 写入顶点光照通道的绝对生效 tick。 */
+    private val activatedAt = activatedAt
     private var x = 0F
     private var y = 0F
     private var z = 0F
@@ -90,14 +46,33 @@ internal class CooEffectUvVertexConsumer(
         delegate.setUv(u, v)
     }
 
+    /**
+     * 忽略原调用方提交的 UV1，因为该通道由 EffectUV 独占。
+     *
+     * @return 当前包装器
+     */
     override fun setUv1(u: Int, v: Int): VertexConsumer = this
 
+    /**
+     * 转发原版 light UV，并在两个分量的高八位写入生效 tick。
+     *
+     * @return 当前包装器
+     */
     override fun setUv2(u: Int, v: Int): VertexConsumer = apply {
-        val packedU = (u and 0xFF) or ((activationTick and 0xFF) shl 8)
-        val packedV = (v and 0xFF) or (((activationTick ushr 8) and 0xFF) shl 8)
+        val packed = CooEffectUvResolver.packLightWithActivation(
+            (u and 0xFFFF) or ((v and 0xFFFF) shl 16),
+            activatedAt
+        )
+        val packedU = packed and 0xFFFF
+        val packedV = (packed ushr 16) and 0xFFFF
         delegate.setUv2(packedU, packedV)
     }
 
+    /**
+     * 使用此前收集的位置、UV0 和当前法线计算 EffectUV，然后提交完整顶点法线。
+     *
+     * @return 当前包装器
+     */
     override fun setNormal(x: Float, y: Float, z: Float): VertexConsumer = apply {
         val effectUv = CooEffectUvResolver.resolve(
             mode = mode,

@@ -96,7 +96,7 @@ class SimpleShaderProgram(
 
     private fun assertProgram() {
         require(glGetProgrami(program, GL_LINK_STATUS) != GL_FALSE) {
-            "program $program link error: ${glGetProgramInfoLog(program)}"
+            "program $program link error: ${glGetProgramInfoLog(program)} ${vertexShader.sourceLocation()} : ${fragmentShader.sourceLocation()}"
         }
     }
 }

@@ -18,16 +18,27 @@ internal object CooPipelineRuntimeEffect {
 
     fun initOnClient() {
         RenderEffectRegistry.register(effectType, RenderEffectExecutor { context, effects ->
-            effects.forEach effectLoop@{ effect ->
-                val request = effect.payload as? Request ?: return@effectLoop
-                val captured = request.attachments.groupBy(CooCompiledAttachment::framebuffer).all { (framebuffer, attachments) ->
+            val requestsByPipeline = effects
+                .mapNotNull { effect -> effect.payload as? Request }
+                .groupBy { request -> request.postEffect.type.id }
+            requestsByPipeline.forEach pipelineLoop@{ (pipelineId, requests) ->
+                val attachmentsByFramebuffer = requests
+                    .flatMap(Request::attachments)
+                    .groupBy(CooCompiledAttachment::framebuffer)
+                val captured = attachmentsByFramebuffer.all { (framebuffer, attachments) ->
                     PostEffectFrameExecutor.captureAttachments(
                         context = context,
-                        owner = request.owner,
+                        owner = pipelineId.toString(),
                         target = framebuffer,
                         attachmentCount = attachments.maxOf { it.output.attachment } + 1
                     ) {
-                        request.render(attachments.first().output)
+                        requests.forEach requestLoop@{ request ->
+                            request.attachments
+                                .asSequence()
+                                .filter { attachment -> attachment.framebuffer == framebuffer }
+                                .distinctBy { attachment -> attachment.output.node }
+                                .forEach { attachment -> request.render(attachment.output) }
+                        }
                     }
                 }
                 if (!captured) {
@@ -37,9 +48,10 @@ internal object CooPipelineRuntimeEffect {
                             "Skipping pipeline world attachments because the active post backend cannot capture them"
                         )
                     }
-                    return@effectLoop
+                    return@pipelineLoop
                 }
-                PostEffectFrameExecutor.execute(context, listOf(request.postEffect))
+                val postEffect = requests.minBy(Request::owner).postEffect
+                PostEffectFrameExecutor.execute(context, listOf(postEffect))
             }
         })
     }

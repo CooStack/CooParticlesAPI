@@ -9,6 +9,7 @@ import cn.coostack.cooparticlesapi.renderer.utils.TrailModelBuilder
 import cn.coostack.cooparticlesapi.renderer.utils.TrailPointTracker
 import cn.coostack.cooparticlesapi.renderer.utils.TrailRibbonStyle
 import org.joml.Vector3f
+import java.util.WeakHashMap
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -23,11 +24,8 @@ import kotlin.math.sin
 @CooAutoRegisterRenderer
 class DemoTrailOrbRenderEntityRenderer : RenderEntityRenderer<DemoTrailOrbRenderEntity> {
 
-    private val tracker = TrailPointTracker(
-        maxPoints = 96,
-        maxAgeTicks = 16F,
-        minPointDistance = 0.01
-    )
+    /** 每个拖尾实体独立使用的历史点追踪器。 */
+    private val trackers = WeakHashMap<DemoTrailOrbRenderEntity, TrailPointTracker>()
 
     override val pipeline = CooPipelines.MASK_BLOOM
         .blurSigma(6F)
@@ -38,7 +36,21 @@ class DemoTrailOrbRenderEntityRenderer : RenderEntityRenderer<DemoTrailOrbRender
         DemoWorldRenderModelSupport.renderModel(input, buildModel(input.entity, input.tickDelta))
     }
 
+    /**
+     * 构建当前实体的轨道核心与历史拖尾模型。
+     *
+     * @param entity 提供轨道参数和独立拖尾历史的实体
+     * @param tickDelta 当前帧的局部刻插值
+     * @return 当前帧可提交的拖尾球模型
+     */
     private fun buildModel(entity: DemoTrailOrbRenderEntity, tickDelta: Float): RenderEntityModel {
+        val tracker = trackers.getOrPut(entity) {
+            TrailPointTracker(
+                maxPoints = 96,
+                maxAgeTicks = 16F,
+                minPointDistance = 0.01
+            )
+        }
         val orbitLocal = orbitOffset(entity, tickDelta)
         val origin = entity.lastRenderPos.lerp(entity.pos, tickDelta.toDouble())
         // 同一帧内 world pass 与 glow mask 会各构建一次模型，tracker 会自动忽略重复时间戳

@@ -28,6 +28,7 @@ import cn.coostack.cooparticlesapi.renderer.post.CooPostEffects
 import cn.coostack.cooparticlesapi.renderer.post.OpenGlPostEffectExecutionBackend
 import cn.coostack.cooparticlesapi.renderer.post.PostEffectFrameExecutor
 import cn.coostack.cooparticlesapi.renderer.post.PostEffectRuntimeRegistry
+import cn.coostack.cooparticlesapi.renderer.pipeline.CooBlockPipelines
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelineRuntimeEffect
 import cn.coostack.cooparticlesapi.renderer.shader.ShaderProgramRegistry
 import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainEffectRegistry
@@ -64,8 +65,9 @@ object CooParticlesAPIClient {
     /**
      * 初始化客户端注册项、CParticle 图形 program，并应用当前配置中的粒子总量上限。
      *
-     * Example: 客户端入口在 common 初始化完成后调用一次 `init()`。
-     * Forbidden: 此处只注册 program，不能执行依赖 GL 上下文的编译；专用服务端也不能调用本方法。
+     * 示例：客户端入口在 common 初始化完成后调用一次 `init()`。
+     *
+     * 禁止：此处只注册 program，不能执行依赖 GL 上下文的编译；专用服务端也不能调用本方法。
      */
     @JvmStatic
     fun init() {
@@ -158,8 +160,9 @@ object CooParticlesAPIClient {
     /**
      * 在渲染线程准备客户端管线，并编译启动阶段已经注册的 shader program。
      *
-     * Example: 首次资源加载或世界渲染时调用，CParticle 不再承担 program 首次编译。
-     * Forbidden: loader 的普通客户端注册回调没有可用 GL 上下文时不能直接调用。
+     * 示例：首次资源加载或世界渲染时调用，CParticle 不再承担 program 首次编译。
+     *
+     * 禁止：loader 的普通客户端注册回调没有可用 GL 上下文时不能直接调用。
      */
     @JvmStatic
     fun initShaderPrograms() {
@@ -190,7 +193,6 @@ object CooParticlesAPIClient {
 
     private fun initRender() {
         CooTerrainPipelineManager.initialize()
-        RenderPipelineExamples.registerBlockExamples()
         PostEffectDemoOptions.init()
         CooRenderTypeResourceRegistry.reloadFromClasspath()
         PostEffectRuntimeRegistry.initOnClient()
@@ -228,6 +230,7 @@ object CooParticlesAPIClient {
         CParticleSystemManager.clear()
         ClientRenderEntityManager.clear()
         CooTerrainEffectRegistry.clear()
+        CooBlockPipelines.clearScopedBindings()
         CooTerrainPipelineManager.releaseResources()
         CooPostEffects.client.clear()
         DataHolderManager.clearClient()
@@ -245,6 +248,7 @@ object CooParticlesAPIClient {
         if (!::access.isInitialized) {
             access = world.registryAccess()
         }
+        RenderPipelineExamples.ensureStarfieldFbo()
 
         val tickManager = world.tickRateManager()
         if (!tickManager.runsNormally()) {

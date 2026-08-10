@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi.blocks
 
+import cn.coostack.cooparticlesapi.extend.ofID
 import cn.coostack.cooparticlesapi.test.api.TestOption
 import cn.coostack.cooparticlesapi.test.api.TestReviewMode
 import cn.coostack.cooparticlesapi.test.block.BlockTestGroup
@@ -107,7 +108,7 @@ class TestControllerBlockEntityReplayTest {
             groupFactory = {
                 val option = RenderEntityLikeOption(Any())
                 options.add(option)
-                BlockTestGroup(uninitializedBlockTestPlayer(), "replay")
+                BlockTestGroup(uninitializedBlockTestPlayer(), ofID("replay"))
                     .also {
                         it.statusAnnouncer = {}
                         it.announceGroupFinished = false
