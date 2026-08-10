@@ -25,8 +25,8 @@ interface RenderEntityRenderer<T : RenderEntity> {
      * 该实体类型共享的不可变渲染 pipeline。
      *
      * Runtime 会缓存它的拓扑编译结果，因此实现不能在实体绘制期间替换或修改 pipeline 图。
-     * 同一帧中，相同 pipeline id 的实体会共用附件，并且只执行一次 fullscreen 链。
-     * 同一 id 应使用相同的 fullscreen uniform 配置；实体之间不同的参数应放在 world 节点，或改用不同 id。
+     * 同一帧中，相同 pipeline id 和 fullscreen 参数的实体会共用附件，并且只执行一次 fullscreen 链。
+     * world 节点参数按实体绘制求值，不会拆分后处理批次；fullscreen 参数值不同时会分别执行。
      */
     val pipeline: CooRenderPipeline<T>
 

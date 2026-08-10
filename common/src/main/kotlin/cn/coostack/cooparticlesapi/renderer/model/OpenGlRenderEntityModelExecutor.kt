@@ -178,6 +178,7 @@ object OpenGlRenderEntityModelExecutor : RenderEntityModelExecutor {
         }
     }
 
+    /** 上传框架矩阵、共享默认值和当前 world 节点的实体 uniform。 */
     private fun uploadUniforms(uniforms: CooProgramUniformAccess, input: RenderInput<*>) {
         val modelView = Matrix4f(input.viewMatrix).mul(input.modelMatrix)
         uniforms.setMatrix4("projMat", input.projMatrix)
@@ -186,6 +187,7 @@ object OpenGlRenderEntityModelExecutor : RenderEntityModelExecutor {
         uniforms.setMatrix4("transMat", input.modelMatrix)
         uniforms.setMatrix4("ModelViewMat", modelView)
         uniforms.setFloat("intensity", 1F)
+        uniforms.setFloat("BloomIntensity", 1F)
         input.node.uniforms.forEach { (name, provider) ->
             uploadUniform(uniforms, name, provider.resolve(input.entity))
         }

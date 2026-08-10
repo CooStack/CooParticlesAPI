@@ -29,6 +29,7 @@ object CooPipelines {
             vertex(id("core/vertex/render_entity_model.vsh"))
             fragment(id("core/fragment/render_entity_model.fsh"))
             maskOutput()
+            uniform("BloomIntensity", 3F)
         }
         val blurHorizontal = pass("blur_horizontal") {
             fragment(id("post/bloom_blur_horizontal.fsh"))
@@ -46,7 +47,7 @@ object CooPipelines {
             fragment(id("post/mask_bloom_composite.fsh"))
             input("SceneColor")
             input("Bloom")
-            uniform("Intensity", 3F)
+            uniform("Intensity", 1F)
         }
 
         line(geometry.color(), worldTarget())
@@ -60,7 +61,7 @@ object CooPipelines {
         parameter("blurSigma", blurVertical, "Sigma")
         parameter("blurRange", blurHorizontal, "Range")
         parameter("blurRange", blurVertical, "Range")
-        parameter("intensity", composite, "Intensity")
+        parameter("intensity", geometry, "BloomIntensity")
     }.build()
 
     /** 保持原版 terrain 行为的方块 pipeline 模板。 */

@@ -6,6 +6,7 @@ import net.minecraft.resources.ResourceLocation
  * 一次 Pipeline 后处理播放的内部执行快照。
  *
  * @property subject 本地 uniform provider 读取的对象；不写入网络状态
+ * @property uniformOverrides 当前帧已解析的 `(pass, uniform)`；为空时按普通 provider 解析
  */
 internal data class PostEffectInstance(
     val type: PostEffectType,
@@ -16,7 +17,8 @@ internal data class PostEffectInstance(
     val sourceId: String = "",
     val priority: Int = type.defaultPriority,
     val serverSynced: Boolean = false,
-    val subject: Any = Unit
+    val subject: Any = Unit,
+    val uniformOverrides: Map<Pair<String, String>, PostEffectParamValue?> = emptyMap()
 ) {
     val progress: Float get() = lifecycle.progress
     val expired: Boolean get() = lifecycle.expired

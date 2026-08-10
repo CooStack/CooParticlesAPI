@@ -275,6 +275,8 @@ class DemoWorldRenderEffectOptionsContractTest {
         assertTrue("layout (location = 2) in vec2 vertexUv" in vertexShader)
         assertTrue("uniform mat4 transMat" in vertexShader)
         assertTrue("uniform float intensity" in fragmentShader)
+        assertTrue("uniform float BloomIntensity" in fragmentShader)
+        assertTrue("fragColor.rgb * max(BloomIntensity, 0.0)" in fragmentShader)
         assertFalse("MaskBloom" in maskBloomDescriptors)
         assertFalse(projectFile(
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/effects/builtin/OpenGlMaskBloomEffectExecutor.kt"

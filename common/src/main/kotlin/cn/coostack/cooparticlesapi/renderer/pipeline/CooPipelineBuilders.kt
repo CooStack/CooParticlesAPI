@@ -131,22 +131,22 @@ class CooPipelineNodeBuilder<T : Any> internal constructor(
     }
 
     fun uniform(name: String, value: Float) = apply {
-        uniforms[name] = CooUniformProvider { CooUniformValue.FloatValue(value) }
+        setUniform(name) { CooUniformValue.FloatValue(value) }
     }
 
     fun uniform(name: String, value: CooUniformValue) = apply {
-        uniforms[name] = CooUniformProvider { value }
+        setUniform(name) { value }
     }
 
     fun <R : Any> uniform(name: String, provider: (R) -> Float) = apply {
-        uniforms[name] = CooUniformProvider { subject ->
+        setUniform(name) { subject ->
             @Suppress("UNCHECKED_CAST")
             CooUniformValue.FloatValue(provider(subject as R))
         }
     }
 
     fun <R : Any> uniformValue(name: String, provider: CooUniformProvider<R>) = apply {
-        uniforms[name] = CooUniformProvider { subject ->
+        setUniform(name) { subject ->
             @Suppress("UNCHECKED_CAST")
             provider.resolve(subject as R)
         }
@@ -168,7 +168,7 @@ class CooPipelineNodeBuilder<T : Any> internal constructor(
         require(kind == CooPipelineNodeKind.PING_PONG) {
             "Alternating uniforms are only available on ping-pong nodes"
         }
-        iterationUniforms[name] = CooIterationUniformProvider { iteration ->
+        setIterationUniform(name) { iteration ->
             if (iteration.isPing) ping else pong
         }
     }
@@ -177,7 +177,17 @@ class CooPipelineNodeBuilder<T : Any> internal constructor(
         require(kind == CooPipelineNodeKind.PING_PONG) {
             "Iteration uniforms are only available on ping-pong nodes"
         }
-        iterationUniforms[name] = CooIterationUniformProvider(provider)
+        setIterationUniform(name) { iteration -> provider(iteration) }
+    }
+
+    /** 存储节点 uniform provider，并让调用点直接传入 lambda。 */
+    private fun setUniform(name: String, provider: CooUniformProvider<Any>) {
+        uniforms[name] = provider
+    }
+
+    /** 存储迭代 uniform provider，并让调用点直接传入 lambda。 */
+    private fun setIterationUniform(name: String, provider: CooIterationUniformProvider) {
+        iterationUniforms[name] = provider
     }
 
     internal fun pingPong(iterations: Int, feedbackSampler: String) {
@@ -351,23 +361,26 @@ class CooRenderPipelineBuilder<T : Any> internal constructor(
     }
 
     /**
-     * 按颜色附件和纹理单元连接两个节点。
+     * 按 fragment output attachment 和纹理单元连接两个节点。
      *
      * `fromChannel` 对应源 fragment shader 的 `layout(location = n)`，
      * `toChannel` 对应目标 sampler 声明的 `textureSlot = n`。
      *
-     * @param from 输出颜色附件的源节点
-     * @param fromChannel 源节点的颜色附件序号
+     * 示例：`line(source, 1, composite, 0)` 把 `layout(location = 1)` 接到纹理单元 0。
+     *
+     * @param from 提供输出 attachment 的源节点
+     * @param fromChannel 源节点的 fragment output location
      * @param to 接收纹理输入的目标节点
      * @param toChannel 目标节点的纹理单元序号
      * @return 当前 pipeline builder
+     * @throws IllegalArgumentException 任一通道不存在或不唯一时抛出
      */
     fun line(
         from: CooPipelineNode,
         fromChannel: Int,
         to: CooPipelineNode,
         toChannel: Int
-    ) = line(from.color(fromChannel), to.input(toChannel))
+    ) = line(from.output(fromChannel), to.input(toChannel))
 
     fun texture(texture: ResourceLocation): CooPipelineTextureSource = CooPipelineTextureSource.Texture(texture)
     fun blockAtlas(): CooPipelineTextureSource = CooPipelineTextureSource.BlockAtlas

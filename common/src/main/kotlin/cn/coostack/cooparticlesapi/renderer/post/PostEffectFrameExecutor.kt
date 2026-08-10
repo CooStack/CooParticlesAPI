@@ -432,12 +432,19 @@ internal object PostEffectFrameExecutor {
         )
     }
 
+    /** 解析 pass uniform；批次已冻结的值优先于原始 provider。 */
     private fun resolveUniforms(
         pass: PostEffectPass,
         instance: PostEffectInstance
     ): Map<String, PostEffectParamValue> {
         return pass.uniforms.mapNotNull { uniform ->
-            uniform.provider(instance)?.let { uniform.name to it }
+            val key = pass.name to uniform.name
+            val value = if (key in instance.uniformOverrides) {
+                instance.uniformOverrides[key]
+            } else {
+                uniform.provider(instance)
+            }
+            value?.let { uniform.name to it }
         }.toMap()
     }
 

@@ -168,6 +168,21 @@ class CooPipelineNode internal constructor(
         }
     }
 
+    /**
+     * 返回指定 fragment output location 对应的输出端口。
+     *
+     * 示例：`node.output(1)` 对应 GLSL 的 `layout(location = 1)`。
+     *
+     * @param attachment fragment output location
+     * @return 唯一占用该 attachment 的输出端口
+     * @throws IllegalArgumentException attachment 不存在或不唯一时抛出
+     */
+    fun output(attachment: Int): CooPipelineOutputPort {
+        return requireNotNull(outputs.singleOrNull { it.attachment == attachment }) {
+            "Node '$name' has no unique output at attachment $attachment"
+        }
+    }
+
     fun color(attachment: Int = 0): CooPipelineOutputPort {
         return requireNotNull(outputs.firstOrNull {
             it.semantic == CooPipelineOutputSemantic.COLOR && it.attachment == attachment
@@ -234,20 +249,136 @@ class CooRenderPipeline<out T : Any> internal constructor(
             .mapNotNull { (it.shader as? CooPipelineShader.Core)?.id }
             .firstOrNull()
 
-    fun blurSigma(value: Float): CooRenderPipeline<T> = withFloatParameter("blurSigma") { value }
+    /**
+     * 设置模板声明的高斯模糊标准差。
+     *
+     * 示例：`CooPipelines.MASK_BLOOM.blurSigma(15F)`。
+     *
+     * @param value 传给 `blurSigma` 参数绑定的浮点值
+     * @return 包含新参数值的不可变 Pipeline
+     * @throws IllegalArgumentException 当前模板未声明 `blurSigma` 参数时抛出
+     */
+    fun blurSigma(value: Float): CooRenderPipeline<T> = parameter("blurSigma", value)
 
-    fun blurRange(value: Float): CooRenderPipeline<T> = withFloatParameter("blurRange") { value }
+    /**
+     * 设置模板声明的高斯模糊采样范围。
+     *
+     * 示例：`CooPipelines.MASK_BLOOM.blurRange(10F)`。
+     *
+     * @param value 传给 `blurRange` 参数绑定的浮点值
+     * @return 包含新参数值的不可变 Pipeline
+     * @throws IllegalArgumentException 当前模板未声明 `blurRange` 参数时抛出
+     */
+    fun blurRange(value: Float): CooRenderPipeline<T> = parameter("blurRange", value)
 
-    fun <R : Any> intensity(provider: (R) -> Float): CooRenderPipeline<R> {
-        return withFloatParameter("intensity", provider)
+    /**
+     * 为模板声明的 `intensity` 参数绑定固定值。
+     *
+     * 示例：`CooPipelines.MASK_BLOOM.intensity(2.8F)`。
+     *
+     * @param value 固定强度
+     * @return 包含固定强度的不可变 Pipeline
+     * @throws IllegalArgumentException 当前模板未声明 `intensity` 参数时抛出
+     */
+    fun intensity(value: Float): CooRenderPipeline<T> = parameter("intensity", value)
+
+    /**
+     * 为模板声明的 `intensity` 参数绑定当前对象的动态值。
+     *
+     * 示例：`CooPipelines.MASK_BLOOM.intensity { entity: LaserEntity -> entity.bright }`。
+     *
+     * @param provider 接收当前 Pipeline 对象并返回强度的函数
+     * @return 包含动态强度 provider 的不可变 Pipeline
+     * @throws IllegalArgumentException 当前模板未声明 `intensity` 参数时抛出
+     */
+    fun intensity(provider: (@UnsafeVariance T) -> Float): CooRenderPipeline<T> {
+        return parameter("intensity", provider)
     }
 
+    /**
+     * 为模板声明的参数绑定固定浮点值。
+     *
+     * 示例：`template.parameter("strength", 0.8F)`。
+     *
+     * @param name 构建模板时通过 `parameter(...)` 声明的参数名
+     * @param value 绑定到全部目标 uniform 的浮点值
+     * @return 包含新参数值的不可变 Pipeline
+     * @throws IllegalArgumentException 当前模板未声明指定参数时抛出
+     */
+    fun parameter(name: String, value: Float): CooRenderPipeline<T> {
+        return withParameter(name) { CooUniformValue.FloatValue(value) }
+    }
+
+    /**
+     * 为模板声明的参数绑定固定 uniform 值。
+     *
+     * 示例：`template.parameter("tint", CooUniformValue.Vec3Value(1F, 0F, 0F))`。
+     *
+     * @param name 构建模板时通过 `parameter(...)` 声明的参数名
+     * @param value 绑定到全部目标 uniform 的值
+     * @return 包含新参数值的不可变 Pipeline
+     * @throws IllegalArgumentException 当前模板未声明指定参数时抛出
+     */
+    fun parameter(name: String, value: CooUniformValue): CooRenderPipeline<T> {
+        return withParameter(name) { value }
+    }
+
+    /**
+     * 为 `entity<Nothing>` 等可复用模板绑定当前对象的动态浮点参数。
+     *
+     * 参数绑定到 world 节点时按每个实体绘制求值；绑定到 fullscreen 节点时，
+     * runtime 会按解析值合批，避免把不同的屏幕级 uniform 静默混用。
+     *
+     * 示例：`template.parameter("strength") { entity: LaserEntity -> entity.bright }`。
+     *
+     * @param name 构建模板时通过 `parameter(...)` 声明的参数名
+     * @param provider 接收当前 Pipeline 对象并返回浮点值的函数
+     * @return 包含动态参数 provider 的不可变 Pipeline
+     * @throws IllegalArgumentException 当前模板未声明指定参数时抛出
+     */
+    fun parameter(name: String, provider: (@UnsafeVariance T) -> Float): CooRenderPipeline<T> {
+        return withParameter(name) { subject ->
+            @Suppress("UNCHECKED_CAST")
+            CooUniformValue.FloatValue(provider(subject as T))
+        }
+    }
+
+    /**
+     * 为模板声明的参数绑定任意类型的动态 uniform provider。
+     *
+     * 示例：`template.parameterValue("tint") { _: LaserEntity -> CooUniformValue.Vec3Value(1F, 0F, 0F) }`。
+     *
+     * @param name 构建模板时通过 `parameter(...)` 声明的参数名
+     * @param provider 接收当前 Pipeline 对象并返回 uniform 值的 provider
+     * @return 包含动态参数 provider 的不可变 Pipeline
+     * @throws IllegalArgumentException 当前模板未声明指定参数时抛出
+     */
+    fun parameterValue(
+        name: String,
+        provider: CooUniformProvider<@UnsafeVariance T>
+    ): CooRenderPipeline<T> {
+        return withParameter(name) { subject ->
+            @Suppress("UNCHECKED_CAST")
+            provider.resolve(subject as T)
+        }
+    }
+
+    /**
+     * 替换主节点上的固定浮点 uniform。
+     *
+     * 示例：`pipeline.uniform("strength", 0.8F)`。
+     *
+     * @param name shader uniform 名称
+     * @param value 固定浮点值
+     * @return 包含新 uniform 的不可变 Pipeline
+     * @throws IllegalArgumentException Pipeline 没有主节点时抛出
+     */
     fun uniform(name: String, value: Float): CooRenderPipeline<T> {
-        return withPrimaryUniform(name, CooUniformProvider { CooUniformValue.FloatValue(value) })
+        return withPrimaryUniform(name) { CooUniformValue.FloatValue(value) }
     }
 
     internal fun uniformValue(name: String, value: CooUniformValue): CooRenderPipeline<T> {
-        return withPrimaryUniform(name, CooUniformProvider { value })
+        return withPrimaryUniform(name) { value }
     }
 
     internal fun uniformValues(values: Map<String, CooUniformValue>): CooRenderPipeline<T> {
@@ -258,20 +389,41 @@ class CooRenderPipeline<out T : Any> internal constructor(
         return result
     }
 
-    fun <R : Any> uniform(name: String, provider: (R) -> Float): CooRenderPipeline<R> {
-        val resolved = CooUniformProvider<Any> { subject ->
+    /**
+     * 替换主节点上按当前对象求值的浮点 uniform。
+     *
+     * 示例：`pipeline.uniform("strength") { entity: LaserEntity -> entity.bright }`。
+     *
+     * @param name shader uniform 名称
+     * @param provider 接收当前 Pipeline 对象并返回浮点值的函数
+     * @return 包含动态 uniform provider 的不可变 Pipeline
+     * @throws IllegalArgumentException Pipeline 没有主节点时抛出
+     */
+    fun uniform(name: String, provider: (@UnsafeVariance T) -> Float): CooRenderPipeline<T> {
+        return withPrimaryUniform(name) { subject ->
             @Suppress("UNCHECKED_CAST")
-            CooUniformValue.FloatValue(provider(subject as R))
+            CooUniformValue.FloatValue(provider(subject as T))
         }
-        return withPrimaryUniform(name, resolved)
     }
 
-    fun <R : Any> uniformValue(name: String, provider: CooUniformProvider<R>): CooRenderPipeline<R> {
-        val resolved = CooUniformProvider<Any> { subject ->
+    /**
+     * 替换主节点上按当前对象求值的任意类型 uniform。
+     *
+     * 示例：`pipeline.uniformValue("tint") { _: LaserEntity -> CooUniformValue.Vec3Value(1F, 0F, 0F) }`。
+     *
+     * @param name shader uniform 名称
+     * @param provider 接收当前 Pipeline 对象并返回 uniform 值的 provider
+     * @return 包含动态 uniform provider 的不可变 Pipeline
+     * @throws IllegalArgumentException Pipeline 没有主节点时抛出
+     */
+    fun uniformValue(
+        name: String,
+        provider: CooUniformProvider<@UnsafeVariance T>
+    ): CooRenderPipeline<T> {
+        return withPrimaryUniform(name) { subject ->
             @Suppress("UNCHECKED_CAST")
-            provider.resolve(subject as R)
+            provider.resolve(subject as T)
         }
-        return withPrimaryUniform(name, resolved)
     }
 
     internal fun resolveUniform(name: String, subject: Any): CooUniformValue? {
@@ -289,35 +441,34 @@ class CooRenderPipeline<out T : Any> internal constructor(
         return (value as? CooUniformValue.FloatValue)?.value ?: 0F
     }
 
-    private fun <R : Any> withFloatParameter(
+    /** 把 provider 写入同名参数绑定的全部节点。 */
+    private fun withParameter(
         name: String,
-        provider: (R) -> Float
-    ): CooRenderPipeline<R> {
+        provider: CooUniformProvider<Any>
+    ): CooRenderPipeline<T> {
         val bindings = requireNotNull(parameterBindings[name]) {
             "Pipeline '$id' does not declare parameter '$name'"
-        }
-        val resolved = CooUniformProvider<Any> { subject ->
-            @Suppress("UNCHECKED_CAST")
-            CooUniformValue.FloatValue(provider(subject as R))
         }
         var updated = nodes
         bindings.forEach { binding ->
             updated = updated.map { node ->
-                if (node.name == binding.node) node.withUniform(binding.uniform, resolved) else node
+                if (node.name == binding.node) node.withUniform(binding.uniform, provider) else node
             }
         }
         return copy(nodes = updated)
     }
 
-    private fun <R : Any> withPrimaryUniform(
+    /** 把 provider 写入 Pipeline 的主节点。 */
+    private fun withPrimaryUniform(
         name: String,
         provider: CooUniformProvider<Any>
-    ): CooRenderPipeline<R> {
+    ): CooRenderPipeline<T> {
         val target = requireNotNull(primaryNode) { "Pipeline '$id' has no primary shader node" }
         return copy(nodes = nodes.map { if (it.name == target) it.withUniform(name, provider) else it })
     }
 
-    private fun <R : Any> copy(nodes: List<CooPipelineNode>): CooRenderPipeline<R> {
+    /** 使用新的不可变节点列表复制 Pipeline。 */
+    private fun copy(nodes: List<CooPipelineNode>): CooRenderPipeline<T> {
         return CooRenderPipeline(
             id = id,
             domain = domain,

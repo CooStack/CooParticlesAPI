@@ -171,7 +171,149 @@ class MyRenderEntityRenderer : RenderEntityRenderer<MyRenderEntity> {
 
 调用方不再实现额外的阶段描述、mask 配置或专用后处理能力接口。一个含 world 节点和 fullscreen 节点的 Pipeline 会自动产生世界绘制和帧尾阶段。
 
+### 外部模组定义可复用的实体 Pipeline
+
+节点名称不是框架关键字。下面使用 `laser_mask`，也可以换成 `source` 或其他不重复的名称。`world(...)` 表示实体几何阶段，`pass(...)` 表示屏幕四边形阶段。
+
+先定义一个不绑定具体实体类型的模板：
+
+```kotlin
+object LaserPipelines {
+    val MASK_BLOOM_TEMPLATE: CooRenderPipeline<Nothing> =
+        CooPipelines.entity<Nothing>(id("laser_mask_bloom")) {
+            val source = world("laser_mask") {
+                vertex(id("shader/laser_mask.vsh"))
+                fragment(id("shader/laser_mask.fsh"))
+                maskOutput()
+                uniform("MaskStrength", 1F)
+            }
+            val blurHorizontal = pass("blur_horizontal") {
+                fragment(id("shader/blur_horizontal.fsh"))
+                input("Input", textureSlot = 0)
+                uniform("Sigma", 15F)
+            }
+            val blurVertical = pass("blur_vertical") {
+                fragment(id("shader/blur_vertical.fsh"))
+                input("Input", textureSlot = 0)
+                uniform("Sigma", 15F)
+            }
+            val composite = pass("composite") {
+                fragment(id("shader/composite.fsh"))
+                input("SceneColor", textureSlot = 0)
+                input("Bloom", textureSlot = 1)
+            }
+
+            line(source.color(), worldTarget())
+            line(source.mask(), blurHorizontal.input("Input"))
+            line(blurHorizontal.color(), blurVertical.input("Input"))
+            line(sceneColor(), composite.input("SceneColor"))
+            line(blurVertical.color(), composite.input("Bloom"))
+            line(composite.color(), screenTarget())
+
+            parameter("intensity", source, "MaskStrength")
+        }
+}
+```
+
+`laser_mask.fsh` 至少需要写出与 Pipeline 一致的 attachment。`maskOutput()` 在默认 color attachment 0 后增加 mask attachment 1：
+
+```glsl
+#version 330 core
+
+in vec4 fragColor;
+layout(location = 0) out vec4 SceneColor;
+layout(location = 1) out vec4 MaskColor;
+
+uniform float MaskStrength;
+
+void main() {
+    SceneColor = fragColor;
+    MaskColor = vec4(fragColor.rgb * max(MaskStrength, 0.0), fragColor.a);
+}
+```
+
+`parameter("intensity", source, "MaskStrength")` 声明模板参数。它绑定到 world 节点，所以按实体求值，但不会拆分 fullscreen 批次。外部 renderer 再把模板参数绑定到自己的实体字段：
+
+```kotlin
+@CooAutoRegister
+class LaserRenderEntity() : AutoRenderEntity(null) {
+    @CodecField
+    var bright: Float = 1F
+
+    override fun getRenderID(): ResourceLocation = ID
+
+    companion object {
+        val ID: ResourceLocation = id("laser")
+    }
+}
+
+@CooAutoRegisterRenderer
+class LaserRenderEntityRenderer : RenderEntityRenderer<LaserRenderEntity> {
+    override val pipeline = LaserPipelines.MASK_BLOOM_TEMPLATE
+        .parameter("intensity") { entity: LaserRenderEntity ->
+            2.8F * entity.bright.coerceAtLeast(0F)
+        }
+
+    override fun render(input: RenderInput<LaserRenderEntity>) {
+        RenderEntityModelExecutors.active().draw(MODEL, input)
+    }
+
+    companion object {
+        private val MODEL: RenderEntityModel = RenderEntityModelBuilder().run {
+            val layer = layer("laser")
+            addVertex(layer, Vector3f(0F, 0F, 0F), Vector4f(1F, 0.2F, 0.1F, 1F))
+            addVertex(layer, Vector3f(0F, 0F, 4F), Vector4f(1F, 0.8F, 0.2F, 1F))
+            build()
+        }
+    }
+}
+```
+
+`render(input)` 可能在 world 输出和离屏 attachment 捕获阶段被调用。绘制代码从 `input.entity` 读取本次实体，从 `input.node` 读取当前节点；不要把某个实体的动态值保存在共享 renderer 字段中。
+
+如果 Pipeline 不需要做成模板，可以直接绑定实体类型：
+
+```kotlin
+val pipeline = CooPipelines.entity<LaserRenderEntity>(id("laser_bloom")) {
+    world("laser_source") {
+        vertex(id("shader/laser.vsh"))
+        fragment(id("shader/laser.fsh"))
+        uniform("MaskStrength") { entity: LaserRenderEntity -> entity.bright }
+    }
+}
+```
+
 ## 节点与 line
+
+每个节点自动提供 color attachment 0。`colorAttachments(3)` 会提供 `color(0)`、`color(1)` 和 `color(2)`，分别对应 fragment shader 的 `layout(location = 0..2)`。world 节点调用 `maskOutput()` 后还会增加 `mask()` 输出。
+
+节点输入由 `input("SamplerName", textureSlot = n)` 声明。名称对应 GLSL sampler，`textureSlot` 是纹理单元。节点输出通过 `line` 接到另一个节点输入或 graph target：
+
+```kotlin
+val source = world("source") {
+    vertex(id("source.vsh"))
+    fragment(id("source.fsh"))
+    colorAttachments(2)
+}
+val resolve = pass("resolve") {
+    fragment(id("resolve.fsh"))
+    input("Base", textureSlot = 0)
+    input("Mask", textureSlot = 1)
+}
+
+line(source.color(0), resolve.input("Base"))
+line(source.color(1), resolve.input("Mask"))
+line(resolve.color(), screenTarget())
+```
+
+同一组连接也可以按通道写：
+
+```kotlin
+line(source, fromChannel = 0, resolve, toChannel = 0)
+line(source, fromChannel = 1, resolve, toChannel = 1)
+```
+
+`fromChannel` 是源 attachment，`toChannel` 查找目标节点中对应 `textureSlot` 的输入端口。一个输出可以连接多个输入；一个节点也可以声明多个输入和输出。
 
 下面的图有三个卡片。`extract.color()` 是 `extract` 的 color attachment 0；它通过 `line` 直接接到 `blur` 的 `Bright` sampler。
 
@@ -288,7 +430,9 @@ line(blur.color(), composite.input("Blurred"))
 
 ## 动态 uniform
 
-实体和方块 Pipeline 的 provider 在绘制时按当前对象求值：
+动态参数的执行方式取决于绑定节点。
+
+绑定到 world 节点时，provider 在绘制每个实体时求值。不同实体可以返回不同值，相同 Pipeline ID 仍然共用 attachment，并且只执行一次 fullscreen graph：
 
 ```kotlin
 val pipeline = CooPipelines.entity<MyRenderEntity>(id("charged_entity")) {
@@ -298,6 +442,40 @@ val pipeline = CooPipelines.entity<MyRenderEntity>(id("charged_entity")) {
     }
 }
 ```
+
+可复用的 `entity<Nothing>` 模板使用通用参数入口：
+
+```kotlin
+val template = CooPipelines.entity<Nothing>(id("charged_template")) {
+    val source = world("source") {
+        vertex(id("source.vsh"))
+        fragment(id("source.fsh"))
+        uniform("Charge", 0F)
+    }
+    parameter("charge", source, "Charge")
+}
+
+val pipeline = template.parameter("charge") { entity: MyRenderEntity -> entity.charge }
+```
+
+静态值不需要 lambda：
+
+```kotlin
+val fixed = template.parameter("charge", 0.8F)
+val fixedBloom = CooPipelines.MASK_BLOOM.intensity(2.8F)
+```
+
+节点内的静态值使用 `uniform("Charge", 0.8F)`。向量和颜色等类型传入 `CooUniformValue`；动态非 Float 参数使用 `parameterValue(...)`：
+
+```kotlin
+val tinted = template.parameterValue("tint") { entity: MyRenderEntity ->
+    CooUniformValue.Vec3Value(entity.red, entity.green, entity.blue)
+}
+```
+
+参数也可以绑定到 fullscreen 节点。此时它控制整次屏幕 pass：解析值相同的实体会合批，值不同的实体会拆批执行。普通 fullscreen uniform 在一次 draw 中只有一个值，不能在已经合并的纹理里继续区分多个实体。
+
+内置 `MASK_BLOOM.intensity { entity -> ... }` 使用的是 world 参数。每个实体先把自己的强度写进 mask，合并后只执行一次 blur 和 composite。`blurSigma` 和 `blurRange` 控制卷积核，属于 fullscreen 批次参数。
 
 屏幕效果在每次 `play` 时生成独立参数快照：
 
