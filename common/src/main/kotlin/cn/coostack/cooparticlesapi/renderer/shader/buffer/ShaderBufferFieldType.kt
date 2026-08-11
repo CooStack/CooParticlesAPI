@@ -4,6 +4,8 @@ package cn.coostack.cooparticlesapi.renderer.shader.buffer
  * shader buffer 字段类型枚举。
  *
  * `glslName` 表示生成 GLSL 声明时对应的类型关键字。
+ *
+ * @property glslName 该字段类型在 GLSL 中使用的名称。
  */
 enum class ShaderBufferFieldType(val glslName: String) {
     /** 单精度浮点标量。 */

@@ -25,10 +25,13 @@ override val pipeline = CooPipelines.DEFAULT
 override val pipeline = CooPipelines.MASK_BLOOM
     .blurSigma(15F)
     .blurRange(10F)
+    .bloomThreshold(0F)
     .intensity { entity: MyRenderEntity ->
         2.8F * entity.bright.coerceAtLeast(0F)
     }
 ```
+
+内置 `MASK_BLOOM` 先从 geometry mask 提取 Bloom，再用 `bloom_gaussian_blur.fsh` 做可分离高斯模糊。横向和纵向由布尔 uniform `Horizontal` 在同一个 shader 中交替执行，默认展开为 10 次 ping-pong。`bloomThreshold(0F)` 表示不做亮部过滤，mask 中的全部颜色都会进入 Bloom 通道；传入正数可启用亮部筛选，`bloomSoftKnee(...)` 控制筛选过渡范围。
 
 绑定真实世界方块：
 
@@ -139,7 +142,7 @@ HEAT_HAZE.play {
 }
 ```
 
-`DEFAULT`、`MASK_BLOOM` 和 `BLOCK_DEFAULT` 都是不可变模板。`blurSigma`、`blurRange`、`intensity` 和 `uniform` 返回新 Pipeline，不会改写共享 preset。
+`DEFAULT`、`MASK_BLOOM` 和 `BLOCK_DEFAULT` 都是不可变模板。`blurSigma`、`blurRange`、`bloomThreshold`、`bloomSoftKnee`、`intensity` 和 `uniform` 返回新 Pipeline，不会改写共享 preset。
 
 ## RenderEntity
 
@@ -475,7 +478,7 @@ val tinted = template.parameterValue("tint") { entity: MyRenderEntity ->
 
 参数也可以绑定到 fullscreen 节点。此时它控制整次屏幕 pass：解析值相同的实体会合批，值不同的实体会拆批执行。普通 fullscreen uniform 在一次 draw 中只有一个值，不能在已经合并的纹理里继续区分多个实体。
 
-内置 `MASK_BLOOM.intensity { entity -> ... }` 使用的是 world 参数。每个实体先把自己的强度写进 mask，合并后只执行一次 blur 和 composite。`blurSigma` 和 `blurRange` 控制卷积核，属于 fullscreen 批次参数。
+内置 `MASK_BLOOM.intensity { entity -> ... }` 使用的是 world 参数。每个实体先把自己的强度写进 mask，合并后执行 10 次 ping-pong 高斯模糊和一次 composite。`blurSigma`、`blurRange`、`bloomThreshold` 和 `bloomSoftKnee` 控制 fullscreen 批次参数。
 
 屏幕效果在每次 `play` 时生成独立参数快照：
 

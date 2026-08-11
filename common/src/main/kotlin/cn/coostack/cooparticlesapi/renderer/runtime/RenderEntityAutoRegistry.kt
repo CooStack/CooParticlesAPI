@@ -303,6 +303,13 @@ object RenderEntityAutoRegistry {
         val rendererClass: Class<*>,
         val constructor: Constructor<*>
     ) {
+        /**
+         * 执行 `RendererDescriptor` 定义的 `toFactory` 操作；输入和返回值用于该组件当前的渲染职责。
+         *
+         * 示例：`toFactory(id = id)`。
+         *
+         * @param id 用于定位目标资源、实体或运行时实例的唯一标识
+         */
         fun toFactory(id: ResourceLocation): () -> RenderEntityRenderer<out RenderEntity> = {
             try {
                 @Suppress("UNCHECKED_CAST")

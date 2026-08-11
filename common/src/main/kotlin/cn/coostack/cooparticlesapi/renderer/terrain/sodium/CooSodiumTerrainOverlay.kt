@@ -634,6 +634,13 @@ internal object CooSodiumTerrainOverlay {
         val builder = BufferBuilder(backing, VertexFormat.Mode.QUADS, CooTerrainVertexFormats.BLOCK_EFFECT)
         val sprites = LinkedHashSet<TextureAtlasSprite>()
 
+        /**
+         * 根据输入和 `BuildBuffer` 当前配置创建 `build` 结果；返回对象保留本次配置的语义。
+         *
+         * 示例：`build()`。
+         *
+         * @return 根据当前输入生成的新对象或数据结果
+         */
         fun build(): BuiltBatch? {
             val meshData = builder.build() ?: run {
                 close()
@@ -642,6 +649,11 @@ internal object CooSodiumTerrainOverlay {
             return BuiltBatch(key.renderType, key.pass, meshData, backing, sprites.toList())
         }
 
+        /**
+         * 释放 `BuildBuffer` 在 `close` 中管理的资源；再次使用前必须重新初始化。
+         *
+         * 示例：`close()`。
+         */
         override fun close() {
             backing.close()
         }
@@ -650,6 +662,19 @@ internal object CooSodiumTerrainOverlay {
     private class BuildCollector : AutoCloseable {
         private val buffers = LinkedHashMap<BatchKey, BuildBuffer>()
 
+        /**
+         * 执行 `BuildCollector` 定义的 `append` 操作；输入和返回值用于该组件当前的渲染职责。
+         *
+         * 示例：`append(renderType = renderType, pass = pass, sprite = sprite, append = append)`。
+         *
+         * @param renderType 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+         *
+         * @param pass 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+         *
+         * @param sprite 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+         *
+         * @param append 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+         */
         fun append(
             renderType: RenderType,
             pass: TerrainRenderPass,
@@ -662,6 +687,13 @@ internal object CooSodiumTerrainOverlay {
             append(buffer.builder)
         }
 
+        /**
+         * 根据输入和 `BuildCollector` 当前配置创建 `build` 结果；返回对象保留本次配置的语义。
+         *
+         * 示例：`build()`。
+         *
+         * @return 根据当前输入生成的新对象或数据结果
+         */
         fun build(): List<BuiltBatch> {
             val built = ArrayList<BuiltBatch>(buffers.size)
             return try {
@@ -675,10 +707,22 @@ internal object CooSodiumTerrainOverlay {
             }
         }
 
+        /**
+         * 执行 `BuildCollector` 的 `renderPasses` 渲染操作，处理传入数据并更新当前帧或 GPU 状态。
+         *
+         * 示例：`renderPasses()`。
+         *
+         * @return 当前操作计算、更新或查询得到的结果
+         */
         fun renderPasses(): Set<TerrainRenderPass> {
             return buffers.keys.mapTo(LinkedHashSet()) { it.pass }
         }
 
+        /**
+         * 释放 `BuildCollector` 在 `close` 中管理的资源；再次使用前必须重新初始化。
+         *
+         * 示例：`close()`。
+         */
         override fun close() {
             buffers.values.forEach(BuildBuffer::close)
             buffers.clear()
@@ -692,6 +736,11 @@ internal object CooSodiumTerrainOverlay {
         private val backing: ByteBufferBuilder,
         val sprites: List<TextureAtlasSprite>
     ) : AutoCloseable {
+        /**
+         * 释放 `BuiltBatch` 在 `close` 中管理的资源；再次使用前必须重新初始化。
+         *
+         * 示例：`close()`。
+         */
         override fun close() {
             meshData.close()
             backing.close()

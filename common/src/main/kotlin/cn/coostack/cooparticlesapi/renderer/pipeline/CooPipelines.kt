@@ -31,15 +31,16 @@ object CooPipelines {
             maskOutput()
             uniform("BloomIntensity", 3F)
         }
-        val blurHorizontal = pass("blur_horizontal") {
-            fragment(id("post/bloom_blur_horizontal.fsh"))
-            input("Input")
-            uniform("Sigma", 14F)
-            uniform("Range", 10F)
+        val extract = pass("bloom_extract") {
+            fragment(id("post/bloom_bright_extract.fsh"))
+            input("scene")
+            uniform("threshold", 0F)
+            uniform("softKnee", 0.5F)
         }
-        val blurVertical = pass("blur_vertical") {
-            fragment(id("post/bloom_blur_vertical.fsh"))
-            input("Input")
+        // 横向和纵向采样由同一个 shader 通过 Horizontal 交替完成。
+        val bloomGaussianBlur = pingPong("bloom_gaussian_blur", iterations = 10) {
+            fragment(id("post/bloom_gaussian_blur.fsh"))
+            alternate("Horizontal", ping = true, pong = false)
             uniform("Sigma", 14F)
             uniform("Range", 10F)
         }
@@ -51,16 +52,16 @@ object CooPipelines {
         }
 
         line(geometry.color(), worldTarget())
-        line(geometry.mask(), blurHorizontal.input("Input"))
-        line(blurHorizontal.color(), blurVertical.input("Input"))
+        line(geometry.mask(), extract.input("scene"))
+        line(extract.color(), bloomGaussianBlur.input("Input"))
         line(sceneColor(), composite.input("SceneColor"))
-        line(blurVertical.color(), composite.input("Bloom"))
+        line(bloomGaussianBlur.color(), composite.input("Bloom"))
         line(composite.color(), screenTarget())
 
-        parameter("blurSigma", blurHorizontal, "Sigma")
-        parameter("blurSigma", blurVertical, "Sigma")
-        parameter("blurRange", blurHorizontal, "Range")
-        parameter("blurRange", blurVertical, "Range")
+        parameter("blurSigma", bloomGaussianBlur, "Sigma")
+        parameter("blurRange", bloomGaussianBlur, "Range")
+        parameter("bloomThreshold", extract, "threshold")
+        parameter("bloomSoftKnee", extract, "softKnee")
         parameter("intensity", geometry, "BloomIntensity")
     }.build()
 
@@ -71,6 +72,17 @@ object CooPipelines {
         CooPipelineDomain.BLOCK
     ).build()
 
+    /**
+     * 执行 `CooPipelines` 定义的 `entity` 操作；输入和返回值用于该组件当前的渲染职责。
+     *
+     * 示例：`entity(id = id, block = block)`。
+     *
+     * @param id 用于定位目标资源、实体或运行时实例的唯一标识
+     *
+     * @param block 在当前生命周期或数据上下文中执行的回调
+     *
+     * @return 当前操作计算、更新或查询得到的结果
+     */
     fun <T : RenderEntity> entity(
         id: ResourceLocation,
         block: CooRenderPipelineBuilder<T>.() -> Unit
@@ -78,6 +90,17 @@ object CooPipelines {
         return CooRenderPipelineBuilder<T>(id, CooPipelineDomain.ENTITY).apply(block).build()
     }
 
+    /**
+     * 执行 `CooPipelines` 定义的 `block` 操作；输入和返回值用于该组件当前的渲染职责。
+     *
+     * 示例：`block(id = id, block = block)`。
+     *
+     * @param id 用于定位目标资源、实体或运行时实例的唯一标识
+     *
+     * @param block 在当前生命周期或数据上下文中执行的回调
+     *
+     * @return 当前操作计算、更新或查询得到的结果
+     */
     fun block(
         id: ResourceLocation,
         block: CooRenderPipelineBuilder<BlockState>.() -> Unit
@@ -86,6 +109,17 @@ object CooPipelines {
         return CooTerrainEffectManager.register(pipeline)
     }
 
+    /**
+     * 根据输入和 `CooPipelines` 当前配置创建 `generic` 结果；返回对象保留本次配置的语义。
+     *
+     * 示例：`generic(id = id, block = block)`。
+     *
+     * @param id 用于定位目标资源、实体或运行时实例的唯一标识
+     *
+     * @param block 在当前生命周期或数据上下文中执行的回调
+     *
+     * @return 根据当前输入生成的新对象或数据结果
+     */
     fun <T : Any> generic(
         id: ResourceLocation,
         block: CooRenderPipelineBuilder<T>.() -> Unit
@@ -93,6 +127,17 @@ object CooPipelines {
         return CooRenderPipelineBuilder<T>(id, CooPipelineDomain.GENERIC).apply(block).build()
     }
 
+    /**
+     * 执行 `CooPipelines` 定义的 `screen` 操作；输入和返回值用于该组件当前的渲染职责。
+     *
+     * 示例：`screen(id = id, block = block)`。
+     *
+     * @param id 用于定位目标资源、实体或运行时实例的唯一标识
+     *
+     * @param block 在当前生命周期或数据上下文中执行的回调
+     *
+     * @return 当前操作计算、更新或查询得到的结果
+     */
     internal fun screen(
         id: ResourceLocation,
         block: CooRenderPipelineBuilder<Any>.() -> Unit

@@ -29,6 +29,19 @@ internal class CooEffectUvVertexConsumer(
     private var baseU = 0F
     private var baseV = 0F
 
+    /**
+     * 在 `CooEffectUvVertexConsumer` 中配置 `addVertex`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`addVertex(x = x, y = y, z = z)`。
+     *
+     * @param x 本次计算使用的坐标、颜色、比例、范围或强度分量
+     *
+     * @param y 本次计算使用的坐标、颜色、比例、范围或强度分量
+     *
+     * @param z 本次计算使用的坐标、颜色、比例、范围或强度分量
+     *
+     * @return 当前操作计算、更新或查询得到的结果
+     */
     override fun addVertex(x: Float, y: Float, z: Float): VertexConsumer = apply {
         this.x = x
         this.y = y
@@ -36,10 +49,36 @@ internal class CooEffectUvVertexConsumer(
         delegate.addVertex(x, y, z)
     }
 
+    /**
+     * 在 `CooEffectUvVertexConsumer` 中配置 `setColor`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`setColor(red = red, green = green, blue = blue, alpha = alpha)`。
+     *
+     * @param red 本次计算使用的坐标、颜色、比例、范围或强度分量
+     *
+     * @param green 本次计算使用的坐标、颜色、比例、范围或强度分量
+     *
+     * @param blue 本次计算使用的坐标、颜色、比例、范围或强度分量
+     *
+     * @param alpha 本次计算使用的坐标、颜色、比例、范围或强度分量
+     *
+     * @return 当前操作计算、更新或查询得到的结果
+     */
     override fun setColor(red: Int, green: Int, blue: Int, alpha: Int): VertexConsumer = apply {
         delegate.setColor(red, green, blue, alpha)
     }
 
+    /**
+     * 在 `CooEffectUvVertexConsumer` 中配置 `setUv`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`setUv(u = u, v = v)`。
+     *
+     * @param u 本次计算使用的坐标、颜色、比例、范围或强度分量
+     *
+     * @param v 本次计算使用的坐标、颜色、比例、范围或强度分量
+     *
+     * @return 当前操作计算、更新或查询得到的结果
+     */
     override fun setUv(u: Float, v: Float): VertexConsumer = apply {
         baseU = u
         baseV = v

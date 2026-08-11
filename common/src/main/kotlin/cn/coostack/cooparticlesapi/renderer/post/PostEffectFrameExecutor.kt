@@ -101,21 +101,57 @@ internal data class PostEffectResolvedOutput(
  * 输入解析、uniform 解析和跳过逻辑。
  */
 internal fun interface PostEffectExecutionBackend {
+    /**
+     * 执行 `PostEffectExecutionBackend` 定义的 `execute` 操作；输入和返回值用于该组件当前的渲染职责。
+     *
+     * 示例：`execute(step = step)`。
+     *
+     * @param step 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     */
     fun execute(step: PostEffectExecutionStep)
 }
 
 /** 可选接口：backend 可在每帧开始时清理临时状态或准备 scene copy。 */
 internal interface PostEffectFramePreparationBackend {
+    /**
+     * 初始化或准备 `PostEffectFramePreparationBackend` 的 `prepareFrame` 阶段，使后续渲染调用可以使用相关资源。
+     *
+     * 示例：`prepareFrame(context = context)`。
+     *
+     * @param context 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     */
     fun prepareFrame(context: RenderFrameContext)
 }
 
 /** 可选接口：backend 可在 shader reload、客户端关闭或测试结束时释放 GL 资源。 */
 internal interface PostEffectResourceBackend {
+    /**
+     * 释放 `PostEffectResourceBackend` 在 `release` 中管理的资源；再次使用前必须重新初始化。
+     *
+     * 示例：`release()`。
+     */
     fun release()
 }
 
 /** Pipeline world 节点把一个逻辑 FBO attachment 准备为后续 sampler 输入时使用。 */
 internal interface PostEffectAttachmentPreparationBackend {
+    /**
+     * 执行 `PostEffectAttachmentPreparationBackend` 定义的 `captureAttachment` 操作；输入和返回值用于该组件当前的渲染职责。
+     *
+     * 示例：`captureAttachment(context = context, owner = owner, target = target, attachment = attachment, render = render)`。
+     *
+     * @param context 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param owner 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param target 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param attachment 数量或从零开始的索引值，具体上限由当前资源配置决定
+     *
+     * @param render 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 当前操作计算、更新或查询得到的结果
+     */
     fun captureAttachment(
         context: RenderFrameContext,
         owner: String,
@@ -137,11 +173,29 @@ internal interface PostEffectAttachmentPreparationBackend {
         }
     }
 
+    /**
+     * 执行 `PostEffectAttachmentPreparationBackend` 定义的 `hasAttachment` 操作；输入和返回值用于该组件当前的渲染职责。
+     *
+     * 示例：`hasAttachment(target = target, attachment = attachment)`。
+     *
+     * @param target 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param attachment 数量或从零开始的索引值，具体上限由当前资源配置决定
+     *
+     * @return 当前操作计算、更新或查询得到的结果
+     */
     fun hasAttachment(target: ResourceLocation, attachment: Int): Boolean
 }
 
 /** 无 OpenGL 环境下的安全默认 backend，便于测试和服务端侧加载。 */
 internal object LoggingPostEffectExecutionBackend : PostEffectExecutionBackend {
+    /**
+     * 执行 `LoggingPostEffectExecutionBackend` 定义的 `execute` 操作；输入和返回值用于该组件当前的渲染职责。
+     *
+     * 示例：`execute(step = step)`。
+     *
+     * @param step 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     */
     override fun execute(step: PostEffectExecutionStep) {
         CooParticlesConstants.logger.debug(
             "Executing post effect type={} id={} pass={} output={} inputs={} uniforms={}",
@@ -199,6 +253,23 @@ internal object PostEffectFrameExecutor {
         (backend as? PostEffectResourceBackend)?.release()
     }
 
+    /**
+     * 执行 `PostEffectFrameExecutor` 定义的 `captureAttachment` 操作；输入和返回值用于该组件当前的渲染职责。
+     *
+     * 示例：`captureAttachment(context = context, owner = owner, target = target, attachment = attachment, render = render)`。
+     *
+     * @param context 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param owner 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param target 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param attachment 数量或从零开始的索引值，具体上限由当前资源配置决定
+     *
+     * @param render 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 当前操作计算、更新或查询得到的结果
+     */
     internal fun captureAttachment(
         context: RenderFrameContext,
         owner: String,
@@ -210,6 +281,23 @@ internal object PostEffectFrameExecutor {
         return attachmentBackend.captureAttachment(context, owner, target, attachment, render)
     }
 
+    /**
+     * 执行 `PostEffectFrameExecutor` 定义的 `captureAttachments` 操作；输入和返回值用于该组件当前的渲染职责。
+     *
+     * 示例：`captureAttachments(context = context, owner = owner, target = target, attachmentCount = attachmentCount, render = render)`。
+     *
+     * @param context 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param owner 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param target 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param attachmentCount 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param render 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 当前操作计算、更新或查询得到的结果
+     */
     internal fun captureAttachments(
         context: RenderFrameContext,
         owner: String,

@@ -23,8 +23,22 @@ internal data class PostEffectInstance(
     val progress: Float get() = lifecycle.progress
     val expired: Boolean get() = lifecycle.expired
 
+    /**
+     * 更新 `PostEffectInstance` 的 `tick` 状态；修改会影响后续查询、构建或当前帧绘制。
+     *
+     * 示例：`tick()`。
+     *
+     * @return 当前操作计算、更新或查询得到的结果
+     */
     fun tick(): PostEffectInstance = copy(lifecycle = lifecycle.tick())
 
+    /**
+     * 执行 `PostEffectInstance` 定义的 `toNetworkState` 操作；输入和返回值用于该组件当前的渲染职责。
+     *
+     * 示例：`toNetworkState()`。
+     *
+     * @return 当前操作计算、更新或查询得到的结果
+     */
     fun toNetworkState(): SyncedPostEffectState {
         return SyncedPostEffectState(
             effectType = type.id,
@@ -50,6 +64,15 @@ internal data class SyncedPostEffectState(
     val sourceId: String,
     val priority: Int
 ) {
+    /**
+     * 执行 `SyncedPostEffectState` 定义的 `instantiate` 操作；输入和返回值用于该组件当前的渲染职责。
+     *
+     * 示例：`instantiate(serverSynced = serverSynced)`。
+     *
+     * @param serverSynced 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 当前操作计算、更新或查询得到的结果
+     */
     fun instantiate(serverSynced: Boolean = true): PostEffectInstance? {
         val type = PostEffectRuntimeRegistry.getType(effectType)
             ?.withParamUniforms(uniformNames)

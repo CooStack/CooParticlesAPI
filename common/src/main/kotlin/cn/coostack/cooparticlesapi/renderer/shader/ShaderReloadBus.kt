@@ -16,6 +16,8 @@ sealed interface ShaderReloadSignal {
      * 完整资源重载信号。
      *
      * 通常意味着资源管理器整体刷新，需要重新初始化 shader、render type 和缓冲缓存。
+     *
+     * @property resourceManager 本次重载使用的资源管理器。
      */
     data class FullReload(
         val resourceManager: ResourceManager
@@ -25,6 +27,8 @@ sealed interface ShaderReloadSignal {
      * 增量编译更新信号。
      *
      * 只刷新被判定为需要重新编译或重新绑定的 shader/program。
+     *
+     * @property update 本次增量编译涉及的 shader 与 program 更新集合。
      */
     data class CompileUpdate(
         val update: ShaderCompileUpdate
@@ -118,6 +122,15 @@ object ShaderReloadBus {
      * 仓库内没有额外自定义监听器时，也至少会由它处理完整重载和编译更新。
      */
     private object DefaultShaderReloadStrategy : ShaderReloadListener {
+        /**
+         * 执行 `DefaultShaderReloadStrategy` 定义的 `onShaderReload` 操作；输入和返回值用于该组件当前的渲染职责。
+         *
+         * 示例：`onShaderReload(signal = signal)`。
+         *
+         * @param signal 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+         *
+         * @return 当前操作计算、更新或查询得到的结果
+         */
         override fun onShaderReload(signal: ShaderReloadSignal): ShaderReloadDispatchResult {
             return when (signal) {
                 is ShaderReloadSignal.FullReload -> handleFullReload(signal.resourceManager)

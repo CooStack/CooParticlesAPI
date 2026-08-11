@@ -44,6 +44,15 @@ class SpriteSheetTexture(
         require(framesPerSecond > 0.0f) { "framesPerSecond 必须大于 0" }
     }
 
+    /**
+     * 执行 `SpriteSheetTexture` 定义的 `frameAt` 操作；输入和返回值用于该组件当前的渲染职责。
+     *
+     * 示例：`frameAt(timeSeconds = timeSeconds)`。
+     *
+     * @param timeSeconds 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 当前操作计算、更新或查询得到的结果
+     */
     fun frameAt(timeSeconds: Float): SpriteFrameRegion {
         val absoluteFrameIndex = resolveAbsoluteFrameIndex(timeSeconds)
         val column = absoluteFrameIndex % columns
@@ -62,6 +71,21 @@ class SpriteSheetTexture(
         )
     }
 
+    /**
+     * 执行 `SpriteSheetTexture` 的 `uploadSpriteUniforms` 渲染操作，处理传入数据并更新当前帧或 GPU 状态。
+     *
+     * 示例：`uploadSpriteUniforms(program = program, timeSeconds = timeSeconds, enabledUniform = enabledUniform, uvRectUniform = uvRectUniform, frameIndexUniform = frameIndexUniform)`。
+     *
+     * @param program 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param timeSeconds 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param enabledUniform 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param uvRectUniform 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param frameIndexUniform 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     */
     fun uploadSpriteUniforms(
         program: CooProgramUniformAccess,
         timeSeconds: Float,
@@ -77,6 +101,15 @@ class SpriteSheetTexture(
         }
     }
 
+    /**
+     * 执行 `SpriteSheetTexture` 定义的 `disableSpriteUniforms` 操作；输入和返回值用于该组件当前的渲染职责。
+     *
+     * 示例：`disableSpriteUniforms(program = program, enabledUniform = enabledUniform)`。
+     *
+     * @param program 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param enabledUniform 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     */
     fun disableSpriteUniforms(
         program: CooProgramUniformAccess,
         enabledUniform: String = DEFAULT_ENABLED_UNIFORM

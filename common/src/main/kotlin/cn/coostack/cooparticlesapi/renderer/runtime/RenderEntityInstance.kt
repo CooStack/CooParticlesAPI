@@ -32,15 +32,42 @@ class RenderEntityInstance<T : RenderEntity>(
     private val offscreenStateGuard = RenderStateGuard()
     private var irisWorldPassSubmitted = false
 
+    /**
+     * 执行 `RenderEntityInstance` 定义的 `reinitialize` 操作；输入和返回值用于该组件当前的渲染职责。
+     *
+     * 示例：`reinitialize()`。
+     */
     internal fun reinitialize() {
         pipelineRuntime = resolvePipelineRuntime()
         compiledPostEffect = pipelineRuntime.compiledPostEffect
     }
 
+    /**
+     * 更新 `RenderEntityInstance` 的 `updateFrom` 状态；修改会影响后续查询、构建或当前帧绘制。
+     *
+     * 示例：`updateFrom(profile = profile)`。
+     *
+     * @param profile 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     */
     internal fun updateFrom(profile: RenderEntity) {
         entity.loadProfileFromEntity(profile)
     }
 
+    /**
+     * 执行 `RenderEntityInstance` 的 `render` 渲染操作，处理传入数据并更新当前帧或 GPU 状态。
+     *
+     * 示例：`render(tickDelta = tickDelta, viewMatrix = viewMatrix, projMatrix = projMatrix, modelMatrix = modelMatrix, stateGuard = stateGuard)`。
+     *
+     * @param tickDelta 当前 tick 内的插值比例，通常位于 0 到 1
+     *
+     * @param viewMatrix 把世界坐标变换到相机空间的视图矩阵
+     *
+     * @param projMatrix 把相机空间坐标变换到裁剪空间的投影矩阵
+     *
+     * @param modelMatrix 当前对象使用的模型变换或矩阵栈
+     *
+     * @param stateGuard 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     */
     internal fun render(
         tickDelta: Float,
         viewMatrix: Matrix4f,
@@ -52,6 +79,21 @@ class RenderEntityInstance<T : RenderEntity>(
         renderWorld(tickDelta, viewMatrix, projMatrix, modelMatrix, stateGuard)
     }
 
+    /**
+     * 执行 `RenderEntityInstance` 的 `renderIrisWorldPass` 渲染操作，处理传入数据并更新当前帧或 GPU 状态。
+     *
+     * 示例：`renderIrisWorldPass(tickDelta = tickDelta, viewMatrix = viewMatrix, projMatrix = projMatrix, modelMatrix = modelMatrix, stateGuard = stateGuard)`。
+     *
+     * @param tickDelta 当前 tick 内的插值比例，通常位于 0 到 1
+     *
+     * @param viewMatrix 把世界坐标变换到相机空间的视图矩阵
+     *
+     * @param projMatrix 把相机空间坐标变换到裁剪空间的投影矩阵
+     *
+     * @param modelMatrix 当前对象使用的模型变换或矩阵栈
+     *
+     * @param stateGuard 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     */
     internal fun renderIrisWorldPass(
         tickDelta: Float,
         viewMatrix: Matrix4f,
@@ -93,6 +135,11 @@ class RenderEntityInstance<T : RenderEntity>(
         }
     }
 
+    /**
+     * 初始化或准备 `RenderEntityInstance` 的 `beginWorldRenderFrame` 阶段，使后续渲染调用可以使用相关资源。
+     *
+     * 示例：`beginWorldRenderFrame()`。
+     */
     internal fun beginWorldRenderFrame() {
         irisWorldPassSubmitted = false
     }
@@ -108,10 +155,24 @@ class RenderEntityInstance<T : RenderEntity>(
             pipelineRuntime.worldNodes.isNotEmpty()
     }
 
+    /**
+     * 更新 `RenderEntityInstance` 的 `markRemoved` 状态；修改会影响后续查询、构建或当前帧绘制。
+     *
+     * 示例：`markRemoved()`。
+     */
     internal fun markRemoved() {
         entity.canceled = true
     }
 
+    /**
+     * 执行 `RenderEntityInstance` 定义的 `collectEffects` 操作；输入和返回值用于该组件当前的渲染职责。
+     *
+     * 示例：`collectEffects(context = context, collector = collector)`。
+     *
+     * @param context 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param collector 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     */
     internal fun collectEffects(context: RenderFrameContext, collector: RenderEffectCollector) {
         val postEffect = compiledPostEffect
         if (postEffect != null) {

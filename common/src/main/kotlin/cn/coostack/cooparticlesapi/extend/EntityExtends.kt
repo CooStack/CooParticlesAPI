@@ -13,6 +13,8 @@ import net.minecraft.world.level.ClipContext
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.HitResult
 import net.minecraft.world.phys.Vec3
+import java.util.function.Predicate
+import kotlin.jvm.java
 
 infix fun Entity.canSee(another: Entity): Boolean {
     if (level() != another.level()) return false
@@ -83,6 +85,18 @@ infix fun Entity.intersectsBox(box: AABB): Boolean {
 
 fun Entity.intersectsBox(center: Vec3, hitBox: HitBox): Boolean {
     return Math3DUtil.intersectsBox(center, hitBox, boundingBox)
+}
+
+inline fun <reified T : Entity> Entity.getEntitiesByClass(box: AABB, predicate: Predicate<T>) = let {
+    level().getEntitiesOfClass<T>(T::class.java, box, predicate)
+}
+
+inline fun <reified T : Entity> Entity.getEntitiesByClass(size: Double, predicate: Predicate<T>) = let {
+    level().getEntitiesOfClass<T>(T::class.java, boundingBox.inflate(size), predicate)
+}
+
+inline fun <reified T : Entity> Entity.getEntitiesByClass(box: HitBox, predicate: Predicate<T>) = let {
+    level().getEntitiesOfClass<T>(T::class.java, box.ofBox(position()), predicate)
 }
 
 private fun Vec3.toCylinderOffset(length: Double): Vec3 {

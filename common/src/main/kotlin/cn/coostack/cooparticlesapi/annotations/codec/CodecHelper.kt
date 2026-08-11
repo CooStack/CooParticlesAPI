@@ -26,6 +26,7 @@ import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableParticle
 import cn.coostack.cooparticlesapi.network.particle.emitters.CompositionEmittersData
 import cn.coostack.cooparticlesapi.network.particle.emitters.DisplayEntityEmittersData
 import cn.coostack.cooparticlesapi.network.particle.emitters.SimpleRandomParticleData
+import cn.coostack.cooparticlesapi.renderer.pipeline.CooUniformValue
 import cn.coostack.cooparticlesapi.network.particle.data.DoubleRangeData
 import cn.coostack.cooparticlesapi.network.particle.data.FloatRangeData
 import cn.coostack.cooparticlesapi.network.particle.data.IntRangeData
@@ -82,6 +83,7 @@ object CodecHelper {
         register(Byte::class.java, StreamCodec.of({ buf, i -> buf.writeByte(i.toInt()) }, { it.readByte() }))
         register(Boolean::class.java, StreamCodec.of({ buf, i -> buf.writeBoolean(i) }, { it.readBoolean() }))
         register(ByteArray::class.java, StreamCodec.of({ buf, i -> buf.writeByteArray(i) }, { it.readByteArray() }))
+        register(CooUniformValue::class.java, CooUniformValue.STREAM_CODEC)
         register(Char::class.java, StreamCodec.of({ buf, i -> buf.writeChar(i.code) }, { it.readChar() }))
         register(UUID::class.java, StreamCodec.of({ buf, i -> buf.writeUUID(i) }, { it.readUUID() }))
         registerRegistry(ControlableParticleData::class.java, ControlableParticleData.PACKET_CODEC)

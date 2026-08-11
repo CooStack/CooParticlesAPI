@@ -16,17 +16,35 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * Render-entity vertex builder for reusable local mesh construction.
+ * 用于构建可复用局部网格的 RenderEntity 顶点构建器。
  *
- * It mirrors the fluent style of PointsBuilder, but exports render-ready vertices instead of particle points.
- * Shapes are generated around the local origin and can be appended to [RenderEntityModelBuilder] directly.
+ * API 采用与 PointsBuilder 相近的链式风格，但输出的是可直接渲染的顶点，而不是粒子点。
+ * 所有形状都以局部原点为中心生成，并可直接追加到 [RenderEntityModelBuilder]。
  */
 class RenderVertexBuilder {
     companion object {
         @JvmStatic
+        /**
+         * 根据输入和 `RenderVertexBuilder` 当前配置创建 `create` 结果；返回对象保留本次配置的语义。
+         *
+         * 示例：`create()`。
+         *
+         * @return 当前构建器或由其配置生成的结果
+         */
         fun create(): RenderVertexBuilder = RenderVertexBuilder()
 
         @JvmStatic
+        /**
+         * 根据输入和 `RenderVertexBuilder` 当前配置创建 `of` 结果；返回对象保留本次配置的语义。
+         *
+         * 示例：`of(vertices = vertices, primitiveMode = primitiveMode)`。
+         *
+         * @param vertices 要批量处理的元素集合；集合内容会直接影响本次构建、绑定或渲染结果
+         *
+         * @param primitiveMode 顶点的图元组装方式，决定每组顶点形成线、三角形还是四边形
+         *
+         * @return 当前构建器或由其配置生成的结果
+         */
         fun of(
             vertices: Collection<RenderEntityModelVertex>,
             primitiveMode: RenderEntityModelPrimitiveMode = RenderEntityModelPrimitiveMode.TRIANGLES
@@ -46,31 +64,99 @@ class RenderVertexBuilder {
     private var defaultUv = Vector2f(0f, 0f)
     private var defaultNormal = Vector3f(0f, 1f, 0f)
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `mode`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`mode(primitiveMode = primitiveMode)`。
+     *
+     * @param primitiveMode 顶点的图元组装方式，决定每组顶点形成线、三角形还是四边形
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun mode(primitiveMode: RenderEntityModelPrimitiveMode): RenderVertexBuilder {
         defaultPrimitiveMode = primitiveMode
         return this
     }
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `color`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`color(color = color)`。
+     *
+     * @param color 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun color(color: Vector4f): RenderVertexBuilder {
         defaultColor = Vector4f(color)
         return this
     }
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `color`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`color(red = red, green = green, blue = blue, alpha = alpha)`。
+     *
+     * @param red 本次计算使用的坐标、颜色、比例、范围或强度分量
+     *
+     * @param green 本次计算使用的坐标、颜色、比例、范围或强度分量
+     *
+     * @param blue 本次计算使用的坐标、颜色、比例、范围或强度分量
+     *
+     * @param alpha 本次计算使用的坐标、颜色、比例、范围或强度分量
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun color(red: Number, green: Number, blue: Number, alpha: Number = 1f): RenderVertexBuilder {
         defaultColor = Vector4f(red.f(), green.f(), blue.f(), alpha.f())
         return this
     }
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `uv`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`uv(uv = uv)`。
+     *
+     * @param uv 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun uv(uv: Vector2f): RenderVertexBuilder {
         defaultUv = Vector2f(uv)
         return this
     }
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `normal`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`normal(normal = normal)`。
+     *
+     * @param normal 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun normal(normal: Vector3f): RenderVertexBuilder {
         defaultNormal = safeNormal(normal, Vector3f(0f, 1f, 0f))
         return this
     }
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `addVertex`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`addVertex(position = position, color = color, uv = uv, normal = normal, primitiveMode = primitiveMode)`。
+     *
+     * @param position 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param color 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param uv 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param normal 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param primitiveMode 顶点的图元组装方式，决定每组顶点形成线、三角形还是四边形
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun addVertex(
         position: Vector3f,
         color: Vector4f = defaultColor,
@@ -82,6 +168,27 @@ class RenderVertexBuilder {
         return this
     }
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `addVertex`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`addVertex(x = x, y = y, z = z, color = color, uv = uv, normal = normal, primitiveMode = primitiveMode)`。
+     *
+     * @param x 本次计算使用的坐标、颜色、比例、范围或强度分量
+     *
+     * @param y 本次计算使用的坐标、颜色、比例、范围或强度分量
+     *
+     * @param z 本次计算使用的坐标、颜色、比例、范围或强度分量
+     *
+     * @param color 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param uv 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param normal 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param primitiveMode 顶点的图元组装方式，决定每组顶点形成线、三角形还是四边形
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun addVertex(
         x: Number,
         y: Number,
@@ -94,6 +201,17 @@ class RenderVertexBuilder {
         return addVertex(Vector3f(x.f(), y.f(), z.f()), color, uv, normal, primitiveMode)
     }
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `addVertices`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`addVertices(vertices = vertices, primitiveMode = primitiveMode)`。
+     *
+     * @param vertices 要批量处理的元素集合；集合内容会直接影响本次构建、绑定或渲染结果
+     *
+     * @param primitiveMode 顶点的图元组装方式，决定每组顶点形成线、三角形还是四边形
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun addVertices(
         vertices: Collection<RenderEntityModelVertex>,
         primitiveMode: RenderEntityModelPrimitiveMode = defaultPrimitiveMode
@@ -103,6 +221,19 @@ class RenderVertexBuilder {
         return this
     }
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `addLine`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`addLine(from = from, to = to, color = color)`。
+     *
+     * @param from 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param to 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param color 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun addLine(
         from: Vector3f,
         to: Vector3f,
@@ -113,6 +244,19 @@ class RenderVertexBuilder {
         return this
     }
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `addTriangle`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`addTriangle(first = first, second = second, third = third)`。
+     *
+     * @param first 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param second 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param third 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun addTriangle(
         first: RenderEntityModelVertex,
         second: RenderEntityModelVertex,
@@ -125,6 +269,21 @@ class RenderVertexBuilder {
         return this
     }
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `addTriangle`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`addTriangle(first = first, second = second, third = third, color = color)`。
+     *
+     * @param first 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param second 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param third 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param color 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun addTriangle(
         first: Vector3f,
         second: Vector3f,
@@ -139,6 +298,21 @@ class RenderVertexBuilder {
         )
     }
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `addQuad`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`addQuad(first = first, second = second, third = third, fourth = fourth)`。
+     *
+     * @param first 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param second 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param third 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param fourth 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun addQuad(
         first: RenderEntityModelVertex,
         second: RenderEntityModelVertex,
@@ -150,6 +324,29 @@ class RenderVertexBuilder {
         return this
     }
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `addQuad`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`addQuad(first = first, second = second, third = third, fourth = fourth, color = color, uvMin = uvMin, uvMax = uvMax, normal = normal)`。
+     *
+     * @param first 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param second 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param third 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param fourth 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param color 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param uvMin 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param uvMax 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param normal 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun addQuad(
         first: Vector3f,
         second: Vector3f,
@@ -169,6 +366,21 @@ class RenderVertexBuilder {
         )
     }
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `addQuad`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`addQuad(width = width, height = height, z = z, color = color)`。
+     *
+     * @param width 目标尺寸的像素数，必须与相关纹理或 framebuffer 尺寸一致
+     *
+     * @param height 目标尺寸的像素数，必须与相关纹理或 framebuffer 尺寸一致
+     *
+     * @param z 本次计算使用的坐标、颜色、比例、范围或强度分量
+     *
+     * @param color 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun addQuad(
         width: Number,
         height: Number,
@@ -176,6 +388,21 @@ class RenderVertexBuilder {
         color: Vector4f = defaultColor
     ): RenderVertexBuilder = addPlane(width, height, z, color)
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `addPlane`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`addPlane(width = width, height = height, z = z, color = color)`。
+     *
+     * @param width 目标尺寸的像素数，必须与相关纹理或 framebuffer 尺寸一致
+     *
+     * @param height 目标尺寸的像素数，必须与相关纹理或 framebuffer 尺寸一致
+     *
+     * @param z 本次计算使用的坐标、颜色、比例、范围或强度分量
+     *
+     * @param color 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun addPlane(
         width: Number,
         height: Number,
@@ -195,6 +422,21 @@ class RenderVertexBuilder {
         )
     }
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `addDisc`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`addDisc(radius = radius, segments = segments, y = y, color = color)`。
+     *
+     * @param radius 本次计算使用的坐标、颜色、比例、范围或强度分量
+     *
+     * @param segments 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param y 本次计算使用的坐标、颜色、比例、范围或强度分量
+     *
+     * @param color 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun addDisc(
         radius: Number,
         segments: Int = 48,
@@ -217,6 +459,23 @@ class RenderVertexBuilder {
         return this
     }
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `addRing`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`addRing(innerRadius = innerRadius, outerRadius = outerRadius, segments = segments, y = y, color = color)`。
+     *
+     * @param innerRadius 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param outerRadius 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param segments 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param y 本次计算使用的坐标、颜色、比例、范围或强度分量
+     *
+     * @param color 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun addRing(
         innerRadius: Number,
         outerRadius: Number,
@@ -244,6 +503,23 @@ class RenderVertexBuilder {
         return this
     }
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `addAnnulus`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`addAnnulus(innerRadius = innerRadius, outerRadius = outerRadius, segments = segments, y = y, color = color)`。
+     *
+     * @param innerRadius 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param outerRadius 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param segments 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param y 本次计算使用的坐标、颜色、比例、范围或强度分量
+     *
+     * @param color 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun addAnnulus(
         innerRadius: Number,
         outerRadius: Number,
@@ -252,6 +528,21 @@ class RenderVertexBuilder {
         color: Vector4f = defaultColor
     ): RenderVertexBuilder = addRing(innerRadius, outerRadius, segments, y, color)
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `addCircleLine`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`addCircleLine(radius = radius, segments = segments, y = y, color = color)`。
+     *
+     * @param radius 本次计算使用的坐标、颜色、比例、范围或强度分量
+     *
+     * @param segments 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param y 本次计算使用的坐标、颜色、比例、范围或强度分量
+     *
+     * @param color 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun addCircleLine(
         radius: Number,
         segments: Int = 48,
@@ -273,6 +564,21 @@ class RenderVertexBuilder {
         return this
     }
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `addWireCircle`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`addWireCircle(radius = radius, segments = segments, y = y, color = color)`。
+     *
+     * @param radius 本次计算使用的坐标、颜色、比例、范围或强度分量
+     *
+     * @param segments 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param y 本次计算使用的坐标、颜色、比例、范围或强度分量
+     *
+     * @param color 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun addWireCircle(
         radius: Number,
         segments: Int = 48,
@@ -280,6 +586,21 @@ class RenderVertexBuilder {
         color: Vector4f = defaultColor
     ): RenderVertexBuilder = addCircleLine(radius, segments, y, color)
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `addSphere`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`addSphere(radius = radius, latSegments = latSegments, lonSegments = lonSegments, color = color)`。
+     *
+     * @param radius 本次计算使用的坐标、颜色、比例、范围或强度分量
+     *
+     * @param latSegments 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param lonSegments 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param color 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun addSphere(
         radius: Number,
         latSegments: Int = 12,
@@ -310,6 +631,21 @@ class RenderVertexBuilder {
         return this
     }
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `addBall`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`addBall(radius = radius, latSegments = latSegments, lonSegments = lonSegments, color = color)`。
+     *
+     * @param radius 本次计算使用的坐标、颜色、比例、范围或强度分量
+     *
+     * @param latSegments 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param lonSegments 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param color 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun addBall(
         radius: Number,
         latSegments: Int = 12,
@@ -317,6 +653,23 @@ class RenderVertexBuilder {
         color: Vector4f = defaultColor
     ): RenderVertexBuilder = addSphere(radius, latSegments, lonSegments, color)
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `addRibbon`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`addRibbon(points = points, width = width, up = up, color = color, closed = closed)`。
+     *
+     * @param points 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param width 目标尺寸的像素数，必须与相关纹理或 framebuffer 尺寸一致
+     *
+     * @param up 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param color 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param closed 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun addRibbon(
         points: List<Vector3f>,
         width: Number,
@@ -349,21 +702,65 @@ class RenderVertexBuilder {
         return this
     }
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `translate`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`translate(offset = offset)`。
+     *
+     * @param offset 本次计算使用的坐标、颜色、比例、范围或强度分量
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun translate(offset: Vector3f): RenderVertexBuilder {
         verticesOnEach { vertex -> vertex.position.add(offset) }
         return this
     }
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `translate`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`translate(x = x, y = y, z = z)`。
+     *
+     * @param x 本次计算使用的坐标、颜色、比例、范围或强度分量
+     *
+     * @param y 本次计算使用的坐标、颜色、比例、范围或强度分量
+     *
+     * @param z 本次计算使用的坐标、颜色、比例、范围或强度分量
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun translate(x: Number, y: Number, z: Number): RenderVertexBuilder {
         return translate(Vector3f(x.f(), y.f(), z.f()))
     }
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `scale`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`scale(factor = factor)`。
+     *
+     * @param factor 本次计算使用的坐标、颜色、比例、范围或强度分量
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun scale(factor: Number): RenderVertexBuilder {
         val scale = factor.f()
         verticesOnEach { vertex -> vertex.position.mul(scale) }
         return this
     }
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `scale`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`scale(x = x, y = y, z = z)`。
+     *
+     * @param x 本次计算使用的坐标、颜色、比例、范围或强度分量
+     *
+     * @param y 本次计算使用的坐标、颜色、比例、范围或强度分量
+     *
+     * @param z 本次计算使用的坐标、颜色、比例、范围或强度分量
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun scale(x: Number, y: Number, z: Number): RenderVertexBuilder {
         val sx = x.f()
         val sy = y.f()
@@ -375,18 +772,64 @@ class RenderVertexBuilder {
         return this
     }
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `rotateX`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`rotateX(radians = radians, origin = origin)`。
+     *
+     * @param radians 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param origin 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun rotateX(radians: Number, origin: Vector3f = Vector3f(0f, 0f, 0f)): RenderVertexBuilder {
         return rotate(Vector3f(1f, 0f, 0f), radians, origin)
     }
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `rotateY`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`rotateY(radians = radians, origin = origin)`。
+     *
+     * @param radians 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param origin 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun rotateY(radians: Number, origin: Vector3f = Vector3f(0f, 0f, 0f)): RenderVertexBuilder {
         return rotate(Vector3f(0f, 1f, 0f), radians, origin)
     }
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `rotateZ`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`rotateZ(radians = radians, origin = origin)`。
+     *
+     * @param radians 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param origin 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun rotateZ(radians: Number, origin: Vector3f = Vector3f(0f, 0f, 0f)): RenderVertexBuilder {
         return rotate(Vector3f(0f, 0f, 1f), radians, origin)
     }
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `rotate`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`rotate(axis = axis, radians = radians, origin = origin)`。
+     *
+     * @param axis 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param radians 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param origin 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun rotate(
         axis: Vector3f,
         radians: Number,
@@ -401,6 +844,19 @@ class RenderVertexBuilder {
         return this
     }
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `twist`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`twist(axis = axis, radiansPerUnit = radiansPerUnit, origin = origin)`。
+     *
+     * @param axis 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param radiansPerUnit 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param origin 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun twist(
         axis: Vector3f = Vector3f(0f, 1f, 0f),
         radiansPerUnit: Number,
@@ -417,6 +873,23 @@ class RenderVertexBuilder {
         return this
     }
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `twist`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`twist(axis = axis, totalRadians = totalRadians, minProjection = minProjection, maxProjection = maxProjection, origin = origin)`。
+     *
+     * @param axis 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param totalRadians 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param minProjection 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param maxProjection 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param origin 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun twist(
         axis: Vector3f,
         totalRadians: Number,
@@ -441,28 +914,74 @@ class RenderVertexBuilder {
         return this
     }
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `verticesOnEach`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`verticesOnEach(handler = handler)`。
+     *
+     * @param handler 在当前生命周期或数据上下文中执行的回调
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun verticesOnEach(handler: (RenderEntityModelVertex) -> Unit): RenderVertexBuilder {
         batches.forEach { batch -> batch.vertices.forEach(handler) }
         return this
     }
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `clear`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`clear()`。
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun clear(): RenderVertexBuilder {
         batches.clear()
         return this
     }
 
+    /**
+     * 根据输入和 `RenderVertexBuilder` 当前配置创建 `create` 结果；返回对象保留本次配置的语义。
+     *
+     * 示例：`create()`。
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun create(): List<RenderEntityModelVertex> {
         return batches.flatMap { batch -> batch.vertices.map { cloneVertex(it) } }
     }
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `createWithoutClone`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`createWithoutClone()`。
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun createWithoutClone(): List<RenderEntityModelVertex> {
         return batches.flatMap { it.vertices }
     }
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `createVertexData`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`createVertexData()`。
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun createVertexData(): List<VertexData> {
         return create().map { VertexData(it.position, it.color, it.uv) }
     }
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `createPrimitives`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`createPrimitives(layer = layer)`。
+     *
+     * @param layer 模型分组或地形渲染层，决定图元筛选及 RenderType 行为
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun createPrimitives(layer: RenderEntityModelLayer): List<RenderEntityModelPrimitive> {
         return batches
             .filter { it.vertices.isNotEmpty() }
@@ -475,6 +994,17 @@ class RenderVertexBuilder {
             }
     }
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `addTo`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`addTo(model = model, layer = layer)`。
+     *
+     * @param model 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param layer 模型分组或地形渲染层，决定图元筛选及 RenderType 行为
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun addTo(model: RenderEntityModelBuilder, layer: RenderEntityModelLayer): RenderVertexBuilder {
         batches.forEach { batch ->
             batch.vertices.forEach { vertex ->
@@ -491,10 +1021,26 @@ class RenderVertexBuilder {
         return this
     }
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `buildModel`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`buildModel(layer = layer)`。
+     *
+     * @param layer 模型分组或地形渲染层，决定图元筛选及 RenderType 行为
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun buildModel(layer: RenderEntityModelLayer): RenderEntityModel {
         return RenderEntityModel(listOf(layer), createPrimitives(layer))
     }
 
+    /**
+     * 在 `RenderVertexBuilder` 中配置 `cloneBuilder`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`cloneBuilder()`。
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun cloneBuilder(): RenderVertexBuilder {
         val clone = RenderVertexBuilder()
             .mode(defaultPrimitiveMode)

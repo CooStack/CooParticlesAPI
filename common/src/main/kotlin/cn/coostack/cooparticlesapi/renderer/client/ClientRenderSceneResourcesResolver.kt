@@ -7,6 +7,13 @@ import cn.coostack.cooparticlesapi.renderer.backend.RenderSceneTargets
 import net.minecraft.client.Minecraft
 
 object ClientRenderSceneResourcesResolver {
+    /**
+     * 根据输入和 `ClientRenderSceneResourcesResolver` 当前状态解析 `resolveCurrentResources` 结果，供后续构建或绘制使用。
+     *
+     * 示例：`resolveCurrentResources()`。
+     *
+     * @return 匹配当前条件的对象或状态；可空返回值表示没有可用结果
+     */
     fun resolveCurrentResources(): RenderSceneResources {
         val minecraft = Minecraft.getInstance()
         val resolvedTargets = ClientRenderTargetResolver.resolveCurrentTargets()

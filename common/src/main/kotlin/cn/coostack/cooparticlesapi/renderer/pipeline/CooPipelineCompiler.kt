@@ -24,6 +24,15 @@ internal data class CooCompiledPipeline(
     val lines: List<CooPipelineLine>,
     val attachments: List<CooCompiledAttachment>
 ) {
+    /**
+     * 把输入对象加入 `CooCompiledPipeline` 的 `attachment` 管理范围，后续查询、构建或绘制会使用该绑定。
+     *
+     * 示例：`attachment(output = output)`。
+     *
+     * @param output 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 当前操作计算、更新或查询得到的结果
+     */
     fun attachment(output: CooPipelineOutputPort): CooCompiledAttachment? {
         return attachments.firstOrNull { it.output == output }
     }
@@ -31,6 +40,15 @@ internal data class CooCompiledPipeline(
 
 /** 把 typed port/line 图编译成稳定拓扑和 FBO attachment 生命周期。 */
 internal object CooPipelineCompiler {
+    /**
+     * 初始化或准备 `CooPipelineCompiler` 的 `compile` 阶段，使后续渲染调用可以使用相关资源。
+     *
+     * 示例：`compile(pipeline = pipeline)`。
+     *
+     * @param pipeline 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 当前操作计算、更新或查询得到的结果
+     */
     fun compile(pipeline: CooRenderPipeline<*>): CooCompiledPipeline {
         val orderedNodes = sortNodes(pipeline.nodes, pipeline.lines)
         val nodeIndex = orderedNodes.mapIndexed { index, node -> node.name to index }.toMap()
@@ -78,6 +96,13 @@ internal object CooPipelineCompiler {
         required: MutableSet<RenderBackendCapability>,
         optionalCapabilities: MutableSet<RenderBackendCapability>
     ) {
+        /**
+         * 执行 `CooPipelineCompiler` 定义的 `capability` 操作；输入和返回值用于该组件当前的渲染职责。
+         *
+         * 示例：`capability(value = value)`。
+         *
+         * @param value 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+         */
         fun capability(value: RenderBackendCapability) {
             if (optional) optionalCapabilities += value else required += value
         }

@@ -61,9 +61,27 @@ internal class PostEffectType(
         )
     }
 
+    /**
+     * 执行 `PostEffectType` 定义的 `toDescriptor` 操作；输入和返回值用于该组件当前的渲染职责。
+     *
+     * 示例：`toDescriptor(instance = instance)`。
+     *
+     * @param instance 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 当前操作计算、更新或查询得到的结果
+     */
     fun toDescriptor(instance: PostEffectInstance): RenderEffectDescriptor = descriptorFactory(instance)
 }
 
+/**
+ * 执行 `当前组件` 定义的 `withParamUniforms` 操作；输入和返回值用于该组件当前的渲染职责。
+ *
+ * 示例：`withParamUniforms(names = names)`。
+ *
+ * @param names 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+ *
+ * @return 当前操作计算、更新或查询得到的结果
+ */
 internal fun PostEffectType.withParamUniforms(names: Set<String>): PostEffectType {
     if (names.isEmpty()) return this
     val updatedPasses = chain.passes.map { pass ->

@@ -57,9 +57,18 @@ internal data class PostEffectLifecycle(
     val expired: Boolean
         get() = durationTicks >= 0 && ageTicks >= durationTicks
 
-    /** 推进一 tick，避免 age 溢出到 Int.MAX_VALUE。 */
+    /**
+     * 推进一个游戏 tick，返回新的不可变生命周期快照。
+     *
+     * @return age 增加 1 的生命周期；已接近整数上限时保持在安全范围
+     */
     fun tick(): PostEffectLifecycle = copy(ageTicks = min(Int.MAX_VALUE - 1, ageTicks + 1))
 
+    /**
+     * 按固定字段顺序写入生命周期状态，供服务端和客户端同步。
+     *
+     * @param buf 目标网络缓冲区
+     */
     fun write(buf: FriendlyByteBuf) {
         buf.writeInt(durationTicks)
         buf.writeInt(ageTicks)
@@ -70,6 +79,12 @@ internal data class PostEffectLifecycle(
     }
 
     companion object {
+        /**
+         * 读取 [write] 写出的生命周期字段。
+         *
+         * @param buf 已定位到 durationTicks 字段的网络缓冲区
+         * @return 解码后的生命周期快照
+         */
         fun read(buf: FriendlyByteBuf): PostEffectLifecycle {
             return PostEffectLifecycle(
                 durationTicks = buf.readInt(),

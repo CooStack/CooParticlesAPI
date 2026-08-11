@@ -10,6 +10,7 @@ import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelineOutputPort
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelineShader
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelineTextureSource
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooUniformValue
+import cn.coostack.cooparticlesapi.renderer.pipeline.setUniform
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderInput
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderPhase
 import cn.coostack.cooparticlesapi.renderer.shader.SimpleShaderProgram
@@ -28,9 +29,6 @@ import net.minecraft.client.renderer.ShaderInstance
 import net.minecraft.client.renderer.texture.TextureAtlas
 import net.minecraft.resources.ResourceLocation
 import org.joml.Matrix4f
-import org.joml.Vector2f
-import org.joml.Vector3f
-import org.joml.Vector4f
 import org.lwjgl.opengl.GL33.GL_ACTIVE_TEXTURE
 import org.lwjgl.opengl.GL33.GL_BLEND
 import org.lwjgl.opengl.GL33.GL_BLEND_DST_ALPHA
@@ -81,6 +79,15 @@ object OpenGlRenderEntityModelExecutor : RenderEntityModelExecutor {
     private val warnedInputs = linkedSetOf<String>()
     private var buffer: DynamicVertexBuffer? = null
 
+    /**
+     * 执行 `OpenGlRenderEntityModelExecutor` 的 `draw` 渲染操作，处理传入数据并更新当前帧或 GPU 状态。
+     *
+     * 示例：`draw(model = model, input = input)`。
+     *
+     * @param model 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param input 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     */
     override fun draw(model: RenderEntityModel, input: RenderInput<*>) {
         val visiblePrimitives = model.primitives.filter { it.vertices.isNotEmpty() }
         if (visiblePrimitives.isEmpty()) return
@@ -107,6 +114,11 @@ object OpenGlRenderEntityModelExecutor : RenderEntityModelExecutor {
         }
     }
 
+    /**
+     * 释放 `OpenGlRenderEntityModelExecutor` 在 `release` 中管理的资源；再次使用前必须重新初始化。
+     *
+     * 示例：`release()`。
+     */
     fun release() {
         buffer?.release()
         buffer = null
@@ -194,13 +206,7 @@ object OpenGlRenderEntityModelExecutor : RenderEntityModelExecutor {
     }
 
     private fun uploadUniform(uniforms: CooProgramUniformAccess, name: String, value: CooUniformValue) {
-        when (value) {
-            is CooUniformValue.FloatValue -> uniforms.setFloat(name, value.value)
-            is CooUniformValue.IntValue -> uniforms.setInt(name, value.value)
-            is CooUniformValue.Vec2Value -> uniforms.setFloat2(name, Vector2f(value.x, value.y))
-            is CooUniformValue.Vec3Value -> uniforms.setFloat3(name, Vector3f(value.x, value.y, value.z))
-            is CooUniformValue.Vec4Value -> uniforms.setFloat4(name, Vector4f(value.x, value.y, value.z, value.w))
-        }
+        uniforms.setUniform(name, value)
     }
 
     private fun resolveBindings(input: RenderInput<*>): List<TextureBinding>? {

@@ -140,6 +140,15 @@ object CooBlockPipelines {
         }
     }
 
+    /**
+     * 根据输入和 `CooBlockPipelines` 当前状态解析 `resolve` 结果，供后续构建或绘制使用。
+     *
+     * 示例：`resolve(state = state)`。
+     *
+     * @param state 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 匹配当前条件的对象或状态；可空返回值表示没有可用结果
+     */
     internal fun resolve(state: BlockState): CooRenderPipeline<BlockState> {
         val current = snapshot.get()
         current.blocks.asReversed().firstOrNull { it.owner != null && it.block === state.block }?.let {
@@ -157,14 +166,33 @@ object CooBlockPipelines {
         return CooPipelines.BLOCK_DEFAULT
     }
 
+    /**
+     * 把输入对象加入 `CooBlockPipelines` 的 `addChangeListener` 管理范围，后续查询、构建或绘制会使用该绑定。
+     *
+     * 示例：`addChangeListener(listener = listener)`。
+     *
+     * @param listener 在当前生命周期或数据上下文中执行的回调
+     */
     internal fun addChangeListener(listener: (Long) -> Unit) {
         changeListeners += listener
     }
 
+    /**
+     * 从 `CooBlockPipelines` 的 `removeChangeListener` 管理范围移除目标，后续调用不再使用对应绑定或资源。
+     *
+     * 示例：`removeChangeListener(listener = listener)`。
+     *
+     * @param listener 在当前生命周期或数据上下文中执行的回调
+     */
     internal fun removeChangeListener(listener: (Long) -> Unit) {
         changeListeners -= listener
     }
 
+    /**
+     * 清理 `CooBlockPipelines` 的 `clearBindings` 状态，使缓存、绑定或 OpenGL 状态可以重新初始化。
+     *
+     * 示例：`clearBindings()`。
+     */
     internal fun clearBindings() {
         update { BindingSnapshot() }
     }

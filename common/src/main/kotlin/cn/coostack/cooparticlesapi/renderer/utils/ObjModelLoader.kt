@@ -201,6 +201,15 @@ object ObjModelLoader {
         private val uvs = ArrayList<Vector2f>()
         private val normals = ArrayList<Vector3f>()
 
+        /**
+         * 从指定来源读取并解析 `readPosition` 数据；输入必须符合 `ObjParseState` 使用的资源或网络格式。
+         *
+         * 示例：`readPosition(parts = parts, lineNumber = lineNumber)`。
+         *
+         * @param parts 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+         *
+         * @param lineNumber 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+         */
         fun readPosition(parts: List<String>, lineNumber: Int) {
             // v x y z [r g b [a]]
             requireLine(parts.size >= 4, lineNumber, "v requires x y z")
@@ -222,6 +231,15 @@ object ObjModelLoader {
             positions += ObjPosition(position, vertexColor)
         }
 
+        /**
+         * 从指定来源读取并解析 `readUv` 数据；输入必须符合 `ObjParseState` 使用的资源或网络格式。
+         *
+         * 示例：`readUv(parts = parts, lineNumber = lineNumber)`。
+         *
+         * @param parts 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+         *
+         * @param lineNumber 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+         */
         fun readUv(parts: List<String>, lineNumber: Int) {
             // vt u [v]
             requireLine(parts.size >= 2, lineNumber, "vt requires u")
@@ -231,6 +249,15 @@ object ObjModelLoader {
             uvs += Vector2f(u, v)
         }
 
+        /**
+         * 从指定来源读取并解析 `readNormal` 数据；输入必须符合 `ObjParseState` 使用的资源或网络格式。
+         *
+         * 示例：`readNormal(parts = parts, lineNumber = lineNumber)`。
+         *
+         * @param parts 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+         *
+         * @param lineNumber 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+         */
         fun readNormal(parts: List<String>, lineNumber: Int) {
             // vn x y z
             requireLine(parts.size >= 4, lineNumber, "vn requires x y z")
@@ -243,6 +270,15 @@ object ObjModelLoader {
             )
         }
 
+        /**
+         * 从指定来源读取并解析 `readFace` 数据；输入必须符合 `ObjParseState` 使用的资源或网络格式。
+         *
+         * 示例：`readFace(faceParts = faceParts, lineNumber = lineNumber)`。
+         *
+         * @param faceParts 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+         *
+         * @param lineNumber 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+         */
         fun readFace(faceParts: List<String>, lineNumber: Int) {
             // f v1/vt1/vn1 v2/vt2/vn2 ...
             requireLine(faceParts.size >= 3, lineNumber, "f requires at least 3 vertices")

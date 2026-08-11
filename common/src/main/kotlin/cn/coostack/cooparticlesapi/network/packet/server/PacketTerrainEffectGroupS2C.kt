@@ -113,12 +113,6 @@ class PacketTerrainEffectGroupS2C() : CooPacket() {
         private const val UPDATE_UNIFORMS = 3
         private const val REMOVE_GROUP = 4
 
-        private const val FLOAT = 0
-        private const val INT = 1
-        private const val VEC2 = 2
-        private const val VEC3 = 3
-        private const val VEC4 = 4
-
         private val CODEC: StreamCodec<FriendlyByteBuf, PacketTerrainEffectGroupS2C> =
             StreamCodec.of(::encode, ::decode)
 
@@ -368,34 +362,7 @@ class PacketTerrainEffectGroupS2C() : CooPacket() {
             buffer.writeVarInt(uniforms.size)
             uniforms.forEach { (name, value) ->
                 buffer.writeUtf(name)
-                when (value) {
-                    is CooUniformValue.FloatValue -> {
-                        buffer.writeByte(FLOAT)
-                        buffer.writeFloat(value.value)
-                    }
-                    is CooUniformValue.IntValue -> {
-                        buffer.writeByte(INT)
-                        buffer.writeVarInt(zigZag(value.value))
-                    }
-                    is CooUniformValue.Vec2Value -> {
-                        buffer.writeByte(VEC2)
-                        buffer.writeFloat(value.x)
-                        buffer.writeFloat(value.y)
-                    }
-                    is CooUniformValue.Vec3Value -> {
-                        buffer.writeByte(VEC3)
-                        buffer.writeFloat(value.x)
-                        buffer.writeFloat(value.y)
-                        buffer.writeFloat(value.z)
-                    }
-                    is CooUniformValue.Vec4Value -> {
-                        buffer.writeByte(VEC4)
-                        buffer.writeFloat(value.x)
-                        buffer.writeFloat(value.y)
-                        buffer.writeFloat(value.z)
-                        buffer.writeFloat(value.w)
-                    }
-                }
+                CooUniformValue.STREAM_CODEC.encode(buffer, value)
             }
         }
 
@@ -410,20 +377,7 @@ class PacketTerrainEffectGroupS2C() : CooPacket() {
             val result = LinkedHashMap<String, CooUniformValue>(count)
             repeat(count) {
                 val name = buffer.readUtf()
-                val value = when (buffer.readUnsignedByte().toInt()) {
-                    FLOAT -> CooUniformValue.FloatValue(buffer.readFloat())
-                    INT -> CooUniformValue.IntValue(unZigZag(buffer.readVarInt()))
-                    VEC2 -> CooUniformValue.Vec2Value(buffer.readFloat(), buffer.readFloat())
-                    VEC3 -> CooUniformValue.Vec3Value(buffer.readFloat(), buffer.readFloat(), buffer.readFloat())
-                    VEC4 -> CooUniformValue.Vec4Value(
-                        buffer.readFloat(),
-                        buffer.readFloat(),
-                        buffer.readFloat(),
-                        buffer.readFloat()
-                    )
-                    else -> error("Unknown terrain effect uniform type")
-                }
-                result[name] = value
+                result[name] = CooUniformValue.STREAM_CODEC.decode(buffer)
             }
             return result
         }

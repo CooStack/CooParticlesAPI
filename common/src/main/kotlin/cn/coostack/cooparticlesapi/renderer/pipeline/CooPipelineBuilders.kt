@@ -2,6 +2,15 @@ package cn.coostack.cooparticlesapi.renderer.pipeline
 
 import net.minecraft.resources.ResourceLocation
 
+/**
+ * 单个 Pipeline 节点的构建器。
+ *
+ * 构造函数由 [CooRenderPipelineBuilder] 创建，调用方通过 `world`、`pass` 或 `pingPong`
+ * 的 DSL block 配置节点，不应脱离所属 graph 单独持有 builder。
+ *
+ * @param name 节点在当前 graph 中的唯一名称
+ * @param kind 节点的执行模型，影响可用输出和 shader 要求
+ */
 class CooPipelineNodeBuilder<T : Any> internal constructor(
     private val name: String,
     private val kind: CooPipelineNodeKind
@@ -20,18 +29,46 @@ class CooPipelineNodeBuilder<T : Any> internal constructor(
     private var hasMaskOutput = false
     private var order = 0
 
+    /**
+     * 在 `CooPipelineNodeBuilder` 中配置 `shader`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`shader(shader = shader)`。
+     *
+     * @param shader 要加载、编译或绑定的 shader 资源
+     */
     fun shader(shader: ResourceLocation) = apply {
         coreShader = shader
     }
 
+    /**
+     * 在 `CooPipelineNodeBuilder` 中配置 `vertex`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`vertex(shader = shader)`。
+     *
+     * @param shader 要加载、编译或绑定的 shader 资源
+     */
     fun vertex(shader: ResourceLocation) = apply {
         vertexShader = shader
     }
 
+    /**
+     * 在 `CooPipelineNodeBuilder` 中配置 `fragment`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`fragment(shader = shader)`。
+     *
+     * @param shader 要加载、编译或绑定的 shader 资源
+     */
     fun fragment(shader: ResourceLocation) = apply {
         fragmentShader = shader
     }
 
+    /**
+     * 在 `CooPipelineNodeBuilder` 中配置 `order`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`order(value = value)`。
+     *
+     * @param value 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     */
     fun order(value: Int) = apply {
         order = value
     }
@@ -53,6 +90,19 @@ class CooPipelineNodeBuilder<T : Any> internal constructor(
         sources[sampler] = source
     }
 
+    /**
+     * 在 `CooPipelineNodeBuilder` 中配置 `inputTexture`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`inputTexture(sampler = sampler, texture = texture, optional = optional, textureSlot = textureSlot)`。
+     *
+     * @param sampler 用于查找、绑定或记录目标的名称
+     *
+     * @param texture 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param optional 控制是否启用对应分支或强制执行操作的开关
+     *
+     * @param textureSlot 数量或从零开始的索引值，具体上限由当前资源配置决定
+     */
     fun inputTexture(
         sampler: String,
         texture: ResourceLocation,
@@ -60,24 +110,72 @@ class CooPipelineNodeBuilder<T : Any> internal constructor(
         textureSlot: Int = inputs.size
     ) = input(sampler, CooPipelineTextureSource.Texture(texture), optional, textureSlot)
 
+    /**
+     * 在 `CooPipelineNodeBuilder` 中配置 `inputBlockAtlas`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`inputBlockAtlas(sampler = sampler, optional = optional, textureSlot = textureSlot)`。
+     *
+     * @param sampler 用于查找、绑定或记录目标的名称
+     *
+     * @param optional 控制是否启用对应分支或强制执行操作的开关
+     *
+     * @param textureSlot 数量或从零开始的索引值，具体上限由当前资源配置决定
+     */
     fun inputBlockAtlas(
         sampler: String = "BaseSampler",
         optional: Boolean = false,
         textureSlot: Int = inputs.size
     ) = input(sampler, CooPipelineTextureSource.BlockAtlas, optional, textureSlot)
 
+    /**
+     * 在 `CooPipelineNodeBuilder` 中配置 `inputSceneColor`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`inputSceneColor(sampler = sampler, optional = optional, textureSlot = textureSlot)`。
+     *
+     * @param sampler 用于查找、绑定或记录目标的名称
+     *
+     * @param optional 控制是否启用对应分支或强制执行操作的开关
+     *
+     * @param textureSlot 数量或从零开始的索引值，具体上限由当前资源配置决定
+     */
     fun inputSceneColor(
         sampler: String = "SceneColor",
         optional: Boolean = false,
         textureSlot: Int = inputs.size
     ) = input(sampler, CooPipelineTextureSource.SceneColor, optional, textureSlot)
 
+    /**
+     * 在 `CooPipelineNodeBuilder` 中配置 `inputSceneDepth`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`inputSceneDepth(sampler = sampler, optional = optional, textureSlot = textureSlot)`。
+     *
+     * @param sampler 用于查找、绑定或记录目标的名称
+     *
+     * @param optional 控制是否启用对应分支或强制执行操作的开关
+     *
+     * @param textureSlot 数量或从零开始的索引值，具体上限由当前资源配置决定
+     */
     fun inputSceneDepth(
         sampler: String = "SceneDepth",
         optional: Boolean = false,
         textureSlot: Int = inputs.size
     ) = input(sampler, CooPipelineTextureSource.SceneDepth, optional, textureSlot)
 
+    /**
+     * 在 `CooPipelineNodeBuilder` 中配置 `inputFramebuffer`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`inputFramebuffer(sampler = sampler, target = target, attachment = attachment, optional = optional, textureSlot = textureSlot)`。
+     *
+     * @param sampler 用于查找、绑定或记录目标的名称
+     *
+     * @param target 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param attachment 数量或从零开始的索引值，具体上限由当前资源配置决定
+     *
+     * @param optional 控制是否启用对应分支或强制执行操作的开关
+     *
+     * @param textureSlot 数量或从零开始的索引值，具体上限由当前资源配置决定
+     */
     fun inputFramebuffer(
         sampler: String,
         target: ResourceLocation,
@@ -91,18 +189,51 @@ class CooPipelineNodeBuilder<T : Any> internal constructor(
         textureSlot
     )
 
+    /**
+     * 在 `CooPipelineNodeBuilder` 中配置 `inputMask`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`inputMask(sampler = sampler, optional = optional, textureSlot = textureSlot)`。
+     *
+     * @param sampler 用于查找、绑定或记录目标的名称
+     *
+     * @param optional 控制是否启用对应分支或强制执行操作的开关
+     *
+     * @param textureSlot 数量或从零开始的索引值，具体上限由当前资源配置决定
+     */
     fun inputMask(
         sampler: String = "Mask",
         optional: Boolean = false,
         textureSlot: Int = inputs.size
     ) = input(sampler, CooPipelineTextureSource.Mask, optional, textureSlot)
 
+    /**
+     * 在 `CooPipelineNodeBuilder` 中配置 `inputTemporary`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`inputTemporary(sampler = sampler, optional = optional, textureSlot = textureSlot)`。
+     *
+     * @param sampler 用于查找、绑定或记录目标的名称
+     *
+     * @param optional 控制是否启用对应分支或强制执行操作的开关
+     *
+     * @param textureSlot 数量或从零开始的索引值，具体上限由当前资源配置决定
+     */
     fun inputTemporary(
         sampler: String = "Temporary",
         optional: Boolean = false,
         textureSlot: Int = inputs.size
     ) = input(sampler, CooPipelineTextureSource.Temporary, optional, textureSlot)
 
+    /**
+     * 在 `CooPipelineNodeBuilder` 中配置 `inputBloom`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`inputBloom(sampler = sampler, optional = optional, textureSlot = textureSlot)`。
+     *
+     * @param sampler 用于查找、绑定或记录目标的名称
+     *
+     * @param optional 控制是否启用对应分支或强制执行操作的开关
+     *
+     * @param textureSlot 数量或从零开始的索引值，具体上限由当前资源配置决定
+     */
     fun inputBloom(
         sampler: String = "Bloom",
         optional: Boolean = false,
@@ -121,23 +252,84 @@ class CooPipelineNodeBuilder<T : Any> internal constructor(
         hasMaskOutput = true
     }
 
+    /**
+     * 在 `CooPipelineNodeBuilder` 中配置 `outputToWorld`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`outputToWorld()`。
+     */
     fun outputToWorld() = apply { targets += CooPipelineTarget.World }
+    /**
+     * 在 `CooPipelineNodeBuilder` 中配置 `outputToScreen`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`outputToScreen()`。
+     */
     fun outputToScreen() = apply { targets += CooPipelineTarget.FinalScreen }
+    /**
+     * 在 `CooPipelineNodeBuilder` 中配置 `outputToMask`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`outputToMask()`。
+     */
     fun outputToMask() = apply { targets += CooPipelineTarget.Mask }
+    /**
+     * 在 `CooPipelineNodeBuilder` 中配置 `outputToTemporary`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`outputToTemporary()`。
+     */
     fun outputToTemporary() = apply { targets += CooPipelineTarget.Temporary }
+    /**
+     * 在 `CooPipelineNodeBuilder` 中配置 `outputToBloom`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`outputToBloom()`。
+     */
     fun outputToBloom() = apply { targets += CooPipelineTarget.Bloom }
+    /**
+     * 在 `CooPipelineNodeBuilder` 中配置 `outputToFramebuffer`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`outputToFramebuffer(target = target, attachment = attachment)`。
+     *
+     * @param target 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param attachment 数量或从零开始的索引值，具体上限由当前资源配置决定
+     */
     fun outputToFramebuffer(target: ResourceLocation, attachment: Int = 0) = apply {
         targets += CooPipelineTarget.FramebufferColor(target, attachment)
     }
 
+    /**
+     * 在 `CooPipelineNodeBuilder` 中配置 `uniform`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`uniform(name = name, value = value)`。
+     *
+     * @param name 用于查找、绑定或记录目标的名称
+     *
+     * @param value 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     */
     fun uniform(name: String, value: Float) = apply {
         setUniform(name) { CooUniformValue.FloatValue(value) }
     }
 
+    /**
+     * 在 `CooPipelineNodeBuilder` 中配置 `uniform`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`uniform(name = name, value = value)`。
+     *
+     * @param name 用于查找、绑定或记录目标的名称
+     *
+     * @param value 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     */
     fun uniform(name: String, value: CooUniformValue) = apply {
         setUniform(name) { value }
     }
 
+    /**
+     * 在 `CooPipelineNodeBuilder` 中配置 `uniform`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`uniform(name = name, provider = provider)`。
+     *
+     * @param name 用于查找、绑定或记录目标的名称
+     *
+     * @param provider 在当前生命周期或数据上下文中执行的回调
+     */
     fun <R : Any> uniform(name: String, provider: (R) -> Float) = apply {
         setUniform(name) { subject ->
             @Suppress("UNCHECKED_CAST")
@@ -145,6 +337,15 @@ class CooPipelineNodeBuilder<T : Any> internal constructor(
         }
     }
 
+    /**
+     * 在 `CooPipelineNodeBuilder` 中配置 `uniformValue`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`uniformValue(name = name, provider = provider)`。
+     *
+     * @param name 用于查找、绑定或记录目标的名称
+     *
+     * @param provider 在当前生命周期或数据上下文中执行的回调
+     */
     fun <R : Any> uniformValue(name: String, provider: CooUniformProvider<R>) = apply {
         setUniform(name) { subject ->
             @Suppress("UNCHECKED_CAST")
@@ -152,18 +353,68 @@ class CooPipelineNodeBuilder<T : Any> internal constructor(
         }
     }
 
+    /**
+     * 在 `CooPipelineNodeBuilder` 中配置 `alternate`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`alternate(name = name, ping = ping, pong = pong)`。
+     *
+     * @param name 用于查找、绑定或记录目标的名称
+     *
+     * @param ping 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param pong 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     */
     fun alternate(name: String, ping: Float, pong: Float) = alternate(
         name,
         CooUniformValue.FloatValue(ping),
         CooUniformValue.FloatValue(pong)
     )
 
+    /**
+     * 在 `CooPipelineNodeBuilder` 中配置 `alternate`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`alternate(name = name, ping = ping, pong = pong)`。
+     *
+     * @param name 用于查找、绑定或记录目标的名称
+     *
+     * @param ping 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param pong 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     */
     fun alternate(name: String, ping: Int, pong: Int) = alternate(
         name,
         CooUniformValue.IntValue(ping),
         CooUniformValue.IntValue(pong)
     )
 
+    /**
+     * 在 `CooPipelineNodeBuilder` 中配置 `alternate`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`alternate(name = name, ping = ping, pong = pong)`。
+     *
+     * @param name 用于查找、绑定或记录目标的名称
+     *
+     * @param ping 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param pong 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     */
+    fun alternate(name: String, ping: Boolean, pong: Boolean) = alternate(
+        name,
+        CooUniformValue.BoolValue(ping),
+        CooUniformValue.BoolValue(pong)
+    )
+
+    /**
+     * 在 `CooPipelineNodeBuilder` 中配置 `alternate`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`alternate(name = name, ping = ping, pong = pong)`。
+     *
+     * @param name 用于查找、绑定或记录目标的名称
+     *
+     * @param ping 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param pong 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     */
     fun alternate(name: String, ping: CooUniformValue, pong: CooUniformValue) = apply {
         require(kind == CooPipelineNodeKind.PING_PONG) {
             "Alternating uniforms are only available on ping-pong nodes"
@@ -173,6 +424,15 @@ class CooPipelineNodeBuilder<T : Any> internal constructor(
         }
     }
 
+    /**
+     * 在 `CooPipelineNodeBuilder` 中配置 `iterationUniform`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`iterationUniform(name = name, provider = provider)`。
+     *
+     * @param name 用于查找、绑定或记录目标的名称
+     *
+     * @param provider 在当前生命周期或数据上下文中执行的回调
+     */
     fun iterationUniform(name: String, provider: (CooPipelineIteration) -> CooUniformValue) = apply {
         require(kind == CooPipelineNodeKind.PING_PONG) {
             "Iteration uniforms are only available on ping-pong nodes"
@@ -190,6 +450,15 @@ class CooPipelineNodeBuilder<T : Any> internal constructor(
         iterationUniforms[name] = provider
     }
 
+    /**
+     * 在 `CooPipelineNodeBuilder` 中配置 `pingPong`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`pingPong(iterations = iterations, feedbackSampler = feedbackSampler)`。
+     *
+     * @param iterations 数量或从零开始的索引值，具体上限由当前资源配置决定
+     *
+     * @param feedbackSampler 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     */
     internal fun pingPong(iterations: Int, feedbackSampler: String) {
         require(kind == CooPipelineNodeKind.PING_PONG)
         require(iterations > 0) { "Ping-pong node '$name' must execute at least once" }
@@ -198,6 +467,19 @@ class CooPipelineNodeBuilder<T : Any> internal constructor(
         input(feedbackSampler)
     }
 
+    /**
+     * 在 `CooPipelineNodeBuilder` 中配置 `ensureInput`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`ensureInput(sampler = sampler, source = source, optional = optional, textureSlot = textureSlot)`。
+     *
+     * @param sampler 用于查找、绑定或记录目标的名称
+     *
+     * @param source 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param optional 控制是否启用对应分支或强制执行操作的开关
+     *
+     * @param textureSlot 数量或从零开始的索引值，具体上限由当前资源配置决定
+     */
     internal fun ensureInput(
         sampler: String,
         source: CooPipelineTextureSource,
@@ -209,6 +491,15 @@ class CooPipelineNodeBuilder<T : Any> internal constructor(
         }
     }
 
+    /**
+     * 根据输入和 `CooPipelineNodeBuilder` 当前配置创建 `build` 结果；返回对象保留本次配置的语义。
+     *
+     * 示例：`build(sequence = sequence)`。
+     *
+     * @param sequence 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     internal fun build(sequence: Int): CooNodeBuildResult {
         val shader = when {
             coreShader != null -> {
@@ -278,6 +569,15 @@ internal data class CooNodeBuildResult(
     val targets: List<CooPipelineTarget>
 )
 
+/**
+ * 不可变 [CooRenderPipeline] 的 graph 构建器。
+ *
+ * 内部构造函数由 [CooPipelines] 和 shader effect facade 统一调用，以确保 id、域和注册
+ * 生命周期一致。示例：`CooPipelines.entity<MyEntity>(id) { world { shader(shaderId) } }`。
+ *
+ * @param id Pipeline 的资源标识
+ * @param domain 实体、方块、通用或屏幕使用域
+ */
 class CooRenderPipelineBuilder<T : Any> internal constructor(
     private val id: ResourceLocation,
     private val domain: CooPipelineDomain
@@ -291,52 +591,170 @@ class CooRenderPipelineBuilder<T : Any> internal constructor(
     private var implicitWorldUsed = false
     private var sequence = 0
 
+    /**
+     * 在 `CooRenderPipelineBuilder` 中配置 `terrainLayer`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`terrainLayer(layer = layer)`。
+     *
+     * @param layer 模型分组或地形渲染层，决定图元筛选及 RenderType 行为
+     */
     fun terrainLayer(layer: CooTerrainLayer) = apply { terrainLayer = layer }
+    /**
+     * 在 `CooRenderPipelineBuilder` 中配置 `effectUv`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`effectUv(mode = mode)`。
+     *
+     * @param mode 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     */
     fun effectUv(mode: CooEffectUvMode) = apply { effectUvMode = mode }
 
+    /**
+     * 在 `CooRenderPipelineBuilder` 中配置 `shader`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`shader(shader = shader)`。
+     *
+     * @param shader 要加载、编译或绑定的 shader 资源
+     */
     fun shader(shader: ResourceLocation) = apply {
         implicitWorldUsed = true
         implicitWorld.shader(shader)
     }
 
+    /**
+     * 在 `CooRenderPipelineBuilder` 中配置 `inputTexture`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`inputTexture(sampler = sampler, texture = texture, textureSlot = textureSlot)`。
+     *
+     * @param sampler 用于查找、绑定或记录目标的名称
+     *
+     * @param texture 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param textureSlot 数量或从零开始的索引值，具体上限由当前资源配置决定
+     */
     fun inputTexture(sampler: String, texture: ResourceLocation, textureSlot: Int = 0) = apply {
         implicitWorldUsed = true
         implicitWorld.inputTexture(sampler, texture, textureSlot = textureSlot)
     }
 
+    /**
+     * 在 `CooRenderPipelineBuilder` 中配置 `inputBlockAtlas`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`inputBlockAtlas(sampler = sampler, textureSlot = textureSlot)`。
+     *
+     * @param sampler 用于查找、绑定或记录目标的名称
+     *
+     * @param textureSlot 数量或从零开始的索引值，具体上限由当前资源配置决定
+     */
     fun inputBlockAtlas(sampler: String = "BaseSampler", textureSlot: Int = 0) = apply {
         implicitWorldUsed = true
         implicitWorld.inputBlockAtlas(sampler, textureSlot = textureSlot)
     }
 
+    /**
+     * 在 `CooRenderPipelineBuilder` 中配置 `inputSceneColor`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`inputSceneColor(sampler = sampler, optional = optional, textureSlot = textureSlot)`。
+     *
+     * @param sampler 用于查找、绑定或记录目标的名称
+     *
+     * @param optional 控制是否启用对应分支或强制执行操作的开关
+     *
+     * @param textureSlot 数量或从零开始的索引值，具体上限由当前资源配置决定
+     */
     fun inputSceneColor(sampler: String = "SceneColor", optional: Boolean = false, textureSlot: Int = 0) = apply {
         implicitWorldUsed = true
         implicitWorld.inputSceneColor(sampler, optional, textureSlot)
     }
 
+    /**
+     * 在 `CooRenderPipelineBuilder` 中配置 `inputSceneDepth`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`inputSceneDepth(sampler = sampler, optional = optional, textureSlot = textureSlot)`。
+     *
+     * @param sampler 用于查找、绑定或记录目标的名称
+     *
+     * @param optional 控制是否启用对应分支或强制执行操作的开关
+     *
+     * @param textureSlot 数量或从零开始的索引值，具体上限由当前资源配置决定
+     */
     fun inputSceneDepth(sampler: String = "SceneDepth", optional: Boolean = false, textureSlot: Int = 1) = apply {
         implicitWorldUsed = true
         implicitWorld.inputSceneDepth(sampler, optional, textureSlot)
     }
 
+    /**
+     * 在 `CooRenderPipelineBuilder` 中配置 `uniform`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`uniform(name = name, value = value)`。
+     *
+     * @param name 用于查找、绑定或记录目标的名称
+     *
+     * @param value 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     */
     fun uniform(name: String, value: Float) = apply {
         implicitWorldUsed = true
         implicitWorld.uniform(name, value)
     }
 
+    /**
+     * 在 `CooRenderPipelineBuilder` 中配置 `uniform`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`uniform(name = name, value = value)`。
+     *
+     * @param name 用于查找、绑定或记录目标的名称
+     *
+     * @param value 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     */
     fun uniform(name: String, value: CooUniformValue) = apply {
         implicitWorldUsed = true
         implicitWorld.uniform(name, value)
     }
 
+    /**
+     * 在 `CooRenderPipelineBuilder` 中配置 `world`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`world(name = name, block = block)`。
+     *
+     * @param name 用于查找、绑定或记录目标的名称
+     *
+     * @param block 在当前生命周期或数据上下文中执行的回调
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun world(name: String = "world", block: CooPipelineNodeBuilder<T>.() -> Unit = {}): CooPipelineNode {
         return addNode(CooPipelineNodeBuilder<T>(name, CooPipelineNodeKind.WORLD).apply(block))
     }
 
+    /**
+     * 在 `CooRenderPipelineBuilder` 中配置 `pass`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`pass(name = name, block = block)`。
+     *
+     * @param name 用于查找、绑定或记录目标的名称
+     *
+     * @param block 在当前生命周期或数据上下文中执行的回调
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun pass(name: String, block: CooPipelineNodeBuilder<T>.() -> Unit): CooPipelineNode {
         return addNode(CooPipelineNodeBuilder<T>(name, CooPipelineNodeKind.FULLSCREEN).apply(block))
     }
 
+    /**
+     * 在 `CooRenderPipelineBuilder` 中配置 `pingPong`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`pingPong(name = name, iterations = iterations, feedbackSampler = feedbackSampler, block = block)`。
+     *
+     * @param name 用于查找、绑定或记录目标的名称
+     *
+     * @param iterations 数量或从零开始的索引值，具体上限由当前资源配置决定
+     *
+     * @param feedbackSampler 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param block 在当前生命周期或数据上下文中执行的回调
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun pingPong(
         name: String,
         iterations: Int,
@@ -348,6 +766,15 @@ class CooRenderPipelineBuilder<T : Any> internal constructor(
         return addNode(builder.apply(block))
     }
 
+    /**
+     * 在 `CooRenderPipelineBuilder` 中配置 `addPreparedNode`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`addPreparedNode(builder = builder)`。
+     *
+     * @param builder 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     internal fun addPreparedNode(builder: CooPipelineNodeBuilder<T>): CooPipelineNode {
         return addNode(builder)
     }
@@ -382,21 +809,129 @@ class CooRenderPipelineBuilder<T : Any> internal constructor(
         toChannel: Int
     ) = line(from.output(fromChannel), to.input(toChannel))
 
+    /**
+     * 在 `CooRenderPipelineBuilder` 中配置 `texture`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`texture(texture = texture)`。
+     *
+     * @param texture 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun texture(texture: ResourceLocation): CooPipelineTextureSource = CooPipelineTextureSource.Texture(texture)
+    /**
+     * 在 `CooRenderPipelineBuilder` 中配置 `blockAtlas`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`blockAtlas()`。
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun blockAtlas(): CooPipelineTextureSource = CooPipelineTextureSource.BlockAtlas
+    /**
+     * 在 `CooRenderPipelineBuilder` 中配置 `sceneColor`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`sceneColor()`。
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun sceneColor(): CooPipelineTextureSource = CooPipelineTextureSource.SceneColor
+    /**
+     * 在 `CooRenderPipelineBuilder` 中配置 `sceneDepth`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`sceneDepth()`。
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun sceneDepth(): CooPipelineTextureSource = CooPipelineTextureSource.SceneDepth
+    /**
+     * 在 `CooRenderPipelineBuilder` 中配置 `framebuffer`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`framebuffer(target = target, attachment = attachment)`。
+     *
+     * @param target 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param attachment 数量或从零开始的索引值，具体上限由当前资源配置决定
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun framebuffer(target: ResourceLocation, attachment: Int = 0): CooPipelineTextureSource =
         CooPipelineTextureSource.FramebufferColor(target, attachment)
+    /**
+     * 在 `CooRenderPipelineBuilder` 中配置 `mask`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`mask()`。
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun mask(): CooPipelineTextureSource = CooPipelineTextureSource.Mask
+    /**
+     * 在 `CooRenderPipelineBuilder` 中配置 `temporary`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`temporary()`。
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun temporary(): CooPipelineTextureSource = CooPipelineTextureSource.Temporary
+    /**
+     * 在 `CooRenderPipelineBuilder` 中配置 `bloom`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`bloom()`。
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun bloom(): CooPipelineTextureSource = CooPipelineTextureSource.Bloom
 
+    /**
+     * 在 `CooRenderPipelineBuilder` 中配置 `worldTarget`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`worldTarget()`。
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun worldTarget(): CooPipelineTarget = CooPipelineTarget.World
+    /**
+     * 在 `CooRenderPipelineBuilder` 中配置 `screenTarget`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`screenTarget()`。
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun screenTarget(): CooPipelineTarget = CooPipelineTarget.FinalScreen
+    /**
+     * 在 `CooRenderPipelineBuilder` 中配置 `maskTarget`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`maskTarget()`。
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun maskTarget(): CooPipelineTarget = CooPipelineTarget.Mask
+    /**
+     * 在 `CooRenderPipelineBuilder` 中配置 `temporaryTarget`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`temporaryTarget()`。
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun temporaryTarget(): CooPipelineTarget = CooPipelineTarget.Temporary
+    /**
+     * 在 `CooRenderPipelineBuilder` 中配置 `bloomTarget`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`bloomTarget()`。
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun bloomTarget(): CooPipelineTarget = CooPipelineTarget.Bloom
+    /**
+     * 在 `CooRenderPipelineBuilder` 中配置 `framebufferTarget`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`framebufferTarget(target = target, attachment = attachment)`。
+     *
+     * @param target 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param attachment 数量或从零开始的索引值，具体上限由当前资源配置决定
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     fun framebufferTarget(target: ResourceLocation, attachment: Int = 0): CooPipelineTarget =
         CooPipelineTarget.FramebufferColor(target, attachment)
 
@@ -407,6 +942,13 @@ class CooRenderPipelineBuilder<T : Any> internal constructor(
         parameters.getOrPut(name, ::ArrayList) += CooPipelineParameterBinding(node.name, uniform)
     }
 
+    /**
+     * 根据输入和 `CooRenderPipelineBuilder` 当前配置创建 `build` 结果；返回对象保留本次配置的语义。
+     *
+     * 示例：`build()`。
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     internal fun build(): CooRenderPipeline<T> {
         val needsImplicitWorld = implicitWorldUsed ||
             (domain == CooPipelineDomain.ENTITY || domain == CooPipelineDomain.BLOCK) &&
@@ -445,6 +987,13 @@ class CooRenderPipelineBuilder<T : Any> internal constructor(
         )
     }
 
+    /**
+     * 在 `CooRenderPipelineBuilder` 中配置 `hasNodes`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
+     *
+     * 示例：`hasNodes()`。
+     *
+     * @return 当前构建器或由其配置生成的结果
+     */
     internal fun hasNodes(): Boolean = nodes.isNotEmpty()
 
     private fun addNode(builder: CooPipelineNodeBuilder<T>): CooPipelineNode {

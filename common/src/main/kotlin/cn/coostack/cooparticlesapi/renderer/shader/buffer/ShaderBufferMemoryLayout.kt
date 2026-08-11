@@ -2,6 +2,8 @@ package cn.coostack.cooparticlesapi.renderer.shader.buffer
 
 /**
  * shader buffer 使用的内存布局枚举。
+ *
+ * @property glslKeyword 生成 GLSL block 声明时使用的布局关键字。
  */
 enum class ShaderBufferMemoryLayout(val glslKeyword: String) {
     /**

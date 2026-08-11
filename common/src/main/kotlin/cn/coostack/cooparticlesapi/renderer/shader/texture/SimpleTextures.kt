@@ -15,27 +15,56 @@ class SimpleTextures : GlTextures {
         VariablePair(0, false)
     }
 
+    /**
+     * 把输入对象加入 `SimpleTextures` 的 `addTexture` 管理范围，后续查询、构建或绘制会使用该绑定。
+     *
+     * 示例：`addTexture(texture = texture)`。
+     *
+     * @param texture 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     */
     override fun addTexture(texture: GlTexture) {
         require(textureWithChannel.size < 32) { "没有那么多材质通道!" }
         textureWithChannel.add(texture)
     }
 
+    /**
+     * 从 `SimpleTextures` 当前维护的状态中读取 `getTextureCounts` 结果，不创建新的渲染资源。
+     *
+     * 示例：`getTextureCounts()`。
+     *
+     * @return 匹配当前条件的对象或状态；可空返回值表示没有可用结果
+     */
     override fun getTextureCounts(): Int {
         return textureWithChannel.size
     }
 
+    /**
+     * 初始化或准备 `SimpleTextures` 的 `init` 阶段，使后续渲染调用可以使用相关资源。
+     *
+     * 示例：`init()`。
+     */
     override fun init() {
         textureWithChannel.forEach {
             it.init()
         }
     }
 
+    /**
+     * 释放 `SimpleTextures` 在 `release` 中管理的资源；再次使用前必须重新初始化。
+     *
+     * 示例：`release()`。
+     */
     override fun release() {
         textureWithChannel.forEach {
             it.release()
         }
     }
 
+    /**
+     * 执行 `SimpleTextures` 定义的 `use` 操作；输入和返回值用于该组件当前的渲染职责。
+     *
+     * 示例：`use()`。
+     */
     override fun use() {
         lastActiveChannel = glGetInteger(GL_ACTIVE_TEXTURE)
         lastTextureID = glGetInteger(GL_TEXTURE_BINDING_2D)
@@ -52,6 +81,11 @@ class SimpleTextures : GlTextures {
         }
     }
 
+    /**
+     * 清理 `SimpleTextures` 的 `reset` 状态，使缓存、绑定或 OpenGL 状态可以重新初始化。
+     *
+     * 示例：`reset()`。
+     */
     override fun reset() {
         prevTextures.forEachIndexed { channelIndex, prevTexture ->
             if (!prevTexture.second) {
@@ -66,6 +100,13 @@ class SimpleTextures : GlTextures {
         glBindTexture(GL_TEXTURE_2D, lastTextureID)
     }
 
+    /**
+     * 执行 `SimpleTextures` 的 `drawWith` 渲染操作，处理传入数据并更新当前帧或 GPU 状态。
+     *
+     * 示例：`drawWith(renderContext = renderContext)`。
+     *
+     * @param renderContext 在当前生命周期或数据上下文中执行的回调
+     */
     override fun drawWith(renderContext: Runnable) {
         use()
         renderContext.run()

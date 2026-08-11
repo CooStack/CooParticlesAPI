@@ -31,6 +31,11 @@ class DynamicVertexBuffer : VertexBuffer {
      * 则会无视dirty继续上传
      */
     private var uploadedProgram = 0
+    /**
+     * 执行 `DynamicVertexBuffer` 的 `uploadVertexes` 渲染操作，处理传入数据并更新当前帧或 GPU 状态。
+     *
+     * 示例：`uploadVertexes()`。
+     */
     override fun uploadVertexes() {
         val programNow = glGetInteger(GL_CURRENT_PROGRAM)
         val updateProgram = programNow != uploadedProgram
@@ -79,6 +84,15 @@ class DynamicVertexBuffer : VertexBuffer {
         }
     }
 
+    /**
+     * 更新 `DynamicVertexBuffer` 的 `setVertexes` 状态；修改会影响后续查询、构建或当前帧绘制。
+     *
+     * 示例：`setVertexes(vertexes = vertexes, format = format)`。
+     *
+     * @param vertexes 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param format 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     */
     override fun setVertexes(
         vertexes: List<VertexData>,
         format: CooVertexFormat
@@ -89,6 +103,11 @@ class DynamicVertexBuffer : VertexBuffer {
         dirty = true
     }
 
+    /**
+     * 执行 `DynamicVertexBuffer` 的 `draw` 渲染操作，处理传入数据并更新当前帧或 GPU 状态。
+     *
+     * 示例：`draw()`。
+     */
     override fun draw() {
         use()
         uploadVertexes()
@@ -97,6 +116,11 @@ class DynamicVertexBuffer : VertexBuffer {
         reset()
     }
 
+    /**
+     * 初始化或准备 `DynamicVertexBuffer` 的 `init` 阶段，使后续渲染调用可以使用相关资源。
+     *
+     * 示例：`init()`。
+     */
     override fun init() {
         vao = glGenVertexArrays()
         vbo = glGenBuffers()
@@ -105,15 +129,30 @@ class DynamicVertexBuffer : VertexBuffer {
         reset()
     }
 
+    /**
+     * 执行 `DynamicVertexBuffer` 定义的 `use` 操作；输入和返回值用于该组件当前的渲染职责。
+     *
+     * 示例：`use()`。
+     */
     override fun use() {
         lastVAO = glGetInteger(GL_VERTEX_ARRAY_BINDING)
         glBindVertexArray(vao)
     }
 
+    /**
+     * 清理 `DynamicVertexBuffer` 的 `reset` 状态，使缓存、绑定或 OpenGL 状态可以重新初始化。
+     *
+     * 示例：`reset()`。
+     */
     override fun reset() {
         glBindVertexArray(lastVAO)
     }
 
+    /**
+     * 释放 `DynamicVertexBuffer` 在 `release` 中管理的资源；再次使用前必须重新初始化。
+     *
+     * 示例：`release()`。
+     */
     override fun release() {
         glDeleteVertexArrays(vao)
         glDeleteBuffers(vbo)

@@ -330,10 +330,32 @@ abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) : Serv
         return object : ReadWriteProperty<Any?, T> {
             private var value = initial
 
+            /**
+             * 从 `当前组件` 当前维护的状态中读取 `getValue` 结果，不创建新的渲染资源。
+             *
+             * 示例：`getValue(thisRef = thisRef, property = property)`。
+             *
+             * @param thisRef 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+             *
+             * @param property 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+             *
+             * @return 匹配当前条件的对象或状态；可空返回值表示没有可用结果
+             */
             override fun getValue(thisRef: Any?, property: KProperty<*>): T {
                 return value
             }
 
+            /**
+             * 更新 `当前组件` 的 `setValue` 状态；修改会影响后续查询、构建或当前帧绘制。
+             *
+             * 示例：`setValue(thisRef = thisRef, property = property, value = value)`。
+             *
+             * @param thisRef 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+             *
+             * @param property 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+             *
+             * @param value 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+             */
             override fun setValue(thisRef: Any?, property: KProperty<*>, value: T) {
                 if (this.value == value) return
                 this.value = value

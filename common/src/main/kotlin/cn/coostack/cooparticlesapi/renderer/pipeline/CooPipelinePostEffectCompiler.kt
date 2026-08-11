@@ -13,6 +13,7 @@ import cn.coostack.cooparticlesapi.renderer.post.PostEffectPass
 import cn.coostack.cooparticlesapi.renderer.post.PostEffectResourceChannel
 import cn.coostack.cooparticlesapi.renderer.post.PostEffectType
 import cn.coostack.cooparticlesapi.renderer.post.PostEffectUniform
+import cn.coostack.cooparticlesapi.renderer.post.toPostEffectParamValue
 import net.minecraft.resources.ResourceLocation
 
 internal data class CooCompiledPostEffect(
@@ -298,12 +299,6 @@ internal object CooPipelinePostEffectCompiler {
     }
 
     private fun CooUniformValue.toPostValue(): PostEffectParamValue {
-        return when (this) {
-            is CooUniformValue.FloatValue -> PostEffectParamValue.FloatValue(value)
-            is CooUniformValue.IntValue -> PostEffectParamValue.IntValue(value)
-            is CooUniformValue.Vec2Value -> PostEffectParamValue.Vec2Value(x, y)
-            is CooUniformValue.Vec3Value -> PostEffectParamValue.Vec3Value(x.toDouble(), y.toDouble(), z.toDouble())
-            is CooUniformValue.Vec4Value -> PostEffectParamValue.ColorValue(x, y, z, w)
-        }
+        return toPostEffectParamValue()
     }
 }

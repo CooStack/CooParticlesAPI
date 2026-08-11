@@ -16,10 +16,13 @@ override val pipeline = CooPipelines.DEFAULT
 override val pipeline = CooPipelines.MASK_BLOOM
     .blurSigma(15F)
     .blurRange(10F)
+    .bloomThreshold(0F)
     .intensity { entity: MyRenderEntity ->
         2.8F * entity.bright.coerceAtLeast(0F)
     }
 ```
+
+`MASK_BLOOM` 使用 `bloom_gaussian_blur.fsh` 做可分离高斯模糊，横向和纵向通过布尔 uniform `Horizontal` 在同一个 shader 中交替执行 10 次 ping-pong。默认 `bloomThreshold(0F)` 不做亮部过滤，mask 中的全部颜色都会进入 Bloom 通道；传入正数则启用亮部筛选，`bloomSoftKnee(...)` 控制过渡范围。
 
 把真实世界方块绑定到 terrain Pipeline：
 

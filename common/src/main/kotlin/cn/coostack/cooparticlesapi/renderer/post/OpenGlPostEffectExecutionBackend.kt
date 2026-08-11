@@ -6,6 +6,7 @@ import cn.coostack.cooparticlesapi.renderer.backend.RenderSceneResource
 import cn.coostack.cooparticlesapi.renderer.backend.RenderSceneResources
 import cn.coostack.cooparticlesapi.renderer.backend.RenderSceneTargets
 import cn.coostack.cooparticlesapi.renderer.client.ClientRenderPipelineManager
+import cn.coostack.cooparticlesapi.renderer.pipeline.setUniform
 import cn.coostack.cooparticlesapi.renderer.shader.AdvancedShaderProgramBuilder
 import cn.coostack.cooparticlesapi.renderer.shader.api.CooShaderProgram
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlShaderType
@@ -129,6 +130,13 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
     private var warnedSceneCopyFailure = false
     private var warnedTerrainSceneCopyFailure = false
 
+    /**
+     * 初始化或准备 `OpenGlPostEffectExecutionBackend` 的 `prepareFrame` 阶段，使后续渲染调用可以使用相关资源。
+     *
+     * 示例：`prepareFrame(context = context)`。
+     *
+     * @param context 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     */
     override fun prepareFrame(context: RenderFrameContext) {
         preparedSceneFrame = null
         chainedSceneFramebufferId = null
@@ -138,6 +146,23 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         evictStaleTargets()
     }
 
+    /**
+     * 执行 `OpenGlPostEffectExecutionBackend` 定义的 `captureAttachment` 操作；输入和返回值用于该组件当前的渲染职责。
+     *
+     * 示例：`captureAttachment(context = context, owner = owner, target = target, attachment = attachment, render = render)`。
+     *
+     * @param context 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param owner 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param target 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param attachment 数量或从零开始的索引值，具体上限由当前资源配置决定
+     *
+     * @param render 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 当前操作计算、更新或查询得到的结果
+     */
     override fun captureAttachment(
         context: RenderFrameContext,
         owner: String,
@@ -148,6 +173,23 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         return captureAttachments(context, owner, target, attachment + 1, render)
     }
 
+    /**
+     * 执行 `OpenGlPostEffectExecutionBackend` 定义的 `captureAttachments` 操作；输入和返回值用于该组件当前的渲染职责。
+     *
+     * 示例：`captureAttachments(context = context, owner = owner, target = target, attachmentCount = attachmentCount, render = render)`。
+     *
+     * @param context 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param owner 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param target 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param attachmentCount 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param render 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 当前操作计算、更新或查询得到的结果
+     */
     override fun captureAttachments(
         context: RenderFrameContext,
         owner: String,
@@ -172,10 +214,28 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
             managed.buffer.colorAttachments.all { it > 0 }
     }
 
+    /**
+     * 执行 `OpenGlPostEffectExecutionBackend` 定义的 `hasAttachment` 操作；输入和返回值用于该组件当前的渲染职责。
+     *
+     * 示例：`hasAttachment(target = target, attachment = attachment)`。
+     *
+     * @param target 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param attachment 数量或从零开始的索引值，具体上限由当前资源配置决定
+     *
+     * @return 当前操作计算、更新或查询得到的结果
+     */
     override fun hasAttachment(target: ResourceLocation, attachment: Int): Boolean {
         return namedTargetTextures[NamedAttachment(target, attachment)]?.let { it > 0 } == true
     }
 
+    /**
+     * 执行 `OpenGlPostEffectExecutionBackend` 定义的 `execute` 操作；输入和返回值用于该组件当前的渲染职责。
+     *
+     * 示例：`execute(step = step)`。
+     *
+     * @param step 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     */
     override fun execute(step: PostEffectExecutionStep) {
         val state = instanceStates.getOrPut(step.instance.instanceId) { InstanceFrameState() }
         instanceLastSeenFrame[step.instance.instanceId] = frameCounter
@@ -203,6 +263,11 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         state.lastOutputTextures[step.output.output] = colorTexture
     }
 
+    /**
+     * 释放 `OpenGlPostEffectExecutionBackend` 在 `release` 中管理的资源；再次使用前必须重新初始化。
+     *
+     * 示例：`release()`。
+     */
     override fun release() {
         sceneCopy?.buffer?.release()
         sceneCopy = null
@@ -601,6 +666,7 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
                 is PostEffectParamValue.Vec2Value -> program.setFloat2(name, Vector2f(value.x, value.y))
                 is PostEffectParamValue.Vec3Value -> program.setFloat3(name, Vector3f(value.x.toFloat(), value.y.toFloat(), value.z.toFloat()))
                 is PostEffectParamValue.ColorValue -> program.setFloat4(name, Vector4f(value.red, value.green, value.blue, value.alpha))
+                is PostEffectParamValue.UniformValue -> program.setUniform(name, value.value)
             }
         }
     }

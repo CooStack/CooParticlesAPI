@@ -36,8 +36,26 @@ internal object PostEffectRuntimeRegistry {
         RenderEffectRegistry.register(type.id, genericExecutor)
     }
 
+    /**
+     * 从 `PostEffectRuntimeRegistry` 当前维护的状态中读取 `getType` 结果，不创建新的渲染资源。
+     *
+     * 示例：`getType(id = id)`。
+     *
+     * @param id 用于定位目标资源、实体或运行时实例的唯一标识
+     *
+     * @return 匹配当前条件的对象或状态；可空返回值表示没有可用结果
+     */
     internal fun getType(id: net.minecraft.resources.ResourceLocation): PostEffectType? = types[id]
 
+    /**
+     * 执行 `PostEffectRuntimeRegistry` 定义的 `containsType` 操作；输入和返回值用于该组件当前的渲染职责。
+     *
+     * 示例：`containsType(id = id)`。
+     *
+     * @param id 用于定位目标资源、实体或运行时实例的唯一标识
+     *
+     * @return 当前操作计算、更新或查询得到的结果
+     */
     internal fun containsType(id: net.minecraft.resources.ResourceLocation): Boolean = id in types
 
     private fun RenderEffectDescriptor.toPostEffectInstance(): PostEffectInstance? {

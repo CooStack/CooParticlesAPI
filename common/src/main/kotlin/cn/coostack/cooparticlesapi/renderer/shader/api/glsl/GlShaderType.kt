@@ -6,6 +6,8 @@ import org.lwjgl.opengl.GL43
 
 /**
  * OpenGL shader stage 类型枚举。
+ *
+ * @property gl 对应的 OpenGL shader 类型常量。
  */
 enum class GlShaderType(val gl: Int) {
     /** 顶点着色器阶段。 */

@@ -15,6 +15,19 @@ import java.nio.file.Path
 import javax.imageio.ImageIO
 
 object GlDebugDumpUtil {
+    /**
+     * 执行 `GlDebugDumpUtil` 定义的 `dumpTexture` 操作；输入和返回值用于该组件当前的渲染职责。
+     *
+     * 示例：`dumpTexture(textureId = textureId, width = width, height = height, fileName = fileName)`。
+     *
+     * @param textureId 用于定位目标资源、实体或运行时实例的唯一标识
+     *
+     * @param width 目标尺寸的像素数，必须与相关纹理或 framebuffer 尺寸一致
+     *
+     * @param height 目标尺寸的像素数，必须与相关纹理或 framebuffer 尺寸一致
+     *
+     * @param fileName 用于查找、绑定或记录目标的名称
+     */
     fun dumpTexture(textureId: Int, width: Int, height: Int, fileName: String) {
         if (textureId <= 0 || width <= 0 || height <= 0) {
             return

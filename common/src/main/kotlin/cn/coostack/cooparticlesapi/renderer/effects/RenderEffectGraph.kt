@@ -44,6 +44,11 @@ internal class RenderEffectGraph(
         var currentExecutor: RenderEffectExecutor? = null
         val currentBatch = mutableListOf<RenderEffectDescriptor>()
 
+        /**
+         * 执行 `RenderEffectGraph` 的 `flushBatch` 渲染操作，处理传入数据并更新当前帧或 GPU 状态。
+         *
+         * 示例：`flushBatch()`。
+         */
         fun flushBatch() {
             val executor = currentExecutor ?: return
             if (currentBatch.isEmpty()) {

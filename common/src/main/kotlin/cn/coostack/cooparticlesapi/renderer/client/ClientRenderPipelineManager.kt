@@ -24,41 +24,104 @@ object ClientRenderPipelineManager {
     private var currentFrameContext: RenderFrameContext? = null
     private var lastLoggedTargetSignature: String? = null
     private val backendHooks = object : RenderBackendHooks {
+        /**
+         * 执行 `ClientRenderPipelineManager` 定义的 `cacheFrameState` 操作；输入和返回值用于该组件当前的渲染职责。
+         *
+         * 示例：`cacheFrameState(context = context)`。
+         *
+         * @param context 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+         */
         override fun cacheFrameState(context: RenderFrameContext) {
             ClientRenderEntityManager.cacheFrameState(context.tickDelta, context.viewMatrix, context.projMatrix)
         }
 
+        /**
+         * 执行 `ClientRenderPipelineManager` 的 `renderWorldPass` 渲染操作，处理传入数据并更新当前帧或 GPU 状态。
+         *
+         * 示例：`renderWorldPass(context = context)`。
+         *
+         * @param context 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+         */
         override fun renderWorldPass(context: RenderFrameContext) {
             ClientRenderEntityManager.renderWorldPass(context.tickDelta, context.viewMatrix, context.projMatrix)
         }
 
+        /**
+         * 初始化或准备 `ClientRenderPipelineManager` 的 `preparePostProcess` 阶段，使后续渲染调用可以使用相关资源。
+         *
+         * 示例：`preparePostProcess(context = context)`。
+         *
+         * @param context 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+         */
         override fun preparePostProcess(context: RenderFrameContext) {
             ClientRenderEntityManager.preparePostProcess(context.tickDelta, context.viewMatrix, context.projMatrix)
             PostEffectFrameExecutor.prepareFrame(context)
         }
 
+        /**
+         * 执行 `ClientRenderPipelineManager` 的 `flushFrameComposites` 渲染操作，处理传入数据并更新当前帧或 GPU 状态。
+         *
+         * 示例：`flushFrameComposites(context = context)`。
+         *
+         * @param context 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+         */
         override fun flushFrameComposites(context: RenderFrameContext) {
             ClientRenderEntityManager.flushFrameComposites()
         }
 
+        /**
+         * 执行 `ClientRenderPipelineManager` 定义的 `runFramePost` 操作；输入和返回值用于该组件当前的渲染职责。
+         *
+         * 示例：`runFramePost(context = context)`。
+         *
+         * @param context 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+         */
         override fun runFramePost(context: RenderFrameContext) {
             ClientRenderEntityManager.runFramePost(context)
         }
     }
 
+    /**
+     * 初始化或准备 `ClientRenderPipelineManager` 的 `init` 阶段，使后续渲染调用可以使用相关资源。
+     *
+     * 示例：`init()`。
+     */
     fun init() {
         initialized = true
     }
 
+    /**
+     * 释放 `ClientRenderPipelineManager` 在 `release` 中管理的资源；再次使用前必须重新初始化。
+     *
+     * 示例：`release()`。
+     */
     fun release() {
         initialized = false
         currentFrameContext = null
     }
 
+    /**
+     * 更新 `ClientRenderPipelineManager` 的 `setActiveBackend` 状态；修改会影响后续查询、构建或当前帧绘制。
+     *
+     * 示例：`setActiveBackend(backend = backend)`。
+     *
+     * @param backend 本次调用选用的渲染 backend，其能力会影响可执行阶段和资源来源
+     */
     fun setActiveBackend(backend: RenderBackend) {
         activeBackend = backend
     }
 
+    /**
+     * 初始化或准备 `ClientRenderPipelineManager` 的 `beginFrame` 阶段，使后续渲染调用可以使用相关资源。
+     *
+     * 示例：`beginFrame(tickDelta = tickDelta, viewMatrix = viewMatrix, projMatrix = projMatrix)`。
+     *
+     * @param tickDelta 当前 tick 内的插值比例，通常位于 0 到 1
+     *
+     * @param viewMatrix 把世界坐标变换到相机空间的视图矩阵
+     *
+     * @param projMatrix 把相机空间坐标变换到裁剪空间的投影矩阵
+     */
     fun beginFrame(tickDelta: Float, viewMatrix: Matrix4f, projMatrix: Matrix4f) {
         runStages(
             listOf(RenderFrameStage.FRAME_BEGIN),
@@ -68,6 +131,17 @@ object ClientRenderPipelineManager {
         )
     }
 
+    /**
+     * 执行 `ClientRenderPipelineManager` 定义的 `finishLevelRender` 操作；输入和返回值用于该组件当前的渲染职责。
+     *
+     * 示例：`finishLevelRender(tickDelta = tickDelta, viewMatrix = viewMatrix, projMatrix = projMatrix)`。
+     *
+     * @param tickDelta 当前 tick 内的插值比例，通常位于 0 到 1
+     *
+     * @param viewMatrix 把世界坐标变换到相机空间的视图矩阵
+     *
+     * @param projMatrix 把相机空间坐标变换到裁剪空间的投影矩阵
+     */
     fun finishLevelRender(tickDelta: Float, viewMatrix: Matrix4f, projMatrix: Matrix4f) {
         runStages(
             listOf(
@@ -83,6 +157,11 @@ object ClientRenderPipelineManager {
         currentFrameContext = null
     }
 
+    /**
+     * 执行 `ClientRenderPipelineManager` 定义的 `endFrame` 操作；输入和返回值用于该组件当前的渲染职责。
+     *
+     * 示例：`endFrame()`。
+     */
     fun endFrame() {
         currentFrameContext = null
     }
@@ -142,6 +221,13 @@ object ClientRenderPipelineManager {
         )
     }
 
+    /**
+     * 从 `ClientRenderPipelineManager` 当前维护的状态中读取 `currentSceneColorTextureId` 结果，不创建新的渲染资源。
+     *
+     * 示例：`currentSceneColorTextureId()`。
+     *
+     * @return 匹配当前条件的对象或状态；可空返回值表示没有可用结果
+     */
     fun currentSceneColorTextureId(): Int {
         val context = currentFrameContext
         if (context == null) {
@@ -152,6 +238,13 @@ object ClientRenderPipelineManager {
             ?: minecraft.mainRenderTarget.colorTextureId
     }
 
+    /**
+     * 从 `ClientRenderPipelineManager` 当前维护的状态中读取 `currentSceneDepthTextureId` 结果，不创建新的渲染资源。
+     *
+     * 示例：`currentSceneDepthTextureId()`。
+     *
+     * @return 匹配当前条件的对象或状态；可空返回值表示没有可用结果
+     */
     fun currentSceneDepthTextureId(): Int {
         val context = currentFrameContext
         if (context == null) {
@@ -162,10 +255,28 @@ object ClientRenderPipelineManager {
             ?: minecraft.mainRenderTarget.depthTextureId
     }
 
+    /**
+     * 从 `ClientRenderPipelineManager` 当前维护的状态中读取 `currentSceneResourceTextureId` 结果，不创建新的渲染资源。
+     *
+     * 示例：`currentSceneResourceTextureId(id = id, attachment = attachment)`。
+     *
+     * @param id 用于定位目标资源、实体或运行时实例的唯一标识
+     *
+     * @param attachment 数量或从零开始的索引值，具体上限由当前资源配置决定
+     *
+     * @return 匹配当前条件的对象或状态；可空返回值表示没有可用结果
+     */
     internal fun currentSceneResourceTextureId(id: ResourceLocation, attachment: Int = 0): Int? {
         return currentFrameContext?.sceneResources?.get(id)?.colorTextureId(attachment)
     }
 
+    /**
+     * 从 `ClientRenderPipelineManager` 当前维护的状态中读取 `currentFinalCompositeTarget` 结果，不创建新的渲染资源。
+     *
+     * 示例：`currentFinalCompositeTarget()`。
+     *
+     * @return 匹配当前条件的对象或状态；可空返回值表示没有可用结果
+     */
     fun currentFinalCompositeTarget(): RenderTarget {
         val context = currentFrameContext
         if (context == null) {
@@ -176,14 +287,35 @@ object ClientRenderPipelineManager {
             ?: minecraft.mainRenderTarget
     }
 
+    /**
+     * 从 `ClientRenderPipelineManager` 当前维护的状态中读取 `currentRenderTargetLabel` 结果，不创建新的渲染资源。
+     *
+     * 示例：`currentRenderTargetLabel()`。
+     *
+     * @return 匹配当前条件的对象或状态；可空返回值表示没有可用结果
+     */
     fun currentRenderTargetLabel(): String {
         return currentFrameContext?.resolvedTargetLabel ?: "main"
     }
 
+    /**
+     * 从 `ClientRenderPipelineManager` 当前维护的状态中读取 `currentRenderWidth` 结果，不创建新的渲染资源。
+     *
+     * 示例：`currentRenderWidth()`。
+     *
+     * @return 匹配当前条件的对象或状态；可空返回值表示没有可用结果
+     */
     fun currentRenderWidth(): Int {
         return currentFrameContext?.targetWidth ?: minecraft.mainRenderTarget.width
     }
 
+    /**
+     * 从 `ClientRenderPipelineManager` 当前维护的状态中读取 `currentRenderHeight` 结果，不创建新的渲染资源。
+     *
+     * 示例：`currentRenderHeight()`。
+     *
+     * @return 匹配当前条件的对象或状态；可空返回值表示没有可用结果
+     */
     fun currentRenderHeight(): Int {
         return currentFrameContext?.targetHeight ?: minecraft.mainRenderTarget.height
     }
@@ -220,6 +352,15 @@ object ClientRenderPipelineManager {
         )
     }
 
+    /**
+     * 更新 `ClientRenderPipelineManager` 的 `resizeTo` 状态；修改会影响后续查询、构建或当前帧绘制。
+     *
+     * 示例：`resizeTo(width = width, height = height)`。
+     *
+     * @param width 目标尺寸的像素数，必须与相关纹理或 framebuffer 尺寸一致
+     *
+     * @param height 目标尺寸的像素数，必须与相关纹理或 framebuffer 尺寸一致
+     */
     fun resizeTo(width: Int, height: Int) {
         this.width = width
         this.height = height

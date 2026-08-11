@@ -25,13 +25,14 @@ import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelines
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooRenderPipeline
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooTerrainLayer
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooUniformValue
+import cn.coostack.cooparticlesapi.renderer.pipeline.setUniform
 import cn.coostack.cooparticlesapi.renderer.post.OpenGlPostEffectExecutionBackend
 import cn.coostack.cooparticlesapi.renderer.post.PostEffectFrameExecutor
 import cn.coostack.cooparticlesapi.renderer.post.PostEffectRuntimeRegistry
 import cn.coostack.cooparticlesapi.renderer.shader.ShaderReloadBus
 import cn.coostack.cooparticlesapi.renderer.shader.ShaderReloadSignal
 import cn.coostack.cooparticlesapi.renderer.shader.CooShaderSourceLoader
-import com.mojang.blaze3d.shaders.Uniform
+import cn.coostack.cooparticlesapi.renderer.shader.api.CooProgramUniformAccess
 import com.mojang.blaze3d.systems.RenderSystem
 import com.mojang.blaze3d.vertex.VertexConsumer
 import com.mojang.blaze3d.vertex.VertexFormat
@@ -53,6 +54,7 @@ import org.lwjgl.opengl.GL33.GL_DEPTH_ATTACHMENT
 import org.lwjgl.opengl.GL33.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME
 import org.lwjgl.opengl.GL33.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE
 import org.lwjgl.opengl.GL33.GL_FRAMEBUFFER_COMPLETE
+import org.lwjgl.opengl.GL33.GL_CURRENT_PROGRAM
 import org.lwjgl.opengl.GL33.GL_NONE
 import org.lwjgl.opengl.GL33.GL_RENDERBUFFER
 import org.lwjgl.opengl.GL33.GL_TEXTURE
@@ -82,7 +84,7 @@ internal object CooTerrainPipelineManager {
     private val pendingPostDraws = LinkedHashMap<RenderType, Runnable>()
     /** Iris 最终合成完成前不能执行的原版 section 覆盖绘制。 */
     private val deferredVanillaDraws = ArrayList<DeferredVanillaDraw>()
-    private val shaders = LinkedHashMap<CooTerrainShaderCacheKey, ShaderInstance>()
+    private val shaders = LinkedHashMap<CooTerrainShaderCacheKey, CooTerrainShaderInstance>()
     private val failedShaders = linkedSetOf<CooTerrainShaderCacheKey>()
     private var terrainEffectRevision = -1L
     private var initialized = false
@@ -739,11 +741,11 @@ internal object CooTerrainPipelineManager {
         return shaderFor(batch.first, baseLayer, batch.second)
     }
 
-    private fun createShader(cacheKey: CooTerrainShaderCacheKey): ShaderInstance? {
+    private fun createShader(cacheKey: CooTerrainShaderCacheKey): CooTerrainShaderInstance? {
         return try {
             val minecraftPath = "${cacheKey.shaderId.namespace}/${cacheKey.shaderId.path}"
             val resources = Minecraft.getInstance().resourceManager
-            ShaderInstance(
+            CooTerrainShaderInstance(
                 generatedDescriptorProvider(resources, cacheKey.shaderId, cacheKey.descriptor),
                 minecraftPath,
                 CooTerrainVertexFormats.BLOCK_EFFECT
@@ -837,10 +839,6 @@ internal object CooTerrainPipelineManager {
             put("FogShape", intUniform("FogShape"))
             put("ScreenSize", floatUniform("ScreenSize", 2))
             put("CooIrisComposite", intUniform("CooIrisComposite"))
-            world?.uniforms?.forEach { (name, provider) ->
-                val value = runCatching { provider.resolve(Blocks.AIR.defaultBlockState()) }.getOrNull()
-                put(name, value?.let { uniform(name, it) } ?: floatUniform(name))
-            }
         }
         return buildString {
             append("{\n  \"vertex\": \"cooparticlesapi/terrain/block_effect\",\n")
@@ -867,16 +865,6 @@ internal object CooTerrainPipelineManager {
 
     private fun intUniform(name: String): String =
         "{\"name\":\"$name\",\"type\":\"int\",\"count\":1,\"values\":[0]}"
-
-    private fun uniform(name: String, value: CooUniformValue): String {
-        return when (value) {
-            is CooUniformValue.FloatValue -> floatUniform(name)
-            is CooUniformValue.IntValue -> intUniform(name)
-            is CooUniformValue.Vec2Value -> floatUniform(name, 2)
-            is CooUniformValue.Vec3Value -> floatUniform(name, 3)
-            is CooUniformValue.Vec4Value -> floatUniform(name, 4)
-        }
-    }
 
     private fun bindInputs(shader: ShaderInstance, pipeline: CooRenderPipeline<BlockState>) {
         val minecraft = Minecraft.getInstance()
@@ -917,7 +905,7 @@ internal object CooTerrainPipelineManager {
     }
 
     private fun bindUniforms(
-        shader: ShaderInstance,
+        shader: CooTerrainShaderInstance,
         pipeline: CooRenderPipeline<BlockState>,
         baseLayer: RenderType,
         subject: BlockState
@@ -936,24 +924,15 @@ internal object CooTerrainPipelineManager {
         shader.getUniform("CooIrisComposite")?.set(
             if (irisShaderPackActive && terrainColorTextureId != null) 1 else 0
         )
-        pipeline.nodes.forEach { node ->
-            node.uniforms.forEach { (name, provider) ->
-                val value = runCatching { provider.resolve(subject) }.getOrNull() ?: return@forEach
-                val uniform = shader.getUniform(name) ?: return@forEach
-                setUniform(uniform, value)
+        shader.cooUniforms = buildMap {
+            pipeline.nodes.forEach { node ->
+                node.uniforms.forEach { (name, provider) ->
+                    val value = runCatching { provider.resolve(subject) }.getOrNull() ?: return@forEach
+                    put(name, value)
+                }
             }
         }
         shader.getUniform("ScreenSize")?.set(terrainColorWidth.toFloat(), terrainColorHeight.toFloat())
-    }
-
-    private fun setUniform(uniform: Uniform, value: CooUniformValue) {
-        when (value) {
-            is CooUniformValue.FloatValue -> uniform.set(value.value)
-            is CooUniformValue.IntValue -> uniform.set(value.value)
-            is CooUniformValue.Vec2Value -> uniform.set(value.x, value.y)
-            is CooUniformValue.Vec3Value -> uniform.set(value.x, value.y, value.z)
-            is CooUniformValue.Vec4Value -> uniform.set(value.x, value.y, value.z, value.w)
-        }
     }
 
     /**
@@ -1201,6 +1180,27 @@ internal object CooTerrainPipelineManager {
             source
         )
     }
+
+    /** 在 Mojang 内建 uniform 上传完成后补充完整的 GLSL uniform 类型。 */
+    private class CooTerrainShaderInstance(
+        resources: ResourceProvider,
+        name: String,
+        vertexFormat: VertexFormat
+    ) : ShaderInstance(resources, name, vertexFormat) {
+        var cooUniforms: Map<String, CooUniformValue> = emptyMap()
+
+        override fun apply() {
+            super.apply()
+            val activeProgram = glGetInteger(GL_CURRENT_PROGRAM)
+            if (activeProgram != id) return
+            val uniforms = ActiveProgramUniforms(activeProgram)
+            cooUniforms.forEach { (name, value) -> uniforms.setUniform(name, value) }
+        }
+    }
+
+    private class ActiveProgramUniforms(
+        override var program: Int
+    ) : CooProgramUniformAccess
 
     /**
      * 释放地形 shader、RenderType 缓存、临时 attachment 和本帧绘制状态。

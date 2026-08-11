@@ -9,24 +9,73 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 object ShaderUtil {
+    /**
+     * 执行 `ShaderUtil` 定义的 `vertexBuilder` 操作；输入和返回值用于该组件当前的渲染职责。
+     *
+     * 示例：`vertexBuilder(block = block)`。
+     *
+     * @param block 在当前生命周期或数据上下文中执行的回调
+     *
+     * @return 当前操作计算、更新或查询得到的结果
+     */
     fun vertexBuilder(block: RenderVertexBuilder.() -> Unit = {}): RenderVertexBuilder {
         return RenderVertexBuilder().apply(block)
     }
 
+    /**
+     * 根据输入和 `ShaderUtil` 当前配置创建 `genVertexData` 结果；返回对象保留本次配置的语义。
+     *
+     * 示例：`genVertexData(block = block)`。
+     *
+     * @param block 在当前生命周期或数据上下文中执行的回调
+     *
+     * @return 根据当前输入生成的新对象或数据结果
+     */
     fun genVertexData(block: RenderVertexBuilder.() -> Unit): List<VertexData> {
         return vertexBuilder(block).createVertexData()
     }
 
+    /**
+     * 根据输入和 `ShaderUtil` 当前配置创建 `genModelVertices` 结果；返回对象保留本次配置的语义。
+     *
+     * 示例：`genModelVertices(block = block)`。
+     *
+     * @param block 在当前生命周期或数据上下文中执行的回调
+     *
+     * @return 根据当前输入生成的新对象或数据结果
+     */
     fun genModelVertices(block: RenderVertexBuilder.() -> Unit): List<RenderEntityModelVertex> {
         return vertexBuilder(block).create()
     }
 
+    /**
+     * 根据输入和 `ShaderUtil` 当前配置创建 `genSquare` 结果；返回对象保留本次配置的语义。
+     *
+     * 示例：`genSquare(w = w, h = h)`。
+     *
+     * @param w 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param h 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 根据当前输入生成的新对象或数据结果
+     */
     fun genSquare(w: Float, h: Float): List<VertexData> {
         val p1 = Vector3f(-w / 2, -h / 2, 0f)
         val p2 = Vector3f(w / 2, h / 2, 0f)
         return genSquare(p1, p2)
     }
 
+    /**
+     * 根据输入和 `ShaderUtil` 当前配置创建 `genSquare` 结果；返回对象保留本次配置的语义。
+     *
+     * 示例：`genSquare(p1 = p1, p2 = p2)`。
+     *
+     * @param p1 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param p2 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 根据当前输入生成的新对象或数据结果
+     */
     fun genSquare(p1: Vector3f, p2: Vector3f): List<VertexData> {
         val res = mutableListOf<VertexData>()
         val p3 = Vector3f(p2.x, p1.y, p1.z)
@@ -70,6 +119,21 @@ object ShaderUtil {
         return res
     }
 
+    /**
+     * 根据输入和 `ShaderUtil` 当前配置创建 `genSquareUV` 结果；返回对象保留本次配置的语义。
+     *
+     * 示例：`genSquareUV(p1 = p1, p2 = p2, p3 = p3, p4 = p4)`。
+     *
+     * @param p1 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param p2 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param p3 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param p4 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 根据当前输入生成的新对象或数据结果
+     */
     fun genSquareUV(p1: Vector3f, p2: Vector3f, p3: Vector3f, p4: Vector3f): List<VertexData> {
         val res = mutableListOf<VertexData>()
         res.add(VertexData(p1, Vector2f(0f, 0f)))
@@ -82,6 +146,21 @@ object ShaderUtil {
         return res
     }
 
+    /**
+     * 根据输入和 `ShaderUtil` 当前配置创建 `genSquareUVScreen` 结果；返回对象保留本次配置的语义。
+     *
+     * 示例：`genSquareUVScreen(p1 = p1, p2 = p2, p3 = p3, p4 = p4)`。
+     *
+     * @param p1 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param p2 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param p3 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param p4 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 根据当前输入生成的新对象或数据结果
+     */
     fun genSquareUVScreen(p1: Vector3f, p2: Vector3f, p3: Vector3f, p4: Vector3f): List<VertexData> {
         val res = mutableListOf<VertexData>()
         res.add(VertexData(p1, Vector2f(0f, 1f)))
@@ -94,6 +173,21 @@ object ShaderUtil {
         return res
     }
 
+    /**
+     * 根据输入和 `ShaderUtil` 当前配置创建 `genSquare` 结果；返回对象保留本次配置的语义。
+     *
+     * 示例：`genSquare(p1 = p1, p2 = p2, p3 = p3, p4 = p4)`。
+     *
+     * @param p1 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param p2 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param p3 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param p4 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 根据当前输入生成的新对象或数据结果
+     */
     fun genSquare(p1: Vector3f, p2: Vector3f, p3: Vector3f, p4: Vector3f): List<VertexData> {
         val res = mutableListOf<VertexData>()
         res.add(VertexData(p1))
@@ -106,6 +200,13 @@ object ShaderUtil {
         return res
     }
 
+    /**
+     * 根据输入和 `ShaderUtil` 当前配置创建 `genBox` 结果；返回对象保留本次配置的语义。
+     *
+     * 示例：`genBox()`。
+     *
+     * @return 根据当前输入生成的新对象或数据结果
+     */
     fun genBox(): List<VertexData> {
         val up = genSquareUV(
             Vector3f(-0.5f, 0.5f, 0.5f),

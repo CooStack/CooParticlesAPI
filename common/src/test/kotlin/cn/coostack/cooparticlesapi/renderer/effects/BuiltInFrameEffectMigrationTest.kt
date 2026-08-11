@@ -33,8 +33,10 @@ class BuiltInFrameEffectMigrationTest {
         )
 
         assertTrue("val MASK_BLOOM" in pipelinesSource)
-        assertTrue("blur_horizontal" in pipelinesSource)
-        assertTrue("blur_vertical" in pipelinesSource)
+        assertTrue("bloom_gaussian_blur" in pipelinesSource)
+        assertTrue("GAUSSIAN_SAMPLES" in readProjectFile(
+            "common/src/main/resources/assets/cooparticlesapi/shaders/post/bloom_gaussian_blur.fsh"
+        ))
         assertTrue("line(" in pipelinesSource)
         assertFalse(projectFile(
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/post/BuiltinPostEffectTypes.kt"

@@ -44,6 +44,13 @@ object ClientRenderTargetResolver {
     private var lastSceneSourceSignature: String? = null
     private var lastExternalFramebufferSignature: String? = null
 
+    /**
+     * 根据输入和 `ClientRenderTargetResolver` 当前状态解析 `resolveCurrentTargets` 结果，供后续构建或绘制使用。
+     *
+     * 示例：`resolveCurrentTargets()`。
+     *
+     * @return 匹配当前条件的对象或状态；可空返回值表示没有可用结果
+     */
     fun resolveCurrentTargets(): ResolvedRenderTargets {
         val minecraft = Minecraft.getInstance()
         val mainTarget = minecraft.mainRenderTarget
@@ -51,6 +58,15 @@ object ClientRenderTargetResolver {
         val boundFramebufferId = glGetInteger(GL_FRAMEBUFFER_BINDING)
         val candidates = LinkedHashMap<Int, NamedTarget>()
 
+        /**
+         * 把输入对象加入 `NamedTarget` 的 `addCandidate` 管理范围，后续查询、构建或绘制会使用该绑定。
+         *
+         * 示例：`addCandidate(label = label, target = target)`。
+         *
+         * @param label 用于查找、绑定或记录目标的名称
+         *
+         * @param target 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+         */
         fun addCandidate(label: String, target: RenderTarget?) {
             if (target == null || target.frameBufferId == 0) {
                 return

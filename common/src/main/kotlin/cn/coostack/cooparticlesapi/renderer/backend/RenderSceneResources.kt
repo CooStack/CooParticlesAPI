@@ -23,6 +23,15 @@ data class RenderSceneResource(
     /** 从 target 推导出的深度纹理 id。 */
     val depthTextureId: Int? = target?.depthTextureId
 ) {
+    /**
+     * 更新 `RenderSceneResource` 的 `colorTextureId` 状态；修改会影响后续查询、构建或当前帧绘制。
+     *
+     * 示例：`colorTextureId(attachment = attachment)`。
+     *
+     * @param attachment 数量或从零开始的索引值，具体上限由当前资源配置决定
+     *
+     * @return 当前操作计算、更新或查询得到的结果
+     */
     fun colorTextureId(attachment: Int): Int? {
         return colorTextureIds.getOrNull(attachment)
     }

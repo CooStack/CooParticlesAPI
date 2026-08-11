@@ -21,16 +21,56 @@ class SimpleShaderProgram(
     override var program: Int = 0
     private var prevProgram = 0
 
+    /**
+     * 执行 `SimpleShaderProgram` 定义的 `geometryShader` 操作；输入和返回值用于该组件当前的渲染职责。
+     *
+     * 示例：`geometryShader()`。
+     *
+     * @return 当前操作计算、更新或查询得到的结果
+     */
     override fun geometryShader(): GlShader? = geometryShaderInternal
 
+    /**
+     * 执行 `SimpleShaderProgram` 定义的 `tessellationControlShader` 操作；输入和返回值用于该组件当前的渲染职责。
+     *
+     * 示例：`tessellationControlShader()`。
+     *
+     * @return 当前操作计算、更新或查询得到的结果
+     */
     override fun tessellationControlShader(): GlShader? = tessellationControlShaderInternal
 
+    /**
+     * 执行 `SimpleShaderProgram` 定义的 `tessellationEvaluationShader` 操作；输入和返回值用于该组件当前的渲染职责。
+     *
+     * 示例：`tessellationEvaluationShader()`。
+     *
+     * @return 当前操作计算、更新或查询得到的结果
+     */
     override fun tessellationEvaluationShader(): GlShader? = tessellationEvaluationShaderInternal
 
+    /**
+     * 执行 `SimpleShaderProgram` 定义的 `shaderBufferLayouts` 操作；输入和返回值用于该组件当前的渲染职责。
+     *
+     * 示例：`shaderBufferLayouts()`。
+     *
+     * @return 当前操作计算、更新或查询得到的结果
+     */
     override fun shaderBufferLayouts(): List<ShaderBufferLayout<*>> = shaderBufferLayoutsInternal
 
+    /**
+     * 执行 `SimpleShaderProgram` 定义的 `managedProgramId` 操作；输入和返回值用于该组件当前的渲染职责。
+     *
+     * 示例：`managedProgramId()`。
+     *
+     * @return 当前操作计算、更新或查询得到的结果
+     */
     override fun managedProgramId(): ResourceLocation? = managedProgramIdInternal
 
+    /**
+     * 初始化或准备 `SimpleShaderProgram` 的 `init` 阶段，使后续渲染调用可以使用相关资源。
+     *
+     * 示例：`init()`。
+     */
     override fun init() {
         program = glCreateProgram()
         attachedShaders().forEach { shader ->
@@ -54,6 +94,11 @@ class SimpleShaderProgram(
         }
     }
 
+    /**
+     * 执行 `SimpleShaderProgram` 定义的 `use` 操作；输入和返回值用于该组件当前的渲染职责。
+     *
+     * 示例：`use()`。
+     */
     override fun use() {
         if (program <= 0 || !glIsProgram(program)) {
             prevProgram = 0
@@ -65,6 +110,11 @@ class SimpleShaderProgram(
         ShaderBufferCache.bindAll(shaderBufferLayoutsInternal)
     }
 
+    /**
+     * 清理 `SimpleShaderProgram` 的 `reset` 状态，使缓存、绑定或 OpenGL 状态可以重新初始化。
+     *
+     * 示例：`reset()`。
+     */
     override fun reset() {
         if (prevProgram > 0 && glIsProgram(prevProgram)) {
             glUseProgram(prevProgram)
@@ -73,6 +123,11 @@ class SimpleShaderProgram(
         }
     }
 
+    /**
+     * 释放 `SimpleShaderProgram` 在 `release` 中管理的资源；再次使用前必须重新初始化。
+     *
+     * 示例：`release()`。
+     */
     override fun release() {
         if (program > 0) {
             if (glGetInteger(GL_CURRENT_PROGRAM) == program) {
@@ -84,6 +139,13 @@ class SimpleShaderProgram(
         }
     }
 
+    /**
+     * 执行 `SimpleShaderProgram` 定义的 `useOnContext` 操作；输入和返回值用于该组件当前的渲染职责。
+     *
+     * 示例：`useOnContext(drawMethod = drawMethod)`。
+     *
+     * @param drawMethod 在当前生命周期或数据上下文中执行的回调
+     */
     override fun useOnContext(drawMethod: CooShaderProgram.() -> Unit) {
         if (program <= 0 || !glIsProgram(program)) {
             return

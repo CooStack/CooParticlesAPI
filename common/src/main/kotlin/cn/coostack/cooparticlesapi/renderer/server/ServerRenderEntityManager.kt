@@ -13,14 +13,37 @@ object ServerRenderEntityManager {
     val playerViewable = HashMap<UUID, HashSet<RenderEntity>>()
 
 
+    /**
+     * 执行 `ServerRenderEntityManager` 定义的 `spawn` 操作；输入和返回值用于该组件当前的渲染职责。
+     *
+     * 示例：`spawn(entity = entity)`。
+     *
+     * @param entity 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     */
     fun spawn(entity: RenderEntity) {
         entities[entity.uuid] = entity
     }
 
+    /**
+     * 从 `ServerRenderEntityManager` 当前维护的状态中读取 `getPlayerViewable` 结果，不创建新的渲染资源。
+     *
+     * 示例：`getPlayerViewable(player = player)`。
+     *
+     * @param player 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 匹配当前条件的对象或状态；可空返回值表示没有可用结果
+     */
     fun getPlayerViewable(player: UUID): HashSet<RenderEntity> {
         return playerViewable[player] ?: HashSet()
     }
 
+    /**
+     * 初始化或准备 `ServerRenderEntityManager` 的 `initPlayer` 阶段，使后续渲染调用可以使用相关资源。
+     *
+     * 示例：`initPlayer(player = player)`。
+     *
+     * @param player 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     */
     fun initPlayer(player: UUID) {
         if (playerViewable.containsKey(player)) {
             return
@@ -28,6 +51,11 @@ object ServerRenderEntityManager {
         playerViewable[player] = HashSet()
     }
 
+    /**
+     * 清理 `ServerRenderEntityManager` 的 `clearEmptyData` 状态，使缓存、绑定或 OpenGL 状态可以重新初始化。
+     *
+     * 示例：`clearEmptyData()`。
+     */
     fun clearEmptyData() {
         val server = CooParticlesAPI.serverOrNull ?: return
         val iterator = playerViewable.iterator()
@@ -39,6 +67,11 @@ object ServerRenderEntityManager {
     }
 
 
+    /**
+     * 更新 `ServerRenderEntityManager` 的 `tick` 状态；修改会影响后续查询、构建或当前帧绘制。
+     *
+     * 示例：`tick()`。
+     */
     fun tick() {
         val iterator = entities.iterator()
         while (iterator.hasNext()) {
@@ -59,6 +92,13 @@ object ServerRenderEntityManager {
     }
 
 
+    /**
+     * 更新 `ServerRenderEntityManager` 的 `updateVisible` 状态；修改会影响后续查询、构建或当前帧绘制。
+     *
+     * 示例：`updateVisible(entity = entity)`。
+     *
+     * @param entity 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     */
     fun updateVisible(entity: RenderEntity) {
         val server = CooParticlesAPI.serverOrNull ?: return
         server.playerList.players.forEach {
@@ -89,12 +129,30 @@ object ServerRenderEntityManager {
     }
 
 
+    /**
+     * 执行 `ServerRenderEntityManager` 定义的 `playerCanView` 操作；输入和返回值用于该组件当前的渲染职责。
+     *
+     * 示例：`playerCanView(player = player, entity = entity)`。
+     *
+     * @param player 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param entity 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @return 当前操作计算、更新或查询得到的结果
+     */
     fun playerCanView(player: UUID, entity: RenderEntity): Boolean {
         initPlayer(player)
         val views = getPlayerViewable(player)
         return views.contains(entity)
     }
 
+    /**
+     * 执行 `ServerRenderEntityManager` 定义的 `toggle` 操作；输入和返回值用于该组件当前的渲染职责。
+     *
+     * 示例：`toggle(entity = entity)`。
+     *
+     * @param entity 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     */
     fun toggle(entity: RenderEntity) {
         val packet = entity.getTogglePacket(entity.alwaysToggle) ?: return
         val server = CooParticlesAPI.serverOrNull ?: return
@@ -109,6 +167,15 @@ object ServerRenderEntityManager {
         entity.onSynced()
     }
 
+    /**
+     * 把输入对象加入 `ServerRenderEntityManager` 的 `addVisible` 管理范围，后续查询、构建或绘制会使用该绑定。
+     *
+     * 示例：`addVisible(who = who, entity = entity)`。
+     *
+     * @param who 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param entity 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     */
     fun addVisible(who: ServerPlayer, entity: RenderEntity) {
         initPlayer(who.uuid)
         getPlayerViewable(who.uuid).add(entity)
@@ -117,6 +184,15 @@ object ServerRenderEntityManager {
         CooParticlesServices.SERVER_NETWORK.send(packet, who)
     }
 
+    /**
+     * 从 `ServerRenderEntityManager` 的 `removeVisible` 管理范围移除目标，后续调用不再使用对应绑定或资源。
+     *
+     * 示例：`removeVisible(who = who, entity = entity)`。
+     *
+     * @param who 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     *
+     * @param entity 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     */
     fun removeVisible(who: ServerPlayer, entity: RenderEntity) {
         initPlayer(who.uuid)
         getPlayerViewable(who.uuid).remove(entity)
@@ -124,6 +200,13 @@ object ServerRenderEntityManager {
         CooParticlesServices.SERVER_NETWORK.send(packet, who)
     }
 
+    /**
+     * 把输入对象加入 `ServerRenderEntityManager` 的 `addViewIfVisible` 管理范围，后续查询、构建或绘制会使用该绑定。
+     *
+     * 示例：`addViewIfVisible(entity = entity)`。
+     *
+     * @param entity 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     */
     fun addViewIfVisible(entity: RenderEntity) {
         val world = entity.world ?: return
         world.players().forEach {
@@ -131,6 +214,13 @@ object ServerRenderEntityManager {
         }
     }
 
+    /**
+     * 从 `ServerRenderEntityManager` 的 `removeAllView` 管理范围移除目标，后续调用不再使用对应绑定或资源。
+     *
+     * 示例：`removeAllView(entity = entity)`。
+     *
+     * @param entity 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     */
     fun removeAllView(entity: RenderEntity) {
         val world = entity.world ?: return
         playerViewable.entries.forEach {
@@ -141,6 +231,11 @@ object ServerRenderEntityManager {
         }
     }
 
+    /**
+     * 清理 `ServerRenderEntityManager` 的 `clear` 状态，使缓存、绑定或 OpenGL 状态可以重新初始化。
+     *
+     * 示例：`clear()`。
+     */
     fun clear() {
         entities.clear()
         playerViewable.clear()

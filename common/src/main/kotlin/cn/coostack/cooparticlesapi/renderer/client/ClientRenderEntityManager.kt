@@ -24,6 +24,15 @@ object ClientRenderEntityManager {
     private val cachedViewMatrix = Matrix4f()
     private val cachedProjMatrix = Matrix4f()
     private val renderStateGuard = RenderStateGuard()
+    /**
+     * 从 `ClientRenderEntityManager` 当前维护的状态中读取 `getFrom` 结果，不创建新的渲染资源。
+     *
+     * 示例：`getFrom(uuid = uuid)`。
+     *
+     * @param uuid 用于定位目标资源、实体或运行时实例的唯一标识
+     *
+     * @return 匹配当前条件的对象或状态；可空返回值表示没有可用结果
+     */
     fun getFrom(uuid: UUID): RenderEntityInstance<RenderEntity>? {
         return entities[uuid]
     }
@@ -39,6 +48,11 @@ object ClientRenderEntityManager {
     @JvmStatic
     fun loadedEntityCount(): Int = entities.size
 
+    /**
+     * 清理 `ClientRenderEntityManager` 的 `clear` 状态，使缓存、绑定或 OpenGL 状态可以重新初始化。
+     *
+     * 示例：`clear()`。
+     */
     fun clear() {
         entities.clear()
         frameStatePrepared = false
@@ -60,16 +74,39 @@ object ClientRenderEntityManager {
         }
     }
 
+    /**
+     * 把输入对象加入 `ClientRenderEntityManager` 的 `add` 管理范围，后续查询、构建或绘制会使用该绑定。
+     *
+     * 示例：`add(instance = instance)`。
+     *
+     * @param instance 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     */
     fun add(instance: RenderEntityInstance<RenderEntity>) {
         instance.entity.world = minecraft.level
         instance.entity.lastRenderPos = instance.entity.pos
         entities[instance.entity.uuid] = instance
     }
 
+    /**
+     * 初始化或准备 `ClientRenderEntityManager` 的 `beginWorldRenderFrame` 阶段，使后续渲染调用可以使用相关资源。
+     *
+     * 示例：`beginWorldRenderFrame()`。
+     */
     fun beginWorldRenderFrame() {
         entities.values.forEach(RenderEntityInstance<RenderEntity>::beginWorldRenderFrame)
     }
 
+    /**
+     * 执行 `ClientRenderEntityManager` 的 `renderWorldPass` 渲染操作，处理传入数据并更新当前帧或 GPU 状态。
+     *
+     * 示例：`renderWorldPass(tickDelta = tickDelta, viewMatrix = viewMatrix, projMatrix = projMatrix)`。
+     *
+     * @param tickDelta 当前 tick 内的插值比例，通常位于 0 到 1
+     *
+     * @param viewMatrix 把世界坐标变换到相机空间的视图矩阵
+     *
+     * @param projMatrix 把相机空间坐标变换到裁剪空间的投影矩阵
+     */
     fun renderWorldPass(tickDelta: Float, viewMatrix: Matrix4f, projMatrix: Matrix4f) {
         val stack = Matrix4fStack(16)
         entities.values.forEach { instance ->
@@ -82,6 +119,19 @@ object ClientRenderEntityManager {
         }
     }
 
+    /**
+     * 执行 `ClientRenderEntityManager` 的 `renderIrisWorldPass` 渲染操作，处理传入数据并更新当前帧或 GPU 状态。
+     *
+     * 示例：`renderIrisWorldPass(tickDelta = tickDelta, viewMatrix = viewMatrix, projMatrix = projMatrix, irisShaderPackInUse = irisShaderPackInUse)`。
+     *
+     * @param tickDelta 当前 tick 内的插值比例，通常位于 0 到 1
+     *
+     * @param viewMatrix 把世界坐标变换到相机空间的视图矩阵
+     *
+     * @param projMatrix 把相机空间坐标变换到裁剪空间的投影矩阵
+     *
+     * @param irisShaderPackInUse 控制是否启用对应分支或强制执行操作的开关
+     */
     fun renderIrisWorldPass(
         tickDelta: Float,
         viewMatrix: Matrix4f,
@@ -101,6 +151,17 @@ object ClientRenderEntityManager {
         }
     }
 
+    /**
+     * 执行 `ClientRenderEntityManager` 定义的 `cacheFrameState` 操作；输入和返回值用于该组件当前的渲染职责。
+     *
+     * 示例：`cacheFrameState(tickDelta = tickDelta, viewMatrix = viewMatrix, projMatrix = projMatrix)`。
+     *
+     * @param tickDelta 当前 tick 内的插值比例，通常位于 0 到 1
+     *
+     * @param viewMatrix 把世界坐标变换到相机空间的视图矩阵
+     *
+     * @param projMatrix 把相机空间坐标变换到裁剪空间的投影矩阵
+     */
     fun cacheFrameState(tickDelta: Float, viewMatrix: Matrix4f, projMatrix: Matrix4f) {
         cachedTickDelta = tickDelta
         cachedViewMatrix.set(viewMatrix)
@@ -108,17 +169,40 @@ object ClientRenderEntityManager {
         frameStatePrepared = true
     }
 
+    /**
+     * 初始化或准备 `ClientRenderEntityManager` 的 `preparePostProcess` 阶段，使后续渲染调用可以使用相关资源。
+     *
+     * 示例：`preparePostProcess(tickDelta = tickDelta, viewMatrix = viewMatrix, projMatrix = projMatrix)`。
+     *
+     * @param tickDelta 当前 tick 内的插值比例，通常位于 0 到 1
+     *
+     * @param viewMatrix 把世界坐标变换到相机空间的视图矩阵
+     *
+     * @param projMatrix 把相机空间坐标变换到裁剪空间的投影矩阵
+     */
     fun preparePostProcess(tickDelta: Float, viewMatrix: Matrix4f, projMatrix: Matrix4f) {
         if (!frameStatePrepared) {
             cacheFrameState(tickDelta, viewMatrix, projMatrix)
         }
     }
 
+    /**
+     * 执行 `ClientRenderEntityManager` 的 `flushFrameComposites` 渲染操作，处理传入数据并更新当前帧或 GPU 状态。
+     *
+     * 示例：`flushFrameComposites()`。
+     */
     fun flushFrameComposites() {
         frameStatePrepared = false
         cachedTickDelta = 0F
     }
 
+    /**
+     * 执行 `ClientRenderEntityManager` 定义的 `runFramePost` 操作；输入和返回值用于该组件当前的渲染职责。
+     *
+     * 示例：`runFramePost(context = context)`。
+     *
+     * @param context 当前操作需要的输入值；其语义由方法名和所属组件共同限定
+     */
     fun runFramePost(context: RenderFrameContext) {
         if (!context.backend.supports(RenderBackendCapability.FINAL_FRAME_POST)) {
             return
@@ -132,6 +216,11 @@ object ClientRenderEntityManager {
         graph.execute()
     }
 
+    /**
+     * 更新 `ClientRenderEntityManager` 的 `tick` 状态；修改会影响后续查询、构建或当前帧绘制。
+     *
+     * 示例：`tick()`。
+     */
     fun tick() {
         val iterator = entities.iterator()
         while (iterator.hasNext()) {
