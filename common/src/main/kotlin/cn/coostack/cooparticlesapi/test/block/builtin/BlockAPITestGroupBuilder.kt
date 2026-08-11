@@ -39,6 +39,7 @@ import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestGPUEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestSpreadPointEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.event.TestCollideEventHandler
 import cn.coostack.cooparticlesapi.test.options.particle.style.RomaMagicTestStyle
+import cn.coostack.cooparticlesapi.test.options.renderer.world.DemoWorldRenderEffectOptions
 import cn.coostack.cooparticlesapi.extend.asRelative
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
@@ -55,6 +56,9 @@ class BlockAPITestGroupBuilder(private val player: Player) : TestGroupBuilder {
 
     override fun build(): TestGroup {
         return BlockTestGroup(player, groupID())
+            .appendOption {
+                DemoWorldRenderEffectOptions.maskBloomStraightLaser(player)
+            }
             .appendOption {
                 SimpleCompositionOption(
                     SequenceTestGPUComposition(player.position(), player.level())
@@ -250,6 +254,7 @@ class BlockAPITestGroupBuilder(private val player: Player) : TestGroupBuilder {
                         it.template.setTextureSheet(getParam<TextureSheetsEnum>("texture-sheet")!!)
                         it.colorStart = getParam<Vector3f>("gradient_start")!!
                         it.colorEnd = getParam<Vector3f>("gradient_end")!!
+
                     }
             }
             .appendOption {

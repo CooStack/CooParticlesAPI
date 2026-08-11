@@ -83,6 +83,9 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
                 DemoWorldRenderEffectOptions.irisStraightLaser(player)
             }
             .appendOption {
+                DemoWorldRenderEffectOptions.maskBloomStraightLaser(player)
+            }
+            .appendOption {
                 SimpleDisplayEntityOption(
                     TestBlockDisplayEntity(player.eyePosition, player.level()), 200
                 )

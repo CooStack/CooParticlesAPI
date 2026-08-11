@@ -7,6 +7,7 @@ uniform sampler2D BloomInput;
 uniform int BloomLevels = 7;
 
 const float BSL_WEIGHT[6] = float[6](0.03, 0.15, 0.32, 0.32, 0.15, 0.03);
+const float BSL_HDR_SCALE = 32.0;
 
 vec4 sampleBloom(vec2 uv, vec2 gradientX, vec2 gradientY) {
     if (any(lessThan(uv, vec2(0.0))) || any(greaterThanEqual(uv, vec2(1.0)))) {
@@ -67,5 +68,7 @@ void main() {
     if (levels >= 6) blur += bloomTile(6.0, bloomCoord, vec2(0.625, 0.3125) + vec2(8.0, 8.0) * view, view, pixelWidth, pixelHeight);
     if (levels >= 7) blur += bloomTile(7.0, bloomCoord, vec2(0.640625, 0.3125) + vec2(12.0, 8.0) * view, view, pixelWidth, pixelHeight);
 
-    FragColor = vec4(max(blur.rgb, vec3(0.0)), 1.0);
+    // 保留 BSL 在 companded 空间插值的平滑特性；RGBA16F 不需要截顶或中间 Bayer。
+    vec3 encodedBloom = pow(max(blur.rgb / BSL_HDR_SCALE, vec3(0.0)), vec3(0.25));
+    FragColor = vec4(encodedBloom, 1.0);
 }

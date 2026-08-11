@@ -8,12 +8,19 @@ uniform sampler2D BloomAtlas;
 uniform int MipLevels = 7;
 
 const float BSL_BLOOM_MIX = 0.2;
+const float BSL_HDR_SCALE = 32.0;
 
 // 场景颜色已经完成色调映射，因此用 BSL 的 0.2 基准标定透射率，避免直接 mix 压暗非 mask 区域。
 vec3 compositeHdrBloom(vec3 sceneColor, vec3 bloomColor) {
     vec3 scene = clamp(sceneColor, vec3(0.0), vec3(1.0));
     vec3 transmission = exp(-max(bloomColor, vec3(0.0)) * BSL_BLOOM_MIX);
     return vec3(1.0) - (vec3(1.0) - scene) * transmission;
+}
+
+vec3 decodeBloom(vec3 encodedBloom) {
+    vec3 bloom = max(encodedBloom, vec3(0.0));
+    bloom *= bloom;
+    return bloom * bloom * BSL_HDR_SCALE;
 }
 
 // 读取位置向 tile 内移动半个 texel；atlas pass 写入的 gutter 会阻止相邻尺度串色。
@@ -24,7 +31,8 @@ vec4 sampleBloomTile(float lod, vec2 coord, vec2 offset) {
     if (any(lessThan(uv, vec2(0.0))) || any(greaterThanEqual(uv, vec2(1.0)))) {
         return vec4(0.0);
     }
-    return texture(BloomAtlas, uv);
+    vec4 encodedBloom = texture(BloomAtlas, uv);
+    return vec4(decodeBloom(encodedBloom.rgb), encodedBloom.a);
 }
 
 float bayer2(vec2 position) {

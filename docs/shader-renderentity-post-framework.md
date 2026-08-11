@@ -30,7 +30,7 @@ override val pipeline = CooPipelines.MASK_BLOOM
     }
 ```
 
-内置 `MASK_BLOOM` 先从 geometry mask 提取 HDR Bloom，再用 `bloom_bsl_atlas.fsh` 按 BSL 的 6x6 权重构建 7 级多尺度 atlas。atlas 使用 `RGBA16F`，最终合成按 BSL 的级数权重重建远场光晕；原版 RGB8 的幂编码不参与本管线。采样核根据画面分辨率自动计算，`bloomMipLevels(...)` 控制参与重建的级数。
+内置 `MASK_BLOOM` 先从 geometry mask 提取 HDR Bloom，再用 `bloom_bsl_atlas.fsh` 按 BSL 的 6x6 权重构建 7 级多尺度 atlas。atlas 使用 `RGBA16F`，写入时保留 BSL 的四次根 companding，读取各级 tile 后再可逆解码，使低分辨率 tile 的插值不会暴露明显的 mip 块。与 BSL 的 RGB8 路径不同，这里不截顶到 `1.0`，也不在中间纹理加入 Bayer，因此大于 `32` 的亮度仍完整保留。采样核根据画面分辨率自动计算，`bloomMipLevels(...)` 控制参与重建的级数。
 
 BSL 在色调映射前用 `0.2 * BLOOM_STRENGTH` 混合 Bloom。本管线拿到的是最终场景颜色，因此用相同的 `0.2` 基准缩放透射率输入，避免直接 `mix` 把 mask 之外的画面压暗。
 
