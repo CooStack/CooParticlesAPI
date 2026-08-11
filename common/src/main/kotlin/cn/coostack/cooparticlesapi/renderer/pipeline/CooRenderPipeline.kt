@@ -1,6 +1,7 @@
 package cn.coostack.cooparticlesapi.renderer.pipeline
 
 import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameStage
+import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.CooTextureFormat
 import net.minecraft.resources.ResourceLocation
 
 /**
@@ -212,13 +213,17 @@ sealed interface CooPipelineTextureSource {
  * @param sampler shader 中声明的 sampler 名称
  * @param optional 是否允许未连接；为 false 时编译阶段会拒绝缺失连线
  * @param textureSlot shader 读取该 sampler 时使用的纹理单元
+ * @param expectedFormat 输入纹理的期望存储格式；为空表示接受来源的实际格式
+ * @param minimumMipLevels 输入至少需要的 mip 层数；1 表示只要求 level 0
  */
 @ConsistentCopyVisibility
 data class CooPipelineInputPort internal constructor(
     val node: String,
     val sampler: String,
     val optional: Boolean,
-    val textureSlot: Int
+    val textureSlot: Int,
+    val expectedFormat: CooTextureFormat?,
+    val minimumMipLevels: Int
 ) : CooPipelineLineInput
 
 /**
@@ -228,13 +233,17 @@ data class CooPipelineInputPort internal constructor(
  * @param name attachment 的逻辑名称
  * @param semantic 颜色、深度或 mask 语义，影响目标解析和后处理用途
  * @param attachment fragment output location 对应的颜色槽位
+ * @param format attachment 的实际颜色存储格式
+ * @param mipLevels 分配的 mip 层数；1 表示仅 level 0
  */
 @ConsistentCopyVisibility
 data class CooPipelineOutputPort internal constructor(
     val node: String,
     val name: String,
     val semantic: CooPipelineOutputSemantic,
-    val attachment: Int
+    val attachment: Int,
+    val format: CooTextureFormat,
+    val mipLevels: Int
 ) : CooPipelineTextureSource
 
 /** line 的输入端，可以是 shader sampler，也可以是 graph 的最终输出端口。 */
@@ -425,6 +434,7 @@ class CooPipelineNode internal constructor(
             sequence = sequence
         )
     }
+
 }
 
 internal data class CooPipelineParameterBinding(
@@ -439,6 +449,7 @@ internal data class CooPipelineParameterBinding(
  * @property domain Pipeline 的使用域
  * @property terrainLayer 方块域采用的地形渲染层
  * @property effectUvMode 方块效果 UV 的生成模式
+ * @property postInScene fullscreen 节点是否在最终场景颜色准备完成后的专用阶段执行
  * @property nodes 已编译节点列表
  * @property lines 节点输入与输出目标之间的连线
  * @param primaryNode 默认 uniform 写入的主节点名称
@@ -449,6 +460,7 @@ class CooRenderPipeline<out T : Any> internal constructor(
     val domain: CooPipelineDomain,
     val terrainLayer: CooTerrainLayer,
     val effectUvMode: CooEffectUvMode,
+    internal val postInScene: Boolean,
     nodes: List<CooPipelineNode>,
     lines: List<CooPipelineLine>,
     private val primaryNode: String?,
@@ -462,7 +474,9 @@ class CooRenderPipeline<out T : Any> internal constructor(
     val stages: Set<RenderFrameStage>
         get() = buildSet {
             if (nodes.any { it.kind == CooPipelineNodeKind.WORLD }) add(RenderFrameStage.WORLD_PASS)
-            if (nodes.any { it.kind != CooPipelineNodeKind.WORLD }) add(RenderFrameStage.FRAME_POST)
+            if (nodes.any { it.kind != CooPipelineNodeKind.WORLD }) {
+                add(if (postInScene) RenderFrameStage.SCENE_POST else RenderFrameStage.FRAME_POST)
+            }
         }
 
     val terrainShader: ResourceLocation?
@@ -472,26 +486,18 @@ class CooRenderPipeline<out T : Any> internal constructor(
             .firstOrNull()
 
     /**
-     * 设置模板声明的高斯模糊标准差。
+     * 设置内置 Mask Bloom 的 BSL 多尺度级数。
      *
-     * 示例：`CooPipelines.MASK_BLOOM.blurSigma(15F)`。
+     * 示例：`CooPipelines.MASK_BLOOM.bloomMipLevels(6)`。
      *
-     * @param value 传给 `blurSigma` 参数绑定的浮点值
-     * @return 包含新参数值的不可变 Pipeline
-     * @throws IllegalArgumentException 当前模板未声明 `blurSigma` 参数时抛出
+     * @param value 参与重建的 tile 数量，取值 1 到 7
+     * @return 包含新 mip 范围的不可变 Pipeline
+     * @throws IllegalArgumentException [value] 不在 1 到 7 时抛出
      */
-    fun blurSigma(value: Float): CooRenderPipeline<T> = parameter("blurSigma", value)
-
-    /**
-     * 设置模板声明的高斯模糊采样范围。
-     *
-     * 示例：`CooPipelines.MASK_BLOOM.blurRange(10F)`。
-     *
-     * @param value 传给 `blurRange` 参数绑定的浮点值
-     * @return 包含新参数值的不可变 Pipeline
-     * @throws IllegalArgumentException 当前模板未声明 `blurRange` 参数时抛出
-     */
-    fun blurRange(value: Float): CooRenderPipeline<T> = parameter("blurRange", value)
+    fun bloomMipLevels(value: Int): CooRenderPipeline<T> {
+        require(value in 1..7) { "Bloom mip levels must be between 1 and 7" }
+        return parameter("bloomMipLevels", CooUniformValue.IntValue(value))
+    }
 
     /**
      * 设置亮部筛选阈值；值小于等于 0 时保留 mask 中的全部颜色。
@@ -741,13 +747,26 @@ class CooRenderPipeline<out T : Any> internal constructor(
 
     /** 使用新的不可变节点列表复制 Pipeline。 */
     private fun copy(nodes: List<CooPipelineNode>): CooRenderPipeline<T> {
+        val nodesByName = nodes.associateBy(CooPipelineNode::name)
+        val remappedLines = lines.map { line ->
+            val output = when (val source = line.output) {
+                is CooPipelineOutputPort -> nodesByName.getValue(source.node).output(source.name)
+                else -> source
+            }
+            val input = when (val target = line.input) {
+                is CooPipelineInputPort -> nodesByName.getValue(target.node).input(target.sampler)
+                else -> target
+            }
+            CooPipelineLine(output, input)
+        }
         return CooRenderPipeline(
             id = id,
             domain = domain,
             terrainLayer = terrainLayer,
             effectUvMode = effectUvMode,
+            postInScene = postInScene,
             nodes = nodes,
-            lines = lines,
+            lines = remappedLines,
             primaryNode = primaryNode,
             parameterBindings = parameterBindings
         )

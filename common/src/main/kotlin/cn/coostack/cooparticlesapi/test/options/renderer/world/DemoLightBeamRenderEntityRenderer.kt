@@ -11,8 +11,6 @@ import org.joml.Vector3f
 @CooAutoRegisterRenderer
 class DemoLightBeamRenderEntityRenderer : RenderEntityRenderer<DemoLightBeamRenderEntity> {
     override val pipeline = CooPipelines.MASK_BLOOM
-        .blurSigma(5.5F)
-        .blurRange(5.5F)
         .intensity { entity: DemoLightBeamRenderEntity -> entity.intensity }
 
     override fun render(input: RenderInput<DemoLightBeamRenderEntity>) {

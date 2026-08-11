@@ -8,6 +8,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
@@ -193,9 +194,24 @@ class PostEffectFrameExecutorBehaviorTest {
         assertTrue("state.lastOutputTextures[PostEffectOutput.BLOOM]" in source)
         assertTrue("step.output.targetKey" in source)
         assertTrue("step.output.scaleDivisor" in source)
-        // Bloom 输出需要重建 mipmap，后续 textureLod 才能读取有效层级。
-        assertTrue("step.output.output == PostEffectOutput.BLOOM" in source)
-        assertTrue("it.useMipmap()" in source)
+        // 输出是否刷新 mip 链由 pass 契约决定，不能再通过 BLOOM 枚举猜测。
+        assertTrue("step.output.generateMipmaps" in source)
+        assertTrue("step.output.mipLevels" in source)
+        assertTrue("validateTextureContract" in source)
+        assertTrue("GL_TEXTURE_INTERNAL_FORMAT" in source)
+        assertTrue("GL_TEXTURE_BASE_LEVEL" in source)
+        assertTrue("GL_TEXTURE_MAX_LEVEL" in source)
+        assertTrue("(0 until input.minimumMipLevels).all" in source)
+        assertTrue("textureMipLevelCount()" in source)
+        assertTrue("IrisCompat.currentTerrainDepthTexture()" in source)
+        assertTrue("irisDepthReadFramebuffer" in source)
+        assertTrue("glGetUniformLocation(program.program, mipLevelsUniform) >= 0" in source)
+        assertTrue(
+            source.indexOf("uploadUniforms(this, step.uniforms)") <
+                source.indexOf("bindInputs(step, state, this)")
+        )
+        assertFalse("step.output.output == PostEffectOutput.BLOOM" in source)
+        assertFalse("it.useMipmap()" in source)
     }
 
     @Test

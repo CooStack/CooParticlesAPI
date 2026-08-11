@@ -3,10 +3,10 @@ package cn.coostack.cooparticlesapi.utils.interpolator.data
 import cn.coostack.cooparticlesapi.utils.GraphMathHelper
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
+import org.joml.Quaternionf
 import org.joml.Vector3f
 
-class InterpolatorVector3f(private var value: Vector3f) : InterpolatorData<Vector3f> {
-    var last = value
+class InterpolatorVector3f(value: Vector3f) : AbstractInterpolatorData<Vector3f>(value) {
 
     companion object {
         @JvmStatic
@@ -17,17 +17,13 @@ class InterpolatorVector3f(private var value: Vector3f) : InterpolatorData<Vecto
             }, {
                 val last = it.readVector3f()
                 val current = it.readVector3f()
-                InterpolatorVector3f(last)
-                    .update(current)
+
+                InterpolatorVector3f(current).apply {
+                    this.last = last
+                }
             }
         )
 
-    }
-
-    override fun update(current: Vector3f): InterpolatorVector3f {
-        last = this.value
-        this.value = current
-        return this
     }
 
     override fun getWithInterpolator(progress: Number): Vector3f {

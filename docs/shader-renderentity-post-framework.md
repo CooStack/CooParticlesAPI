@@ -23,15 +23,20 @@ override val pipeline = CooPipelines.DEFAULT
 
 ```kotlin
 override val pipeline = CooPipelines.MASK_BLOOM
-    .blurSigma(15F)
-    .blurRange(10F)
+    .bloomMipLevels(6)
     .bloomThreshold(0F)
     .intensity { entity: MyRenderEntity ->
         2.8F * entity.bright.coerceAtLeast(0F)
     }
 ```
 
-内置 `MASK_BLOOM` 先从 geometry mask 提取 Bloom，再用 `bloom_gaussian_blur.fsh` 做可分离高斯模糊。横向和纵向由布尔 uniform `Horizontal` 在同一个 shader 中交替执行，默认展开为 10 次 ping-pong。`bloomThreshold(0F)` 表示不做亮部过滤，mask 中的全部颜色都会进入 Bloom 通道；传入正数可启用亮部筛选，`bloomSoftKnee(...)` 控制筛选过渡范围。
+内置 `MASK_BLOOM` 先从 geometry mask 提取 HDR Bloom，再用 `bloom_bsl_atlas.fsh` 按 BSL 的 6x6 权重构建 7 级多尺度 atlas。atlas 使用 `RGBA16F`，最终合成按 BSL 的级数权重重建远场光晕；原版 RGB8 的幂编码不参与本管线。采样核根据画面分辨率自动计算，`bloomMipLevels(...)` 控制参与重建的级数。
+
+BSL 在色调映射前用 `0.2 * BLOOM_STRENGTH` 混合 Bloom。本管线拿到的是最终场景颜色，因此用相同的 `0.2` 基准缩放透射率输入，避免直接 `mix` 把 mask 之外的画面压暗。
+
+合成结果写回 `RGBA8` 前会按最终像素做有序量化，避免高亮缓坡形成条带。同一像素重复经过不同亮度批次时，量化结果不会继续偏移。
+
+`bloomThreshold(0F)` 表示不做亮部过滤，mask 中的全部颜色都会进入 Bloom 通道；传入正数可启用亮部筛选，`bloomSoftKnee(...)` 控制筛选过渡范围。亮度由 `intensity(...)` 在模糊前写入 HDR 中间纹理。
 
 绑定真实世界方块：
 
@@ -142,7 +147,7 @@ HEAT_HAZE.play {
 }
 ```
 
-`DEFAULT`、`MASK_BLOOM` 和 `BLOCK_DEFAULT` 都是不可变模板。`blurSigma`、`blurRange`、`bloomThreshold`、`bloomSoftKnee`、`intensity` 和 `uniform` 返回新 Pipeline，不会改写共享 preset。
+`DEFAULT`、`MASK_BLOOM` 和 `BLOCK_DEFAULT` 都是不可变模板。`bloomMipLevels`、`bloomThreshold`、`bloomSoftKnee`、`intensity` 和 `uniform` 返回新 Pipeline，不会改写共享 preset。
 
 ## RenderEntity
 
@@ -161,8 +166,7 @@ interface RenderEntityRenderer<T : RenderEntity> {
 @CooAutoRegisterRenderer
 class MyRenderEntityRenderer : RenderEntityRenderer<MyRenderEntity> {
     override val pipeline = CooPipelines.MASK_BLOOM
-        .blurSigma(15F)
-        .blurRange(10F)
+        .bloomMipLevels(7)
         .intensity { entity: MyRenderEntity -> entity.brightness }
 
     override fun render(input: RenderInput<MyRenderEntity>) {
@@ -402,6 +406,35 @@ val resolve = pass("resolve") {
 
 FBO、窗口 resize 和资源释放继续由 `SimpleFrameBuffer`、`RenderSceneResources` 和 OpenGL 后端处理。业务代码不创建另一套 framebuffer 生命周期。
 
+## 纹理格式和 mip
+
+普通节点默认输出 `CooTextureFormat.RGBA8`，只分配 level 0。这个默认值适合大多数颜色 pass。需要保留大于 1.0 亮度的节点要显式改成 `RGBA16F` 或 `RGBA32F`；OpenGL 没有 `RGBA8F` 这种标准颜色格式。
+
+外部模组可以在 Pipeline 定义中直接声明输入和输出契约：
+
+```kotlin
+val blur = pingPong(
+    name = "blur",
+    iterations = 10,
+    inputFormat = CooTextureFormat.RGBA16F
+) {
+    fragment(id("post/blur.fsh"))
+    outputFormat(CooTextureFormat.RGBA16F)
+    mipLevels(6)
+}
+
+val composite = pass("composite") {
+    fragment(id("post/composite.fsh"))
+    input(
+        sampler = "Bloom",
+        format = CooTextureFormat.RGBA16F,
+        mipLevels = 6
+    )
+}
+```
+
+输入的 `mipLevels` 是最低要求，输出的 `mipLevels` 是实际分配层数。编译器会拒绝能够静态确认的格式不匹配和 mip 不足；场景颜色、自定义纹理等外部来源会在运行时校验。ping-pong 的两只物理 target 都按声明分配，但只在最后一轮完成后刷新 mip 链，不会在 10 轮循环中重复生成。
+
 命名 FBO 只能保存和采样当前 Pipeline 已生成的 attachment。目前不支持从任意相机离屏重绘完整世界，包括另一视角下的地形、实体和透明层；fragment shader 也不能自行补足这些内容。实现这类摄像机画面需要单独的世界渲染生命周期和渲染状态隔离，不属于现有 FBO API 的能力范围。
 
 ## PingPong 卡片
@@ -478,7 +511,7 @@ val tinted = template.parameterValue("tint") { entity: MyRenderEntity ->
 
 参数也可以绑定到 fullscreen 节点。此时它控制整次屏幕 pass：解析值相同的实体会合批，值不同的实体会拆批执行。普通 fullscreen uniform 在一次 draw 中只有一个值，不能在已经合并的纹理里继续区分多个实体。
 
-内置 `MASK_BLOOM.intensity { entity -> ... }` 使用的是 world 参数。每个实体先把自己的强度写进 mask，合并后执行 10 次 ping-pong 高斯模糊和一次 composite。`blurSigma`、`blurRange`、`bloomThreshold` 和 `bloomSoftKnee` 控制 fullscreen 批次参数。
+内置 `MASK_BLOOM.intensity { entity -> ... }` 绑定亮部提取 pass，强度会在 BSL 多尺度 atlas 构建前写入 HDR 纹理。解析值相同的实体会合批；值不同时会分批捕获 mask 并分别执行后处理。`bloomMipLevels`、`bloomThreshold` 和 `bloomSoftKnee` 也属于 fullscreen 批次参数。
 
 屏幕效果在每次 `play` 时生成独立参数快照：
 

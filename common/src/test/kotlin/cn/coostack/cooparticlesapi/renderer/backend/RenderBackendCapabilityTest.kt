@@ -35,6 +35,9 @@ class RenderBackendCapabilityTest {
         val levelRendererMixinSource = readProjectFile(
             "common/src/main/java/cn/coostack/cooparticlesapi/mixin/LevelRendererMixin.java"
         )
+        val irisScenePostMixinSource = readProjectFile(
+            "common/src/main/java/cn/coostack/cooparticlesapi/mixin/compat/iris/IrisRenderingPipelineMixin.java"
+        )
         val mixinsSource = readProjectFile("common/src/main/resources/cooparticlesapi.mixins.json")
 
         assertTrue("var activeBackend" in pipelineManagerSource)
@@ -42,7 +45,18 @@ class RenderBackendCapabilityTest {
         assertTrue("fun beginFrame(" in pipelineManagerSource)
         assertTrue("fun finishLevelRender(" in pipelineManagerSource)
         assertTrue("getActiveBackend()" in levelRendererMixinSource || "beginFrame(" in levelRendererMixinSource)
+        assertFalse("renderScenePostBeforeClouds(" in levelRendererMixinSource)
         assertTrue("finishLevelRender(" in levelRendererMixinSource)
+        assertTrue("frameActive && !scenePostExecuted" in pipelineManagerSource)
+        assertTrue("runScenePost(tickDelta, viewMatrix, projMatrix)" in pipelineManagerSource)
+        assertTrue("captureIrisScenePost()" in irisScenePostMixinSource)
+        assertTrue("renderIrisScenePost()" in irisScenePostMixinSource)
+        assertTrue("CompositeRenderer;renderAll()V" in irisScenePostMixinSource)
+        assertTrue("FinalPassRenderer;renderFinalPass()V" in irisScenePostMixinSource)
+        assertTrue("captureIrisScenePost()" in pipelineManagerSource)
+        assertTrue("RenderFrameStage.SCENE_CAPTURE" in pipelineManagerSource)
+        assertTrue("shift = At.Shift.AFTER" in irisScenePostMixinSource)
+        assertTrue("compat.iris.IrisRenderingPipelineMixin" in mixinsSource)
         assertFalse("GameRendererMixin" in mixinsSource)
         assertFalse(Files.exists(projectFile("common/src/main/java/cn/coostack/cooparticlesapi/mixin/GameRendererMixin.java")))
     }

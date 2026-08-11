@@ -85,7 +85,12 @@ class PostEffectChainExecutionTest {
         val pipelineSource = readProjectFile(
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/client/ClientRenderPipelineManager.kt"
         )
-
+        val framebufferSource = readProjectFile(
+            "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/shader/glsl/SimpleFrameBuffer.kt"
+        )
+        val sceneColorBranch = backendSource
+            .substringAfter("PostEffectInputSource.SCENE_COLOR ->")
+            .substringBefore("PostEffectInputSource.SCENE_DEPTH")
         assertTrue("object OpenGlPostEffectExecutionBackend" in backendSource)
         assertTrue("glBlitFramebuffer" in backendSource)
         assertTrue("VertexBuffers.getScreenBuffer()" in backendSource)
@@ -95,11 +100,25 @@ class PostEffectChainExecutionTest {
         assertTrue("step.context.finalCompositeFramebufferId?.takeIf { it > 0 }" in backendSource)
         assertTrue("runtime input texture(s) are missing" in backendSource)
         assertTrue("GL_LINEAR_MIPMAP_LINEAR" in backendSource)
-        assertTrue("step.output.output == PostEffectOutput.BLOOM" in backendSource)
-        assertTrue("it.useMipmap()" in backendSource)
+        assertTrue("step.output.generateMipmaps" in backendSource)
+        assertTrue("format = step.output.format" in backendSource)
+        assertTrue("mipLevels = step.output.mipLevels" in backendSource)
+        assertFalse("step.output.output == PostEffectOutput.BLOOM" in backendSource)
+        assertFalse("it.useMipmap()" in backendSource)
         assertTrue("step.output.targetKey" in backendSource)
         assertTrue("step.output.scaleDivisor" in backendSource)
-        assertTrue("SimpleFrameBuffer(attachmentCount, Supplier { -1 }, width, height)" in backendSource)
+        assertTrue("requestedMipLevels" in backendSource)
+        assertTrue("current.format != format" in backendSource)
+        assertTrue("GL_RGBA16F" in framebufferSource)
+        assertTrue("GL_RGBA8" in framebufferSource)
+        assertTrue("GL_FLOAT" in framebufferSource)
+        assertTrue("GL_UNSIGNED_BYTE" in framebufferSource)
+        assertTrue("glClearColor(0F, 0F, 0F, 0F)" in framebufferSource)
+        assertTrue("glColorMask(true, true, true, true)" in framebufferSource)
+        assertTrue("glDisable(GL_SCISSOR_TEST)" in framebufferSource)
+        assertTrue("previousClearColor" in framebufferSource)
+        assertTrue("previousColorMask" in framebufferSource)
+        assertFalse("input.textureId" in sceneColorBranch)
         assertTrue("PostEffectFrameExecutor.installBackend(OpenGlPostEffectExecutionBackend)" in clientSource)
         assertTrue("PostEffectFrameExecutor.prepareFrame(context)" in pipelineSource)
     }

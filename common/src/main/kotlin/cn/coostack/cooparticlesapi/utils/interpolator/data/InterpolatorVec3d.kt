@@ -5,8 +5,7 @@ import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.phys.Vec3
 
-class InterpolatorVec3d(private var value: Vec3) : InterpolatorData<Vec3> {
-    var last = value
+class InterpolatorVec3d(value: Vec3) : AbstractInterpolatorData<Vec3>(value) {
 
     companion object {
         @JvmStatic
@@ -17,18 +16,15 @@ class InterpolatorVec3d(private var value: Vec3) : InterpolatorData<Vec3> {
             }, {
                 val last = it.readVec3()
                 val current = it.readVec3()
-                InterpolatorVec3d(last)
-                    .update(current)
+                InterpolatorVec3d(current)
+                    .apply {
+                        this.last = last
+                    }
             }
         )
 
     }
 
-    override fun update(current: Vec3): InterpolatorVec3d {
-        last = this.value
-        this.value = current
-        return this
-    }
 
     override fun getWithInterpolator(progress: Number): Vec3 {
         return GraphMathHelper.lerp(progress.toDouble(), last, value)

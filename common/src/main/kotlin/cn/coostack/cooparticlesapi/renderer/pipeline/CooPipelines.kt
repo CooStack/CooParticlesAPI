@@ -2,6 +2,7 @@ package cn.coostack.cooparticlesapi.renderer.pipeline
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.renderer.RenderEntity
+import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.CooTextureFormat
 import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainEffectManager
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.level.block.state.BlockState
@@ -25,44 +26,51 @@ object CooPipelines {
         id("mask_bloom"),
         CooPipelineDomain.ENTITY
     ).apply {
+        postInScene()
         val geometry = world("geometry") {
             vertex(id("core/vertex/render_entity_model.vsh"))
             fragment(id("core/fragment/render_entity_model.fsh"))
+            outputFormat(CooTextureFormat.RGBA16F)
             maskOutput()
-            uniform("BloomIntensity", 3F)
         }
         val extract = pass("bloom_extract") {
             fragment(id("post/bloom_bright_extract.fsh"))
-            input("scene")
+            input("scene", format = CooTextureFormat.RGBA16F)
+            outputFormat(CooTextureFormat.RGBA16F)
+            // 保留完整采样链，最高级 tile 才能按导数在相邻 mip 之间过滤。
+            mipLevels(12)
             uniform("threshold", 0F)
             uniform("softKnee", 0.5F)
+            uniform("PremultipliedInput", CooUniformValue.BoolValue(true))
+            uniform("Intensity", 3F)
         }
-        // 横向和纵向采样由同一个 shader 通过 Horizontal 交替完成。
-        val bloomGaussianBlur = pingPong("bloom_gaussian_blur", iterations = 10) {
-            fragment(id("post/bloom_gaussian_blur.fsh"))
-            alternate("Horizontal", ping = true, pong = false)
-            uniform("Sigma", 14F)
-            uniform("Range", 10F)
+        // BSL 一次构建 7 级 atlas；采样核按分辨率计算，不再暴露连续模糊参数。
+        val bloomBslAtlas = pass("bloom_bsl_atlas") {
+            fragment(id("post/bloom_bsl_atlas.fsh"))
+            input("BloomInput", format = CooTextureFormat.RGBA16F, mipLevels = 12)
+            outputFormat(CooTextureFormat.RGBA16F)
+            uniform("BloomLevels", CooUniformValue.IntValue(7))
         }
         val composite = pass("composite") {
             fragment(id("post/mask_bloom_composite.fsh"))
             input("SceneColor")
-            input("Bloom")
-            uniform("Intensity", 1F)
+            input("BloomAtlas", format = CooTextureFormat.RGBA16F)
+            uniform("MipLevels", CooUniformValue.IntValue(7))
+            outputFormat(CooTextureFormat.RGBA8)
         }
 
         line(geometry.color(), worldTarget())
         line(geometry.mask(), extract.input("scene"))
-        line(extract.color(), bloomGaussianBlur.input("Input"))
+        line(extract.color(), bloomBslAtlas.input("BloomInput"))
         line(sceneColor(), composite.input("SceneColor"))
-        line(bloomGaussianBlur.color(), composite.input("Bloom"))
+        line(bloomBslAtlas.color(), composite.input("BloomAtlas"))
         line(composite.color(), screenTarget())
 
-        parameter("blurSigma", bloomGaussianBlur, "Sigma")
-        parameter("blurRange", bloomGaussianBlur, "Range")
         parameter("bloomThreshold", extract, "threshold")
         parameter("bloomSoftKnee", extract, "softKnee")
-        parameter("intensity", geometry, "BloomIntensity")
+        parameter("intensity", extract, "Intensity")
+        parameter("bloomMipLevels", bloomBslAtlas, "BloomLevels")
+        parameter("bloomMipLevels", composite, "MipLevels")
     }.build()
 
     /** 保持原版 terrain 行为的方块 pipeline 模板。 */

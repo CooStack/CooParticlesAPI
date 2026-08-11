@@ -33,8 +33,7 @@ import kotlin.reflect.KProperty
  * ```kotlin
  * class FooRenderer : RenderEntityRenderer<FooEntity> {
  *     override val pipeline = CooPipelines.MASK_BLOOM
- *         .blurSigma(15F)
- *         .blurRange(10F)
+ *         .bloomMipLevels(6)
  *         .intensity { entity: FooEntity -> 2.8F * entity.bright.coerceAtLeast(0F) }
  *
  *     override fun render(input: RenderInput<FooEntity>) {

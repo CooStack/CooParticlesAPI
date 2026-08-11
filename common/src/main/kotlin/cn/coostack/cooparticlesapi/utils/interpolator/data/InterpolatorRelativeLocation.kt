@@ -7,8 +7,7 @@ import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.phys.Vec3
 
-class InterpolatorRelativeLocation(private var value: RelativeLocation) : InterpolatorData<RelativeLocation> {
-    var last = value
+class InterpolatorRelativeLocation(value: RelativeLocation) : AbstractInterpolatorData<RelativeLocation>(value) {
 
     companion object {
         @JvmStatic
@@ -19,18 +18,14 @@ class InterpolatorRelativeLocation(private var value: RelativeLocation) : Interp
             }, {
                 val last = it.readVec3().asRelative()
                 val current = it.readVec3().asRelative()
-                InterpolatorRelativeLocation(last)
-                    .update(current)
+                InterpolatorRelativeLocation(current).apply {
+                    this.last = last
+                }
             }
         )
 
     }
 
-    override fun update(current: RelativeLocation): InterpolatorRelativeLocation {
-        last = this.value
-        this.value = current
-        return this
-    }
 
     override fun getWithInterpolator(progress: Number): RelativeLocation {
         return GraphMathHelper.lerp(progress.toDouble(), last, value)

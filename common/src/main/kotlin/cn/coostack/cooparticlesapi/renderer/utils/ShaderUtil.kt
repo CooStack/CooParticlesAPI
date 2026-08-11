@@ -257,11 +257,15 @@ object ShaderUtil {
     }
 
     /**
+     * 使用原有分片方式生成棱块球。
+     *
+     * 极点处会保留退化三角形，适合需要棱面效果的低模球体。
+     *
      * @param r 球的半径
-     * @param slices 经度细分
-     * @param stacks 纬度细分
+     * @param stacks 纬度分片数量
+     * @param slices 经度分片数量
      */
-    fun genBall(r: Float, stacks: Int, slices: Int): List<VertexData> {
+    fun genPolyBall(r: Float, stacks: Int, slices: Int): List<VertexData> {
         val res = mutableListOf<VertexData>()
 
         for (i in 0 until stacks) {
@@ -322,6 +326,63 @@ object ShaderUtil {
         }
 
         return res
+    }
+
+    /**
+     * 按经纬线分片生成无退化球面三角网格。
+     *
+     * `stacks` 表示从北极到南极的纬度带数量，`slices` 表示每个纬度带绕 Y 轴的经度分片数量。
+     * 两个极点使用三角扇连接到第一条和最后一条纬线，不会生成退化三角形。
+     *
+     * @param r 球的半径，必须大于零
+     * @param stacks 从北极到南极的纬度带数量，至少为 2
+     * @param slices 每条纬线的经度分片数量，至少为 3
+     */
+    fun genBall(r: Float, stacks: Int, slices: Int): List<VertexData> {
+        require(r > 0f) { "r must be greater than zero" }
+        require(stacks >= 2) { "stacks must be at least 2" }
+        require(slices >= 3) { "slices must be at least 3" }
+
+        val res = ArrayList<VertexData>(6 * slices * (stacks - 1))
+        val fullAngle = 2f * PI.toFloat()
+        for (i in 0 until stacks) {
+            val phi1 = i * PI.toFloat() / stacks
+            val phi2 = (i + 1) * PI.toFloat() / stacks
+
+            for (j in 0 until slices) {
+                val theta1 = j * fullAngle / slices
+                val theta2 = (j + 1) * fullAngle / slices
+                val p1 = ballPoint(r, phi1, theta1)
+                val p2 = ballPoint(r, phi1, theta2)
+                val p3 = ballPoint(r, phi2, theta1)
+                val p4 = ballPoint(r, phi2, theta2)
+
+                when (i) {
+                    0 -> res.addAll(genTriangle(Vector3f(0f, r, 0f), p4, p3))
+                    stacks - 1 -> res.addAll(genTriangle(p1, p2, Vector3f(0f, -r, 0f)))
+                    else -> res.addAll(genQuad(p1, p2, p4, p3))
+                }
+            }
+        }
+
+        return res
+    }
+
+    private fun ballPoint(r: Float, phi: Float, theta: Float): Vector3f {
+        val ringRadius = r * sin(phi)
+        return Vector3f(
+            ringRadius * cos(theta),
+            r * cos(phi),
+            ringRadius * sin(theta)
+        )
+    }
+
+    private fun genTriangle(p1: Vector3f, p2: Vector3f, p3: Vector3f): List<VertexData> {
+        return listOf(
+            VertexData(p1),
+            VertexData(p2),
+            VertexData(p3)
+        )
     }
 
     private fun genQuad(p1: Vector3f, p2: Vector3f, p3: Vector3f, p4: Vector3f): List<VertexData> {

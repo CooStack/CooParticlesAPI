@@ -19,6 +19,12 @@ interface RenderBackendHooks {
      */
     fun renderWorldPass(context: RenderFrameContext)
 
+    /** 在 Iris final pass 前捕获仍带有效世界深度的场景 attachment。 */
+    fun captureScenePost(context: RenderFrameContext)
+
+    /** 在云层、天气和 Iris final pass 完成后执行最终场景后处理合成。 */
+    fun runScenePost(context: RenderFrameContext)
+
     /**
      * 在 frame-post 之前准备屏幕后处理资源。
      *

@@ -27,6 +27,7 @@ import cn.coostack.cooparticlesapi.renderer.pipeline.CooTerrainLayer
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooUniformValue
 import cn.coostack.cooparticlesapi.renderer.pipeline.setUniform
 import cn.coostack.cooparticlesapi.renderer.post.OpenGlPostEffectExecutionBackend
+import cn.coostack.cooparticlesapi.renderer.post.PostEffectAttachmentSpec
 import cn.coostack.cooparticlesapi.renderer.post.PostEffectFrameExecutor
 import cn.coostack.cooparticlesapi.renderer.post.PostEffectRuntimeRegistry
 import cn.coostack.cooparticlesapi.renderer.shader.ShaderReloadBus
@@ -239,11 +240,18 @@ internal object CooTerrainPipelineManager {
             val owner = "terrain:${pipeline.id}"
             val captured = attachments.isEmpty() || withPostCaptureInputs(context) {
                 attachments.groupBy(CooCompiledAttachment::framebuffer).all { (framebuffer, outputs) ->
+                    val formats = outputs.map { it.output.format }.distinct()
+                    val mipLevels = outputs.map { it.output.mipLevels }.distinct()
+                    require(formats.size == 1 && mipLevels.size == 1) {
+                        "Framebuffer '$framebuffer' must use one color format and mip count for all attachments"
+                    }
+                    val attachmentCount = outputs.maxOf { it.output.attachment } + 1
+                    val spec = PostEffectAttachmentSpec(formats.single(), mipLevels.single())
                     PostEffectFrameExecutor.captureAttachments(
                         context = context,
                         owner = owner,
                         target = framebuffer,
-                        attachmentCount = outputs.maxOf { it.output.attachment } + 1
+                        attachments = List(attachmentCount) { spec }
                     ) {
                         terrainAttachmentCaptureActive = true
                         try {
@@ -492,7 +500,7 @@ internal object CooTerrainPipelineManager {
      */
     @JvmStatic
     fun deferFrameFinish(tickDelta: Float, viewMatrix: Matrix4f, projectionMatrix: Matrix4f): Boolean {
-        if (!irisShaderPackActive || terrainOverlayDisabled) return false
+        if (!irisShaderPackActive) return false
         deferredFrameFinish = DeferredFrameFinish(
             tickDelta,
             Matrix4f(viewMatrix),

@@ -23,6 +23,8 @@ object VanillaSafeRenderBackend : RenderBackend {
         when (stage) {
             RenderFrameStage.FRAME_BEGIN -> hooks.cacheFrameState(context)
             RenderFrameStage.WORLD_PASS -> hooks.renderWorldPass(context)
+            RenderFrameStage.SCENE_CAPTURE -> Unit
+            RenderFrameStage.SCENE_POST -> hooks.runScenePost(context)
             RenderFrameStage.POST_PROCESS_PREPARE -> hooks.preparePostProcess(context)
             RenderFrameStage.FRAME_POST -> hooks.runFramePost(context)
             RenderFrameStage.FRAME_END -> hooks.flushFrameComposites(context)

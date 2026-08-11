@@ -28,8 +28,6 @@ class DemoTrailOrbRenderEntityRenderer : RenderEntityRenderer<DemoTrailOrbRender
     private val trackers = WeakHashMap<DemoTrailOrbRenderEntity, TrailPointTracker>()
 
     override val pipeline = CooPipelines.MASK_BLOOM
-        .blurSigma(6F)
-        .blurRange(6F)
         .intensity { entity: DemoTrailOrbRenderEntity -> entity.intensity }
 
     override fun render(input: RenderInput<DemoTrailOrbRenderEntity>) {

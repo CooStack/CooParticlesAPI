@@ -20,6 +20,8 @@ class RenderEntityIrisPipelineContractTest {
         assertFalse("IrisWorldPassRenderEntityRenderer" in rendererApi)
         assertTrue("IrisCompat.runWithRenderEntityShader" in instance)
         assertTrue("irisWorldPassSubmitted" in instance)
+        assertTrue("frameWorldModelMatrix" in instance)
+        assertTrue("stack.set(frameWorldModelMatrix)" in instance)
     }
 
     @Test

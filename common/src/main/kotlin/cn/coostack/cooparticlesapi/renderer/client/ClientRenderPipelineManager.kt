@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi.renderer.client
 
+import cn.coostack.cooparticlesapi.CooParticlesAPIClient
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.renderer.backend.RenderBackend
 import cn.coostack.cooparticlesapi.renderer.backend.RenderBackendCapability
@@ -8,6 +9,7 @@ import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameContext
 import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameStage
 import cn.coostack.cooparticlesapi.renderer.backend.RenderSceneTargets
 import cn.coostack.cooparticlesapi.renderer.backend.VanillaSafeRenderBackend
+import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelineRuntimeEffect
 import cn.coostack.cooparticlesapi.renderer.post.PostEffectFrameExecutor
 import com.mojang.blaze3d.pipeline.RenderTarget
 import net.minecraft.client.Minecraft
@@ -22,6 +24,13 @@ object ClientRenderPipelineManager {
     var activeBackend: RenderBackend = VanillaSafeRenderBackend
         private set
     private var currentFrameContext: RenderFrameContext? = null
+    private var frameActive = false
+    private var scenePostCaptured = false
+    private var scenePostExecuted = false
+    private var irisScenePostFallbackLogged = false
+    private var frameTickDelta = 0F
+    private val frameViewMatrix = Matrix4f()
+    private val frameProjectionMatrix = Matrix4f()
     private var lastLoggedTargetSignature: String? = null
     private val backendHooks = object : RenderBackendHooks {
         /**
@@ -44,6 +53,29 @@ object ClientRenderPipelineManager {
          */
         override fun renderWorldPass(context: RenderFrameContext) {
             ClientRenderEntityManager.renderWorldPass(context.tickDelta, context.viewMatrix, context.projMatrix)
+        }
+
+        /** 在 Iris final pass 前捕获带有效世界深度的场景 attachment。 */
+        override fun captureScenePost(context: RenderFrameContext) {
+            if (scenePostCaptured) return
+            ClientRenderEntityManager.preparePostProcess(context.tickDelta, context.viewMatrix, context.projMatrix)
+            PostEffectFrameExecutor.prepareFrame(context)
+            ClientRenderEntityManager.captureScenePost(context)
+            scenePostCaptured = true
+        }
+
+        /** 在云层、天气或 Iris final pass 完成后执行最终场景后处理。 */
+        override fun runScenePost(context: RenderFrameContext) {
+            if (!scenePostCaptured) {
+                ClientRenderEntityManager.renderSceneWorldPass(
+                    context.tickDelta,
+                    context.viewMatrix,
+                    context.projMatrix
+                )
+                ClientRenderEntityManager.preparePostProcess(context.tickDelta, context.viewMatrix, context.projMatrix)
+                PostEffectFrameExecutor.prepareFrame(context)
+            }
+            ClientRenderEntityManager.runScenePost(context)
         }
 
         /**
@@ -98,6 +130,9 @@ object ClientRenderPipelineManager {
     fun release() {
         initialized = false
         currentFrameContext = null
+        frameActive = false
+        scenePostCaptured = false
+        scenePostExecuted = false
     }
 
     /**
@@ -123,12 +158,37 @@ object ClientRenderPipelineManager {
      * @param projMatrix 把相机空间坐标变换到裁剪空间的投影矩阵
      */
     fun beginFrame(tickDelta: Float, viewMatrix: Matrix4f, projMatrix: Matrix4f) {
+        frameActive = true
+        scenePostCaptured = false
+        scenePostExecuted = false
+        CooPipelineRuntimeEffect.beginFrame()
+        frameTickDelta = tickDelta
+        frameViewMatrix.set(viewMatrix)
+        frameProjectionMatrix.set(projMatrix)
         runStages(
             listOf(RenderFrameStage.FRAME_BEGIN),
             tickDelta,
             viewMatrix,
             projMatrix
         )
+    }
+
+    /** Iris 在 shader pack final pass 前调用，此时世界深度 attachment 仍然有效。 */
+    fun captureIrisScenePost() {
+        if (!frameActive || !CooParticlesAPIClient.checkIrisShaderPackUsed()) return
+        runStages(listOf(RenderFrameStage.SCENE_CAPTURE), frameTickDelta, frameViewMatrix, frameProjectionMatrix)
+    }
+
+    /** Iris 在 shader pack final pass 完成后调用。 */
+    fun renderIrisScenePost() {
+        if (!frameActive || !CooParticlesAPIClient.checkIrisShaderPackUsed()) return
+        runScenePost(frameTickDelta, frameViewMatrix, frameProjectionMatrix)
+    }
+
+    private fun runScenePost(tickDelta: Float, viewMatrix: Matrix4f, projMatrix: Matrix4f) {
+        if (scenePostExecuted) return
+        scenePostExecuted = true
+        runStages(listOf(RenderFrameStage.SCENE_POST), tickDelta, viewMatrix, projMatrix)
     }
 
     /**
@@ -143,18 +203,31 @@ object ClientRenderPipelineManager {
      * @param projMatrix 把相机空间坐标变换到裁剪空间的投影矩阵
      */
     fun finishLevelRender(tickDelta: Float, viewMatrix: Matrix4f, projMatrix: Matrix4f) {
-        runStages(
-            listOf(
-                RenderFrameStage.WORLD_PASS,
-                RenderFrameStage.POST_PROCESS_PREPARE,
-                RenderFrameStage.FRAME_POST,
-                RenderFrameStage.FRAME_END
-            ),
-            tickDelta,
-            viewMatrix,
-            projMatrix
-        )
-        currentFrameContext = null
+        try {
+            if (frameActive && !scenePostExecuted) {
+                if (CooParticlesAPIClient.checkIrisShaderPackUsed() && !irisScenePostFallbackLogged) {
+                    CooParticlesConstants.logger.warn(
+                        "Iris scene-post hook did not run; executing the fallback at the end of level rendering"
+                    )
+                    irisScenePostFallbackLogged = true
+                }
+                runScenePost(tickDelta, viewMatrix, projMatrix)
+            }
+            runStages(
+                listOf(
+                    RenderFrameStage.WORLD_PASS,
+                    RenderFrameStage.POST_PROCESS_PREPARE,
+                    RenderFrameStage.FRAME_POST,
+                    RenderFrameStage.FRAME_END
+                ),
+                tickDelta,
+                viewMatrix,
+                projMatrix
+            )
+        } finally {
+            currentFrameContext = null
+            frameActive = false
+        }
     }
 
     /**
@@ -164,6 +237,7 @@ object ClientRenderPipelineManager {
      */
     fun endFrame() {
         currentFrameContext = null
+        frameActive = false
     }
 
     private fun runStages(

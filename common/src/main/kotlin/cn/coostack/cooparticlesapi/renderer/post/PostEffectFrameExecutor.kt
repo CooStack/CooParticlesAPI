@@ -5,6 +5,7 @@ import cn.coostack.cooparticlesapi.renderer.backend.RenderBackendCapability
 import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameContext
 import cn.coostack.cooparticlesapi.renderer.backend.RenderSceneResource
 import cn.coostack.cooparticlesapi.renderer.backend.RenderSceneTargets
+import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.CooTextureFormat
 import net.minecraft.resources.ResourceLocation
 
 /**
@@ -74,7 +75,9 @@ internal data class PostEffectResolvedInput(
     val sourceResourceId: ResourceLocation? = null,
     val sourceResourceAttachment: Int = 0,
     val sourceResourceChannel: PostEffectResourceChannel = PostEffectResourceChannel.COLOR,
-    val textureSlot: Int? = null
+    val textureSlot: Int? = null,
+    val expectedFormat: CooTextureFormat? = null,
+    val minimumMipLevels: Int = 1
 )
 
 /**
@@ -90,8 +93,21 @@ internal data class PostEffectResolvedOutput(
     val textureId: Int? = null,
     val targetKey: String = label,
     val scaleDivisor: Int = 1,
-    val colorAttachmentCount: Int = 1
+    val colorAttachmentCount: Int = 1,
+    val format: CooTextureFormat = CooTextureFormat.RGBA8,
+    val mipLevels: Int = 1,
+    val generateMipmaps: Boolean = false
 )
+
+/** world 节点捕获颜色 attachment 时传给执行后端的实际存储契约。 */
+internal data class PostEffectAttachmentSpec(
+    val format: CooTextureFormat = CooTextureFormat.RGBA8,
+    val mipLevels: Int = 1
+) {
+    init {
+        require(mipLevels > 0) { "A captured attachment must allocate at least one mip level" }
+    }
+}
 
 /**
  * post pass 的执行后端接口。
@@ -171,6 +187,17 @@ internal interface PostEffectAttachmentPreparationBackend {
         return (0 until attachmentCount).all { attachment ->
             captureAttachment(context, owner, target, attachment, render)
         }
+    }
+
+    /** 同一次 draw 按完整资源契约捕获一个 FBO 的全部颜色 attachment。 */
+    fun captureAttachments(
+        context: RenderFrameContext,
+        owner: String,
+        target: ResourceLocation,
+        attachments: List<PostEffectAttachmentSpec>,
+        render: () -> Unit
+    ): Boolean {
+        return captureAttachments(context, owner, target, attachments.size, render)
     }
 
     /**
@@ -309,6 +336,18 @@ internal object PostEffectFrameExecutor {
         return attachmentBackend.captureAttachments(context, owner, target, attachmentCount, render)
     }
 
+    /** 按 Pipeline 声明的格式和 mip 层数捕获同一个 FBO 的全部颜色 attachment。 */
+    internal fun captureAttachments(
+        context: RenderFrameContext,
+        owner: String,
+        target: ResourceLocation,
+        attachments: List<PostEffectAttachmentSpec>,
+        render: () -> Unit
+    ): Boolean {
+        val attachmentBackend = backend as? PostEffectAttachmentPreparationBackend ?: return false
+        return attachmentBackend.captureAttachments(context, owner, target, attachments, render)
+    }
+
     /**
      * 执行当前帧的一组 post 实例。
      *
@@ -393,7 +432,7 @@ internal object PostEffectFrameExecutor {
         producedOutputs: Set<PostEffectOutput>,
         producedPasses: Set<String>
     ): PostEffectResolvedInput {
-        return when (input.source) {
+        val resolved = when (input.source) {
             PostEffectInputSource.SCENE_COLOR -> {
                 val resource = context.sceneResources[RenderSceneTargets.SCENE_COLOR]
                 val textureId = context.sceneColorTextureId ?: resource?.colorTextureId
@@ -471,6 +510,10 @@ internal object PostEffectFrameExecutor {
                 )
             }
         }
+        return resolved.copy(
+            expectedFormat = input.expectedFormat,
+            minimumMipLevels = input.minimumMipLevels
+        )
     }
 
     private fun hasCapturedAttachment(target: ResourceLocation, attachment: Int): Boolean {
@@ -516,7 +559,10 @@ internal object PostEffectFrameExecutor {
             textureId = resource?.colorTextureId,
             targetKey = targetKey ?: label,
             scaleDivisor = scaleDivisor.coerceAtLeast(1),
-            colorAttachmentCount = pass.colorAttachmentCount
+            colorAttachmentCount = pass.colorAttachmentCount,
+            format = pass.outputFormat,
+            mipLevels = pass.mipLevels,
+            generateMipmaps = pass.generateMipmaps
         )
     }
 

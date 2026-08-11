@@ -3,6 +3,7 @@ package cn.coostack.cooparticlesapi.renderer.shader.glsl
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.renderer.client.ClientRenderPipelineManager
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlFrameBuffer
+import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.CooTextureFormat
 import net.minecraft.client.Minecraft
 import org.lwjgl.opengl.GL33.*
 import java.nio.ByteBuffer
@@ -10,7 +11,9 @@ import java.util.function.Supplier
 
 open class SimpleFrameBuffer(
     val colorChannelCount: Int,
-    override var depthSupplier: Supplier<Int>
+    override var depthSupplier: Supplier<Int>,
+    private val colorFormat: CooTextureFormat = CooTextureFormat.RGBA8,
+    mipLevels: Int = 1
 ) : GlFrameBuffer {
     constructor(
         colorChannelCount: Int,
@@ -18,6 +21,18 @@ open class SimpleFrameBuffer(
         fixedWidth: Int,
         fixedHeight: Int
     ) : this(colorChannelCount, depthSupplier) {
+        this.fixedWidth = fixedWidth.coerceAtLeast(1)
+        this.fixedHeight = fixedHeight.coerceAtLeast(1)
+    }
+
+    constructor(
+        colorChannelCount: Int,
+        depthSupplier: Supplier<Int>,
+        colorFormat: CooTextureFormat,
+        mipLevels: Int,
+        fixedWidth: Int,
+        fixedHeight: Int
+    ) : this(colorChannelCount, depthSupplier, colorFormat, mipLevels) {
         this.fixedWidth = fixedWidth.coerceAtLeast(1)
         this.fixedHeight = fixedHeight.coerceAtLeast(1)
     }
@@ -36,7 +51,8 @@ open class SimpleFrameBuffer(
         return colorChannelCount
     }
 
-    private var useMipmap = false
+    private var useMipmap = mipLevels > 1
+    private var requestedMipLevels = mipLevels.coerceAtLeast(1)
     private var depthAttachment = -1
     private var fbo = 0
     private var previousReadFramebuffer = 0
@@ -88,6 +104,7 @@ open class SimpleFrameBuffer(
      */
     override fun useMipmap() {
         useMipmap = true
+        requestedMipLevels = Int.MAX_VALUE
     }
 
     /**
@@ -197,6 +214,14 @@ open class SimpleFrameBuffer(
      * @param writeScope 当前操作需要的输入值；其语义由方法名和所属组件共同限定
      */
     override fun writeFrameBufferWith(writeScope: GlFrameBuffer.() -> Unit) {
+        writeFrameBufferWith(useMipmap, writeScope)
+    }
+
+    /** 在本次写入完成后按需刷新 mip 链。 */
+    fun writeFrameBufferWith(
+        generateMipmaps: Boolean,
+        writeScope: GlFrameBuffer.() -> Unit
+    ) {
         if (fbo == 0) {
             CooParticlesConstants.logger.error("trying to write frame buffer but fbo is zero")
             initialized = false
@@ -206,33 +231,63 @@ open class SimpleFrameBuffer(
         val previousViewport = IntArray(4)
         val previousRead = glGetInteger(GL_READ_FRAMEBUFFER_BINDING)
         val previousDraw = glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING)
+        val previousClearColor = FloatArray(4)
+        val previousColorMask = IntArray(4)
+        glGetFloatv(GL_COLOR_CLEAR_VALUE, previousClearColor)
+        glGetIntegerv(GL_COLOR_WRITEMASK, previousColorMask)
+        val previousDepthMask = glGetBoolean(GL_DEPTH_WRITEMASK)
+        val previousScissor = glIsEnabled(GL_SCISSOR_TEST)
         glGetIntegerv(GL_VIEWPORT, previousViewport)
         try {
             glBindFramebuffer(GL_FRAMEBUFFER, fbo)
             glViewport(0, 0, width(), height())
+            glDisable(GL_SCISSOR_TEST)
+            glColorMask(true, true, true, true)
+            glDepthMask(true)
+            glClearColor(0F, 0F, 0F, 0F)
             if (newDepth) {
                 clear()
             } else {
                 clear(GL_COLOR_BUFFER_BIT)
             }
+            glDepthMask(previousDepthMask)
             writeScope()
 
-            // 生成 mipmap
-            if (useMipmap) {
-                val current = glGetInteger(GL_TEXTURE_BINDING_2D)
-                try {
-                    colorAttachments.forEach {
-                        glBindTexture(GL_TEXTURE_2D, it)
-                        glGenerateMipmap(GL_TEXTURE_2D)
-                    }
-                } finally {
-                    glBindTexture(GL_TEXTURE_2D, current)
-                }
+            if (generateMipmaps && resolvedMipLevels() > 1) {
+                generateMipmaps()
             }
         } finally {
+            glClearColor(
+                previousClearColor[0],
+                previousClearColor[1],
+                previousClearColor[2],
+                previousClearColor[3]
+            )
+            glColorMask(
+                previousColorMask[0] != 0,
+                previousColorMask[1] != 0,
+                previousColorMask[2] != 0,
+                previousColorMask[3] != 0
+            )
+            glDepthMask(previousDepthMask)
+            if (previousScissor) glEnable(GL_SCISSOR_TEST) else glDisable(GL_SCISSOR_TEST)
             glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3])
             glBindFramebuffer(GL_READ_FRAMEBUFFER, previousRead)
             glBindFramebuffer(GL_DRAW_FRAMEBUFFER, previousDraw)
+        }
+    }
+
+    /** 根据当前声明刷新全部颜色 attachment 的 mip 链。 */
+    fun generateMipmaps() {
+        if (resolvedMipLevels() <= 1) return
+        val current = glGetInteger(GL_TEXTURE_BINDING_2D)
+        try {
+            colorAttachments.forEach {
+                glBindTexture(GL_TEXTURE_2D, it)
+                glGenerateMipmap(GL_TEXTURE_2D)
+            }
+        } finally {
+            glBindTexture(GL_TEXTURE_2D, current)
         }
     }
 
@@ -318,15 +373,35 @@ open class SimpleFrameBuffer(
             val texture = glGenTextures()
             colorAttachments[it] = texture
             bindTextureTo(texture) {
-                glTexImage2D(
-                    GL_TEXTURE_2D, 0, GL_RGBA16F,
-                    width(), height(), 0, GL_RGBA, GL_FLOAT, null as ByteBuffer?
-                )
+                val internalFormat = when (colorFormat) {
+                    CooTextureFormat.RGBA8 -> GL_RGBA8
+                    CooTextureFormat.RGBA16F -> GL_RGBA16F
+                    CooTextureFormat.RGBA32F -> GL_RGBA32F
+                }
+                val dataType = when (colorFormat) {
+                    CooTextureFormat.RGBA8 -> GL_UNSIGNED_BYTE
+                    CooTextureFormat.RGBA16F,
+                    CooTextureFormat.RGBA32F -> GL_FLOAT
+                }
+                repeat(resolvedMipLevels()) { level ->
+                    glTexImage2D(
+                        GL_TEXTURE_2D,
+                        level,
+                        internalFormat,
+                        maxOf(1, width() shr level),
+                        maxOf(1, height() shr level),
+                        0,
+                        GL_RGBA,
+                        dataType,
+                        null as ByteBuffer?
+                    )
+                }
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, textureFilterMod)
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, normalizeMagFilter(textureFilterMod))
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-                glGenerateMipmap(GL_TEXTURE_2D)
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0)
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, resolvedMipLevels() - 1)
                 glFramebufferTexture2D(
                     GL_FRAMEBUFFER, channel,
                     GL_TEXTURE_2D, texture, 0
@@ -380,6 +455,17 @@ open class SimpleFrameBuffer(
             GL_NEAREST_MIPMAP_LINEAR -> GL_NEAREST
             else -> GL_LINEAR
         }
+    }
+
+    /** 返回当前尺寸实际能够分配的 mip 层数。 */
+    private fun resolvedMipLevels(): Int {
+        var levels = 1
+        var size = maxOf(width(), height())
+        while (size > 1 && levels < requestedMipLevels) {
+            size = maxOf(1, size / 2)
+            levels++
+        }
+        return levels
     }
 
     /**

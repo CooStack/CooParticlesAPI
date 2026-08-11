@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi.renderer.pipeline
 
+import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.CooTextureFormat
 import net.minecraft.resources.ResourceLocation
 
 /**
@@ -27,6 +28,8 @@ class CooPipelineNodeBuilder<T : Any> internal constructor(
     private val iterationUniforms = LinkedHashMap<String, CooIterationUniformProvider>()
     private var colorAttachmentCount = 1
     private var hasMaskOutput = false
+    private var outputFormat = CooTextureFormat.RGBA8
+    private var outputMipLevels = 1
     private var order = 0
 
     /**
@@ -74,9 +77,16 @@ class CooPipelineNodeBuilder<T : Any> internal constructor(
     }
 
     /** 声明一个尚未连线的 sampler 输入端口。 */
-    fun input(sampler: String, optional: Boolean = false, textureSlot: Int = inputs.size) = apply {
+    fun input(
+        sampler: String,
+        optional: Boolean = false,
+        textureSlot: Int = inputs.size,
+        format: CooTextureFormat? = null,
+        mipLevels: Int = 1
+    ) = apply {
         require(sampler !in inputs) { "Node '$name' already declares input '$sampler'" }
-        inputs[sampler] = CooPipelineInputPort(name, sampler, optional, textureSlot)
+        require(mipLevels > 0) { "Node '$name' input '$sampler' must require at least one mip level" }
+        inputs[sampler] = CooPipelineInputPort(name, sampler, optional, textureSlot, format, mipLevels)
     }
 
     /** 声明端口并直接把一个外部资源连到它。 */
@@ -84,9 +94,11 @@ class CooPipelineNodeBuilder<T : Any> internal constructor(
         sampler: String,
         source: CooPipelineTextureSource,
         optional: Boolean = false,
-        textureSlot: Int = inputs.size
+        textureSlot: Int = inputs.size,
+        format: CooTextureFormat? = null,
+        mipLevels: Int = 1
     ) = apply {
-        input(sampler, optional, textureSlot)
+        input(sampler, optional, textureSlot, format, mipLevels)
         sources[sampler] = source
     }
 
@@ -244,6 +256,17 @@ class CooPipelineNodeBuilder<T : Any> internal constructor(
     fun colorAttachments(count: Int) = apply {
         require(count > 0) { "Node '$name' must have at least one color attachment" }
         colorAttachmentCount = count
+    }
+
+    /** 声明当前节点全部颜色输出的实际存储格式。 */
+    fun outputFormat(format: CooTextureFormat) = apply {
+        outputFormat = format
+    }
+
+    /** 声明当前节点全部颜色输出分配的 mip 层数。 */
+    fun mipLevels(levels: Int) = apply {
+        require(levels > 0) { "Node '$name' must allocate at least one mip level" }
+        outputMipLevels = levels
     }
 
     /** 为 world 节点增加独立 mask 输出端口。 */
@@ -459,12 +482,17 @@ class CooPipelineNodeBuilder<T : Any> internal constructor(
      *
      * @param feedbackSampler 当前操作需要的输入值；其语义由方法名和所属组件共同限定
      */
-    internal fun pingPong(iterations: Int, feedbackSampler: String) {
+    internal fun pingPong(
+        iterations: Int,
+        feedbackSampler: String,
+        inputFormat: CooTextureFormat?,
+        inputMipLevels: Int
+    ) {
         require(kind == CooPipelineNodeKind.PING_PONG)
         require(iterations > 0) { "Ping-pong node '$name' must execute at least once" }
         pingPongIterations = iterations
         pingPongFeedbackSampler = feedbackSampler
-        input(feedbackSampler)
+        input(feedbackSampler, format = inputFormat, mipLevels = inputMipLevels)
     }
 
     /**
@@ -537,12 +565,23 @@ class CooPipelineNodeBuilder<T : Any> internal constructor(
                         node = name,
                         name = if (attachment == 0) "Color" else "Color$attachment",
                         semantic = CooPipelineOutputSemantic.COLOR,
-                        attachment = attachment
+                        attachment = attachment,
+                        format = outputFormat,
+                        mipLevels = outputMipLevels
                     )
                 )
             }
             if (hasMaskOutput) {
-                add(CooPipelineOutputPort(name, "Mask", CooPipelineOutputSemantic.MASK, colorAttachmentCount))
+                add(
+                    CooPipelineOutputPort(
+                        name,
+                        "Mask",
+                        CooPipelineOutputSemantic.MASK,
+                        colorAttachmentCount,
+                        outputFormat,
+                        outputMipLevels
+                    )
+                )
             }
         }
         return CooNodeBuildResult(
@@ -584,6 +623,7 @@ class CooRenderPipelineBuilder<T : Any> internal constructor(
 ) {
     private var terrainLayer = CooTerrainLayer.INHERIT
     private var effectUvMode = CooEffectUvMode.BASE_UV
+    private var postInScene = false
     private val nodes = ArrayList<CooPipelineNode>()
     private val lines = ArrayList<CooPipelineLine>()
     private val parameters = LinkedHashMap<String, MutableList<CooPipelineParameterBinding>>()
@@ -607,6 +647,9 @@ class CooRenderPipelineBuilder<T : Any> internal constructor(
      * @param mode 当前操作需要的输入值；其语义由方法名和所属组件共同限定
      */
     fun effectUv(mode: CooEffectUvMode) = apply { effectUvMode = mode }
+
+    /** 把 fullscreen 节点安排到最终场景颜色准备完成后的专用阶段。 */
+    internal fun postInScene() = apply { postInScene = true }
 
     /**
      * 在 `CooRenderPipelineBuilder` 中配置 `shader`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
@@ -762,7 +805,30 @@ class CooRenderPipelineBuilder<T : Any> internal constructor(
         block: CooPipelineNodeBuilder<T>.() -> Unit
     ): CooPipelineNode {
         val builder = CooPipelineNodeBuilder<T>(name, CooPipelineNodeKind.PING_PONG)
-        builder.pingPong(iterations, feedbackSampler)
+        builder.pingPong(iterations, feedbackSampler, null, 1)
+        return addNode(builder.apply(block))
+    }
+
+    /**
+     * 创建带显式反馈纹理契约的 ping-pong 节点。
+     *
+     * @param name 节点名称
+     * @param iterations 循环次数
+     * @param feedbackSampler 每轮读取前一轮结果的 sampler
+     * @param inputFormat 反馈输入的期望格式
+     * @param inputMipLevels 反馈输入至少需要的 mip 层数
+     * @param block 节点配置
+     */
+    fun pingPong(
+        name: String,
+        iterations: Int,
+        feedbackSampler: String = "Input",
+        inputFormat: CooTextureFormat,
+        inputMipLevels: Int = 1,
+        block: CooPipelineNodeBuilder<T>.() -> Unit
+    ): CooPipelineNode {
+        val builder = CooPipelineNodeBuilder<T>(name, CooPipelineNodeKind.PING_PONG)
+        builder.pingPong(iterations, feedbackSampler, inputFormat, inputMipLevels)
         return addNode(builder.apply(block))
     }
 
@@ -979,6 +1045,7 @@ class CooRenderPipelineBuilder<T : Any> internal constructor(
             domain = domain,
             terrainLayer = terrainLayer,
             effectUvMode = effectUvMode,
+            postInScene = postInScene,
             nodes = nodes,
             lines = lines,
             primaryNode = nodes.firstOrNull { it.kind == CooPipelineNodeKind.WORLD }?.name

@@ -33,9 +33,9 @@ class BuiltInFrameEffectMigrationTest {
         )
 
         assertTrue("val MASK_BLOOM" in pipelinesSource)
-        assertTrue("bloom_gaussian_blur" in pipelinesSource)
-        assertTrue("GAUSSIAN_SAMPLES" in readProjectFile(
-            "common/src/main/resources/assets/cooparticlesapi/shaders/post/bloom_gaussian_blur.fsh"
+        assertTrue("bloom_bsl_atlas" in pipelinesSource)
+        assertTrue("BSL_WEIGHT" in readProjectFile(
+            "common/src/main/resources/assets/cooparticlesapi/shaders/post/bloom_bsl_atlas.fsh"
         ))
         assertTrue("line(" in pipelinesSource)
         assertFalse(projectFile(

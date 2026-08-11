@@ -14,6 +14,7 @@ import cn.coostack.cooparticlesapi.renderer.post.PostEffectResourceChannel
 import cn.coostack.cooparticlesapi.renderer.post.PostEffectType
 import cn.coostack.cooparticlesapi.renderer.post.PostEffectUniform
 import cn.coostack.cooparticlesapi.renderer.post.toPostEffectParamValue
+import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.CooTextureFormat
 import net.minecraft.resources.ResourceLocation
 
 internal data class CooCompiledPostEffect(
@@ -99,7 +100,9 @@ internal object CooPipelinePostEffectCompiler {
                             optional = input.optional,
                             sourcePassName = previousPass,
                             sourcePassAttachment = 0,
-                            textureSlot = input.textureSlot
+                            textureSlot = input.textureSlot,
+                            expectedFormat = input.expectedFormat,
+                            minimumMipLevels = input.minimumMipLevels
                         )
                     } else {
                         line.toPostInput(compiled, nodesByName, outputPasses, defaults)
@@ -119,6 +122,7 @@ internal object CooPipelinePostEffectCompiler {
                         framebuffer = framebuffer,
                         iteration = iteration,
                         outputTargetKey = targetKey,
+                        generateMipmaps = isLast && node.outputs.any { it.mipLevels > 1 },
                         reuseOutputTarget = true
                     )
                 )
@@ -181,7 +185,9 @@ internal object CooPipelinePostEffectCompiler {
                             "Named framebuffer writer '${writerNode.name}' has no compiled output pass"
                         },
                         sourcePassAttachment = source.attachment,
-                        textureSlot = input.textureSlot
+                        textureSlot = input.textureSlot,
+                        expectedFormat = input.expectedFormat,
+                        minimumMipLevels = input.minimumMipLevels
                     )
                 } else {
                     input.inputSceneResource(source.target, attachment = source.attachment)
@@ -198,7 +204,9 @@ internal object CooPipelinePostEffectCompiler {
                             "Pipeline node '${source.node}' has no compiled output pass"
                         },
                         sourcePassAttachment = source.attachment,
-                        textureSlot = input.textureSlot
+                        textureSlot = input.textureSlot,
+                        expectedFormat = input.expectedFormat,
+                        minimumMipLevels = input.minimumMipLevels
                     )
                 } else if (producer.kind == CooPipelineNodeKind.PING_PONG) {
                     PostEffectInput(
@@ -209,7 +217,9 @@ internal object CooPipelinePostEffectCompiler {
                             "Ping-pong node '${source.node}' has no compiled output pass"
                         },
                         sourcePassAttachment = source.attachment,
-                        textureSlot = input.textureSlot
+                        textureSlot = input.textureSlot,
+                        expectedFormat = input.expectedFormat,
+                        minimumMipLevels = input.minimumMipLevels
                     )
                 } else {
                     val attachment = requireNotNull(compiled.attachment(source)) {
@@ -232,6 +242,7 @@ internal object CooPipelinePostEffectCompiler {
         framebuffer: ResourceLocation?,
         iteration: CooPipelineIteration? = null,
         outputTargetKey: String? = framebuffer?.toString(),
+        generateMipmaps: Boolean = outputs.any { it.mipLevels > 1 },
         reuseOutputTarget: Boolean = false
     ): PostEffectPass {
         val staticUniforms = uniforms.map { (uniformName, provider) ->
@@ -258,6 +269,9 @@ internal object CooPipelinePostEffectCompiler {
             outputTargetId = framebuffer,
             outputTargetKey = outputTargetKey,
             colorAttachmentCount = outputs.maxOfOrNull(CooPipelineOutputPort::attachment)?.plus(1) ?: 1,
+            outputFormat = outputs.firstOrNull()?.format ?: CooTextureFormat.RGBA8,
+            mipLevels = outputs.maxOfOrNull(CooPipelineOutputPort::mipLevels) ?: 1,
+            generateMipmaps = generateMipmaps,
             reuseOutputTarget = reuseOutputTarget
         )
     }
@@ -267,7 +281,9 @@ internal object CooPipelinePostEffectCompiler {
             samplerName = sampler,
             source = source,
             optional = optional,
-            textureSlot = textureSlot
+            textureSlot = textureSlot,
+            expectedFormat = expectedFormat,
+            minimumMipLevels = minimumMipLevels
         )
     }
 
@@ -283,7 +299,9 @@ internal object CooPipelinePostEffectCompiler {
             sourceResourceId = resource,
             sourceResourceAttachment = attachment,
             sourceResourceChannel = channel,
-            textureSlot = textureSlot
+            textureSlot = textureSlot,
+            expectedFormat = expectedFormat,
+            minimumMipLevels = minimumMipLevels
         )
     }
 

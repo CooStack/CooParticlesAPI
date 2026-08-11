@@ -1,12 +1,16 @@
 package cn.coostack.cooparticlesapi.renderer.pipeline
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
+import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameStage
 import cn.coostack.cooparticlesapi.renderer.effects.RenderEffectDescriptor
 import cn.coostack.cooparticlesapi.renderer.effects.RenderEffectRegistry
+import cn.coostack.cooparticlesapi.renderer.post.PostEffectAttachmentSpec
 import cn.coostack.cooparticlesapi.renderer.post.PostEffectFrameExecutor
+import cn.coostack.cooparticlesapi.renderer.post.PostEffectInputSource
 import cn.coostack.cooparticlesapi.renderer.post.PostEffectInstance
 import cn.coostack.cooparticlesapi.renderer.post.PostEffectParamValue
 import cn.coostack.cooparticlesapi.renderer.post.PostEffectParams
+import cn.coostack.cooparticlesapi.renderer.post.PostEffectType
 import net.minecraft.resources.ResourceLocation
 
 /** RenderEntity 的 world attachment 捕获与 fullscreen graph 执行桥。 */
@@ -16,25 +20,52 @@ internal object CooPipelineRuntimeEffect {
         "effect/pipeline"
     )
     private var warnedMissingCaptureBackend = false
+    private val capturedBatches = ArrayList<PostEffectInstance>()
+    private var nextBatchId = 0
+
+    /** 清理上一帧未消费的 Iris 预捕获批次。 */
+    fun beginFrame() {
+        capturedBatches.clear()
+        nextBatchId = 0
+    }
 
     /** 在客户端注册共享 Pipeline 的后处理执行器。 */
     fun initOnClient() {
         RenderEffectRegistry.register(effectType) { context, effects ->
+            if (context.stage == RenderFrameStage.SCENE_POST && capturedBatches.isNotEmpty()) {
+                val frozenBatches = capturedBatches.toList()
+                capturedBatches.clear()
+                PostEffectFrameExecutor.execute(context, frozenBatches)
+                return@register
+            }
+
             val requestsByBatch = effects
                 .mapNotNull { effect -> effect.payload as? Request }
                 .groupBy { request -> request.batchKey() }
             requestsByBatch.forEach pipelineLoop@{ (batchKey, requests) ->
-                val batchOwner = batchKey.pipelineId.runtimeOwner()
+                // 不同亮度的同一 pipeline 必须拥有独立 FBO；否则后捕获的实体会覆盖先前 batch。
+                val batchId = nextBatchId++
+                val batchOwner = batchKey.runtimeOwner(batchId)
                 val canonical = requests.minBy(Request::owner)
                 val attachmentsByFramebuffer = requests
                     .flatMap(Request::attachments)
                     .groupBy(CooCompiledAttachment::framebuffer)
+                val batchTargets = attachmentsByFramebuffer.keys.associateWith { framebuffer ->
+                    framebuffer.batchTarget(batchId)
+                }
                 val captured = attachmentsByFramebuffer.all { (framebuffer, attachments) ->
+                    val formats = attachments.map { it.output.format }.distinct()
+                    val mipLevels = attachments.map { it.output.mipLevels }.distinct()
+                    require(formats.size == 1 && mipLevels.size == 1) {
+                        "Framebuffer '$framebuffer' must use one color format and mip count for all attachments"
+                    }
+                    val attachmentCount = attachments.maxOf { it.output.attachment } + 1
+                    val spec = PostEffectAttachmentSpec(formats.single(), mipLevels.single())
                     PostEffectFrameExecutor.captureAttachments(
                         context = context,
                         owner = batchOwner,
-                        target = framebuffer,
-                        attachmentCount = attachments.maxOf { it.output.attachment } + 1
+                        target = batchTargets.getValue(framebuffer),
+                        attachments = List(attachmentCount) { spec }
                     ) {
                         requests.forEach requestLoop@{ request ->
                             request.attachments
@@ -45,6 +76,12 @@ internal object CooPipelineRuntimeEffect {
                         }
                     }
                 }
+                if (context.stage == RenderFrameStage.SCENE_CAPTURE) {
+                    if (captured) {
+                        capturedBatches += canonical.postEffect.withBatchUniforms(batchKey, batchOwner, batchTargets)
+                    }
+                    return@pipelineLoop
+                }
                 if (!captured) {
                     if (!warnedMissingCaptureBackend) {
                         warnedMissingCaptureBackend = true
@@ -54,7 +91,7 @@ internal object CooPipelineRuntimeEffect {
                     }
                     return@pipelineLoop
                 }
-                val postEffect = canonical.postEffect.withBatchUniforms(batchKey, batchOwner)
+                val postEffect = canonical.postEffect.withBatchUniforms(batchKey, batchOwner, batchTargets)
                 PostEffectFrameExecutor.execute(context, listOf(postEffect))
             }
         }
@@ -117,17 +154,56 @@ internal object CooPipelineRuntimeEffect {
     /** 冻结已参与分组的 uniform，并使用可跨帧复用的实例 ID。 */
     private fun PostEffectInstance.withBatchUniforms(
         key: PipelineBatchKey,
-        batchOwner: String
+        batchOwner: String,
+        batchTargets: Map<ResourceLocation, ResourceLocation>
     ): PostEffectInstance {
         val overrides = key.uniforms.flatMap { pass ->
             pass.values.map { (name, value) -> (pass.passName to name) to value }
         }.toMap()
         return copy(
+            type = type.withBatchTargets(batchTargets),
             instanceId = batchOwner,
             uniformOverrides = overrides
         )
     }
 
-    /** 返回不含后端 target 分隔符的稳定运行时 owner。 */
-    private fun ResourceLocation.runtimeOwner(): String = "$namespace/$path"
+    /** 为一个参数 batch 生成稳定且不会互相覆盖的运行时 owner。 */
+    private fun PipelineBatchKey.runtimeOwner(batchId: Int): String {
+        return "${pipelineId.namespace}/${pipelineId.path}:batch_$batchId"
+    }
+
+    /** 为同一 pipeline 的不同 batch 隔离命名 framebuffer。 */
+    private fun ResourceLocation.batchTarget(batchId: Int): ResourceLocation {
+        return ResourceLocation.fromNamespaceAndPath(namespace, "$path/batch_$batchId")
+    }
+
+    /** 把 world attachment 的资源 id 重写为当前参数 batch 的独立目标。 */
+    private fun PostEffectType.withBatchTargets(
+        targets: Map<ResourceLocation, ResourceLocation>
+    ): PostEffectType {
+        if (targets.isEmpty()) return this
+        val remappedPasses = chain.passes.map { pass ->
+            pass.copy(
+                inputs = pass.inputs.map { input ->
+                    val source = input.sourceResourceId
+                    if (input.source == PostEffectInputSource.SCENE_RESOURCE && source != null) {
+                        targets[source]?.let { target -> input.copy(sourceResourceId = target) } ?: input
+                    } else {
+                        input
+                    }
+                }
+            )
+        }
+        return PostEffectType(
+            id = id,
+            model = model,
+            chain = chain.copy(passes = remappedPasses),
+            requiredCapabilities = requiredCapabilities,
+            optionalCapabilities = optionalCapabilities,
+            paramUniformNames = paramUniformNames,
+            defaultPriority = defaultPriority,
+            defaultSubject = defaultSubject,
+            descriptorFactory = descriptorFactory
+        )
+    }
 }

@@ -10,8 +10,6 @@ import cn.coostack.cooparticlesapi.renderer.runtime.RenderInput
 @CooAutoRegisterRenderer
 class DemoBlackHoleRenderEntityRenderer : RenderEntityRenderer<DemoBlackHoleRenderEntity> {
     override val pipeline = CooPipelines.MASK_BLOOM
-        .blurSigma(5.5F)
-        .blurRange(5.5F)
         .intensity { entity: DemoBlackHoleRenderEntity -> entity.intensity }
 
     override fun render(input: RenderInput<DemoBlackHoleRenderEntity>) {

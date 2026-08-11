@@ -44,6 +44,7 @@ import org.lwjgl.opengl.GL33.GL_LEQUAL
 import org.lwjgl.opengl.GL33.GL_LINES
 import org.lwjgl.opengl.GL33.GL_LINE_WIDTH
 import org.lwjgl.opengl.GL33.GL_ONE
+import org.lwjgl.opengl.GL33.GL_ONE_MINUS_SRC_ALPHA
 import org.lwjgl.opengl.GL33.GL_QUADS
 import org.lwjgl.opengl.GL33.GL_SRC_ALPHA
 import org.lwjgl.opengl.GL33.GL_TEXTURE0
@@ -400,7 +401,7 @@ object OpenGlRenderEntityModelExecutor : RenderEntityModelExecutor {
         val blendDstAlpha = glGetInteger(GL_BLEND_DST_ALPHA)
         val lineWidth = glGetFloat(GL_LINE_WIDTH)
         glEnable(GL_BLEND)
-        glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_SRC_ALPHA, GL_ONE)
+        glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE_MINUS_SRC_ALPHA)
         glEnable(GL_DEPTH_TEST)
         glDepthFunc(GL_LEQUAL)
         glDepthMask(false)

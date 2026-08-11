@@ -1,11 +1,7 @@
 package cn.coostack.cooparticlesapi.renderer.backend
 
 object IrisSafeRenderBackend : RenderBackend {
-    // Under Iris we let the shader pack render first and then paint our pass on top. We still
-    // advertise SCENE_DEPTH_READ because ClientRenderTargetResolver probes the bound framebuffer
-    // for an external depth attachment via glGetFramebufferAttachmentParameteri and exposes it
-    // as RenderFrameContext.sceneDepthFramebufferId — that path does not go through our own
-    // scene-copy. Effects that cannot recover from a missing depth should still declare optional.
+    // Iris final pass 前捕获带世界深度的 attachment，final pass 后只执行 fullscreen 合成。
     override val capabilities: Set<RenderBackendCapability> = setOf(
         RenderBackendCapability.SCENE_COLOR_COPY,
         RenderBackendCapability.SCENE_DEPTH_READ,
@@ -28,6 +24,8 @@ object IrisSafeRenderBackend : RenderBackend {
         when (stage) {
             RenderFrameStage.FRAME_BEGIN -> hooks.cacheFrameState(context)
             RenderFrameStage.WORLD_PASS -> hooks.renderWorldPass(context)
+            RenderFrameStage.SCENE_CAPTURE -> hooks.captureScenePost(context)
+            RenderFrameStage.SCENE_POST -> hooks.runScenePost(context)
             RenderFrameStage.POST_PROCESS_PREPARE -> hooks.preparePostProcess(context)
             RenderFrameStage.FRAME_POST -> hooks.runFramePost(context)
             RenderFrameStage.FRAME_END -> hooks.flushFrameComposites(context)

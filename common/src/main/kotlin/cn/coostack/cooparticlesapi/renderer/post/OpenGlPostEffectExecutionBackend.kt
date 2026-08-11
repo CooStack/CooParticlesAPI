@@ -1,6 +1,7 @@
 package cn.coostack.cooparticlesapi.renderer.post
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
+import cn.coostack.cooparticlesapi.compat.IrisCompat
 import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameContext
 import cn.coostack.cooparticlesapi.renderer.backend.RenderSceneResource
 import cn.coostack.cooparticlesapi.renderer.backend.RenderSceneResources
@@ -9,6 +10,7 @@ import cn.coostack.cooparticlesapi.renderer.client.ClientRenderPipelineManager
 import cn.coostack.cooparticlesapi.renderer.pipeline.setUniform
 import cn.coostack.cooparticlesapi.renderer.shader.AdvancedShaderProgramBuilder
 import cn.coostack.cooparticlesapi.renderer.shader.api.CooShaderProgram
+import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.CooTextureFormat
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlShaderType
 import cn.coostack.cooparticlesapi.renderer.shader.glsl.IdentifierShader
 import cn.coostack.cooparticlesapi.renderer.shader.glsl.SimpleFrameBuffer
@@ -54,12 +56,21 @@ import org.lwjgl.opengl.GL33.GL_NONE
 import org.lwjgl.opengl.GL33.GL_READ_FRAMEBUFFER
 import org.lwjgl.opengl.GL33.GL_READ_FRAMEBUFFER_BINDING
 import org.lwjgl.opengl.GL33.GL_READ_BUFFER
+import org.lwjgl.opengl.GL33.GL_RGBA
+import org.lwjgl.opengl.GL33.GL_RGBA8
+import org.lwjgl.opengl.GL33.GL_RGBA16F
+import org.lwjgl.opengl.GL33.GL_RGBA32F
 import org.lwjgl.opengl.GL33.GL_SCISSOR_BOX
 import org.lwjgl.opengl.GL33.GL_SCISSOR_TEST
+import org.lwjgl.opengl.GL33.GL_SRGB8_ALPHA8
 import org.lwjgl.opengl.GL33.GL_TEXTURE0
 import org.lwjgl.opengl.GL33.GL_TEXTURE
 import org.lwjgl.opengl.GL33.GL_TEXTURE_2D
+import org.lwjgl.opengl.GL33.GL_TEXTURE_BASE_LEVEL
 import org.lwjgl.opengl.GL33.GL_TEXTURE_BINDING_2D
+import org.lwjgl.opengl.GL33.GL_TEXTURE_INTERNAL_FORMAT
+import org.lwjgl.opengl.GL33.GL_TEXTURE_MAX_LEVEL
+import org.lwjgl.opengl.GL33.GL_TEXTURE_WIDTH
 import org.lwjgl.opengl.GL33.GL_VIEWPORT
 import org.lwjgl.opengl.GL33.GL_VERTEX_ARRAY_BINDING
 import org.lwjgl.opengl.GL11.GL_POLYGON_OFFSET_FACTOR
@@ -74,14 +85,21 @@ import org.lwjgl.opengl.GL33.glBlendFuncSeparate
 import org.lwjgl.opengl.GL33.glBlitFramebuffer
 import org.lwjgl.opengl.GL33.glCheckFramebufferStatus
 import org.lwjgl.opengl.GL33.glDepthMask
+import org.lwjgl.opengl.GL33.glDeleteFramebuffers
 import org.lwjgl.opengl.GL33.glDepthFunc
 import org.lwjgl.opengl.GL33.glDisable
 import org.lwjgl.opengl.GL33.glEnable
+import org.lwjgl.opengl.GL33.glDrawBuffer
+import org.lwjgl.opengl.GL33.glFramebufferTexture2D
+import org.lwjgl.opengl.GL33.glGenFramebuffers
 import org.lwjgl.opengl.GL33.glGetBoolean
 import org.lwjgl.opengl.GL11.glGetFloat
 import org.lwjgl.opengl.GL33.glGetFramebufferAttachmentParameteri
 import org.lwjgl.opengl.GL33.glGetInteger
 import org.lwjgl.opengl.GL33.glGetIntegerv
+import org.lwjgl.opengl.GL33.glGetTexLevelParameteri
+import org.lwjgl.opengl.GL33.glGetTexParameteri
+import org.lwjgl.opengl.GL33.glGetUniformLocation
 import org.lwjgl.opengl.GL33.glIsEnabled
 import org.lwjgl.opengl.GL11.glPolygonOffset
 import org.lwjgl.opengl.GL33.glReadBuffer
@@ -124,11 +142,14 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
     private val instanceLastSeenFrame = LinkedHashMap<String, Long>()
     private var frameCounter: Long = 0
     private var screenBuffer: SimpleVertexBuffer? = null
+    private var irisDepthReadFramebuffer = 0
     private var sceneCopy: ManagedTarget? = null
     private var preparedSceneFrame: FrameKey? = null
+    private var preparedSceneCopySpec: PostEffectAttachmentSpec? = null
     private var chainedSceneFramebufferId: Int? = null
     private var warnedSceneCopyFailure = false
     private var warnedTerrainSceneCopyFailure = false
+    private val warnedTextureContractFailures = linkedSetOf<String>()
 
     /**
      * 初始化或准备 `OpenGlPostEffectExecutionBackend` 的 `prepareFrame` 阶段，使后续渲染调用可以使用相关资源。
@@ -139,6 +160,7 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
      */
     override fun prepareFrame(context: RenderFrameContext) {
         preparedSceneFrame = null
+        preparedSceneCopySpec = null
         chainedSceneFramebufferId = null
         instanceStates.clear()
         namedTargetTextures.clear()
@@ -197,10 +219,34 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         attachmentCount: Int,
         render: () -> Unit
     ): Boolean {
+        return captureAttachments(
+            context,
+            owner,
+            target,
+            List(attachmentCount) { PostEffectAttachmentSpec() },
+            render
+        )
+    }
+
+    override fun captureAttachments(
+        context: RenderFrameContext,
+        owner: String,
+        target: ResourceLocation,
+        attachments: List<PostEffectAttachmentSpec>,
+        render: () -> Unit
+    ): Boolean {
+        require(attachments.isNotEmpty()) { "A captured framebuffer must have at least one color attachment" }
+        val formats = attachments.map(PostEffectAttachmentSpec::format).distinct()
+        val mipCounts = attachments.map(PostEffectAttachmentSpec::mipLevels).distinct()
+        require(formats.size == 1 && mipCounts.size == 1) {
+            "Framebuffer '$target' must use one color format and mip count for all attachments"
+        }
         val managed = targetFor(
             context = context,
             key = "$owner:pipeline:$target",
-            colorAttachmentCount = attachmentCount
+            colorAttachmentCount = attachments.size,
+            format = formats.single(),
+            mipLevels = mipCounts.single()
         )
         instanceLastSeenFrame[owner] = frameCounter
         managed.buffer.writeFrameBufferWith {
@@ -210,7 +256,7 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         managed.buffer.colorAttachments.forEachIndexed { attachment, texture ->
             namedTargetTextures[NamedAttachment(target, attachment)] = texture
         }
-        return managed.buffer.colorAttachments.size == attachmentCount &&
+        return managed.buffer.colorAttachments.size == attachments.size &&
             managed.buffer.colorAttachments.all { it > 0 }
     }
 
@@ -252,7 +298,7 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         }
 
         val target = targetFor(step)
-        target.buffer.writeFrameBufferWith {
+        target.buffer.writeFrameBufferWith(step.output.generateMipmaps) {
             drawStep(step, state)
         }
         target.buffer.colorAttachments.forEachIndexed { attachment, texture ->
@@ -280,13 +326,19 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         customTextures.clear()
         screenBuffer?.release()
         screenBuffer = null
+        if (irisDepthReadFramebuffer > 0) {
+            glDeleteFramebuffers(irisDepthReadFramebuffer)
+            irisDepthReadFramebuffer = 0
+        }
         instanceStates.clear()
         instanceLastSeenFrame.clear()
         frameCounter = 0
         preparedSceneFrame = null
+        preparedSceneCopySpec = null
         chainedSceneFramebufferId = null
         warnedSceneCopyFailure = false
         warnedTerrainSceneCopyFailure = false
+        warnedTextureContractFailures.clear()
     }
 
     /**
@@ -402,6 +454,7 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         sceneCopy?.buffer?.release()
         sceneCopy = null
         preparedSceneFrame = null
+        preparedSceneCopySpec = null
         warnedTerrainSceneCopyFailure = false
     }
 
@@ -443,9 +496,12 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         toRelease.forEach { it.buffer.release() }
     }
 
-    private fun ensureSceneCopy(context: RenderFrameContext): ManagedTarget? {
+    private fun ensureSceneCopy(
+        context: RenderFrameContext,
+        spec: PostEffectAttachmentSpec
+    ): ManagedTarget? {
         val frameKey = frameKey(context)
-        if (preparedSceneFrame == frameKey) {
+        if (preparedSceneFrame == frameKey && preparedSceneCopySpec == spec) {
             return sceneCopy
         }
 
@@ -458,12 +514,22 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
             return null
         }
 
-        val target = ensureManagedTarget(sceneCopy, "scene_copy", context).also { sceneCopy = it }
+        val target = ensureManagedTarget(
+            sceneCopy,
+            "scene_copy",
+            context,
+            format = spec.format,
+            mipLevels = spec.mipLevels
+        ).also { sceneCopy = it }
         return try {
             val sourceWidth = max(1, context.targetWidth ?: source.width)
             val sourceHeight = max(1, context.targetHeight ?: source.height)
             copyColor(sourceFramebufferId, sourceWidth, sourceHeight, target, context)
+            if (spec.mipLevels > 1) {
+                target.buffer.generateMipmaps()
+            }
             preparedSceneFrame = frameKey
+            preparedSceneCopySpec = spec
             target
         } catch (error: RuntimeException) {
             warnSceneCopyFailure(error.message ?: error.javaClass.simpleName)
@@ -489,6 +555,7 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         }
         chainedSceneFramebufferId = framebuffer
         preparedSceneFrame = null
+        preparedSceneCopySpec = null
     }
 
     private fun drawStep(step: PostEffectExecutionStep, state: InstanceFrameState) {
@@ -497,8 +564,8 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         withFlatPostState {
             program.useOnContext {
                 uploadBuiltInUniforms(this, step)
+                uploadUniforms(this, step.uniforms)
                 bindInputs(step, state, this) {
-                    uploadUniforms(this, step.uniforms)
                     buffer.draw()
                 }
             }
@@ -562,6 +629,10 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
                 previousBindings[input.textureSlot] = glGetInteger(GL_TEXTURE_BINDING_2D)
                 glBindTexture(GL_TEXTURE_2D, input.textureId)
                 program.setInt(input.samplerName, input.textureSlot)
+                val mipLevelsUniform = "${input.samplerName}MipLevels"
+                if (glGetUniformLocation(program.program, mipLevelsUniform) >= 0) {
+                    program.setInt(mipLevelsUniform, textureMipLevelCount())
+                }
             }
             draw()
         } finally {
@@ -578,9 +649,17 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         state: InstanceFrameState,
         input: PostEffectResolvedInput
     ): Int? {
-        return when (input.source) {
-            PostEffectInputSource.SCENE_COLOR -> ensureSceneCopy(step.context)?.buffer?.colorAttachments?.firstOrNull()
-                ?: input.textureId
+        val texture = when (input.source) {
+            PostEffectInputSource.SCENE_COLOR -> ensureSceneCopy(
+                step.context,
+                PostEffectAttachmentSpec(
+                    input.expectedFormat ?: CooTextureFormat.RGBA8,
+                    input.minimumMipLevels
+                )
+            )
+                ?.buffer
+                ?.colorAttachments
+                ?.firstOrNull()
             PostEffectInputSource.SCENE_DEPTH -> input.textureId
             PostEffectInputSource.MASK -> state.lastOutputTextures[PostEffectOutput.MASK]
                 ?: ensureBindingMask(step, state)
@@ -594,7 +673,69 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
                 ?: input.sourceResourceId?.let { resource ->
                     namedTargetTextures[NamedAttachment(resource, input.sourceResourceAttachment)]
                 }
-        }?.takeIf { it > 0 }
+        }?.takeIf { it > 0 } ?: return null
+        return texture.takeIf { validateTextureContract(step, input, texture) }
+    }
+
+    private fun validateTextureContract(
+        step: PostEffectExecutionStep,
+        input: PostEffectResolvedInput,
+        texture: Int
+    ): Boolean {
+        if (input.source == PostEffectInputSource.PASS_OUTPUT) return true
+        if (input.expectedFormat == null && input.minimumMipLevels <= 1) return true
+
+        val previous = glGetInteger(GL_TEXTURE_BINDING_2D)
+        val actualFormat: Int
+        val mipLevelsMatch: Boolean
+        try {
+            glBindTexture(GL_TEXTURE_2D, texture)
+            actualFormat = glGetTexLevelParameteri(GL_TEXTURE_2D, 0, GL_TEXTURE_INTERNAL_FORMAT)
+            val baseLevel = glGetTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL)
+            val maxLevel = glGetTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL)
+            mipLevelsMatch = baseLevel == 0 &&
+                maxLevel >= input.minimumMipLevels - 1 &&
+                (0 until input.minimumMipLevels).all { level ->
+                    glGetTexLevelParameteri(GL_TEXTURE_2D, level, GL_TEXTURE_WIDTH) > 0
+                }
+        } finally {
+            glBindTexture(GL_TEXTURE_2D, previous)
+        }
+
+        val formatMatches = when (input.expectedFormat) {
+            null -> true
+            CooTextureFormat.RGBA8 -> actualFormat == GL_RGBA8 ||
+                actualFormat == GL_SRGB8_ALPHA8 || actualFormat == GL_RGBA
+            CooTextureFormat.RGBA16F -> actualFormat == GL_RGBA16F
+            CooTextureFormat.RGBA32F -> actualFormat == GL_RGBA32F
+        }
+        if (formatMatches && mipLevelsMatch) return true
+
+        val key = "${step.instance.type.id}:${step.pass.name}:${input.samplerName}"
+        if (warnedTextureContractFailures.add(key)) {
+            CooParticlesConstants.logger.warn(
+                "Skipping post input {}.{} because texture {} does not satisfy format={} mipLevels={}",
+                step.pass.name,
+                input.samplerName,
+                texture,
+                input.expectedFormat ?: "any",
+                input.minimumMipLevels
+            )
+        }
+        return false
+    }
+
+    /** 返回当前已绑定二维纹理可采样的连续 mip 层数。 */
+    private fun textureMipLevelCount(): Int {
+        val baseLevel = glGetTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL)
+        val maxLevel = glGetTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL)
+        if (maxLevel < baseLevel) return 0
+        var levels = 0
+        for (level in baseLevel..maxLevel) {
+            if (glGetTexLevelParameteri(GL_TEXTURE_2D, level, GL_TEXTURE_WIDTH) <= 0) break
+            levels++
+        }
+        return levels
     }
 
     private fun customTexture(input: PostEffectResolvedInput, instance: PostEffectInstance): Int? {
@@ -765,21 +906,31 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         return targetFor(
             step.context,
             key,
-            useMipmaps = step.output.output == PostEffectOutput.BLOOM,
             scaleDivisor = step.output.scaleDivisor,
-            colorAttachmentCount = step.output.colorAttachmentCount
+            colorAttachmentCount = step.output.colorAttachmentCount,
+            format = step.output.format,
+            mipLevels = step.output.mipLevels
         )
     }
 
     private fun targetFor(
         context: RenderFrameContext,
         key: String,
-        useMipmaps: Boolean = false,
         scaleDivisor: Int = 1,
-        colorAttachmentCount: Int = 1
+        colorAttachmentCount: Int = 1,
+        format: CooTextureFormat = CooTextureFormat.RGBA8,
+        mipLevels: Int = 1
     ): ManagedTarget {
         val current = targets[key]
-        val target = ensureManagedTarget(current, key, context, useMipmaps, scaleDivisor, colorAttachmentCount)
+        val target = ensureManagedTarget(
+            current,
+            key,
+            context,
+            scaleDivisor,
+            colorAttachmentCount,
+            format,
+            mipLevels
+        )
         targets[key] = target
         return target
     }
@@ -788,26 +939,35 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         current: ManagedTarget?,
         key: String,
         context: RenderFrameContext,
-        useMipmaps: Boolean = false,
         scaleDivisor: Int = 1,
-        colorAttachmentCount: Int = 1
+        colorAttachmentCount: Int = 1,
+        format: CooTextureFormat = CooTextureFormat.RGBA8,
+        mipLevels: Int = 1
     ): ManagedTarget {
         val divisor = scaleDivisor.coerceAtLeast(1)
         val attachmentCount = colorAttachmentCount.coerceAtLeast(1)
         val width = max(1, (context.targetWidth ?: ClientRenderPipelineManager.currentRenderWidth()) / divisor)
         val height = max(1, (context.targetHeight ?: ClientRenderPipelineManager.currentRenderHeight()) / divisor)
-        if (current == null || current.colorAttachmentCount != attachmentCount) {
+        val requestedMipLevels = mipLevels.coerceAtLeast(1)
+        if (
+            current == null ||
+            current.colorAttachmentCount != attachmentCount ||
+            current.format != format ||
+            current.mipLevels != requestedMipLevels
+        ) {
             current?.buffer?.release()
-            val buffer = SimpleFrameBuffer(attachmentCount, Supplier { -1 }, width, height).also {
-                if (useMipmaps) {
-                    it.useMipmap()
-                    it.setTextureFilterMod(GL_LINEAR_MIPMAP_LINEAR)
-                } else {
-                    it.setTextureFilterMod(GL_LINEAR)
-                }
+            val buffer = SimpleFrameBuffer(
+                attachmentCount,
+                Supplier { -1 },
+                format,
+                requestedMipLevels,
+                width,
+                height
+            ).also {
+                it.setTextureFilterMod(if (requestedMipLevels > 1) GL_LINEAR_MIPMAP_LINEAR else GL_LINEAR)
                 it.init()
             }
-            return ManagedTarget(key, buffer, width, height, attachmentCount)
+            return ManagedTarget(key, buffer, width, height, attachmentCount, format, requestedMipLevels)
         }
         if (current.width != width || current.height != height) {
             current.buffer.resize(width, height)
@@ -870,14 +1030,40 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
     }
 
     private fun copySceneDepth(context: RenderFrameContext, target: ManagedTarget): Boolean {
-        val source = context.sceneDepthFramebufferId
+        val irisDepth = IrisCompat.currentTerrainDepthTexture()
+        val fallbackSource = context.sceneDepthFramebufferId
             ?: context.sceneResources[RenderSceneTargets.SCENE_DEPTH]?.target?.frameBufferId
-            ?: return false
-        val sourceWidth = max(1, context.targetWidth ?: ClientRenderPipelineManager.currentRenderWidth())
-        val sourceHeight = max(1, context.targetHeight ?: ClientRenderPipelineManager.currentRenderHeight())
+        if (irisDepth == null && fallbackSource == null) return false
+        val sourceWidth = max(
+            1,
+            irisDepth?.width ?: context.targetWidth ?: ClientRenderPipelineManager.currentRenderWidth()
+        )
+        val sourceHeight = max(
+            1,
+            irisDepth?.height ?: context.targetHeight ?: ClientRenderPipelineManager.currentRenderHeight()
+        )
         val previousRead = glGetInteger(GL_READ_FRAMEBUFFER_BINDING)
         val previousDraw = glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING)
         try {
+            val source = if (irisDepth != null) {
+                if (irisDepthReadFramebuffer <= 0) {
+                    irisDepthReadFramebuffer = glGenFramebuffers()
+                }
+                glBindFramebuffer(GL_FRAMEBUFFER, irisDepthReadFramebuffer)
+                glFramebufferTexture2D(
+                    GL_FRAMEBUFFER,
+                    GL_DEPTH_ATTACHMENT,
+                    GL_TEXTURE_2D,
+                    irisDepth.textureId,
+                    0
+                )
+                glDrawBuffer(GL_NONE)
+                glReadBuffer(GL_NONE)
+                if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) return false
+                irisDepthReadFramebuffer
+            } else {
+                requireNotNull(fallbackSource)
+            }
             glBindFramebuffer(GL_READ_FRAMEBUFFER, source)
             val hasDepthAttachment = glGetFramebufferAttachmentParameteri(
                 GL_READ_FRAMEBUFFER,
@@ -1098,7 +1284,9 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         val buffer: SimpleFrameBuffer,
         var width: Int,
         var height: Int,
-        val colorAttachmentCount: Int
+        val colorAttachmentCount: Int,
+        val format: CooTextureFormat,
+        val mipLevels: Int
     )
 
     private data class BoundInput(

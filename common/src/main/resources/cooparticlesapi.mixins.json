@@ -26,6 +26,7 @@
     "SectionRenderDispatcherRenderSectionMixin",
     "compat.iris.ShaderKeyIrisCompatMixin",
     "compat.iris.ShaderInstanceIrisCompatMixin",
+    "compat.iris.IrisRenderingPipelineMixin",
     "SoundEngineMixin",
     "TestControllerPickKeyboardMixin",
     "TestControllerPickMouseMixin",

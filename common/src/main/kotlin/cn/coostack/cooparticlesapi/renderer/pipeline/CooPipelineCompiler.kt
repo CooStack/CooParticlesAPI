@@ -56,6 +56,8 @@ internal object CooPipelineCompiler {
         val required = linkedSetOf<RenderBackendCapability>()
         val optional = linkedSetOf<RenderBackendCapability>()
 
+        validateTextureContracts(pipeline)
+
         pipeline.lines.forEach { line ->
             val input = line.input
             if (input is CooPipelineInputPort) {
@@ -87,6 +89,32 @@ internal object CooPipelineCompiler {
             lines = pipeline.lines,
             attachments = attachments
         )
+    }
+
+    /** 校验能够在构建阶段确定的节点输出和 sampler 输入格式与 mip 层数。 */
+    private fun validateTextureContracts(pipeline: CooRenderPipeline<*>) {
+        val namedWriters = pipeline.lines.mapNotNull { line ->
+            val output = line.output as? CooPipelineOutputPort ?: return@mapNotNull null
+            val target = line.input as? CooPipelineTarget.FramebufferColor ?: return@mapNotNull null
+            (target.target to target.attachment) to output
+        }.toMap()
+        pipeline.lines.forEach { line ->
+            val input = line.input as? CooPipelineInputPort ?: return@forEach
+            val source = when (val output = line.output) {
+                is CooPipelineOutputPort -> output
+                is CooPipelineTextureSource.FramebufferColor -> namedWriters[output.target to output.attachment]
+                else -> null
+            } ?: return@forEach
+            input.expectedFormat?.let { expected ->
+                require(source.format == expected) {
+                    "Pipeline input '${input.node}.${input.sampler}' expects $expected but receives ${source.format}"
+                }
+            }
+            require(source.mipLevels >= input.minimumMipLevels) {
+                "Pipeline input '${input.node}.${input.sampler}' requires ${input.minimumMipLevels} mip levels " +
+                    "but receives ${source.mipLevels}"
+            }
+        }
     }
 
     private fun includeSource(

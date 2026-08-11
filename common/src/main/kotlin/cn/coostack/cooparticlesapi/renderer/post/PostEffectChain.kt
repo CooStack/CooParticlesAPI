@@ -1,6 +1,7 @@
 package cn.coostack.cooparticlesapi.renderer.post
 
 import cn.coostack.cooparticlesapi.renderer.backend.RenderBackendCapability
+import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.CooTextureFormat
 import net.minecraft.resources.ResourceLocation
 
 /**
@@ -46,6 +47,16 @@ internal data class PostEffectChain(
                         "Post effect pass ${pass.name} references missing attachment " +
                             "${input.sourcePassAttachment} from ${sourcePass.name}"
                     }
+                    input.expectedFormat?.let { expected ->
+                        require(sourcePass.outputFormat == expected) {
+                            "Post effect pass ${pass.name} input ${input.samplerName} expects $expected but " +
+                                "${sourcePass.name} outputs ${sourcePass.outputFormat}"
+                        }
+                    }
+                    require(sourcePass.mipLevels >= input.minimumMipLevels) {
+                        "Post effect pass ${pass.name} input ${input.samplerName} requires " +
+                            "${input.minimumMipLevels} mip levels but ${sourcePass.name} outputs ${sourcePass.mipLevels}"
+                    }
                 }
                 if (input.source == PostEffectInputSource.SCENE_RESOURCE) {
                     require(input.sourceResourceId != null) {
@@ -71,6 +82,9 @@ internal data class PostEffectChain(
  * @param outputTargetId 外部 framebuffer 资源位置；仅在输出类型需要时设置
  * @param outputTargetKey 运行时复用 framebuffer 的逻辑键
  * @param colorAttachmentCount 该 pass 创建的颜色 attachment 数量
+ * @param outputFormat pass 中间颜色 attachment 的实际存储格式
+ * @param mipLevels pass 输出分配的 mip 层数；1 表示仅 level 0
+ * @param generateMipmaps 本次 pass 完成后是否刷新非零 mip 层
  * @param reuseOutputTarget 是否尝试复用同一输出目标以减少分配
  */
 internal data class PostEffectPass(
@@ -85,8 +99,18 @@ internal data class PostEffectPass(
     val outputTargetId: ResourceLocation? = null,
     val outputTargetKey: String? = null,
     val colorAttachmentCount: Int = 1,
+    val outputFormat: CooTextureFormat = CooTextureFormat.RGBA8,
+    val mipLevels: Int = 1,
+    val generateMipmaps: Boolean = false,
     val reuseOutputTarget: Boolean = false
-)
+) {
+    init {
+        require(mipLevels > 0) { "Post effect pass $name must allocate at least one mip level" }
+        require(!generateMipmaps || mipLevels > 1) {
+            "Post effect pass $name cannot generate mipmaps with only level 0"
+        }
+    }
+}
 
 /**
  * 一个 fragment shader sampler 的输入声明。
@@ -100,6 +124,8 @@ internal data class PostEffectPass(
  * @param sourceResourceAttachment 外部场景资源的 attachment 索引
  * @param sourceResourceChannel 外部场景资源使用颜色还是深度通道
  * @param textureSlot OpenGL texture unit；为空时由编译器自动分配
+ * @param expectedFormat 输入纹理的期望存储格式；为空表示无法静态确认或接受任意格式
+ * @param minimumMipLevels 输入至少需要的 mip 层数；1 表示只要求 level 0
  */
 internal data class PostEffectInput(
     val samplerName: String,
@@ -110,8 +136,16 @@ internal data class PostEffectInput(
     val sourceResourceId: ResourceLocation? = null,
     val sourceResourceAttachment: Int = 0,
     val sourceResourceChannel: PostEffectResourceChannel = PostEffectResourceChannel.COLOR,
-    val textureSlot: Int? = null
-)
+    val textureSlot: Int? = null,
+    val expectedFormat: CooTextureFormat? = null,
+    val minimumMipLevels: Int = 1
+) {
+    init {
+        require(minimumMipLevels > 0) {
+            "Post effect input $samplerName must require at least one mip level"
+        }
+    }
+}
 
 /**
  * 一个 pass 的动态 uniform 绑定。

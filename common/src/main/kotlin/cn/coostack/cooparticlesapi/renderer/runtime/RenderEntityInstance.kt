@@ -31,6 +31,8 @@ class RenderEntityInstance<T : RenderEntity>(
     private var compiledPostEffect: CooCompiledPostEffect? = pipelineRuntime.compiledPostEffect
     private val offscreenStateGuard = RenderStateGuard()
     private var irisWorldPassSubmitted = false
+    private val frameWorldModelMatrix = Matrix4f()
+    private var frameWorldModelPrepared = false
 
     /**
      * 执行 `RenderEntityInstance` 定义的 `reinitialize` 操作；输入和返回值用于该组件当前的渲染职责。
@@ -76,6 +78,8 @@ class RenderEntityInstance<T : RenderEntity>(
         stateGuard: RenderStateGuard
     ) {
         if (consumeIrisWorldPass()) return
+        frameWorldModelMatrix.set(modelMatrix)
+        frameWorldModelPrepared = true
         renderWorld(tickDelta, viewMatrix, projMatrix, modelMatrix, stateGuard)
     }
 
@@ -102,6 +106,9 @@ class RenderEntityInstance<T : RenderEntity>(
         stateGuard: RenderStateGuard
     ) {
         if (!hasWorldPass()) return
+        // Iris 后续会再次捕获同一实体的 mask；复用本次可见绘制的插值矩阵，避免位置更新后两次绘制错位。
+        frameWorldModelMatrix.set(modelMatrix)
+        frameWorldModelPrepared = true
         IrisCompat.runWithRenderEntityShader {
             renderWorld(tickDelta, viewMatrix, projMatrix, modelMatrix, stateGuard)
         }
@@ -142,6 +149,7 @@ class RenderEntityInstance<T : RenderEntity>(
      */
     internal fun beginWorldRenderFrame() {
         irisWorldPassSubmitted = false
+        frameWorldModelPrepared = false
     }
 
     private fun consumeIrisWorldPass(): Boolean {
@@ -153,6 +161,11 @@ class RenderEntityInstance<T : RenderEntity>(
     private fun hasWorldPass(): Boolean {
         return RenderFrameStage.WORLD_PASS in pipelineRuntime.compiledPipeline.stages &&
             pipelineRuntime.worldNodes.isNotEmpty()
+    }
+
+    /** @return 当前 Pipeline 的 fullscreen 节点是否在场景 composite 前执行。 */
+    internal fun usesScenePost(): Boolean {
+        return RenderFrameStage.SCENE_POST in pipelineRuntime.compiledPipeline.stages
     }
 
     /**
@@ -174,6 +187,12 @@ class RenderEntityInstance<T : RenderEntity>(
      * @param collector 当前操作需要的输入值；其语义由方法名和所属组件共同限定
      */
     internal fun collectEffects(context: RenderFrameContext, collector: RenderEffectCollector) {
+        collectPipelineEffect(context, collector)
+        BuiltinRenderEffectDescriptors.collectEntity(entity, context, collector)
+    }
+
+    /** 只提交 Pipeline attachment 捕获与 fullscreen graph，不重复提交其他内置效果。 */
+    internal fun collectPipelineEffect(context: RenderFrameContext, collector: RenderEffectCollector) {
         val postEffect = compiledPostEffect
         if (postEffect != null) {
             val instance = postEffect.type.create(
@@ -193,7 +212,6 @@ class RenderEntityInstance<T : RenderEntity>(
                 }
             )
         }
-        BuiltinRenderEffectDescriptors.collectEntity(entity, context, collector)
     }
 
     private fun renderOffscreen(context: RenderFrameContext, output: CooPipelineOutputPort) {
@@ -204,7 +222,11 @@ class RenderEntityInstance<T : RenderEntity>(
             "Only world pipeline outputs can request RenderEntity geometry"
         }
         val stack = Matrix4fStack(16)
-        stack.set(RenderUtil.buildModelMatrix(entity, context.tickDelta))
+        if (frameWorldModelPrepared) {
+            stack.set(frameWorldModelMatrix)
+        } else {
+            stack.set(RenderUtil.buildModelMatrix(entity, context.tickDelta))
+        }
         offscreenStateGuard.use { renderState ->
             renderer.render(
                 RenderInput(

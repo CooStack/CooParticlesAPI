@@ -4,8 +4,7 @@ import cn.coostack.cooparticlesapi.utils.GraphMathHelper
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 
-class InterpolatorDouble(private var value: Double) : InterpolatorData<Double> {
-    var last = value
+class InterpolatorDouble(value: Double) : AbstractInterpolatorData<Double>(value) {
 
     companion object {
         @JvmStatic
@@ -16,17 +15,13 @@ class InterpolatorDouble(private var value: Double) : InterpolatorData<Double> {
             }, {
                 val last = it.readDouble()
                 val current = it.readDouble()
-                InterpolatorDouble(last)
-                    .update(current)
+                InterpolatorDouble(current) .apply {
+                    this.last = last
+                }
             }
         )
     }
 
-    override fun update(current: Double): InterpolatorDouble {
-        last = this.value
-        this.value = current
-        return this
-    }
 
     override fun getWithInterpolator(progress: Number): Double {
         return GraphMathHelper.lerp(progress.toDouble(), last, value)
@@ -38,49 +33,49 @@ class InterpolatorDouble(private var value: Double) : InterpolatorData<Double> {
 
 
     operator fun plus(double: Double): InterpolatorDouble {
-        update(value + double)
+        uploadData(value + double)
         return this
     }
 
     operator fun minus(double: Double): InterpolatorDouble {
-        update(value - double)
+        uploadData(value - double)
         return this
     }
 
     operator fun times(double: Double): InterpolatorDouble {
-        update(value * double)
+        uploadData(value * double)
         return this
     }
 
     operator fun div(double: Double): InterpolatorDouble {
         require(double != 0.0) { "Division by zero" }
-        update(value / double)
+        uploadData(value / double)
         return this
     }
 
     operator fun unaryMinus(): InterpolatorDouble {
-        update(-value)
+        uploadData(-value)
         return this
     }
 
     operator fun plus(other: InterpolatorDouble): InterpolatorDouble {
-        update(value + other.value)
+        uploadData(value + other.value)
         return this
     }
 
     operator fun minus(other: InterpolatorDouble): InterpolatorDouble {
-        update(value - other.value)
+        uploadData(value - other.value)
         return this
     }
 
     operator fun times(other: InterpolatorDouble): InterpolatorDouble {
-        update(value * other.value)
+        uploadData(value * other.value)
         return this
     }
 
     operator fun div(other: InterpolatorDouble): InterpolatorDouble {
         require(other.value != 0.0) { "Division by zero" }
-        update(value / other.value)
+        uploadData(value / other.value)
         return this
     }
 }

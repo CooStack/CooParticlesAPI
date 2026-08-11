@@ -108,15 +108,31 @@ object ClientRenderEntityManager {
      * @param projMatrix 把相机空间坐标变换到裁剪空间的投影矩阵
      */
     fun renderWorldPass(tickDelta: Float, viewMatrix: Matrix4f, projMatrix: Matrix4f) {
+        renderWorldPass(tickDelta, viewMatrix, projMatrix, scenePost = false)
+    }
+
+    /** 在场景 composite 前提交属于场景后处理 Pipeline 的世界几何。 */
+    fun renderSceneWorldPass(tickDelta: Float, viewMatrix: Matrix4f, projMatrix: Matrix4f) {
+        renderWorldPass(tickDelta, viewMatrix, projMatrix, scenePost = true)
+    }
+
+    private fun renderWorldPass(
+        tickDelta: Float,
+        viewMatrix: Matrix4f,
+        projMatrix: Matrix4f,
+        scenePost: Boolean
+    ) {
         val stack = Matrix4fStack(16)
-        entities.values.forEach { instance ->
-            val entity = instance.entity
-            stack.pushMatrix()
-            RenderUtil.setRenderStackWithEntity(stack, entity, tickDelta)
-            instance.render(tickDelta, viewMatrix, projMatrix, stack, renderStateGuard)
-            stack.popMatrix()
-            entity.lastRenderPos = entity.pos
-        }
+        entities.values.asSequence()
+            .filter { instance -> instance.usesScenePost() == scenePost }
+            .forEach { instance ->
+                val entity = instance.entity
+                stack.pushMatrix()
+                RenderUtil.setRenderStackWithEntity(stack, entity, tickDelta)
+                instance.render(tickDelta, viewMatrix, projMatrix, stack, renderStateGuard)
+                stack.popMatrix()
+                entity.lastRenderPos = entity.pos
+            }
     }
 
     /**
@@ -148,6 +164,8 @@ object ClientRenderEntityManager {
             RenderUtil.setRenderStackWithEntity(stack, entity, tickDelta)
             instance.renderIrisWorldPass(tickDelta, viewMatrix, projMatrix, stack, renderStateGuard)
             stack.popMatrix()
+            // 可见 Iris pass 已经使用了本帧插值位置；后续 offscreen 捕获应沿用缓存矩阵而不是重复插值。
+            entity.lastRenderPos = entity.pos
         }
     }
 
@@ -208,11 +226,37 @@ object ClientRenderEntityManager {
             return
         }
         val graph = RenderEffectGraph(context.backend.capabilities, context)
-        entities.values.forEach { instance ->
-            instance.collectEffects(context, graph)
-        }
+        entities.values.asSequence()
+            .filterNot(RenderEntityInstance<RenderEntity>::usesScenePost)
+            .forEach { instance ->
+                instance.collectEffects(context, graph)
+            }
         CooTerrainPipelineManager.collectPostEffects(context, graph)
         CooPostEffects.client.collectFramePost(context, graph)
+        graph.execute()
+    }
+
+    /** 执行需要参与后续云层或 shader pack composite 的 Pipeline fullscreen 节点。 */
+    fun runScenePost(context: RenderFrameContext) {
+        if (!context.backend.supports(RenderBackendCapability.FINAL_FRAME_POST)) {
+            return
+        }
+        val graph = RenderEffectGraph(context.backend.capabilities, context)
+        entities.values.asSequence()
+            .filter(RenderEntityInstance<RenderEntity>::usesScenePost)
+            .forEach { instance -> instance.collectEffects(context, graph) }
+        graph.execute()
+    }
+
+    /** 在 Iris final pass 前只捕获场景后处理 Pipeline 的 world attachment。 */
+    fun captureScenePost(context: RenderFrameContext) {
+        if (!context.backend.supports(RenderBackendCapability.FINAL_FRAME_POST)) {
+            return
+        }
+        val graph = RenderEffectGraph(context.backend.capabilities, context)
+        entities.values.asSequence()
+            .filter(RenderEntityInstance<RenderEntity>::usesScenePost)
+            .forEach { instance -> instance.collectPipelineEffect(context, graph) }
         graph.execute()
     }
 
