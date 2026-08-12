@@ -597,16 +597,101 @@ class PointsBuilder {
     fun addHalfCircle(offset: RelativeLocation, r: Double, count: Int, rotate: Double): PointsBuilder =
         addWith(offset) { getHalfCircleXZ(r, count, rotate) }
 
-    /**
-     * 添加一个球面点集。
-     *
-     * @param r 半径
-     * @param countPow 分辨率参数（越大点越密）
-     */
-    fun addBall(r: Double, countPow: Int): PointsBuilder = addPoints(Math3DUtil.getBallLocations(r, countPow))
+    /** 添加球面点集；[count] 是最终点数。 */
+    fun addBallSurface(r: Double, count: Int): PointsBuilder = addWith { getBallSurfaceLocations(r, count) }
 
+    fun addBallSurface(offset: RelativeLocation, r: Double, count: Int): PointsBuilder =
+        addWith(offset) { getBallSurfaceLocations(r, count) }
+
+    /** 添加球体内部点集；[count] 是最终点数。 */
+    fun addBallSolid(r: Double, count: Int): PointsBuilder = addWith { getBallSolidLocations(r, count) }
+
+    fun addBallSolid(offset: RelativeLocation, r: Double, count: Int): PointsBuilder =
+        addWith(offset) { getBallSolidLocations(r, count) }
+
+    /** 与 [addBallSolid] 相同，保留用户原先约定的拼写。 */
+    fun addBallSoid(r: Double, count: Int): PointsBuilder = addBallSolid(r, count)
+
+    fun addBallSoid(offset: RelativeLocation, r: Double, count: Int): PointsBuilder =
+        addBallSolid(offset, r, count)
+
+    fun addBallVolume(r: Double, count: Int): PointsBuilder = addBallSolid(r, count)
+
+    fun addBallVolume(offset: RelativeLocation, r: Double, count: Int): PointsBuilder =
+        addBallSolid(offset, r, count)
+
+    /** @deprecated 使用 [addBallSurface]；此方法保留旧的 countPow 分辨率语义。 */
+    @Deprecated("Use addBallSurface; this method retains countPow resolution semantics")
+    fun addBall(r: Double, countPow: Int): PointsBuilder = addBallSurface(r, countPow * countPow)
+
+    @Deprecated("Use addBallSurface; this method retains countPow resolution semantics")
     fun addBall(offset: RelativeLocation, r: Double, countPow: Int): PointsBuilder =
-        addWith(offset) { getBallLocations(r, countPow) }
+        addBallSurface(offset, r, countPow * countPow)
+
+    fun addCubeSurface(size: Double, count: Int): PointsBuilder = addCubeSurface(size, size, size, count)
+
+    fun addCubeSurface(offset: RelativeLocation, size: Double, count: Int): PointsBuilder =
+        addCubeSurface(offset, size, size, size, count)
+
+    fun addCubeSurface(width: Double, height: Double, depth: Double, count: Int): PointsBuilder =
+        addWith { getCubeSurfaceLocations(width, height, depth, count) }
+
+    fun addCubeSurface(offset: RelativeLocation, width: Double, height: Double, depth: Double, count: Int): PointsBuilder =
+        addWith(offset) { getCubeSurfaceLocations(width, height, depth, count) }
+
+    fun addCubeSolid(size: Double, count: Int): PointsBuilder = addCubeSolid(size, size, size, count)
+
+    fun addCubeSolid(offset: RelativeLocation, size: Double, count: Int): PointsBuilder =
+        addCubeSolid(offset, size, size, size, count)
+
+    fun addCubeSolid(width: Double, height: Double, depth: Double, count: Int): PointsBuilder =
+        addWith { getCubeSolidLocations(width, height, depth, count) }
+
+    fun addCubeSolid(offset: RelativeLocation, width: Double, height: Double, depth: Double, count: Int): PointsBuilder =
+        addWith(offset) { getCubeSolidLocations(width, height, depth, count) }
+
+    fun addCubeSoid(size: Double, count: Int): PointsBuilder = addCubeSolid(size, count)
+
+    fun addCubeSoid(offset: RelativeLocation, size: Double, count: Int): PointsBuilder = addCubeSolid(offset, size, count)
+
+    fun addCubeSoid(width: Double, height: Double, depth: Double, count: Int): PointsBuilder =
+        addCubeSolid(width, height, depth, count)
+
+    fun addCubeSoid(offset: RelativeLocation, width: Double, height: Double, depth: Double, count: Int): PointsBuilder =
+        addCubeSolid(offset, width, height, depth, count)
+
+    fun addCubeVolume(size: Double, count: Int): PointsBuilder = addCubeSolid(size, count)
+
+    fun addCubeVolume(offset: RelativeLocation, size: Double, count: Int): PointsBuilder =
+        addCubeSolid(offset, size, count)
+
+    fun addCubeVolume(width: Double, height: Double, depth: Double, count: Int): PointsBuilder =
+        addCubeSolid(width, height, depth, count)
+
+    fun addCubeVolume(offset: RelativeLocation, width: Double, height: Double, depth: Double, count: Int): PointsBuilder =
+        addCubeSolid(offset, width, height, depth, count)
+
+    fun addCubeWireframe(size: Double, count: Int): PointsBuilder = addCubeWireframe(size, size, size, count)
+
+    fun addCubeWireframe(offset: RelativeLocation, size: Double, count: Int): PointsBuilder =
+        addCubeWireframe(offset, size, size, size, count)
+
+    fun addCubeWireframe(width: Double, height: Double, depth: Double, count: Int): PointsBuilder =
+        addWith { getCubeWireframeLocations(width, height, depth, count) }
+
+    fun addCubeWireframe(offset: RelativeLocation, width: Double, height: Double, depth: Double, count: Int): PointsBuilder =
+        addWith(offset) { getCubeWireframeLocations(width, height, depth, count) }
+
+    fun addCubeOutline(size: Double, count: Int): PointsBuilder = addCubeWireframe(size, count)
+
+    fun addCubeOutline(offset: RelativeLocation, size: Double, count: Int): PointsBuilder =
+        addCubeWireframe(offset, size, count)
+
+    fun addCubeOutline(width: Double, height: Double, depth: Double, count: Int): PointsBuilder =
+        addCubeWireframe(width, height, depth, count)
+
+    fun addCubeOutline(offset: RelativeLocation, width: Double, height: Double, depth: Double, count: Int): PointsBuilder =
+        addCubeWireframe(offset, width, height, depth, count)
 
     /**
      * 添加摆线/旋轮线图形（Cycloid / Hypotrochoid / Epitrochoid 风格）。

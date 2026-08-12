@@ -31,6 +31,9 @@ uniform int uCount;
 uniform int uForceCount;
 uniform float uSpeedLimit;
 uniform vec3 uOrigin;     // 系统原点世界坐标 (噪声/流场用绝对坐标)
+uniform int uTransformSimulation;
+uniform mat4 uSimulationTransform;
+uniform mat4 uInverseSimulationTransform;
 uniform vec4 uForces[64]; // MAX_FORCES(16) * 4 vec4
 uniform int uCollisionEnabled;
 uniform int uCollisionSize;
@@ -187,11 +190,17 @@ void main() {
         return;
     }
 
-    vec3 pos = particles[i].posAge.xyz;
+    vec3 storagePos = particles[i].posAge.xyz;
+    vec3 storageVelocity = particles[i].velFlags.xyz;
+    vec3 pos = uTransformSimulation != 0
+        ? (uSimulationTransform * vec4(storagePos, 1.0)).xyz
+        : storagePos;
     float age = particles[i].posAge.w;
     float maxAge = particles[i].prevMaxAge.w;
-    vec3 vel = particles[i].velFlags.xyz;
-    vec3 prev = pos;
+    vec3 vel = uTransformSimulation != 0
+        ? (uSimulationTransform * vec4(storageVelocity, 0.0)).xyz
+        : storageVelocity;
+    vec3 prev = storagePos;
 
     for (int fi = 0; fi < uForceCount; fi++) {
         vec4 f0 = uForces[fi * 4];
@@ -323,7 +332,13 @@ void main() {
         flags &= ~1; // 到期隐藏 (槽位回收由 CPU 账本同步完成)
     }
 
-    particles[i].posAge = vec4(pos, age);
+    vec3 outputPos = uTransformSimulation != 0
+        ? (uInverseSimulationTransform * vec4(pos, 1.0)).xyz
+        : pos;
+    vec3 outputVelocity = uTransformSimulation != 0
+        ? (uInverseSimulationTransform * vec4(vel, 0.0)).xyz
+        : vel;
+    particles[i].posAge = vec4(outputPos, age);
     particles[i].prevMaxAge = vec4(prev, maxAge);
-    particles[i].velFlags = vec4(vel, float(flags));
+    particles[i].velFlags = vec4(outputVelocity, float(flags));
 }

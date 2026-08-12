@@ -5,15 +5,14 @@ import cn.coostack.cooparticlesapi.renderer.shader.api.texture.GlTextures
 import org.lwjgl.opengl.GL33.*
 
 class SimpleTextures : GlTextures {
-    data class VariablePair<K, V>(var first: K, var second: V)
+    private data class TextureState(
+        val activeChannel: Int,
+        val activeTexture: Int,
+        val channelTextures: IntArray
+    )
 
     private val textureWithChannel = mutableListOf<GlTexture>()
-
-    private var lastTextureID = 0
-    private var lastActiveChannel = 0
-    private val prevTextures = Array<VariablePair<Int, Boolean>>(32) {
-        VariablePair(0, false)
-    }
+    private val states = ArrayDeque<TextureState>()
 
     /**
      * 把输入对象加入 `SimpleTextures` 的 `addTexture` 管理范围，后续查询、构建或绘制会使用该绑定。
@@ -66,18 +65,34 @@ class SimpleTextures : GlTextures {
      * 示例：`use()`。
      */
     override fun use() {
-        lastActiveChannel = glGetInteger(GL_ACTIVE_TEXTURE)
-        lastTextureID = glGetInteger(GL_TEXTURE_BINDING_2D)
-        textureWithChannel.forEachIndexed { channelIndex, texture ->
-            val zero = GL_TEXTURE0
-            val channel = zero + channelIndex
-            glActiveTexture(channel)
-            val prev = glGetInteger(GL_TEXTURE_BINDING_2D)
-            prevTextures[channelIndex].apply {
-                first = prev
-                second = true
+        val activeChannel = glGetInteger(GL_ACTIVE_TEXTURE)
+        val activeTexture = glGetInteger(GL_TEXTURE_BINDING_2D)
+        val channelTextures = IntArray(textureWithChannel.size)
+        try {
+            channelTextures.indices.forEach { channelIndex ->
+                glActiveTexture(GL_TEXTURE0 + channelIndex)
+                channelTextures[channelIndex] = glGetInteger(GL_TEXTURE_BINDING_2D)
             }
-            glBindTexture(GL_TEXTURE_2D, texture.textureID())
+        } finally {
+            glActiveTexture(activeChannel)
+            glBindTexture(GL_TEXTURE_2D, activeTexture)
+        }
+
+        val state = TextureState(activeChannel, activeTexture, channelTextures)
+        states.addLast(state)
+        try {
+            textureWithChannel.forEachIndexed { channelIndex, texture ->
+                glActiveTexture(GL_TEXTURE0 + channelIndex)
+                glBindTexture(GL_TEXTURE_2D, texture.textureID())
+            }
+        } catch (error: Throwable) {
+            states.removeLast()
+            try {
+                restore(state)
+            } catch (restoreError: Throwable) {
+                error.addSuppressed(restoreError)
+            }
+            throw error
         }
     }
 
@@ -87,17 +102,8 @@ class SimpleTextures : GlTextures {
      * 示例：`reset()`。
      */
     override fun reset() {
-        prevTextures.forEachIndexed { channelIndex, prevTexture ->
-            if (!prevTexture.second) {
-                return@forEachIndexed
-            }
-            val zero = GL_TEXTURE0
-            glActiveTexture(zero + channelIndex)
-            glBindTexture(GL_TEXTURE_2D, prevTexture.first)
-            prevTexture.second = false
-        }
-        glActiveTexture(lastActiveChannel)
-        glBindTexture(GL_TEXTURE_2D, lastTextureID)
+        if (states.isEmpty()) return
+        restore(states.removeLast())
     }
 
     /**
@@ -108,8 +114,22 @@ class SimpleTextures : GlTextures {
      * @param renderContext 在当前生命周期或数据上下文中执行的回调
      */
     override fun drawWith(renderContext: Runnable) {
-        use()
-        renderContext.run()
-        reset()
+        var stateCreated = false
+        try {
+            use()
+            stateCreated = true
+            renderContext.run()
+        } finally {
+            if (stateCreated) reset()
+        }
+    }
+
+    private fun restore(state: TextureState) {
+        state.channelTextures.forEachIndexed { channelIndex, texture ->
+            glActiveTexture(GL_TEXTURE0 + channelIndex)
+            glBindTexture(GL_TEXTURE_2D, texture)
+        }
+        glActiveTexture(state.activeChannel)
+        glBindTexture(GL_TEXTURE_2D, state.activeTexture)
     }
 }

@@ -1,7 +1,7 @@
 #version 150
 
 // ================= cparticle GPU 粒子渲染 - 顶点着色器 =================
-// 无 per-vertex 属性: 四个角由 gl_VertexID 生成 (TRIANGLE_STRIP x4)
+// 无 per-vertex 属性: 六个三角形顶点由 gl_VertexID 生成 (TRIANGLES x6)
 // 9 个 vec4 实例属性 (divisor=1), 布局与 CParticleStore 一致
 
 in vec4 iPosAge;     // pos.xyz (系统原点相对), age
@@ -18,6 +18,7 @@ uniform mat4 uProj;
 uniform mat4 uView;
 uniform mat4 uPrevGroupMat;
 uniform mat4 uGroupMat;      // 整组变换 (scripted), 默认单位阵
+uniform int uTransformParticleGeometry;
 uniform vec3 uOriginRelCam;  // 系统原点 - 相机位置 (CPU 双精度相减)
 uniform float uPartial;      // tick 插值
 uniform vec3 uCamLeft;       // 相机左向量 (q * X̂, 与原版粒子渲染基一致)
@@ -430,14 +431,68 @@ void main() {
     vec3 currentRel = (uGroupMat * vec4(iPosAge.xyz, 1.0)).xyz;
     vec3 rel = mix(previousRel, currentRel, uPartial) + uOriginRelCam;
 
-    // Iris 展开使用两个三角形: 0,1,2 / 2,1,3；普通实例绘制仍使用四点 TRIANGLE_STRIP。
-    int cornerIndex = gl_VertexID;
-    if (uIrisExpansion != 0) {
-        int expandedIndex = gl_VertexID % 6;
-        cornerIndex = expandedIndex == 0 ? 0
-            : (expandedIndex == 1 ? 1
-            : (expandedIndex == 2 || expandedIndex == 3 ? 2
-            : (expandedIndex == 4 ? 1 : 3)));
+    int mode = (flags >> 1) & 3;
+    float rotationElapsed = epochElapsed + uPartial;
+    float roll = iAxisRoll.w + iAngularEpoch.z * rotationElapsed;
+    vec3 basisX;
+    vec3 basisY;
+    if (mode == 0) {
+        // BILLBOARD: 相机平面 + 平面内 roll (基向量与原版 q*X̂/q*Ŷ 一致)
+        float cr = cos(roll), sr = sin(roll);
+        basisX = uCamLeft * cr + uCamUp * sr;
+        basisY = -uCamLeft * sr + uCamUp * cr;
+    } else if (mode == 1) {
+        // AXIS_BILLBOARD: 绕固定轴的圆柱广告牌 (对齐 MinecraftRendererUtil.axialBillboardBasis)
+        vec3 axis = iAxisRoll.xyz;
+        float axisLen = length(axis);
+        axis = axisLen > 1e-6 ? axis / axisLen : vec3(0.0, 1.0, 0.0);
+        vec3 toCamera = -rel;
+        vec3 flat0 = toCamera - axis * dot(toCamera, axis);
+        vec3 face = length(flat0) > 1e-6 ? normalize(flat0) : perpendicularOf(axis);
+        vec3 right = cross(face, axis);
+        right = length(right) > 1e-6 ? normalize(right) : perpendicularOf(axis);
+        if (abs(roll) > 1e-6) {
+            right = rotateAroundAxis(right, axis, roll);
+        }
+        basisX = right;
+        basisY = axis;
+    } else {
+        // ROTATION: 自由欧拉角 (对齐 Quaternionf.rotateXYZ(pitch, yaw, roll))
+        float pitch = iSizeRot.w;
+        float yaw = iSizeRot.z;
+        if ((flags & FLAG_ROTATION_DIRECTION) != 0) {
+            vec3 direction = iAxisRoll.xyz;
+            float horizontalLength = length(direction.xz);
+            if (horizontalLength > 0.0 || abs(direction.y) > 0.0) {
+                pitch += atan(direction.y, horizontalLength);
+                yaw += -atan(direction.z, direction.x);
+            }
+        }
+        pitch += iAngularEpoch.x * rotationElapsed;
+        yaw += iAngularEpoch.y * rotationElapsed;
+        mat3 particleRotation = rotXYZ(pitch, yaw, roll);
+        basisX = particleRotation * vec3(1.0, 0.0, 0.0);
+        basisY = particleRotation * vec3(0.0, 1.0, 0.0);
+    }
+
+    // BILLBOARD 保持固定正面绕序；另两种模式翻转背向相机的面，维持原有双面可见语义。
+    vec3 toCamera = -rel;
+    vec3 facingNormal = cross(basisY, basisX);
+    bool reverseWinding = mode != 0 && dot(facingNormal, toCamera) < 0.0;
+    int triangleVertex = gl_VertexID % 6;
+    int cornerIndex;
+    if (reverseWinding) {
+        cornerIndex = triangleVertex == 0 ? 0
+            : (triangleVertex == 1 ? 1
+            : (triangleVertex == 2 ? 2
+            : (triangleVertex == 3 ? 2
+            : (triangleVertex == 4 ? 1 : 3))));
+    } else {
+        cornerIndex = triangleVertex == 0 ? 0
+            : (triangleVertex == 1 ? 2
+            : (triangleVertex == 2 ? 1
+            : (triangleVertex == 3 ? 1
+            : (triangleVertex == 4 ? 2 : 3))));
     }
     vec2 corner = vec2(float(cornerIndex & 1), float((cornerIndex >> 1) & 1)) * 2.0 - 1.0;
     float uniformScale = sampleParticleScaleCurve(lifeT) * sampleScaleCurve(curveT);
@@ -457,44 +512,11 @@ void main() {
     vec2 size = iSizeRot.xy * scale;
     vec2 local = corner * size;
 
-    int mode = (flags >> 1) & 3;
-    float rotationElapsed = epochElapsed + uPartial;
-    float roll = iAxisRoll.w + iAngularEpoch.z * rotationElapsed;
-    vec3 offset;
-    if (mode == 0) {
-        // BILLBOARD: 相机平面 + 平面内 roll (基向量与原版 q*X̂/q*Ŷ 一致)
-        float cr = cos(roll), sr = sin(roll);
-        vec2 lr = vec2(local.x * cr - local.y * sr, local.x * sr + local.y * cr);
-        offset = uCamLeft * lr.x + uCamUp * lr.y;
-    } else if (mode == 1) {
-        // AXIS_BILLBOARD: 绕固定轴的圆柱广告牌 (对齐 MinecraftRendererUtil.axialBillboardBasis)
-        vec3 axis = iAxisRoll.xyz;
-        float axisLen = length(axis);
-        axis = axisLen > 1e-6 ? axis / axisLen : vec3(0.0, 1.0, 0.0);
-        vec3 toCamera = -rel; // 相机在粒子坐标系中的方向
-        vec3 flat0 = toCamera - axis * dot(toCamera, axis);
-        vec3 face = length(flat0) > 1e-6 ? normalize(flat0) : perpendicularOf(axis);
-        vec3 right = cross(face, axis);
-        right = length(right) > 1e-6 ? normalize(right) : perpendicularOf(axis);
-        if (abs(roll) > 1e-6) {
-            right = rotateAroundAxis(right, axis, roll);
-        }
-        offset = right * local.x + axis * local.y;
-    } else {
-        // ROTATION: 自由欧拉角 (对齐 Quaternionf.rotateXYZ(pitch, yaw, roll))
-        float pitch = iSizeRot.w;
-        float yaw = iSizeRot.z;
-        if ((flags & FLAG_ROTATION_DIRECTION) != 0) {
-            vec3 direction = iAxisRoll.xyz;
-            float horizontalLength = length(direction.xz);
-            if (horizontalLength > 0.0 || abs(direction.y) > 0.0) {
-                pitch += atan(direction.y, horizontalLength);
-                yaw += -atan(direction.z, direction.x);
-            }
-        }
-        pitch += iAngularEpoch.x * rotationElapsed;
-        yaw += iAngularEpoch.y * rotationElapsed;
-        offset = rotXYZ(pitch, yaw, roll) * vec3(local, 0.0);
+    vec3 offset = basisX * local.x + basisY * local.y;
+    if (uTransformParticleGeometry != 0) {
+        float previousScale = length(uPrevGroupMat[0].xyz);
+        float currentScale = length(uGroupMat[0].xyz);
+        offset *= mix(previousScale, currentScale, uPartial);
     }
 
     vec3 posRelCam = rel + offset;

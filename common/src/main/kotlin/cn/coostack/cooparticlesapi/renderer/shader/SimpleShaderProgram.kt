@@ -19,7 +19,7 @@ class SimpleShaderProgram(
     private val managedProgramIdInternal: ResourceLocation? = null
 ) : CooShaderProgram {
     override var program: Int = 0
-    private var prevProgram = 0
+    private val previousPrograms = ArrayDeque<Int>()
 
     /**
      * 执行 `SimpleShaderProgram` 定义的 `geometryShader` 操作；输入和返回值用于该组件当前的渲染职责。
@@ -101,13 +101,23 @@ class SimpleShaderProgram(
      */
     override fun use() {
         if (program <= 0 || !glIsProgram(program)) {
-            prevProgram = 0
             glUseProgram(0)
             return
         }
-        prevProgram = glGetInteger(GL_CURRENT_PROGRAM)
-        glUseProgram(program)
-        ShaderBufferCache.bindAll(shaderBufferLayoutsInternal)
+        val previousProgram = glGetInteger(GL_CURRENT_PROGRAM)
+        previousPrograms.addLast(previousProgram)
+        try {
+            glUseProgram(program)
+            ShaderBufferCache.bindAll(shaderBufferLayoutsInternal)
+        } catch (error: Throwable) {
+            previousPrograms.removeLast()
+            try {
+                restoreProgram(previousProgram)
+            } catch (restoreError: Throwable) {
+                error.addSuppressed(restoreError)
+            }
+            throw error
+        }
     }
 
     /**
@@ -116,11 +126,8 @@ class SimpleShaderProgram(
      * 示例：`reset()`。
      */
     override fun reset() {
-        if (prevProgram > 0 && glIsProgram(prevProgram)) {
-            glUseProgram(prevProgram)
-        } else {
-            glUseProgram(0)
-        }
+        if (previousPrograms.isEmpty()) return
+        restoreProgram(previousPrograms.removeLast())
     }
 
     /**
@@ -135,7 +142,7 @@ class SimpleShaderProgram(
             }
             glDeleteProgram(program)
             program = 0
-            prevProgram = 0
+            previousPrograms.clear()
         }
     }
 
@@ -150,11 +157,23 @@ class SimpleShaderProgram(
         if (program <= 0 || !glIsProgram(program)) {
             return
         }
-        use()
-        drawMethod()
-        reset()
+        var stateCreated = false
+        try {
+            use()
+            stateCreated = true
+            drawMethod()
+        } finally {
+            if (stateCreated) reset()
+        }
     }
 
+    private fun restoreProgram(previousProgram: Int) {
+        if (previousProgram > 0 && glIsProgram(previousProgram)) {
+            glUseProgram(previousProgram)
+        } else {
+            glUseProgram(0)
+        }
+    }
 
     private fun assertProgram() {
         require(glGetProgrami(program, GL_LINK_STATUS) != GL_FALSE) {

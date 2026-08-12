@@ -13,6 +13,7 @@ import cn.coostack.cooparticlesapi.renderer.pipeline.CooUniformValue
 import cn.coostack.cooparticlesapi.renderer.pipeline.setUniform
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderInput
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderPhase
+import cn.coostack.cooparticlesapi.renderer.state.CooGLSLStateManager
 import cn.coostack.cooparticlesapi.renderer.shader.SimpleShaderProgram
 import cn.coostack.cooparticlesapi.renderer.shader.api.CooProgramUniformAccess
 import cn.coostack.cooparticlesapi.renderer.shader.api.CooShaderProgram
@@ -31,18 +32,11 @@ import net.minecraft.resources.ResourceLocation
 import org.joml.Matrix4f
 import org.lwjgl.opengl.GL33.GL_ACTIVE_TEXTURE
 import org.lwjgl.opengl.GL33.GL_BLEND
-import org.lwjgl.opengl.GL33.GL_BLEND_DST_ALPHA
-import org.lwjgl.opengl.GL33.GL_BLEND_DST_RGB
-import org.lwjgl.opengl.GL33.GL_BLEND_SRC_ALPHA
-import org.lwjgl.opengl.GL33.GL_BLEND_SRC_RGB
 import org.lwjgl.opengl.GL33.GL_CULL_FACE
 import org.lwjgl.opengl.GL33.GL_CURRENT_PROGRAM
-import org.lwjgl.opengl.GL33.GL_DEPTH_FUNC
 import org.lwjgl.opengl.GL33.GL_DEPTH_TEST
-import org.lwjgl.opengl.GL33.GL_DEPTH_WRITEMASK
 import org.lwjgl.opengl.GL33.GL_LEQUAL
 import org.lwjgl.opengl.GL33.GL_LINES
-import org.lwjgl.opengl.GL33.GL_LINE_WIDTH
 import org.lwjgl.opengl.GL33.GL_ONE
 import org.lwjgl.opengl.GL33.GL_ONE_MINUS_SRC_ALPHA
 import org.lwjgl.opengl.GL33.GL_QUADS
@@ -58,10 +52,7 @@ import org.lwjgl.opengl.GL33.glDepthFunc
 import org.lwjgl.opengl.GL33.glDepthMask
 import org.lwjgl.opengl.GL33.glDisable
 import org.lwjgl.opengl.GL33.glEnable
-import org.lwjgl.opengl.GL33.glGetBoolean
-import org.lwjgl.opengl.GL33.glGetFloat
 import org.lwjgl.opengl.GL33.glGetInteger
-import org.lwjgl.opengl.GL33.glIsEnabled
 import org.lwjgl.opengl.GL33.glIsProgram
 import org.lwjgl.opengl.GL33.glLineWidth
 import org.lwjgl.opengl.GL33.glUseProgram
@@ -390,33 +381,15 @@ object OpenGlRenderEntityModelExecutor : RenderEntityModelExecutor {
     }
 
     private fun withWorldModelState(block: () -> Unit) {
-        val blendEnabled = glIsEnabled(GL_BLEND)
-        val depthEnabled = glIsEnabled(GL_DEPTH_TEST)
-        val cullEnabled = glIsEnabled(GL_CULL_FACE)
-        val depthMask = glGetBoolean(GL_DEPTH_WRITEMASK)
-        val depthFunc = glGetInteger(GL_DEPTH_FUNC)
-        val blendSrcRgb = glGetInteger(GL_BLEND_SRC_RGB)
-        val blendDstRgb = glGetInteger(GL_BLEND_DST_RGB)
-        val blendSrcAlpha = glGetInteger(GL_BLEND_SRC_ALPHA)
-        val blendDstAlpha = glGetInteger(GL_BLEND_DST_ALPHA)
-        val lineWidth = glGetFloat(GL_LINE_WIDTH)
-        glEnable(GL_BLEND)
-        glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE_MINUS_SRC_ALPHA)
-        glEnable(GL_DEPTH_TEST)
-        glDepthFunc(GL_LEQUAL)
-        glDepthMask(false)
-        glDisable(GL_CULL_FACE)
-        glLineWidth(1F)
-        try {
+        CooGLSLStateManager.useState {
+            glEnable(GL_BLEND)
+            glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE, GL_ONE, GL_ONE_MINUS_SRC_ALPHA)
+            glEnable(GL_DEPTH_TEST)
+            glDepthFunc(GL_LEQUAL)
+            glDepthMask(false)
+            glDisable(GL_CULL_FACE)
+            glLineWidth(1F)
             block()
-        } finally {
-            glLineWidth(lineWidth)
-            glDepthMask(depthMask)
-            glDepthFunc(depthFunc)
-            glBlendFuncSeparate(blendSrcRgb, blendDstRgb, blendSrcAlpha, blendDstAlpha)
-            if (blendEnabled) glEnable(GL_BLEND) else glDisable(GL_BLEND)
-            if (depthEnabled) glEnable(GL_DEPTH_TEST) else glDisable(GL_DEPTH_TEST)
-            if (cullEnabled) glEnable(GL_CULL_FACE) else glDisable(GL_CULL_FACE)
         }
     }
 

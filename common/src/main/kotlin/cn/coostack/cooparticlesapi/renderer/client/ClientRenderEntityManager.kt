@@ -8,6 +8,7 @@ import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainPipelineManager
 import cn.coostack.cooparticlesapi.renderer.post.CooPostEffects
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityInstance
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityPipelineRuntimeCache
+import cn.coostack.cooparticlesapi.renderer.state.CooGLSLStateManager
 import cn.coostack.cooparticlesapi.renderer.state.RenderStateGuard
 import net.minecraft.client.Minecraft
 import net.minecraft.client.Minecraft.getInstance
@@ -93,6 +94,7 @@ object ClientRenderEntityManager {
      * 示例：`beginWorldRenderFrame()`。
      */
     fun beginWorldRenderFrame() {
+        CooGLSLStateManager.assertStateStackEmpty()
         entities.values.forEach(RenderEntityInstance<RenderEntity>::beginWorldRenderFrame)
     }
 

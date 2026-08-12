@@ -167,6 +167,8 @@ object CParticleRenderer {
         val colorMask = IntArray(4)
         glGetIntegeri_v(GL_COLOR_WRITEMASK, 0, colorMask)
         val cullEnabled = glIsEnabled(GL_CULL_FACE)
+        val cullFaceMode = glGetInteger(GL_CULL_FACE_MODE)
+        val frontFaceMode = glGetInteger(GL_FRONT_FACE)
         val lightTexture = Minecraft.getInstance().gameRenderer.lightTexture()
         val lightmapWasEnabled = RenderSystem.getShaderTexture(2) != 0
 
@@ -214,7 +216,9 @@ object CParticleRenderer {
 
             glEnable(GL_DEPTH_TEST)
             glDepthFunc(GL_LEQUAL)
-            glDisable(GL_CULL_FACE)
+            glEnable(GL_CULL_FACE)
+            glCullFace(GL_BACK)
+            glFrontFace(GL_CCW)
 
             if (irisShaderPackActive) {
                 renderWithIrisParticleShader(shader, visibleSystems, view, proj, cameraPos, partial, pass)
@@ -325,6 +329,8 @@ object CParticleRenderer {
                 colorMask[2] != 0,
                 colorMask[3] != 0,
             )
+            glCullFace(cullFaceMode)
+            glFrontFace(frontFaceMode)
             if (cullEnabled) glEnable(GL_CULL_FACE) else glDisable(GL_CULL_FACE)
             if (prevProgram > 0 && glIsProgram(prevProgram)) glUseProgram(prevProgram) else glUseProgram(0)
         }
@@ -520,6 +526,10 @@ object CParticleRenderer {
         )
         shader.setMatrix4("uPrevGroupMat", system.previousGroupTransform)
         shader.setMatrix4("uGroupMat", system.currentGroupTransform)
+        shader.setInt(
+            "uTransformParticleGeometry",
+            if (system.transformsSimulatedParticleSpace) 1 else 0,
+        )
 
         setScalarCurve(shader, "uAlpha", system.alphaCurve)
         setScalarCurve(shader, "uScale", system.scaleCurve)

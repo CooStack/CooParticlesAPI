@@ -5,6 +5,7 @@ import cn.coostack.cooparticlesapi.annotations.codec.CodecHelper
 import cn.coostack.cooparticlesapi.network.particle.emitters.ClassEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.ClassParticleEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmitters
+import cn.coostack.cooparticlesapi.network.particle.emitters.TransformableCParticleEmitter
 import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.level.Level
@@ -36,6 +37,11 @@ object ParticleEmittersRegistryHelper {
         CodecHelper.updateFields(current, other)
     }
 
+    fun updateEmitter(current: TransformableCParticleEmitter, other: TransformableCParticleEmitter) {
+        if (current.getEmittersID() != other.getEmittersID()) return
+        CodecHelper.updateFields(current, other)
+    }
+
     fun generateCodec(randomInstance: ClassParticleEmitters): StreamCodec<RegistryFriendlyByteBuf, ParticleEmitters> {
         return generateClassParticleCodec(randomInstance::class.java)
     }
@@ -46,25 +52,37 @@ object ParticleEmittersRegistryHelper {
             { buf, emitter ->
                 emitter as ClassParticleEmitters
                 ClassParticleEmitters.encodeBase(emitter, buf)
-                val fields = codecFields(type)
-                fields.forEach { field ->
-                    field.isAccessible = true
-                    val codec = codecByField(field)
-                    codec.encode(buf, field.get(emitter))
-                }
+                encodeFields(type, emitter, buf)
             },
             { buf ->
                 constructor.newInstance(Vec3.ZERO, null).apply {
                     ClassParticleEmitters.decodeBase(this, buf)
-                    val fields = codecFields(type)
-                    fields.forEach { field ->
-                        field.isAccessible = true
-                        val codec = codecByField(field)
-                        val value = codec.decode(buf)
-                        field.set(this, value)
-                    }
+                    decodeFields(type, this, buf)
                 }
             }
+        )
+    }
+
+    fun generateCodec(randomInstance: TransformableCParticleEmitter): StreamCodec<RegistryFriendlyByteBuf, ParticleEmitters> {
+        return generateTransformableCParticleEmitterCodec(randomInstance::class.java)
+    }
+
+    fun generateTransformableCParticleEmitterCodec(
+        type: Class<out TransformableCParticleEmitter>,
+    ): StreamCodec<RegistryFriendlyByteBuf, ParticleEmitters> {
+        val constructor = type.getConstructor(Vec3::class.java, Level::class.java)
+        return StreamCodec.of(
+            { buf, emitter ->
+                emitter as TransformableCParticleEmitter
+                TransformableCParticleEmitter.encodeBase(emitter, buf)
+                encodeFields(type, emitter, buf)
+            },
+            { buf ->
+                constructor.newInstance(Vec3.ZERO, null).apply {
+                    TransformableCParticleEmitter.decodeBase(this, buf)
+                    decodeFields(type, this, buf)
+                }
+            },
         )
     }
 
@@ -78,23 +96,12 @@ object ParticleEmittersRegistryHelper {
             { buf, emitter ->
                 emitter as ClassEmitters
                 ClassEmitters.encodeBase(emitter, buf)
-                val fields = codecFields(type)
-                fields.forEach { field ->
-                    field.isAccessible = true
-                    val codec = codecByField(field)
-                    codec.encode(buf, field.get(emitter))
-                }
+                encodeFields(type, emitter, buf)
             },
             { buf ->
                 constructor.newInstance(Vec3.ZERO, null).apply {
                     ClassEmitters.decodeBase(this, buf)
-                    val fields = codecFields(type)
-                    fields.forEach { field ->
-                        field.isAccessible = true
-                        val codec = codecByField(field)
-                        val value = codec.decode(buf)
-                        field.set(this, value)
-                    }
+                    decodeFields(type, this, buf)
                 }
             }
         )
@@ -102,8 +109,26 @@ object ParticleEmittersRegistryHelper {
 
     private fun codecFields(type: Class<*>): List<Field> {
         return type.declaredFields
-            .filter { it.isAnnotationPresent(CodecField::class.java) && !Modifier.isFinal(it.modifiers) }
+            .filter {
+                it.isAnnotationPresent(CodecField::class.java) &&
+                        !Modifier.isFinal(it.modifiers) &&
+                        !Modifier.isStatic(it.modifiers)
+            }
             .sortedBy { it.name }
+    }
+
+    private fun encodeFields(type: Class<*>, emitter: Any, buf: RegistryFriendlyByteBuf) {
+        codecFields(type).forEach { field ->
+            field.isAccessible = true
+            codecByField(field).encode(buf, field.get(emitter))
+        }
+    }
+
+    private fun decodeFields(type: Class<*>, emitter: Any, buf: RegistryFriendlyByteBuf) {
+        codecFields(type).forEach { field ->
+            field.isAccessible = true
+            field.set(emitter, codecByField(field).decode(buf))
+        }
     }
 
     @Suppress("UNCHECKED_CAST")

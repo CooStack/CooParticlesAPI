@@ -38,7 +38,7 @@ internal fun nextScratchCapacity(currentCapacity: Int, requiredFloats: Int, maxF
  * - instanced attribute 源 (渲染, GL3.1 + core/ARB vertex attrib divisor)
  * - std430 SSBO (GL43 compute 模拟, 同一 buffer 名字绑定到 GL_SHADER_STORAGE_BUFFER)
  *
- * 顶点布局: 无 per-vertex 属性, 四个角由 gl_VertexID 生成;
+ * 顶点布局: 无 per-vertex 属性, 六个三角形顶点由 gl_VertexID 生成;
  * 9 个 vec4 实例属性 (divisor=1), stride = [CParticleStore.BYTE_STRIDE].
  */
 class CParticleGlBuffer(val capacity: Int) {
@@ -224,12 +224,12 @@ class CParticleGlBuffer(val capacity: Int) {
         GL43.glBindBufferBase(GL43.GL_SHADER_STORAGE_BUFFER, binding, vbo)
     }
 
-    /** instanced 绘制 (TRIANGLE_STRIP x4 顶点), 调用方负责程序/纹理/混合状态 */
+    /** instanced 绘制 (TRIANGLES x6 顶点), 调用方负责程序/纹理/混合状态 */
     fun draw(instances: Int) {
         if (!initialized || instances <= 0) return
         val prevVao = glGetInteger(GL_VERTEX_ARRAY_BINDING)
         glBindVertexArray(vao)
-        GL31.glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, instances)
+        GL31.glDrawArraysInstanced(GL_TRIANGLES, 0, EXPANDED_VERTICES_PER_PARTICLE, instances)
         glBindVertexArray(prevVao)
     }
 

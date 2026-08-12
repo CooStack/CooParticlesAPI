@@ -37,6 +37,7 @@ import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestCommandEmit
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestEventEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestGPUEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestSpreadPointEmitter
+import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestTransformGPUEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.event.TestCollideEventHandler
 import cn.coostack.cooparticlesapi.test.options.particle.style.RomaMagicTestStyle
 import cn.coostack.cooparticlesapi.test.options.renderer.world.DemoWorldRenderEffectOptions
@@ -56,6 +57,16 @@ class BlockAPITestGroupBuilder(private val player: Player) : TestGroupBuilder {
 
     override fun build(): TestGroup {
         return BlockTestGroup(player, groupID())
+            .appendOption {
+                SimpleEmitterOption(
+                    TestTransformGPUEmitter(player.position(), player.level()).apply {
+                        maxTick = -1
+                    }, -1, "位移粒子"
+                )
+                    .onPlayerUpdate { player, emitter ->
+                        emitter.pos = player.position()
+                    }
+            }
             .appendOption {
                 DemoWorldRenderEffectOptions.maskBloomStraightLaser(player)
             }

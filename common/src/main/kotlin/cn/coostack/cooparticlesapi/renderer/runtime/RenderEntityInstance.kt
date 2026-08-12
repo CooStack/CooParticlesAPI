@@ -11,6 +11,7 @@ import cn.coostack.cooparticlesapi.renderer.pipeline.CooCompiledPostEffect
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelineNodeKind
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelineOutputPort
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelineRuntimeEffect
+import cn.coostack.cooparticlesapi.renderer.state.CooGLSLStateManager
 import cn.coostack.cooparticlesapi.renderer.state.RenderStateGuard
 import org.joml.Matrix4f
 import org.joml.Matrix4fStack
@@ -124,20 +125,22 @@ class RenderEntityInstance<T : RenderEntity>(
     ) {
         if (!hasWorldPass()) return
         pipelineRuntime.worldNodes.forEach { node ->
-            stateGuard.use { renderState ->
-                renderer.render(
-                    RenderInput(
-                        entity = entity,
-                        tickDelta = tickDelta,
-                        viewMatrix = viewMatrix,
-                        projMatrix = projMatrix,
-                        modelMatrix = modelMatrix,
-                        renderState = renderState,
-                        pipeline = renderer.pipeline,
-                        node = node,
-                        phase = RenderPhase.WORLD
+            CooGLSLStateManager.useState {
+                stateGuard.use { renderState ->
+                    renderer.render(
+                        RenderInput(
+                            entity = entity,
+                            tickDelta = tickDelta,
+                            viewMatrix = viewMatrix,
+                            projMatrix = projMatrix,
+                            modelMatrix = modelMatrix,
+                            renderState = renderState,
+                            pipeline = renderer.pipeline,
+                            node = node,
+                            phase = RenderPhase.WORLD
+                        )
                     )
-                )
+                }
             }
         }
     }
@@ -243,21 +246,23 @@ class RenderEntityInstance<T : RenderEntity>(
         } else {
             stack.set(RenderUtil.buildModelMatrix(entity, context.tickDelta))
         }
-        offscreenStateGuard.use { renderState ->
-            renderer.render(
-                RenderInput(
-                    entity = entity,
-                    tickDelta = context.tickDelta,
-                    viewMatrix = context.viewMatrix,
-                    projMatrix = context.projMatrix,
-                    modelMatrix = stack,
-                    renderState = renderState,
-                    pipeline = renderer.pipeline,
-                    node = node,
-                    phase = RenderPhase.OFFSCREEN,
-                    output = output
+        CooGLSLStateManager.useState {
+            offscreenStateGuard.use { renderState ->
+                renderer.render(
+                    RenderInput(
+                        entity = entity,
+                        tickDelta = context.tickDelta,
+                        viewMatrix = context.viewMatrix,
+                        projMatrix = context.projMatrix,
+                        modelMatrix = stack,
+                        renderState = renderState,
+                        pipeline = renderer.pipeline,
+                        node = node,
+                        phase = RenderPhase.OFFSCREEN,
+                        output = output
+                    )
                 )
-            )
+            }
         }
     }
 

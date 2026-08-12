@@ -10,6 +10,8 @@ import cn.coostack.cooparticlesapi.cparticle.storage.CParticleStore.Companion.OF
 import cn.coostack.cooparticlesapi.cparticle.storage.CParticleStore.Companion.OFF_PREV
 import cn.coostack.cooparticlesapi.cparticle.storage.CParticleStore.Companion.OFF_VEL
 import cn.coostack.cooparticlesapi.cparticle.storage.CParticleStore.Companion.STRIDE
+import org.joml.Matrix4fc
+import org.joml.Vector3f
 import java.util.concurrent.ForkJoinPool
 import java.util.concurrent.ForkJoinTask
 import kotlin.math.abs
@@ -61,6 +63,8 @@ object CParticleCpuSimulator {
      * @param originZ system 原点世界 Z
      * @param speedLimit system 默认速度上限
      * @param collisionGrid 可选共享方块占用网格
+     * @param simulationTransform 可选的局部到世界相对坐标矩阵
+     * @param inverseSimulationTransform 与 [simulationTransform] 配对的逆矩阵
      */
     internal fun simulate(
         store: CParticleStore,
@@ -69,13 +73,18 @@ object CParticleCpuSimulator {
         originX: Double, originY: Double, originZ: Double,
         speedLimit: Float,
         collisionGrid: CParticleBlockCollisionGrid?,
+        simulationTransform: Matrix4fc? = null,
+        inverseSimulationTransform: Matrix4fc? = null,
     ) {
+        require((simulationTransform == null) == (inverseSimulationTransform == null)) {
+            "simulation transform and inverse must be supplied together"
+        }
         val high = store.highWater
         if (high <= 0) return
         if (store.aliveCount < PARALLEL_THRESHOLD) {
             simulateRange(
                 store, packed, forceCount, originX, originY, originZ, speedLimit,
-                collisionGrid, 0, high,
+                collisionGrid, simulationTransform, inverseSimulationTransform, 0, high,
             )
         } else {
             val tasks = ArrayList<ForkJoinTask<*>>()
@@ -86,7 +95,7 @@ object CParticleCpuSimulator {
                 tasks.add(ForkJoinPool.commonPool().submit {
                     simulateRange(
                         store, packed, forceCount, originX, originY, originZ, speedLimit,
-                        collisionGrid, s, e,
+                        collisionGrid, simulationTransform, inverseSimulationTransform, s, e,
                     )
                 })
                 start = e
@@ -103,6 +112,8 @@ object CParticleCpuSimulator {
         originX: Double, originY: Double, originZ: Double,
         speedLimit: Float,
         collisionGrid: CParticleBlockCollisionGrid?,
+        simulationTransform: Matrix4fc?,
+        inverseSimulationTransform: Matrix4fc?,
         from: Int, to: Int,
     ) {
         val data = store.data
@@ -114,6 +125,8 @@ object CParticleCpuSimulator {
         val collisionOffsetY = collisionGrid?.let { (originY - it.minY).toFloat() } ?: 0f
         val collisionOffsetZ = collisionGrid?.let { (originZ - it.minZ).toFloat() } ?: 0f
         val collisionResult = collisionGrid?.let { FloatArray(CParticleVoxelCollision.RESULT_SIZE) }
+        val transformedPosition = Vector3f()
+        val transformedVelocity = Vector3f()
         for (slot in from until to) {
             if ((bits[slot ushr 6] and (1L shl (slot and 63))) == 0L) continue
             val base = slot * STRIDE
@@ -129,15 +142,28 @@ object CParticleCpuSimulator {
             var vx = data[base + OFF_VEL]
             var vy = data[base + OFF_VEL + 1]
             var vz = data[base + OFF_VEL + 2]
+            val previousStorageX = px
+            val previousStorageY = py
+            val previousStorageZ = pz
+            if (simulationTransform != null) {
+                simulationTransform.transformPosition(px, py, pz, transformedPosition)
+                px = transformedPosition.x
+                py = transformedPosition.y
+                pz = transformedPosition.z
+                simulationTransform.transformDirection(vx, vy, vz, transformedVelocity)
+                vx = transformedVelocity.x
+                vy = transformedVelocity.y
+                vz = transformedVelocity.z
+            }
             val age = data[base + OFF_AGE]
             val maxAge = data[base + OFF_MAX_AGE]
             val instanceSpeedLimit = data[base + CParticleStore.OFF_SPEED_LIMIT]
             val effectiveSpeedLimit = if (instanceSpeedLimit >= 0f) instanceSpeedLimit else speedLimit
 
             // prev = cur
-            data[base + OFF_PREV] = px
-            data[base + OFF_PREV + 1] = py
-            data[base + OFF_PREV + 2] = pz
+            data[base + OFF_PREV] = previousStorageX
+            data[base + OFF_PREV + 1] = previousStorageY
+            data[base + OFF_PREV + 2] = previousStorageZ
 
             // ---- 力场 (与 GLSL 相同的数学) ----
             for (f in 0 until forceCount) {
@@ -351,12 +377,23 @@ object CParticleCpuSimulator {
                 py += vy
                 pz += vz
             }
-            data[base] = px
-            data[base + 1] = py
-            data[base + 2] = pz
-            data[base + OFF_VEL] = vx
-            data[base + OFF_VEL + 1] = vy
-            data[base + OFF_VEL + 2] = vz
+            if (inverseSimulationTransform != null) {
+                inverseSimulationTransform.transformPosition(px, py, pz, transformedPosition)
+                data[base] = transformedPosition.x
+                data[base + 1] = transformedPosition.y
+                data[base + 2] = transformedPosition.z
+                inverseSimulationTransform.transformDirection(vx, vy, vz, transformedVelocity)
+                data[base + OFF_VEL] = transformedVelocity.x
+                data[base + OFF_VEL + 1] = transformedVelocity.y
+                data[base + OFF_VEL + 2] = transformedVelocity.z
+            } else {
+                data[base] = px
+                data[base + 1] = py
+                data[base + 2] = pz
+                data[base + OFF_VEL] = vx
+                data[base + OFF_VEL + 1] = vy
+                data[base + OFF_VEL + 2] = vz
+            }
         }
     }
 

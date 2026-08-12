@@ -12,15 +12,15 @@ import org.joml.Matrix4fStack
  * 当前实体的一次几何绘制输入。
  *
  * 该对象把一次节点绘制所需的实体、相机矩阵、模型矩阵和可变渲染状态集中传给
- * renderer。调用方通常只读取这些字段并通过 [modelMatrix]、[renderState] 追加当前节点的
- * 绘制数据，不应跨帧缓存实例。
+ * renderer。调用方通常只读取这些字段并通过 [modelMatrix] 追加当前节点的绘制数据，
+ * 不应跨帧缓存实例。OpenGL 光栅状态由 runtime 在回调外统一保存和恢复。
  *
  * @param entity 当前正在绘制的 RenderEntity；其位置和自定义状态会影响最终几何结果
  * @param tickDelta 当前 tick 内的插值比例，范围通常为 0..1，用于平滑位置和动画
  * @param viewMatrix 相机视图矩阵，将世界坐标变换到相机空间
  * @param projMatrix 投影矩阵，将相机空间坐标变换到裁剪空间
  * @param modelMatrix 当前节点使用的模型矩阵栈；压入和弹出必须成对进行
- * @param renderState 当前节点可修改的渲染状态快照，节点结束后由 runtime 负责恢复
+ * @param renderState 仅为旧版 renderer 保留的内存状态对象，不代表真实 OpenGL 状态
  * @param pipeline 当前实体正在执行的不可变 Pipeline
  * @param node 当前帧正在执行的 Pipeline 节点
  * @param phase 当前节点属于世界绘制还是离屏绘制
@@ -34,6 +34,7 @@ class RenderInput<T : RenderEntity> internal constructor(
     val viewMatrix: Matrix4f,
     val projMatrix: Matrix4f,
     val modelMatrix: Matrix4fStack,
+    @Deprecated("真实 OpenGL 状态已由 CooGLSLStateManager 自动管理")
     val renderState: RenderStateGuard.MutableRenderState,
     internal val pipeline: CooRenderPipeline<T>,
     internal val node: CooPipelineNode,

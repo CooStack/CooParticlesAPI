@@ -1,5 +1,11 @@
 package cn.coostack.cooparticlesapi.renderer.state
 
+/**
+ * 保留旧版 [MutableRenderState] 调用契约的内存状态保护器。
+ *
+ * 该类型不读写 OpenGL。RenderEntity 的真实光栅状态由 [CooGLSLStateManager] 自动管理；
+ * 此类仅用于兼容仍会访问 `RenderInput.renderState` 的 renderer。
+ */
 class RenderStateGuard(
     private val state: MutableRenderState = MutableRenderState()
 ) {

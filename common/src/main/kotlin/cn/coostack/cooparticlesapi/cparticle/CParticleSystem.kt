@@ -7,6 +7,7 @@ import cn.coostack.cooparticlesapi.cparticle.render.CParticleGlBuffer
 import cn.coostack.cooparticlesapi.cparticle.simulate.CParticleCpuSimulator
 import cn.coostack.cooparticlesapi.cparticle.simulate.CParticleGpuSimulator
 import cn.coostack.cooparticlesapi.cparticle.storage.CParticleStore
+import cn.coostack.cooparticlesapi.extend.plus
 import cn.coostack.cooparticlesapi.particles.ParticleCameraOption
 import net.minecraft.client.Minecraft
 import net.minecraft.client.renderer.LevelRenderer
@@ -16,6 +17,7 @@ import org.joml.Matrix4f
 import org.joml.Matrix4fc
 import org.joml.Vector3f
 import org.joml.Vector3fc
+import kotlin.math.sqrt
 
 /**
  * # CParticleSystem — 一个 GPU 粒子池
@@ -139,10 +141,13 @@ class CParticleSystem(
         private set
 
     /**
-     * 整组变换 (SCRIPTED 模式): 施加于粒子的原点相对坐标.
-     * 用它做整组旋转/缩放是零 per-particle CPU 开销的.
+     * 施加于粒子原点相对坐标的整组变换。
+     * SCRIPTED system 用它控制整组显示；可变换 emitter 的专属 SIMULATED system 也会用它管理局部空间。
      */
     val groupTransform = Matrix4f()
+
+    /** 让 SIMULATED 粒子的模拟坐标和顶点几何都经过整组矩阵；仅供可变换 emitter 使用。 */
+    internal var transformsSimulatedParticleSpace = false
 
     /** 渲染用的前后 tick 整组变换，由 shader 按 partial tick 插值。 */
     internal val previousGroupTransform = Matrix4f()
@@ -254,7 +259,9 @@ class CParticleSystem(
         if (!CParticleSystemManager.hasAvailableParticleCapacity()) return -1
         val worldPosition = p.pos
         if (store.aliveCount == 0) snapGroupTransform()
-        rebaseIfNeeded(worldPosition)
+        if (storagePosition == null) {
+            rebaseIfNeeded(worldPosition)
+        }
         val resolvedStoragePosition = storagePosition ?: resolveStoragePosition(worldPosition) ?: return -1
         val randomSeed = p.randomSeed ?: CParticleGpuMath.nextAutomaticSeed()
         var block = p.light
@@ -854,8 +861,12 @@ class CParticleSystem(
 
     private fun tickSimulated() {
         val forceCount = packForces()
+        val simulationTransform = currentGroupTransform.takeIf {
+            transformsSimulatedParticleSpace && !isIdentityTransform(it)
+        }
+        val inverseSimulationTransform = simulationTransform?.let(::inverseAffine)
         val collisionGrid = if (store.blockCollisionCount > 0) {
-            CParticleBlockCollisionGridManager.gridFor(origin, blockCollisionRange)
+            CParticleBlockCollisionGridManager.gridFor(simulationCenter(), blockCollisionRange)
         } else {
             null
         }
@@ -870,7 +881,14 @@ class CParticleSystem(
             }
         }
         if (useGpu &&
-            CParticleGpuSimulator.simulate(this, packedForces, forceCount, collisionGrid)
+            CParticleGpuSimulator.simulate(
+                this,
+                packedForces,
+                forceCount,
+                collisionGrid,
+                simulationTransform,
+                inverseSimulationTransform,
+            )
         ) {
             store.tickAges(writeBufferAge = false)
             store.publishDynamicAges()
@@ -881,7 +899,8 @@ class CParticleSystem(
             // CPU: 模拟写回 SoA → 整段上传
             CParticleCpuSimulator.simulate(
                 store, packedForces, forceCount,
-                origin.x, origin.y, origin.z, speedLimit, collisionGrid
+                origin.x, origin.y, origin.z, speedLimit, collisionGrid,
+                simulationTransform, inverseSimulationTransform,
             )
             store.tickAges(writeBufferAge = true)
             store.publishDynamicAges()
@@ -958,6 +977,16 @@ class CParticleSystem(
         return count
     }
 
+    private fun simulationCenter(): Vec3 {
+        if (!transformsSimulatedParticleSpace) return origin
+        val transformed = currentGroupTransform.transformPosition(Vector3f())
+        return origin + transformed
+    }
+
+    private fun isIdentityTransform(matrix: Matrix4fc): Boolean {
+        return matrix.properties() and Matrix4fc.PROPERTY_IDENTITY.toInt() != 0
+    }
+
     // ------------------------------------------------------------ 生命周期
 
     /** 首次使用时创建 GL 资源 (渲染线程) */
@@ -997,11 +1026,20 @@ class CParticleSystem(
         glBuffer.release()
     }
 
-    /** 粗可见性: 相机到 origin 距离 */
+    /** 粗可见性：LOCAL emitter 使用变换后中心，放大时同步扩展可见半径。 */
     fun isVisible(cameraPos: Vec3): Boolean {
         if (store.aliveCount == 0) return false
-        val r = visibleRange + 64.0
-        return cameraPos.distanceToSqr(origin) <= r * r
+        val r = visibleRange * simulationScale().coerceAtLeast(1.0) + 64.0
+        return cameraPos.distanceToSqr(simulationCenter()) <= r * r
+    }
+
+    private fun simulationScale(): Double {
+        if (!transformsSimulatedParticleSpace) return 1.0
+        val matrix = currentGroupTransform
+        val x = sqrt((matrix.m00() * matrix.m00() + matrix.m01() * matrix.m01() + matrix.m02() * matrix.m02()).toDouble())
+        val y = sqrt((matrix.m10() * matrix.m10() + matrix.m11() * matrix.m11() + matrix.m12() * matrix.m12()).toDouble())
+        val z = sqrt((matrix.m20() * matrix.m20() + matrix.m21() * matrix.m21() + matrix.m22() * matrix.m22()).toDouble())
+        return maxOf(x, y, z)
     }
 
     internal fun snapGroupTransform() {

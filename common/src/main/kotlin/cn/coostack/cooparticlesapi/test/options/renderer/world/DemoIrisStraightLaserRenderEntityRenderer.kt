@@ -77,75 +77,68 @@ class DemoIrisStraightLaserRenderEntityRenderer : RenderEntityRenderer<DemoIrisS
         RenderSystem.enableDepthTest()
         RenderSystem.enableBlend()
         RenderSystem.depthMask(false)
-        try {
-            RenderSystem.blendFunc(770, 771)
-            drawPass(
-                entity = entity,
-                modelMatrix = modelMatrix,
-                viewMatrix = viewMatrix,
-                projMatrix = projMatrix,
-                beamLength = beamLength,
-                beamRadius = radius * (1.18F + pulse * 0.10F),
-                passColor = entity.color,
-                passAlpha = (passAlpha * 0.34F).coerceAtMost(0.48F),
-                brightness = 0.64F,
-                phaseProgress = phaseProgress,
-                collapse = collapse,
-                time = time,
-                layerMode = LAYER_OUTER_TEXTURE
-            )
-            drawPass(
-                entity = entity,
-                modelMatrix = modelMatrix,
-                viewMatrix = viewMatrix,
-                projMatrix = projMatrix,
-                beamLength = beamLength,
-                beamRadius = radius * 1.18F,
-                passColor = mixColor(entity.color, Vector3f(1.0F, 0.97F, 0.90F), 0.28F),
-                passAlpha = (passAlpha * 0.10F).coerceAtMost(0.18F),
-                brightness = 0.74F,
-                phaseProgress = phaseProgress,
-                collapse = collapse,
-                time = time,
-                layerMode = LAYER_OUTER_TEXTURE
-            )
-            RenderSystem.blendFunc(770, 1)
-            drawPass(
-                entity = entity,
-                modelMatrix = modelMatrix,
-                viewMatrix = viewMatrix,
-                projMatrix = projMatrix,
-                beamLength = beamLength,
-                beamRadius = radius * 0.30F,
-                passColor = mixColor(entity.color, Vector3f(1.0F, 0.98F, 0.92F), 0.62F),
-                passAlpha = (passAlpha * 0.12F).coerceAtMost(0.22F),
-                brightness = 1.16F,
-                phaseProgress = phaseProgress,
-                collapse = collapse,
-                time = time,
-                layerMode = LAYER_INNER_GLOW
-            )
-            drawPass(
-                entity = entity,
-                modelMatrix = modelMatrix,
-                viewMatrix = viewMatrix,
-                projMatrix = projMatrix,
-                beamLength = beamLength,
-                beamRadius = radius * 2.80F,
-                passColor = entity.color,
-                passAlpha = (passAlpha * 0.13F).coerceAtMost(0.24F),
-                brightness = 1.95F,
-                phaseProgress = phaseProgress,
-                collapse = collapse,
-                time = time,
-                layerMode = LAYER_OUTER_BLOOM
-            )
-        } finally {
-            RenderSystem.depthMask(true)
-            RenderSystem.defaultBlendFunc()
-            RenderSystem.disableBlend()
-            RenderSystem.enableCull()
-        }
+        RenderSystem.blendFunc(770, 771)
+        drawPass(
+            entity = entity,
+            modelMatrix = modelMatrix,
+            viewMatrix = viewMatrix,
+            projMatrix = projMatrix,
+            beamLength = beamLength,
+            beamRadius = radius * (1.18F + pulse * 0.10F),
+            passColor = entity.color,
+            passAlpha = (passAlpha * 0.34F).coerceAtMost(0.48F),
+            brightness = 0.64F,
+            phaseProgress = phaseProgress,
+            collapse = collapse,
+            time = time,
+            layerMode = LAYER_OUTER_TEXTURE
+        )
+        drawPass(
+            entity = entity,
+            modelMatrix = modelMatrix,
+            viewMatrix = viewMatrix,
+            projMatrix = projMatrix,
+            beamLength = beamLength,
+            beamRadius = radius * 1.18F,
+            passColor = mixColor(entity.color, Vector3f(1.0F, 0.97F, 0.90F), 0.28F),
+            passAlpha = (passAlpha * 0.10F).coerceAtMost(0.18F),
+            brightness = 0.74F,
+            phaseProgress = phaseProgress,
+            collapse = collapse,
+            time = time,
+            layerMode = LAYER_OUTER_TEXTURE
+        )
+        RenderSystem.blendFunc(770, 1)
+        drawPass(
+            entity = entity,
+            modelMatrix = modelMatrix,
+            viewMatrix = viewMatrix,
+            projMatrix = projMatrix,
+            beamLength = beamLength,
+            beamRadius = radius * 0.30F,
+            passColor = mixColor(entity.color, Vector3f(1.0F, 0.98F, 0.92F), 0.62F),
+            passAlpha = (passAlpha * 0.12F).coerceAtMost(0.22F),
+            brightness = 1.16F,
+            phaseProgress = phaseProgress,
+            collapse = collapse,
+            time = time,
+            layerMode = LAYER_INNER_GLOW
+        )
+        drawPass(
+            entity = entity,
+            modelMatrix = modelMatrix,
+            viewMatrix = viewMatrix,
+            projMatrix = projMatrix,
+            beamLength = beamLength,
+            beamRadius = radius * 2.80F,
+            passColor = entity.color,
+            passAlpha = (passAlpha * 0.13F).coerceAtMost(0.24F),
+            brightness = 1.95F,
+            phaseProgress = phaseProgress,
+            collapse = collapse,
+            time = time,
+            layerMode = LAYER_OUTER_BLOOM
+        )
     }
 
     private fun drawPass(
@@ -173,21 +166,26 @@ class DemoIrisStraightLaserRenderEntityRenderer : RenderEntityRenderer<DemoIrisS
                 CooParticlesConstants.MOD_ID,
                 "textures/effect/straight_laser_impact_noise.png"
             )
-            RenderSystem.setShaderTexture(0, impactNoiseTexture)
-            setInt("impactNoise", 0)
-            setMatrix4("modelMatrix", modelMatrix)
-            setMatrix4("viewMatrix", viewMatrix)
-            setMatrix4("projMatrix", projMatrix)
-            setFloat("beamRadius", beamRadius.coerceAtLeast(DemoIrisStraightLaserRenderEntity.MIN_RADIUS))
-            setFloat("beamLength", beamLength.coerceAtLeast(DemoIrisStraightLaserRenderEntity.MIN_BEAM_LENGTH))
-            setFloat3("color", passColor)
-            setFloat("alpha", (passAlpha * alphaMultiplierFromBrightness(brightnessScale)).coerceAtMost(1F))
-            setFloat("brightness", brightness * brightnessScale * 0.82F)
-            setFloat("phaseProgress", phaseProgress)
-            setFloat("collapse", collapse)
-            setFloat("time", time)
-            setInt("layerMode", layerMode)
-            beamVertexBuffer.draw()
+            val previousTexture = RenderSystem.getShaderTexture(0)
+            try {
+                RenderSystem.setShaderTexture(0, impactNoiseTexture)
+                setInt("impactNoise", 0)
+                setMatrix4("modelMatrix", modelMatrix)
+                setMatrix4("viewMatrix", viewMatrix)
+                setMatrix4("projMatrix", projMatrix)
+                setFloat("beamRadius", beamRadius.coerceAtLeast(DemoIrisStraightLaserRenderEntity.MIN_RADIUS))
+                setFloat("beamLength", beamLength.coerceAtLeast(DemoIrisStraightLaserRenderEntity.MIN_BEAM_LENGTH))
+                setFloat3("color", passColor)
+                setFloat("alpha", (passAlpha * alphaMultiplierFromBrightness(brightnessScale)).coerceAtMost(1F))
+                setFloat("brightness", brightness * brightnessScale * 0.82F)
+                setFloat("phaseProgress", phaseProgress)
+                setFloat("collapse", collapse)
+                setFloat("time", time)
+                setInt("layerMode", layerMode)
+                beamVertexBuffer.draw()
+            } finally {
+                RenderSystem.setShaderTexture(0, previousTexture)
+            }
         }
     }
 

@@ -4,6 +4,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.exists
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -73,6 +74,18 @@ class RenderEntityV2ContractTest {
         assertFalse("FramePostRenderEntityRenderer" in rendererSource)
         assertFalse("SharedModelMaskBloomRenderEntityRenderer" in rendererSource)
         assertFalse("DedicatedGlowMaskRenderEntityRenderer" in rendererSource)
+    }
+
+    @Test
+    fun `runtime protects every renderer callback with glsl state scope`() {
+        val source = readProjectFile(
+            "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/runtime/RenderEntityInstance.kt"
+        )
+
+        val renderCalls = Regex("renderer\\.render\\(").findAll(source).count()
+        val stateScopes = Regex("CooGLSLStateManager\\.useState\\s*\\{").findAll(source).count()
+        assertEquals(2, renderCalls, "Update this contract when adding another renderer callback")
+        assertEquals(renderCalls, stateScopes, "Every renderer callback must have its own GLSL state scope")
     }
 
     private fun readProjectFile(relativePath: String): String {

@@ -82,9 +82,10 @@ object ParticleEmittersManager {
     }
 
     fun createOrChangeClient(emitters: ParticleEmitters, viewWorld: Level) {
+        emitters.world = viewWorld
         if (emitters.canceled) {
             clientEmitters.remove(emitters.uuid)
-            CParticleEmitterBridge.finishEmitter(emitters.uuid)
+            finishClientSystems(emitters)
             return
         }
         if (clientEmitters.containsKey(emitters.uuid)) {
@@ -129,7 +130,7 @@ object ParticleEmittersManager {
             emitters.tick()
             if (emitters.canceled) {
                 iterator.remove()
-                CParticleEmitterBridge.finishEmitter(emitters.uuid)
+                finishClientSystems(emitters)
                 CooEventBus.call(EmitterRemoveEvent(emitters, true))
             }
         }
@@ -210,7 +211,7 @@ object ParticleEmittersManager {
     fun clearAllVisible() {
         clientEmitters.values.forEach {
             it.remove()
-            CParticleEmitterBridge.finishEmitter(it.uuid)
+            finishClientSystems(it)
             CooEventBus.call(EmitterRemoveEvent(it, true))
         }
         clientEmitters.clear()
@@ -280,6 +281,16 @@ object ParticleEmittersManager {
             )
             return
         }
+        if (AutoTransformableCParticleEmitter::class.java.isAssignableFrom(clazz)) {
+            @Suppress("UNCHECKED_CAST")
+            register(
+                clazz.name,
+                ParticleEmittersRegistryHelper.generateTransformableCParticleEmitterCodec(
+                    clazz as Class<out TransformableCParticleEmitter>,
+                ),
+            )
+            return
+        }
         if (AutoEmitters::class.java.isAssignableFrom(clazz)) {
             @Suppress("UNCHECKED_CAST")
             register(
@@ -295,5 +306,13 @@ object ParticleEmittersManager {
             }?.newInstance() ?: clazz.getDeclaredConstructor(Vec3::class.java, Level::class.java)
                 .newInstance(Vec3.ZERO, null)
         register(instance as ParticleEmitters)
+    }
+
+    private fun finishClientSystems(emitter: ParticleEmitters) {
+        if (emitter is TransformableCParticleEmitter) {
+            emitter.finishClientSystems()
+        } else {
+            CParticleEmitterBridge.finishEmitter(emitter.uuid)
+        }
     }
 }

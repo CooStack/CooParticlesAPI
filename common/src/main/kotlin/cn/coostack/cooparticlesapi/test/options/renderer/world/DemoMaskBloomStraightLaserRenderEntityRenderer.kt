@@ -103,63 +103,56 @@ class DemoMaskBloomStraightLaserRenderEntityRenderer :
         RenderSystem.enableDepthTest()
         RenderSystem.enableBlend()
         RenderSystem.depthMask(false)
-        try {
-            beamShader.useOnContext {
-                beamTextures.drawWith {
-                    RenderSystem.blendFunc(GL33.GL_SRC_ALPHA, GL33.GL_ONE_MINUS_SRC_ALPHA)
-                    drawPass(
-                        entity,
-                        modelMatrix,
-                        viewMatrix,
-                        projMatrix,
-                        beamLength,
-                        radius,
-                        entity.color,
-                        (passAlpha * 0.34F).coerceAtMost(0.48F),
-                        0.64F,
-                        phaseProgress,
-                        collapse,
-                        time,
-                        0
-                    )
-                    drawPass(
-                        entity,
-                        modelMatrix,
-                        viewMatrix,
-                        projMatrix,
-                        beamLength,
-                        radius * 1.18F,
-                        mixColor(entity.color, Vector3f(1F, 0.97F, 0.90F), 0.28F),
-                        (passAlpha * 0.10F).coerceAtMost(0.18F),
-                        0.74F,
-                        phaseProgress,
-                        collapse,
-                        time,
-                        0
-                    )
-                    RenderSystem.blendFunc(GL33.GL_SRC_ALPHA, GL33.GL_ONE)
-                    drawPass(
-                        entity,
-                        modelMatrix,
-                        viewMatrix,
-                        projMatrix,
-                        beamLength,
-                        radius * 0.30F,
-                        mixColor(entity.color, Vector3f(1F, 0.98F, 0.92F), 0.62F),
-                        (passAlpha * 0.12F).coerceAtMost(0.22F),
-                        1.16F,
-                        phaseProgress,
-                        collapse,
-                        time,
-                        1
-                    )
-                }
+        beamShader.useOnContext {
+            beamTextures.drawWith {
+                RenderSystem.blendFunc(GL33.GL_SRC_ALPHA, GL33.GL_ONE_MINUS_SRC_ALPHA)
+                drawPass(
+                    entity,
+                    modelMatrix,
+                    viewMatrix,
+                    projMatrix,
+                    beamLength,
+                    radius,
+                    entity.color,
+                    (passAlpha * 0.34F).coerceAtMost(0.48F),
+                    0.64F,
+                    phaseProgress,
+                    collapse,
+                    time,
+                    0
+                )
+                drawPass(
+                    entity,
+                    modelMatrix,
+                    viewMatrix,
+                    projMatrix,
+                    beamLength,
+                    radius * 1.18F,
+                    mixColor(entity.color, Vector3f(1F, 0.97F, 0.90F), 0.28F),
+                    (passAlpha * 0.10F).coerceAtMost(0.18F),
+                    0.74F,
+                    phaseProgress,
+                    collapse,
+                    time,
+                    0
+                )
+                RenderSystem.blendFunc(GL33.GL_SRC_ALPHA, GL33.GL_ONE)
+                drawPass(
+                    entity,
+                    modelMatrix,
+                    viewMatrix,
+                    projMatrix,
+                    beamLength,
+                    radius * 0.30F,
+                    mixColor(entity.color, Vector3f(1F, 0.98F, 0.92F), 0.62F),
+                    (passAlpha * 0.12F).coerceAtMost(0.22F),
+                    1.16F,
+                    phaseProgress,
+                    collapse,
+                    time,
+                    1
+                )
             }
-        } finally {
-            RenderSystem.depthMask(true)
-            RenderSystem.defaultBlendFunc()
-            RenderSystem.disableBlend()
-            RenderSystem.enableCull()
         }
     }
 

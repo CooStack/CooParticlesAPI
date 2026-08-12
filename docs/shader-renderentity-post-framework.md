@@ -183,6 +183,37 @@ class MyRenderEntityRenderer : RenderEntityRenderer<MyRenderEntity> {
 
 调用方不再实现额外的阶段描述、mask 配置或专用后处理能力接口。一个含 world 节点和 fullscreen 节点的 Pipeline 会自动产生世界绘制、必要的离屏重放和帧尾阶段。renderer 回调仍应保持纯绘制：FBO 不支持额外 attachment，或 `shaderPackHandled = true` 时，runtime 可能在同一帧用相同输入再次调用它。
 
+### GLSL 状态管理
+
+RenderEntity runtime 会在每次 `renderer.render(...)` 前后使用 `CooGLSLStateManager` 保存和恢复 OpenGL 光栅状态。自定义 renderer 和底层模型执行器也建议使用同一管理器，不要在绘制结束时把状态硬编码回默认值；入口状态可能来自原版、Iris 或其他后处理阶段，并不一定是默认状态。
+
+普通调用优先使用 `useState`，异常退出时也会恢复入口状态：
+
+```kotlin
+CooGLSLStateManager.useState {
+    RenderSystem.enableBlend()
+    RenderSystem.depthMask(false)
+    RenderSystem.disableCull()
+    drawGeometry()
+}
+```
+
+需要手动控制生命周期时，可以使用 `createState()` 和 `resetState()`。两者必须严格配对，并按后进先出顺序重置；建议用 `try/finally` 保证恢复：
+
+```kotlin
+CooGLSLStateManager.createState()
+try {
+    RenderSystem.enableBlend()
+    drawGeometry()
+} finally {
+    CooGLSLStateManager.resetState()
+}
+```
+
+状态栈为空时，`createState()` 直接读取当前 RenderSystem/OpenGL 上下文作为入口。每次嵌套调用都会保存当时的真实状态。多余的 `resetState()` 会立即失败，未重置的手动快照也会在受管作用域或下一帧入口被报告并清理。
+
+当前快照包含混合开关、混合函数和方程、深度测试/写入/函数、背面剔除、颜色写入、scissor、polygon offset，以及 RenderSystem 与 OpenGL 线宽。Shader program、纹理、VAO、framebuffer 和 viewport 仍由对应资源对象管理；使用 `CooGLSLStateManager` 不能替代这些对象自己的绑定与释放生命周期。
+
 ### 外部模组定义可复用的实体 Pipeline
 
 节点名称不是框架关键字。下面使用 `laser_mask`，也可以换成 `source` 或其他不重复的名称。`world(...)` 表示实体几何阶段，`pass(...)` 表示屏幕四边形阶段。

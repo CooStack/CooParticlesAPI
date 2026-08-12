@@ -665,24 +665,128 @@ object Math3DUtil {
         return result
     }
 
-    fun getBallLocations(r: Double, countPow: Int): MutableList<RelativeLocation> {
-        val result = ArrayList<RelativeLocation>()
-        val step = PI / countPow
-        var ry = -PI / 2
+    /** 生成球面上的 [count] 个均匀分布点。 */
+    fun getBallSurfaceLocations(r: Double, count: Int): MutableList<RelativeLocation> {
+        require(count >= 1) { "count must be at least 1" }
+        val result = ArrayList<RelativeLocation>(count)
+        val goldenAngle = PI * (3.0 - sqrt(5.0))
+        for (index in 0 until count) {
+            val y = 1.0 - 2.0 * (index + 0.5) / count
+            val ringRadius = sqrt((1.0 - y * y).coerceAtLeast(0.0))
+            val angle = goldenAngle * index
+            result += RelativeLocation(
+                r * ringRadius * cos(angle),
+                r * y,
+                r * ringRadius * sin(angle),
+            )
+        }
+        return result
+    }
 
-        for (i in 1..countPow) {
-            var rx = 0.0
-            for (j in 1..countPow) {
-                result.add(
-                    RelativeLocation(
-                        r * cos(ry) * cos(rx),
-                        r * sin(ry),
-                        r * cos(ry) * sin(rx)
-                    )
-                )
-                rx += 2 * PI / countPow
+    /** 生成球体内部的 [count] 个均匀分布点。 */
+    fun getBallSolidLocations(r: Double, count: Int): MutableList<RelativeLocation> {
+        require(count >= 1) { "count must be at least 1" }
+        val result = getBallSurfaceLocations(1.0, count)
+        for (index in result.indices) {
+            val radius = r * ((index + 0.5) / count).pow(1.0 / 3.0)
+            result[index].multiply(radius)
+        }
+        return result
+    }
+
+    @Deprecated("Use getBallSurfaceLocations; this method retains countPow resolution semantics")
+    fun getBallLocations(r: Double, countPow: Int): MutableList<RelativeLocation> =
+        getBallSurfaceLocations(r, countPow * countPow)
+
+    /** 生成长宽高为 [width]、[height]、[depth] 的方块表面点。 */
+    fun getCubeSurfaceLocations(width: Double, height: Double, depth: Double, count: Int): MutableList<RelativeLocation> {
+        require(count >= 1) { "count must be at least 1" }
+        require(width >= 0.0 && height >= 0.0 && depth >= 0.0) { "cube dimensions must be non-negative" }
+        val halfX = width / 2.0
+        val halfY = height / 2.0
+        val halfZ = depth / 2.0
+        val areas = doubleArrayOf(width * depth, width * depth, width * height, width * height, height * depth, height * depth)
+        val totalArea = areas.sum()
+        val result = ArrayList<RelativeLocation>(count)
+        for (index in 0 until count) {
+            val selectedFace = if (totalArea == 0.0) 0 else {
+                val target = totalArea * (index + 0.5) / count
+                var accumulated = 0.0
+                var face = 0
+                while (face < areas.lastIndex && target > accumulated + areas[face]) {
+                    accumulated += areas[face++]
+                }
+                face
             }
-            ry += step
+            val u = ((index * 0.6180339887498949) % 1.0)
+            val v = ((index * 0.7548776662466927) % 1.0)
+            val xU = -halfX + width * u
+            val xV = -halfX + width * v
+            val yU = -halfY + height * u
+            val yV = -halfY + height * v
+            val zU = -halfZ + depth * u
+            val zV = -halfZ + depth * v
+            result += when (selectedFace) {
+                0 -> RelativeLocation(xU, -halfY, zV)
+                1 -> RelativeLocation(xU, halfY, zV)
+                2 -> RelativeLocation(xU, yV, -halfZ)
+                3 -> RelativeLocation(xU, yV, halfZ)
+                4 -> RelativeLocation(-halfX, yU, zV)
+                else -> RelativeLocation(halfX, yU, zV)
+            }
+        }
+        return result
+    }
+
+    /** 生成长宽高为 [width]、[height]、[depth] 的方块体积点。 */
+    fun getCubeSolidLocations(width: Double, height: Double, depth: Double, count: Int): MutableList<RelativeLocation> {
+        require(count >= 1) { "count must be at least 1" }
+        require(width >= 0.0 && height >= 0.0 && depth >= 0.0) { "cube dimensions must be non-negative" }
+        val result = ArrayList<RelativeLocation>(count)
+        for (index in 0 until count) {
+            val x = ((index * 0.7548776662466927) % 1.0 - 0.5) * width
+            val y = ((index * 0.5698402909980532) % 1.0 - 0.5) * height
+            val z = ((index * 0.4385790219242876) % 1.0 - 0.5) * depth
+            result += RelativeLocation(x, y, z)
+        }
+        return result
+    }
+
+    /** 生成方块 12 条边上的轮廓点，总点数为 [count]。 */
+    fun getCubeWireframeLocations(width: Double, height: Double, depth: Double, count: Int): MutableList<RelativeLocation> {
+        require(count >= 1) { "count must be at least 1" }
+        require(width >= 0.0 && height >= 0.0 && depth >= 0.0) { "cube dimensions must be non-negative" }
+        val halfX = width / 2.0
+        val halfY = height / 2.0
+        val halfZ = depth / 2.0
+        val vertices = arrayOf(
+            RelativeLocation(-halfX, -halfY, -halfZ), RelativeLocation(halfX, -halfY, -halfZ),
+            RelativeLocation(halfX, halfY, -halfZ), RelativeLocation(-halfX, halfY, -halfZ),
+            RelativeLocation(-halfX, -halfY, halfZ), RelativeLocation(halfX, -halfY, halfZ),
+            RelativeLocation(halfX, halfY, halfZ), RelativeLocation(-halfX, halfY, halfZ),
+        )
+        val edges = arrayOf(
+            intArrayOf(0, 1), intArrayOf(1, 2), intArrayOf(2, 3), intArrayOf(3, 0),
+            intArrayOf(4, 5), intArrayOf(5, 6), intArrayOf(6, 7), intArrayOf(7, 4),
+            intArrayOf(0, 4), intArrayOf(1, 5), intArrayOf(2, 6), intArrayOf(3, 7),
+        )
+        val lengths = edges.map { edge -> vertices[edge[0]].distance(vertices[edge[1]]) }
+        val totalLength = lengths.sum()
+        val result = ArrayList<RelativeLocation>(count)
+        for (index in 0 until count) {
+            val target = if (totalLength == 0.0) 0.0 else totalLength * (index + 0.5) / count
+            var edgeIndex = 0
+            var accumulated = 0.0
+            while (edgeIndex < lengths.lastIndex && target > accumulated + lengths[edgeIndex]) {
+                accumulated += lengths[edgeIndex++]
+            }
+            val edge = edges[edgeIndex]
+            val t = if (lengths[edgeIndex] == 0.0) 0.0 else (target - accumulated) / lengths[edgeIndex]
+            result += RelativeLocation(
+                vertices[edge[0]].x + (vertices[edge[1]].x - vertices[edge[0]].x) * t,
+                vertices[edge[0]].y + (vertices[edge[1]].y - vertices[edge[0]].y) * t,
+                vertices[edge[0]].z + (vertices[edge[1]].z - vertices[edge[0]].z) * t,
+            )
         }
         return result
     }

@@ -7,6 +7,7 @@ import cn.coostack.cooparticlesapi.cparticle.collision.CParticleBlockCollisionGr
 import cn.coostack.cooparticlesapi.renderer.shader.AdvancedShaderProgramBuilder
 import cn.coostack.cooparticlesapi.renderer.shader.ShaderProgramRegistry
 import cn.coostack.cooparticlesapi.renderer.shader.api.CooComputeShaderProgram
+import org.joml.Matrix4f
 import org.joml.Vector3f
 import org.lwjgl.opengl.GL11
 import org.lwjgl.opengl.GL15
@@ -110,6 +111,8 @@ object CParticleGpuSimulator {
      * @param packed 力场打包数组
      * @param forceCount 有效力场数量
      * @param collisionGrid 可选共享方块占用网格
+     * @param simulationTransform 可选的局部到世界相对坐标矩阵
+     * @param inverseSimulationTransform 与 [simulationTransform] 配对的逆矩阵
      * @return compute shader 成功 dispatch 时为 `true`
      */
     internal fun simulate(
@@ -117,7 +120,12 @@ object CParticleGpuSimulator {
         packed: FloatArray,
         forceCount: Int,
         collisionGrid: CParticleBlockCollisionGrid?,
+        simulationTransform: Matrix4f? = null,
+        inverseSimulationTransform: Matrix4f? = null,
     ): Boolean {
+        require((simulationTransform == null) == (inverseSimulationTransform == null)) {
+            "simulation transform and inverse must be supplied together"
+        }
         val store = system.store
         if (store.highWater <= 0) return true
         val glBuffer = system.glBuffer
@@ -136,6 +144,11 @@ object CParticleGpuSimulator {
                     system.origin.z.toFloat()
                 )
             )
+            setInt("uTransformSimulation", if (simulationTransform == null) 0 else 1)
+            if (simulationTransform != null && inverseSimulationTransform != null) {
+                setMatrix4("uSimulationTransform", simulationTransform)
+                setMatrix4("uInverseSimulationTransform", inverseSimulationTransform)
+            }
             setInt("uCollisionEnabled", if (collisionGrid != null) 1 else 0)
             setInt("uCollisionSize", collisionGrid?.size ?: CParticleBlockCollisionGrid.SIZE)
             if (collisionGrid != null) {
