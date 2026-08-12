@@ -33,10 +33,12 @@ import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.sin
 
-/** 复现 UsefulMagic 直线激光材质和 MASK_BLOOM 双 attachment 绘制。 */
+/** 复现 UsefulMagic 直线激光材质，由 MASK_BLOOM 自动捕获可见颜色作为 HDR Bloom 输入。 */
 @CooAutoRegisterRenderer
 class DemoMaskBloomStraightLaserRenderEntityRenderer :
     RenderEntityRenderer<DemoMaskBloomStraightLaserRenderEntity> {
+    override val shaderPackHandled = false
+
     override val pipeline = CooPipelines.MASK_BLOOM
         .bloomSoftKnee(0.02F)
         .intensity { entity: DemoMaskBloomStraightLaserRenderEntity -> entity.brightness * 19.2F }
@@ -67,15 +69,6 @@ class DemoMaskBloomStraightLaserRenderEntityRenderer :
         if (directAlpha <= MIN_VISIBLE_ALPHA) {
             return
         }
-        val bloomIntensityGain = entity.brightness.coerceAtLeast(0F) *
-            DemoMaskBloomStraightLaserRenderEntity.mix(
-                0.82F,
-                1.34F,
-                bloomVisibleBrightness(entity, input.tickDelta)
-            )
-        val bloomAlpha = entity.currentBloomAlpha(input.tickDelta) *
-            DemoMaskBloomStraightLaserRenderEntity.mix(0.28F, 0.62F, 1F - directWeight) *
-            max(0.62F, farBloomIntensityScale(projectedRadiusPx, 18F, 2F)) * bloomIntensityGain
         renderPasses(
             entity = entity,
             modelMatrix = orientedModelMatrix(input.modelMatrix, renderStart, renderEnd, renderStart),
@@ -84,22 +77,13 @@ class DemoMaskBloomStraightLaserRenderEntityRenderer :
             beamLength = beamLength,
             radius = radius,
             passAlpha = directAlpha,
-            bloomAlpha = bloomAlpha,
             phaseProgress = entity.currentPhaseProgress(input.tickDelta),
             collapse = entity.currentCollapse(input.tickDelta),
             time = entity.getTime(input.tickDelta)
         )
     }
 
-    private fun bloomVisibleBrightness(
-        entity: DemoMaskBloomStraightLaserRenderEntity,
-        tickDelta: Float
-    ): Float {
-        val sourceLuminance = max(entity.color.x, max(entity.color.y, entity.color.z)).coerceIn(0.08F, 1F)
-        return (sourceLuminance * entity.currentBloomAlpha(tickDelta) * entity.brightness.coerceAtLeast(0F))
-            .coerceIn(0F, 1F)
-    }
-
+    /** 按混合顺序提交外壳、亮边和核心三层可见材质。 */
     private fun renderPasses(
         entity: DemoMaskBloomStraightLaserRenderEntity,
         modelMatrix: Matrix4f,
@@ -108,7 +92,6 @@ class DemoMaskBloomStraightLaserRenderEntityRenderer :
         beamLength: Float,
         radius: Float,
         passAlpha: Float,
-        bloomAlpha: Float,
         phaseProgress: Float,
         collapse: Float,
         time: Float
@@ -134,8 +117,6 @@ class DemoMaskBloomStraightLaserRenderEntityRenderer :
                         entity.color,
                         (passAlpha * 0.34F).coerceAtMost(0.48F),
                         0.64F,
-                        0F,
-                        0F,
                         phaseProgress,
                         collapse,
                         time,
@@ -151,8 +132,6 @@ class DemoMaskBloomStraightLaserRenderEntityRenderer :
                         mixColor(entity.color, Vector3f(1F, 0.97F, 0.90F), 0.28F),
                         (passAlpha * 0.10F).coerceAtMost(0.18F),
                         0.74F,
-                        0F,
-                        0F,
                         phaseProgress,
                         collapse,
                         time,
@@ -169,59 +148,6 @@ class DemoMaskBloomStraightLaserRenderEntityRenderer :
                         mixColor(entity.color, Vector3f(1F, 0.98F, 0.92F), 0.62F),
                         (passAlpha * 0.12F).coerceAtMost(0.22F),
                         1.16F,
-                        0F,
-                        0F,
-                        phaseProgress,
-                        collapse,
-                        time,
-                        1
-                    )
-                    drawPass(
-                        entity,
-                        modelMatrix,
-                        viewMatrix,
-                        projMatrix,
-                        beamLength,
-                        radius,
-                        entity.color,
-                        0F,
-                        0F,
-                        (bloomAlpha * 0.72F).coerceAtMost(0.96F),
-                        2.25F,
-                        phaseProgress,
-                        collapse,
-                        time,
-                        0
-                    )
-                    drawPass(
-                        entity,
-                        modelMatrix,
-                        viewMatrix,
-                        projMatrix,
-                        beamLength,
-                        radius * 1.18F,
-                        mixColor(entity.color, Vector3f(1F, 0.97F, 0.90F), 0.24F),
-                        0F,
-                        0F,
-                        (bloomAlpha * 0.38F).coerceAtMost(0.62F),
-                        1.55F,
-                        phaseProgress,
-                        collapse,
-                        time,
-                        0
-                    )
-                    drawPass(
-                        entity,
-                        modelMatrix,
-                        viewMatrix,
-                        projMatrix,
-                        beamLength,
-                        radius * 0.30F,
-                        mixColor(entity.color, Vector3f(1F, 0.99F, 0.94F), 0.58F),
-                        0F,
-                        0F,
-                        (bloomAlpha * 0.20F).coerceAtMost(0.32F),
-                        1.92F,
                         phaseProgress,
                         collapse,
                         time,
@@ -237,6 +163,7 @@ class DemoMaskBloomStraightLaserRenderEntityRenderer :
         }
     }
 
+    /** 上传单层材质参数并提交缓存的圆柱几何。 */
     private fun drawPass(
         entity: DemoMaskBloomStraightLaserRenderEntity,
         modelMatrix: Matrix4f,
@@ -247,14 +174,12 @@ class DemoMaskBloomStraightLaserRenderEntityRenderer :
         passColor: Vector3f,
         passAlpha: Float,
         brightness: Float,
-        maskAlpha: Float,
-        maskBrightness: Float,
         phaseProgress: Float,
         collapse: Float,
         time: Float,
         layerMode: Int
     ) {
-        if (passAlpha <= MIN_VISIBLE_ALPHA && maskAlpha <= MIN_VISIBLE_ALPHA) {
+        if (passAlpha <= MIN_VISIBLE_ALPHA) {
             return
         }
         beamShader.apply {
@@ -268,8 +193,6 @@ class DemoMaskBloomStraightLaserRenderEntityRenderer :
             setFloat3("color", passColor)
             setFloat("alpha", passAlpha)
             setFloat("brightness", brightness * entity.brightness * 0.82F)
-            setFloat("maskAlpha", maskAlpha)
-            setFloat("maskBrightness", maskBrightness * entity.brightness * 0.82F)
             setFloat("phaseProgress", phaseProgress)
             setFloat("collapse", collapse)
             setFloat("time", time)
@@ -291,19 +214,6 @@ class DemoMaskBloomStraightLaserRenderEntityRenderer :
         return max(radius * 8F, 3.6F) / distance * screenSize.y.coerceAtLeast(1F) * 0.75F
     }
 
-    private fun farBloomIntensityScale(
-        projectedRadiusPx: Float,
-        compensationFadeStartPx: Float,
-        maxCompensationPx: Float
-    ): Float {
-        val farWeight = 1F - DemoMaskBloomStraightLaserRenderEntity.smoothstep(
-            4F,
-            compensationFadeStartPx,
-            projectedRadiusPx
-        )
-        return 1F + farWeight * maxCompensationPx * 0.18F
-    }
-
     private fun orientedModelMatrix(
         baseMatrix: Matrix4f,
         start: Vec3,
@@ -311,7 +221,7 @@ class DemoMaskBloomStraightLaserRenderEntityRenderer :
         anchor: Vec3
     ): Matrix4f {
         val delta = end - start
-        val direction = if (delta.lengthSqr() <= MIN_DIRECTION_LENGTH_SQUARED) {
+        val direction = if (delta.lengthSqr() <= 0.000001) {
             Vec3(0.0, 1.0, 0.0)
         } else {
             delta.normalize()
@@ -359,7 +269,6 @@ class DemoMaskBloomStraightLaserRenderEntityRenderer :
 
     companion object {
         private const val MIN_VISIBLE_ALPHA = 0.001F
-        private const val MIN_DIRECTION_LENGTH_SQUARED = 0.000001
 
         private lateinit var beamVertexBuffer: SimpleVertexBuffer
         private lateinit var beamShader: CooShaderProgram

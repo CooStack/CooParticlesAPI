@@ -158,15 +158,17 @@ object ClientRenderEntityManager {
             return
         }
         val stack = Matrix4fStack(16)
-        entities.values.forEach { instance ->
-            val entity = instance.entity
-            stack.pushMatrix()
-            RenderUtil.setRenderStackWithEntity(stack, entity, tickDelta)
-            instance.renderIrisWorldPass(tickDelta, viewMatrix, projMatrix, stack, renderStateGuard)
-            stack.popMatrix()
-            // 可见 Iris pass 已经使用了本帧插值位置；后续 offscreen 捕获应沿用缓存矩阵而不是重复插值。
-            entity.lastRenderPos = entity.pos
-        }
+        entities.values.asSequence()
+            .filter(RenderEntityInstance<RenderEntity>::isShaderPackHandled)
+            .forEach { instance ->
+                val entity = instance.entity
+                stack.pushMatrix()
+                RenderUtil.setRenderStackWithEntity(stack, entity, tickDelta)
+                instance.renderIrisWorldPass(tickDelta, viewMatrix, projMatrix, stack, renderStateGuard)
+                stack.popMatrix()
+                // 可见 Iris pass 已经使用了本帧插值位置；后续 offscreen 捕获应沿用缓存矩阵而不是重复插值。
+                entity.lastRenderPos = entity.pos
+            }
     }
 
     /**
@@ -256,6 +258,7 @@ object ClientRenderEntityManager {
         val graph = RenderEffectGraph(context.backend.capabilities, context)
         entities.values.asSequence()
             .filter(RenderEntityInstance<RenderEntity>::usesScenePost)
+            .filter(RenderEntityInstance<RenderEntity>::isShaderPackHandled)
             .forEach { instance -> instance.collectPipelineEffect(context, graph) }
         graph.execute()
     }

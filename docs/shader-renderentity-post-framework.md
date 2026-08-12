@@ -30,7 +30,7 @@ override val pipeline = CooPipelines.MASK_BLOOM
     }
 ```
 
-内置 `MASK_BLOOM` 先从 geometry mask 提取 HDR Bloom，再用 `bloom_bsl_atlas.fsh` 按 BSL 的 6x6 权重构建 7 级多尺度 atlas。atlas 使用 `RGBA16F`，写入时保留 BSL 的四次根 companding，读取各级 tile 后再可逆解码，使低分辨率 tile 的插值不会暴露明显的 mip 块。与 BSL 的 RGB8 路径不同，这里不截顶到 `1.0`，也不在中间纹理加入 Bayer，因此大于 `32` 的亮度仍完整保留。采样核根据画面分辨率自动计算，`bloomMipLevels(...)` 控制参与重建的级数。
+内置 `MASK_BLOOM` 的 world 节点同时声明可见颜色和 `RGBA16F` mask。默认情况下，runtime 把 mask 临时挂到当前世界 FBO，renderer 的一次绘制会同时写入两张 attachment；renderer 不需要判断 world 或 offscreen。只有显式设置 `shaderPackHandled = true` 且启用 Iris shader pack 时，runtime 才会先让模型进入 Iris，再自动重放 mask。随后 `bloom_bsl_atlas.fsh` 按 BSL 的 6x6 权重构建 7 级多尺度 atlas。atlas 写入时保留 BSL 的四次根 companding，读取各级 tile 后再可逆解码，使低分辨率 tile 的插值不会暴露明显的 mip 块。与 BSL 的 RGB8 路径不同，这里不截顶到 `1.0`，也不在中间纹理加入 Bayer，因此大于 `32` 的亮度仍完整保留。采样核根据画面分辨率自动计算，`bloomMipLevels(...)` 控制参与重建的级数。
 
 BSL 在色调映射前用 `0.2 * BLOOM_STRENGTH` 混合 Bloom。本管线拿到的是最终场景颜色，因此用相同的 `0.2` 基准缩放透射率输入，避免直接 `mix` 把 mask 之外的画面压暗。
 
@@ -155,6 +155,7 @@ Renderer 只声明 Pipeline，并在回调中提交几何：
 
 ```kotlin
 interface RenderEntityRenderer<T : RenderEntity> {
+    val shaderPackHandled: Boolean get() = false
     val pipeline: CooRenderPipeline<T>
     fun render(input: RenderInput<T>)
 }
@@ -165,6 +166,8 @@ interface RenderEntityRenderer<T : RenderEntity> {
 ```kotlin
 @CooAutoRegisterRenderer
 class MyRenderEntityRenderer : RenderEntityRenderer<MyRenderEntity> {
+    override val shaderPackHandled = false
+
     override val pipeline = CooPipelines.MASK_BLOOM
         .bloomMipLevels(7)
         .intensity { entity: MyRenderEntity -> entity.brightness }
@@ -176,7 +179,9 @@ class MyRenderEntityRenderer : RenderEntityRenderer<MyRenderEntity> {
 }
 ```
 
-调用方不再实现额外的阶段描述、mask 配置或专用后处理能力接口。一个含 world 节点和 fullscreen 节点的 Pipeline 会自动产生世界绘制和帧尾阶段。
+`shaderPackHandled` 默认为 `false`。此时模型在 shader pack final pass 后由 API 绘制，不参与 shader pack 的曝光、雾、PBR 或自带 Bloom。设置为 `true` 后，可见模型会进入 Iris；为了继续取得独立 mask，Iris 路径会自动重放几何。未启用 shader pack 时，两种设置都使用一次 MRT 绘制。
+
+调用方不再实现额外的阶段描述、mask 配置或专用后处理能力接口。一个含 world 节点和 fullscreen 节点的 Pipeline 会自动产生世界绘制、必要的离屏重放和帧尾阶段。renderer 回调仍应保持纯绘制：FBO 不支持额外 attachment，或 `shaderPackHandled = true` 时，runtime 可能在同一帧用相同输入再次调用它。
 
 ### 外部模组定义可复用的实体 Pipeline
 
@@ -511,7 +516,7 @@ val tinted = template.parameterValue("tint") { entity: MyRenderEntity ->
 
 参数也可以绑定到 fullscreen 节点。此时它控制整次屏幕 pass：解析值相同的实体会合批，值不同的实体会拆批执行。普通 fullscreen uniform 在一次 draw 中只有一个值，不能在已经合并的纹理里继续区分多个实体。
 
-内置 `MASK_BLOOM.intensity { entity -> ... }` 绑定亮部提取 pass，强度会在 BSL 多尺度 atlas 构建前写入 HDR 纹理。解析值相同的实体会合批；值不同时会分批捕获 mask 并分别执行后处理。`bloomMipLevels`、`bloomThreshold` 和 `bloomSoftKnee` 也属于 fullscreen 批次参数。
+内置 `MASK_BLOOM.intensity { entity -> ... }` 绑定亮部提取 pass，强度会在 BSL 多尺度 atlas 构建前写入 HDR 纹理。解析值相同且 `shaderPackHandled` 相同的实体会合批；值不同时会分批捕获 mask 并分别执行后处理。`bloomMipLevels`、`bloomThreshold` 和 `bloomSoftKnee` 也属于 fullscreen 批次参数。
 
 屏幕效果在每次 `play` 时生成独立参数快照：
 
@@ -588,6 +593,10 @@ CooBlockPipelines.bind(Blocks.STONE, SOLID_TINT)
 shader 没有声明 `BaseSampler` 时可以不采样原图集。
 
 ## Iris、Sodium 与 NeoForge
+
+RenderEntity 默认不交给 shader pack 处理。Iris final pass 完成后，Pipeline 用一次 MRT 绘制可见颜色和 mask，再执行自己的 fullscreen 后处理。深度测试使用 Iris 的 pre-translucent depth：实心方块仍会遮挡特效，玻璃和水不会再让特效及其 Bloom 整块消失。因为绘制发生在 shader pack final 之后，这类特效也不会获得玻璃的折射、着色或 shader pack 雾。
+
+需要 shader pack 参与时，renderer 可以设置 `shaderPackHandled = true`。可见模型会进入 Iris 的 entity 阶段，mask 则在 final pass 前自动重放。这个模式会执行两次几何绘制，但能获得 shader pack 的曝光、雾和材质处理。
 
 自定义 terrain shader 不复用 `iris:entity` wrapper。
 

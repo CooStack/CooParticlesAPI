@@ -188,6 +188,7 @@ object IrisCompat {
         }
     }
 
+    /** 返回 Iris 在半透明阶段开始前保存的深度纹理，避免玻璃等材质完全裁掉后绘制特效。 */
     internal fun currentTerrainDepthTexture(): IrisTerrainDepthTexture? {
         if (!CooParticlesAPIClient.checkIrisShaderPackUsed()) return null
         val methods = resolveTerrainDepthMethods() ?: return null
@@ -195,7 +196,8 @@ object IrisCompat {
             val manager = methods.getPipelineManager.invoke(null)
             val pipeline = (methods.getPipeline.invoke(manager) as Optional<*>).orElse(null) ?: return null
             val renderTargets = methods.renderTargetsField.get(pipeline)
-            val textureId = methods.getDepthTexture.invoke(renderTargets) as Int
+            val depthTexture = methods.getDepthTextureNoTranslucents.invoke(renderTargets) ?: return null
+            val textureId = methods.getDepthTextureId.invoke(depthTexture) as Int
             if (textureId <= 0) return null
             IrisTerrainDepthTexture(
                 textureId,
@@ -492,7 +494,8 @@ object IrisCompat {
                     irisClass.getMethod("getPipelineManager"),
                     pipelineManagerClass.getMethod("getPipeline"),
                     renderTargetsField,
-                    renderTargetsClass.getMethod("getDepthTexture"),
+                    renderTargetsClass.getMethod("getDepthTextureNoTranslucents"),
+                    Class.forName("net.irisshaders.iris.targets.DepthTexture").getMethod("getTextureId"),
                     renderTargetsClass.getMethod("getCurrentWidth"),
                     renderTargetsClass.getMethod("getCurrentHeight"),
                 )
@@ -520,7 +523,8 @@ object IrisCompat {
         val getPipelineManager: Method,
         val getPipeline: Method,
         val renderTargetsField: Field,
-        val getDepthTexture: Method,
+        val getDepthTextureNoTranslucents: Method,
+        val getDepthTextureId: Method,
         val getCurrentWidth: Method,
         val getCurrentHeight: Method,
     )

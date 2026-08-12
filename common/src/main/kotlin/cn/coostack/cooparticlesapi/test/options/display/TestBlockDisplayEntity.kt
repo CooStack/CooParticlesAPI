@@ -15,7 +15,7 @@ import net.minecraft.client.renderer.LightTexture
 import net.minecraft.client.renderer.MultiBufferSource
 import net.minecraft.client.renderer.RenderType
 import net.minecraft.client.renderer.texture.OverlayTexture
-import net.minecraft.network.FriendlyByteBuf
+import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.inventory.InventoryMenu
@@ -99,7 +99,7 @@ class TestBlockDisplayEntity(pos: Vec3, world: Level?) : DisplayEntity(pos, worl
         direction = player.eyePosition - pos
     }
 
-    override fun getCodec(): StreamCodec<FriendlyByteBuf, DisplayEntity> {
+    override fun getCodec(): StreamCodec<in RegistryFriendlyByteBuf, DisplayEntity> {
         return DisplayEntityRegistryHelper.generateCodec(this)
     }
 

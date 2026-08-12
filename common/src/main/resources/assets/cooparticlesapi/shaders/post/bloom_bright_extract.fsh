@@ -20,10 +20,7 @@ void main() {
         return;
     }
 
-    vec3 color = source.a > 1.0e-5
-        ? premultipliedColor / source.a
-        : vec3(0.0);
-    float brightness = max(max(color.r, color.g), color.b);
+    float brightness = max(max(premultipliedColor.r, premultipliedColor.g), premultipliedColor.b);
     float knee = max(softKnee, 0.0001);
     float contribution = smoothstep(threshold - knee, threshold + knee, brightness);
     FragColor = vec4(premultipliedColor * contribution * gain, source.a * contribution);

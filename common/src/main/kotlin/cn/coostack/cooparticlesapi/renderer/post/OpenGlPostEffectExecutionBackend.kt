@@ -44,6 +44,7 @@ import org.lwjgl.opengl.GL33.GL_DEPTH_TEST
 import org.lwjgl.opengl.GL33.GL_DEPTH_WRITEMASK
 import org.lwjgl.opengl.GL33.GL_DRAW_FRAMEBUFFER
 import org.lwjgl.opengl.GL33.GL_DRAW_FRAMEBUFFER_BINDING
+import org.lwjgl.opengl.GL33.GL_DRAW_BUFFER0
 import org.lwjgl.opengl.GL33.GL_FRAMEBUFFER
 import org.lwjgl.opengl.GL33.GL_FRAMEBUFFER_BINDING
 import org.lwjgl.opengl.GL33.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE
@@ -51,11 +52,13 @@ import org.lwjgl.opengl.GL33.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME
 import org.lwjgl.opengl.GL33.GL_FRAMEBUFFER_COMPLETE
 import org.lwjgl.opengl.GL33.GL_LINEAR
 import org.lwjgl.opengl.GL33.GL_LINEAR_MIPMAP_LINEAR
+import org.lwjgl.opengl.GL33.GL_MAX_DRAW_BUFFERS
 import org.lwjgl.opengl.GL33.GL_NEAREST
 import org.lwjgl.opengl.GL33.GL_NONE
 import org.lwjgl.opengl.GL33.GL_READ_FRAMEBUFFER
 import org.lwjgl.opengl.GL33.GL_READ_FRAMEBUFFER_BINDING
 import org.lwjgl.opengl.GL33.GL_READ_BUFFER
+import org.lwjgl.opengl.GL33.GL_RENDERBUFFER
 import org.lwjgl.opengl.GL33.GL_RGBA
 import org.lwjgl.opengl.GL33.GL_RGBA8
 import org.lwjgl.opengl.GL33.GL_RGBA16F
@@ -90,7 +93,9 @@ import org.lwjgl.opengl.GL33.glDepthFunc
 import org.lwjgl.opengl.GL33.glDisable
 import org.lwjgl.opengl.GL33.glEnable
 import org.lwjgl.opengl.GL33.glDrawBuffer
+import org.lwjgl.opengl.GL33.glDrawBuffers
 import org.lwjgl.opengl.GL33.glFramebufferTexture2D
+import org.lwjgl.opengl.GL33.glFramebufferRenderbuffer
 import org.lwjgl.opengl.GL33.glGenFramebuffers
 import org.lwjgl.opengl.GL33.glGetBoolean
 import org.lwjgl.opengl.GL11.glGetFloat
@@ -166,6 +171,156 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         namedTargetTextures.clear()
         frameCounter++
         evictStaleTargets()
+    }
+
+    /**
+     * 在最终世界 framebuffer 上临时挂载 HDR attachment，并让一次 draw 同时写入世界和 mask。
+     *
+     * 任何 attachment 占用、draw-buffer 布局或 framebuffer 完整性冲突都会在执行回调前返回 `false`。
+     */
+    override fun captureInlineAttachments(
+        context: RenderFrameContext,
+        owner: String,
+        target: ResourceLocation,
+        attachments: List<PostEffectAttachmentSpec>,
+        render: () -> Unit
+    ): Boolean {
+        if (attachments.size < 2) return false
+        val formats = attachments.map(PostEffectAttachmentSpec::format).distinct()
+        val mipCounts = attachments.map(PostEffectAttachmentSpec::mipLevels).distinct()
+        require(formats.size == 1 && mipCounts.size == 1) {
+            "Framebuffer '$target' must use one color format and mip count for all attachments"
+        }
+        val worldFramebuffer = glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING)
+        if (worldFramebuffer <= 0 || context.boundFramebufferId?.let { it != worldFramebuffer } == true) return false
+        val maxDrawBuffers = glGetInteger(GL_MAX_DRAW_BUFFERS)
+        if (attachments.size > maxDrawBuffers) return false
+        val previousDrawBuffers = IntArray(maxDrawBuffers) { index ->
+            glGetInteger(GL_DRAW_BUFFER0 + index)
+        }
+        if (previousDrawBuffers.firstOrNull() != GL_COLOR_ATTACHMENT0 ||
+            previousDrawBuffers.drop(1).any { buffer -> buffer != GL_NONE }
+        ) {
+            return false
+        }
+        val inlineAttachments = 1 until attachments.size
+        if (inlineAttachments.any { attachment ->
+                glGetFramebufferAttachmentParameteri(
+                    GL_DRAW_FRAMEBUFFER,
+                    GL_COLOR_ATTACHMENT0 + attachment,
+                    GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE
+                ) != GL_NONE
+            }
+        ) {
+            return false
+        }
+        val previousDepthType = glGetFramebufferAttachmentParameteri(
+            GL_DRAW_FRAMEBUFFER,
+            GL_DEPTH_ATTACHMENT,
+            GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE
+        )
+        val previousDepthName = if (previousDepthType == GL_NONE) {
+            0
+        } else {
+            glGetFramebufferAttachmentParameteri(
+                GL_DRAW_FRAMEBUFFER,
+                GL_DEPTH_ATTACHMENT,
+                GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME
+            )
+        }
+        val opaqueDepth = IrisCompat.currentTerrainDepthTexture()
+        val replaceDepth = opaqueDepth != null &&
+            (previousDepthType != GL_TEXTURE || previousDepthName != opaqueDepth.textureId)
+        if (!replaceDepth && previousDepthType == GL_NONE) return false
+        if (replaceDepth && previousDepthType != GL_NONE &&
+            previousDepthType != GL_TEXTURE && previousDepthType != GL_RENDERBUFFER
+        ) {
+            return false
+        }
+
+        val managed = targetFor(
+            context = context,
+            key = "$owner:pipeline:$target",
+            colorAttachmentCount = attachments.size,
+            format = formats.single(),
+            mipLevels = mipCounts.single()
+        )
+        managed.buffer.writeFrameBufferWith(false) {}
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, worldFramebuffer)
+        inlineAttachments.forEach { attachment ->
+            glFramebufferTexture2D(
+                GL_DRAW_FRAMEBUFFER,
+                GL_COLOR_ATTACHMENT0 + attachment,
+                GL_TEXTURE_2D,
+                managed.buffer.colorAttachments[attachment],
+                0
+            )
+        }
+        if (replaceDepth) {
+            glFramebufferTexture2D(
+                GL_DRAW_FRAMEBUFFER,
+                GL_DEPTH_ATTACHMENT,
+                GL_TEXTURE_2D,
+                requireNotNull(opaqueDepth).textureId,
+                0
+            )
+        }
+        glDrawBuffers(IntArray(attachments.size) { attachment -> GL_COLOR_ATTACHMENT0 + attachment })
+        fun restoreAttachments() {
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, worldFramebuffer)
+            inlineAttachments.forEach { attachment ->
+                glFramebufferTexture2D(
+                    GL_DRAW_FRAMEBUFFER,
+                    GL_COLOR_ATTACHMENT0 + attachment,
+                    GL_TEXTURE_2D,
+                    0,
+                    0
+                )
+            }
+            if (replaceDepth) {
+                when (previousDepthType) {
+                    GL_TEXTURE -> glFramebufferTexture2D(
+                        GL_DRAW_FRAMEBUFFER,
+                        GL_DEPTH_ATTACHMENT,
+                        GL_TEXTURE_2D,
+                        previousDepthName,
+                        0
+                    )
+                    GL_RENDERBUFFER -> glFramebufferRenderbuffer(
+                        GL_DRAW_FRAMEBUFFER,
+                        GL_DEPTH_ATTACHMENT,
+                        GL_RENDERBUFFER,
+                        previousDepthName
+                    )
+                    else -> glFramebufferTexture2D(
+                        GL_DRAW_FRAMEBUFFER,
+                        GL_DEPTH_ATTACHMENT,
+                        GL_TEXTURE_2D,
+                        0,
+                        0
+                    )
+                }
+            }
+            glDrawBuffers(previousDrawBuffers)
+        }
+        if (glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+            restoreAttachments()
+            return false
+        }
+
+        try {
+            render()
+        } finally {
+            restoreAttachments()
+        }
+        if (mipCounts.single() > 1) {
+            managed.buffer.generateMipmaps()
+        }
+        inlineAttachments.forEach { attachment ->
+            namedTargetTextures[NamedAttachment(target, attachment)] = managed.buffer.colorAttachments[attachment]
+        }
+        instanceLastSeenFrame[owner] = frameCounter
+        return true
     }
 
     /**

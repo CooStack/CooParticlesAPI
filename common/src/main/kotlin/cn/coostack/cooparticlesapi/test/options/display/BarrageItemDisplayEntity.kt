@@ -18,7 +18,7 @@ import net.minecraft.client.renderer.LightTexture
 import net.minecraft.client.renderer.MultiBufferSource
 import net.minecraft.client.renderer.RenderType
 import net.minecraft.client.renderer.texture.OverlayTexture
-import net.minecraft.network.FriendlyByteBuf
+import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.Items
@@ -109,7 +109,7 @@ class BarrageItemDisplayEntity(pos: Vec3, world: Level?) : DisplayEntity(pos, wo
     }
 
 
-    override fun getCodec(): StreamCodec<FriendlyByteBuf, DisplayEntity> {
+    override fun getCodec(): StreamCodec<in RegistryFriendlyByteBuf, DisplayEntity> {
         return DisplayEntityRegistryHelper.generateCodec(this)
     }
 

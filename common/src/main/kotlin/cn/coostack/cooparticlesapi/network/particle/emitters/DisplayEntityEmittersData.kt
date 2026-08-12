@@ -2,12 +2,14 @@ package cn.coostack.cooparticlesapi.network.particle.emitters
 
 import cn.coostack.cooparticlesapi.api.controler.Controlable
 import cn.coostack.cooparticlesapi.api.controler.SerializableData
+import cn.coostack.cooparticlesapi.CooParticlesAPI
 import cn.coostack.cooparticlesapi.display.DisplayEntityManager
 import cn.coostack.cooparticlesapi.display.DisplayEntity
 import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
 import io.netty.buffer.Unpooled
+import net.minecraft.core.RegistryAccess
+import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.client.multiplayer.ClientLevel
-import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.level.Level
@@ -41,27 +43,40 @@ class DisplayEntityEmittersData(
                     val bytes = ByteArray(size)
                     buf.readBytes(bytes)
                     val visibleRange = buf.readFloat()
-                    DisplayEntityEmittersData(type, bytes, visibleRange)
+                    DisplayEntityEmittersData(type, bytes, visibleRange).also {
+                        it.registryAccess = buf.registryAccess()
+                    }
                 }
             )
 
         @JvmStatic
         fun fromEntity(entity: DisplayEntity): DisplayEntityEmittersData {
-            val buf = FriendlyByteBuf(Unpooled.buffer())
+            val registryAccess = entity.world?.registryAccess() ?: registryAccessFallback()
+            val buf = RegistryFriendlyByteBuf(Unpooled.buffer(), registryAccess)
             entity.getCodec().encode(buf, entity)
             val data = ByteArray(buf.readableBytes())
             buf.readBytes(data)
-            return DisplayEntityEmittersData(entity::class.java.name, data)
+            return DisplayEntityEmittersData(entity::class.java.name, data).also {
+                it.registryAccess = registryAccess
+            }
+        }
+
+        private fun registryAccessFallback(): RegistryAccess {
+            return CooParticlesAPI.registryAccessOrNull
+                ?: RegistryAccess.fromRegistryOfRegistries(BuiltInRegistries.REGISTRY)
         }
     }
 
     private var template: DisplayEntity? = null
     private var preparedControler: DisplayEntity? = null
+    private var registryAccess: RegistryAccess? = null
 
-    private fun decodeEntity(): DisplayEntity {
+    private fun decodeEntity(registryAccess: RegistryAccess): DisplayEntity {
         val codec = DisplayEntityManager.registeredTypes[entityType]
             ?: throw IllegalStateException("DisplayEntity codec not registered for type: $entityType")
-        return codec.decode(FriendlyByteBuf(Unpooled.wrappedBuffer(entityData.copyOf())))
+        return codec.decode(
+            RegistryFriendlyByteBuf(Unpooled.wrappedBuffer(entityData.copyOf()), registryAccess)
+        )
     }
 
     private fun cloneEntity(entity: DisplayEntity): DisplayEntity {
@@ -75,12 +90,14 @@ class DisplayEntityEmittersData(
         return ins.apply { update(entity) }
     }
 
-    private fun resolveEntity(): DisplayEntity {
-        return template ?: decodeEntity().also { template = it }
+    private fun resolveEntity(registryAccess: RegistryAccess? = null): DisplayEntity {
+        return template ?: decodeEntity(
+            registryAccess ?: this.registryAccess ?: registryAccessFallback()
+        ).also { template = it }
     }
 
-    private fun createEntity(): DisplayEntity {
-        return cloneEntity(resolveEntity())
+    private fun createEntity(registryAccess: RegistryAccess? = null): DisplayEntity {
+        return cloneEntity(resolveEntity(registryAccess))
     }
 
     override fun getCodec(): StreamCodec<RegistryFriendlyByteBuf, out SerializableData> {
@@ -102,7 +119,7 @@ class DisplayEntityEmittersData(
         particleLerpProcess: Float,
         posLerpProcess: Float
     ): Controlable<*> {
-        val entity = createEntity()
+        val entity = createEntity(world.registryAccess())
         entity.world = world
         entity.pos = pos
         preparedControler = entity

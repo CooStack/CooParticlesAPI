@@ -152,6 +152,19 @@ internal interface PostEffectResourceBackend {
 /** Pipeline world 节点把一个逻辑 FBO attachment 准备为后续 sampler 输入时使用。 */
 internal interface PostEffectAttachmentPreparationBackend {
     /**
+     * 尝试把后处理 attachment 临时挂到当前世界 framebuffer，并在同一次几何绘制中写入。
+     *
+     * 默认返回 `false`，调用方会恢复为世界绘制和离屏捕获各执行一次的兼容路径。
+     */
+    fun captureInlineAttachments(
+        context: RenderFrameContext,
+        owner: String,
+        target: ResourceLocation,
+        attachments: List<PostEffectAttachmentSpec>,
+        render: () -> Unit
+    ): Boolean = false
+
+    /**
      * 执行 `PostEffectAttachmentPreparationBackend` 定义的 `captureAttachment` 操作；输入和返回值用于该组件当前的渲染职责。
      *
      * 示例：`captureAttachment(context = context, owner = owner, target = target, attachment = attachment, render = render)`。
@@ -278,6 +291,18 @@ internal object PostEffectFrameExecutor {
     /** 释放 backend 持有的临时纹理、FBO、shader program 等资源。 */
     fun releaseBackendResources() {
         (backend as? PostEffectResourceBackend)?.release()
+    }
+
+    /** 尝试在当前世界 framebuffer 上以内联 MRT 方式捕获 Pipeline attachment。 */
+    internal fun captureInlineAttachments(
+        context: RenderFrameContext,
+        owner: String,
+        target: ResourceLocation,
+        attachments: List<PostEffectAttachmentSpec>,
+        render: () -> Unit
+    ): Boolean {
+        val attachmentBackend = backend as? PostEffectAttachmentPreparationBackend ?: return false
+        return attachmentBackend.captureInlineAttachments(context, owner, target, attachments, render)
     }
 
     /**

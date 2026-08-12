@@ -105,7 +105,7 @@ class RenderEntityInstance<T : RenderEntity>(
         modelMatrix: Matrix4fStack,
         stateGuard: RenderStateGuard
     ) {
-        if (!hasWorldPass()) return
+        if (!renderer.shaderPackHandled || !hasWorldPass()) return
         // Iris 后续会再次捕获同一实体的 mask；复用本次可见绘制的插值矩阵，避免位置更新后两次绘制错位。
         frameWorldModelMatrix.set(modelMatrix)
         frameWorldModelPrepared = true
@@ -168,6 +168,9 @@ class RenderEntityInstance<T : RenderEntity>(
         return RenderFrameStage.SCENE_POST in pipelineRuntime.compiledPipeline.stages
     }
 
+    /** @return 可见世界几何是否交给当前 shader pack 处理 */
+    internal fun isShaderPackHandled(): Boolean = renderer.shaderPackHandled
+
     /**
      * 更新 `RenderEntityInstance` 的 `markRemoved` 状态；修改会影响后续查询、构建或当前帧绘制。
      *
@@ -206,12 +209,25 @@ class RenderEntityInstance<T : RenderEntity>(
                     owner = entity.uuid.toString(),
                     compiled = pipelineRuntime.compiledPipeline,
                     postEffect = instance,
-                    attachments = pipelineRuntime.worldAttachments
+                    attachments = pipelineRuntime.worldAttachments,
+                    shaderPackHandled = renderer.shaderPackHandled,
+                    renderWorld = { renderSceneWorld(context) }
                 ) { output ->
                     renderOffscreen(context, output)
                 }
             )
         }
+    }
+
+    /** 在场景后处理调度点提交一次世界几何，并缓存矩阵供失败回退的离屏捕获复用。 */
+    private fun renderSceneWorld(context: RenderFrameContext) {
+        if (consumeIrisWorldPass()) return
+        val stack = Matrix4fStack(16)
+        stack.set(RenderUtil.buildModelMatrix(entity, context.tickDelta))
+        frameWorldModelMatrix.set(stack)
+        frameWorldModelPrepared = true
+        renderWorld(context.tickDelta, context.viewMatrix, context.projMatrix, stack, offscreenStateGuard)
+        entity.lastRenderPos = entity.pos
     }
 
     private fun renderOffscreen(context: RenderFrameContext, output: CooPipelineOutputPort) {

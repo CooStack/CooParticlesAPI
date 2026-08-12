@@ -22,6 +22,15 @@ import cn.coostack.cooparticlesapi.renderer.pipeline.CooRenderPipeline
  */
 interface RenderEntityRenderer<T : RenderEntity> {
     /**
+     * 是否让可见世界几何进入当前 shader pack 的实体渲染阶段。
+     *
+     * `true` 会让可见几何进入 Iris，参与 shader pack 的曝光、雾和材质处理。
+     * `false` 会在 shader pack final pass 后绘制，适合需要保持自身颜色和后处理结果的特效。
+     * 未启用 shader pack 时，该设置不改变绘制结果。
+     */
+    val shaderPackHandled: Boolean get() = false
+
+    /**
      * 该实体类型共享的不可变渲染 pipeline。
      *
      * Runtime 会缓存它的拓扑编译结果，因此实现不能在实体绘制期间替换或修改 pipeline 图。

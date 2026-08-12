@@ -17,7 +17,7 @@ object CooPipelines {
     ).build()
 
     /**
-     * 共享几何 mask bloom 模板。
+     * 共享选择性 HDR bloom 模板。
      *
      * preset 本身就是普通节点和 line 组成的 DAG，compiler 不包含 bloom 专用分支。
      */
@@ -30,8 +30,8 @@ object CooPipelines {
         val geometry = world("geometry") {
             vertex(id("core/vertex/render_entity_model.vsh"))
             fragment(id("core/fragment/render_entity_model.fsh"))
-            outputFormat(CooTextureFormat.RGBA16F)
             maskOutput()
+            outputFormat(CooTextureFormat.RGBA16F)
         }
         val extract = pass("bloom_extract") {
             fragment(id("post/bloom_bright_extract.fsh"))

@@ -67,11 +67,6 @@ object ClientRenderPipelineManager {
         /** 在云层、天气或 Iris final pass 完成后执行最终场景后处理。 */
         override fun runScenePost(context: RenderFrameContext) {
             if (!scenePostCaptured) {
-                ClientRenderEntityManager.renderSceneWorldPass(
-                    context.tickDelta,
-                    context.viewMatrix,
-                    context.projMatrix
-                )
                 ClientRenderEntityManager.preparePostProcess(context.tickDelta, context.viewMatrix, context.projMatrix)
                 PostEffectFrameExecutor.prepareFrame(context)
             }

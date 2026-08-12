@@ -13,7 +13,6 @@ import io.netty.buffer.Unpooled
 import net.minecraft.client.Camera
 import net.minecraft.client.DeltaTracker
 import net.minecraft.client.renderer.MultiBufferSource
-import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.level.Level
@@ -27,7 +26,7 @@ object DisplayEntityManager {
 
     val serverView = ConcurrentHashMap<UUID, DisplayEntity>()
 
-    val registeredTypes = ConcurrentHashMap<String, StreamCodec<FriendlyByteBuf, DisplayEntity>>()
+    val registeredTypes = ConcurrentHashMap<String, StreamCodec<in RegistryFriendlyByteBuf, DisplayEntity>>()
 
     fun addClient(entity: DisplayEntity) {
         entity.prevPos = entity.pos

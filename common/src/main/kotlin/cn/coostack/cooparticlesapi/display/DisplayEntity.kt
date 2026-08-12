@@ -13,6 +13,7 @@ import com.mojang.blaze3d.vertex.PoseStack
 import net.minecraft.client.Camera
 import net.minecraft.client.renderer.MultiBufferSource
 import net.minecraft.network.FriendlyByteBuf
+import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
@@ -138,7 +139,7 @@ abstract class DisplayEntity(
         camera: Camera
     )
 
-    abstract fun getCodec(): StreamCodec<FriendlyByteBuf, DisplayEntity>
+    abstract fun getCodec(): StreamCodec<in RegistryFriendlyByteBuf, DisplayEntity>
 
     open fun canRender(
         view: Matrix4f, proj: Matrix4f, modelMatrixStack: PoseStack, lerp: Float, camera: Camera

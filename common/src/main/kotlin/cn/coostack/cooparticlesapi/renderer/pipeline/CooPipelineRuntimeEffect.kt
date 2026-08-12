@@ -2,6 +2,7 @@ package cn.coostack.cooparticlesapi.renderer.pipeline
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameStage
+import cn.coostack.cooparticlesapi.renderer.backend.VanillaSafeRenderBackend
 import cn.coostack.cooparticlesapi.renderer.effects.RenderEffectDescriptor
 import cn.coostack.cooparticlesapi.renderer.effects.RenderEffectRegistry
 import cn.coostack.cooparticlesapi.renderer.post.PostEffectAttachmentSpec
@@ -21,66 +22,100 @@ internal object CooPipelineRuntimeEffect {
     )
     private var warnedMissingCaptureBackend = false
     private val capturedBatches = ArrayList<PostEffectInstance>()
+    private val capturedOwners = linkedSetOf<String>()
     private var nextBatchId = 0
 
     /** 清理上一帧未消费的 Iris 预捕获批次。 */
     fun beginFrame() {
         capturedBatches.clear()
+        capturedOwners.clear()
         nextBatchId = 0
     }
 
     /** 在客户端注册共享 Pipeline 的后处理执行器。 */
     fun initOnClient() {
         RenderEffectRegistry.register(effectType) { context, effects ->
+            var requests = effects.mapNotNull { effect -> effect.payload as? Request }
             if (context.stage == RenderFrameStage.SCENE_POST && capturedBatches.isNotEmpty()) {
                 val frozenBatches = capturedBatches.toList()
                 capturedBatches.clear()
                 PostEffectFrameExecutor.execute(context, frozenBatches)
-                return@register
+                requests = requests.filterNot { request -> request.owner in capturedOwners }
+                capturedOwners.clear()
             }
 
-            val requestsByBatch = effects
-                .mapNotNull { effect -> effect.payload as? Request }
-                .groupBy { request -> request.batchKey() }
+            val requestsByBatch = requests.groupBy { request -> request.batchKey() }
             requestsByBatch.forEach pipelineLoop@{ (batchKey, requests) ->
                 // 不同亮度的同一 pipeline 必须拥有独立 FBO；否则后捕获的实体会覆盖先前 batch。
                 val batchId = nextBatchId++
                 val batchOwner = batchKey.runtimeOwner(batchId)
                 val canonical = requests.minBy(Request::owner)
+                if (context.stage == RenderFrameStage.SCENE_CAPTURE && !canonical.shaderPackHandled) {
+                    return@pipelineLoop
+                }
                 val attachmentsByFramebuffer = requests
                     .flatMap(Request::attachments)
                     .groupBy(CooCompiledAttachment::framebuffer)
                 val batchTargets = attachmentsByFramebuffer.keys.associateWith { framebuffer ->
                     framebuffer.batchTarget(batchId)
                 }
-                val captured = attachmentsByFramebuffer.all { (framebuffer, attachments) ->
+                fun attachmentSpecs(attachments: List<CooCompiledAttachment>): List<PostEffectAttachmentSpec> {
                     val formats = attachments.map { it.output.format }.distinct()
                     val mipLevels = attachments.map { it.output.mipLevels }.distinct()
                     require(formats.size == 1 && mipLevels.size == 1) {
-                        "Framebuffer '$framebuffer' must use one color format and mip count for all attachments"
+                        "A framebuffer must use one color format and mip count for all attachments"
                     }
                     val attachmentCount = attachments.maxOf { it.output.attachment } + 1
                     val spec = PostEffectAttachmentSpec(formats.single(), mipLevels.single())
-                    PostEffectFrameExecutor.captureAttachments(
-                        context = context,
-                        owner = batchOwner,
-                        target = batchTargets.getValue(framebuffer),
-                        attachments = List(attachmentCount) { spec }
-                    ) {
-                        requests.forEach requestLoop@{ request ->
-                            request.attachments
-                                .asSequence()
-                                .filter { attachment -> attachment.framebuffer == framebuffer }
-                                .distinctBy { attachment -> attachment.output.node }
-                                .forEach { attachment -> request.render(attachment.output) }
+                    return List(attachmentCount) { spec }
+                }
+                fun captureOffscreen(): Boolean {
+                    return attachmentsByFramebuffer.all { (framebuffer, attachments) ->
+                        PostEffectFrameExecutor.captureAttachments(
+                            context = context,
+                            owner = batchOwner,
+                            target = batchTargets.getValue(framebuffer),
+                            attachments = attachmentSpecs(attachments)
+                        ) {
+                            requests.forEach requestLoop@{ request ->
+                                request.attachments
+                                    .asSequence()
+                                    .filter { attachment -> attachment.framebuffer == framebuffer }
+                                    .distinctBy { attachment -> attachment.output.node }
+                                    .forEach { attachment -> request.render(attachment.output) }
+                            }
                         }
                     }
                 }
                 if (context.stage == RenderFrameStage.SCENE_CAPTURE) {
+                    val captured = captureOffscreen()
                     if (captured) {
                         capturedBatches += canonical.postEffect.withBatchUniforms(batchKey, batchOwner, batchTargets)
+                        capturedOwners += requests.map(Request::owner)
                     }
                     return@pipelineLoop
+                }
+                val inlineEntry = attachmentsByFramebuffer.entries.singleOrNull()
+                val inlineCaptured = context.stage == RenderFrameStage.SCENE_POST &&
+                    (context.backend === VanillaSafeRenderBackend ||
+                        requests.all { request -> !request.shaderPackHandled }) &&
+                    inlineEntry != null &&
+                    requests.all { request -> request.inlineCaptureCompatible } &&
+                    PostEffectFrameExecutor.captureInlineAttachments(
+                        context = context,
+                        owner = batchOwner,
+                        target = batchTargets.getValue(inlineEntry.key),
+                        attachments = attachmentSpecs(inlineEntry.value)
+                    ) {
+                        requests.forEach { request -> request.renderWorld() }
+                    }
+                val captured = if (inlineCaptured) {
+                    true
+                } else {
+                    if (context.stage == RenderFrameStage.SCENE_POST) {
+                        requests.forEach { request -> request.renderWorld() }
+                    }
+                    captureOffscreen()
                 }
                 if (!captured) {
                     if (!warnedMissingCaptureBackend) {
@@ -103,6 +138,8 @@ internal object CooPipelineRuntimeEffect {
         compiled: CooCompiledPipeline,
         postEffect: PostEffectInstance,
         attachments: List<CooCompiledAttachment>,
+        shaderPackHandled: Boolean = false,
+        renderWorld: () -> Unit,
         render: (CooPipelineOutputPort) -> Unit
     ): RenderEffectDescriptor {
         return RenderEffectDescriptor(
@@ -110,7 +147,15 @@ internal object CooPipelineRuntimeEffect {
             effectId = "$owner:pipeline",
             sourceInstanceId = owner,
             requiredCapabilities = compiled.requiredCapabilities,
-            payload = Request(owner, postEffect, attachments, render)
+            payload = Request(
+                owner,
+                postEffect,
+                attachments,
+                shaderPackHandled,
+                supportsInlineCapture(compiled, attachments),
+                renderWorld,
+                render
+            )
         )
     }
 
@@ -119,12 +164,16 @@ internal object CooPipelineRuntimeEffect {
         val owner: String,
         val postEffect: PostEffectInstance,
         val attachments: List<CooCompiledAttachment>,
+        val shaderPackHandled: Boolean,
+        val inlineCaptureCompatible: Boolean,
+        val renderWorld: () -> Unit,
         val render: (CooPipelineOutputPort) -> Unit
     ) {
         /** 解析会影响 fullscreen 结果的参数，作为当前请求的合批键。 */
         fun batchKey(): PipelineBatchKey {
             return PipelineBatchKey(
                 pipelineId = postEffect.type.id,
+                shaderPackHandled = shaderPackHandled,
                 params = postEffect.params,
                 uniforms = postEffect.type.chain.passes.map { pass ->
                     PassUniformValues(
@@ -138,9 +187,26 @@ internal object CooPipelineRuntimeEffect {
         }
     }
 
+    /** 只允许一个同时写入世界颜色和非零 attachment 的 world 节点进入 inline MRT。 */
+    private fun supportsInlineCapture(
+        compiled: CooCompiledPipeline,
+        attachments: List<CooCompiledAttachment>
+    ): Boolean {
+        if (attachments.isEmpty() || attachments.any { it.output.attachment == 0 }) return false
+        if (attachments.map(CooCompiledAttachment::framebuffer).distinct().size != 1) return false
+        val attachmentNodes = attachments.map { it.output.node }.toSet()
+        if (attachmentNodes.size != 1) return false
+        val worldNodes = compiled.lines.mapNotNull { line ->
+            if (line.input !is CooPipelineTarget.World) return@mapNotNull null
+            (line.output as? CooPipelineOutputPort)?.node
+        }.toSet()
+        return worldNodes == attachmentNodes
+    }
+
     /** Pipeline ID、参数快照和 fullscreen uniform 的不可变合批键。 */
     private data class PipelineBatchKey(
         val pipelineId: ResourceLocation,
+        val shaderPackHandled: Boolean,
         val params: PostEffectParams,
         val uniforms: List<PassUniformValues>
     )

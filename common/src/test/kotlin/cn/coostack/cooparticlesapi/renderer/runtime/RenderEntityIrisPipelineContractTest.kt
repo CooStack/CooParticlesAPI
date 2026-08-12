@@ -18,6 +18,8 @@ class RenderEntityIrisPipelineContractTest {
 
         assertFalse("IrisWorldPassMode" in rendererApi)
         assertFalse("IrisWorldPassRenderEntityRenderer" in rendererApi)
+        assertTrue("val shaderPackHandled: Boolean get() = false" in rendererApi)
+        assertTrue("!renderer.shaderPackHandled" in instance)
         assertTrue("IrisCompat.runWithRenderEntityShader" in instance)
         assertTrue("irisWorldPassSubmitted" in instance)
         assertTrue("frameWorldModelMatrix" in instance)
@@ -38,9 +40,12 @@ class RenderEntityIrisPipelineContractTest {
 
         assertTrue("renderIrisWorldPass" in levelMixin)
         assertTrue("renderIrisWorldPass" in manager)
+        assertTrue(".filter(RenderEntityInstance<RenderEntity>::isShaderPackHandled)" in manager)
         assertTrue("GameRenderer.getRendertypeEntityTranslucentShader()" in irisCompat)
         assertTrue("entityShader.apply()" in irisCompat)
         assertTrue("entityShader.clear()" in irisCompat)
+        assertTrue("getDepthTextureNoTranslucents" in irisCompat)
+        assertTrue("getDepthTextureId" in irisCompat)
     }
 
     private fun readProjectFile(relativePath: String): String {

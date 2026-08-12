@@ -8,8 +8,6 @@ in vec3 beamCoord;
 uniform vec3 color = vec3(0.28, 0.82, 1.0);
 uniform float alpha = 0.24;
 uniform float brightness = 1.6;
-uniform float maskAlpha = 0.0;
-uniform float maskBrightness = 0.0;
 uniform float phaseProgress = 1.0;
 uniform float collapse = 0.0;
 uniform float opacity = 1.0;
@@ -83,17 +81,14 @@ void main() {
     if (layerMode == 1) {
         float glowBody = hotCore * 1.08 + core * 0.18 + wave * 0.035;
         float shapeAlpha = saturate(alpha * (glowBody + 0.004)) * collapseFade;
-        float maskShapeAlpha = saturate(maskAlpha * (glowBody + 0.004)) * collapseFade;
-        if (max(shapeAlpha, maskShapeAlpha) <= 0.002) {
+        if (shapeAlpha <= 0.002) {
             discard;
         }
 
         vec3 beamColor = mix(color * 0.64, whiteHot, saturate(hotCore * 1.45 + core * 0.10));
         beamColor *= brightness * (0.72 + hotCore * 0.76 + core * 0.18);
-        vec3 maskColor = mix(color * 0.64, whiteHot, saturate(hotCore * 1.45 + core * 0.10));
-        maskColor *= maskBrightness * (0.72 + hotCore * 0.76 + core * 0.18);
-        FragColor = shapeAlpha > 0.002 ? vec4(beamColor, shapeAlpha * opacity) : vec4(0.0);
-        MaskColor = maskShapeAlpha > 0.002 ? vec4(maskColor, maskShapeAlpha * opacity) : vec4(0.0);
+        FragColor = vec4(beamColor, shapeAlpha * opacity);
+        MaskColor = FragColor;
         return;
     }
 
@@ -104,19 +99,9 @@ void main() {
     float shapeAlpha = saturate(alpha * (outerBody + 0.012 + smokeRidge * 0.06)) *
         collapseFade * shellVisibility;
     shapeAlpha *= 1.0 - smokeGroove * 0.50;
-    float maskShapeAlpha = saturate(maskAlpha * (outerBody + 0.012 + smokeRidge * 0.06)) *
-        collapseFade * shellVisibility;
-    maskShapeAlpha *= 1.0 - smokeGroove * 0.50;
-    if (max(shapeAlpha, maskShapeAlpha) <= 0.002) {
+    if (shapeAlpha <= 0.002) {
         discard;
     }
-
-    float outputMaskAlpha = saturate(
-        maskShapeAlpha * 1.85 + smokeRidge * maskAlpha * 0.18 + rim * maskAlpha * 0.10
-    );
-    vec3 maskColor = mix(color * 0.82, vec3(1.0, 0.76, 0.98), saturate(smokeRidge * 0.36 + rim * 0.20));
-    maskColor *= maskBrightness * (0.88 + smokeRidge * 0.34 + rim * 0.22 + shock * 0.16);
-    MaskColor = maskShapeAlpha > 0.002 ? vec4(maskColor, outputMaskAlpha * opacity) : vec4(0.0);
 
     vec3 smokeTint = mix(color * 0.58, vec3(0.70, 0.88, 1.0), smokeRidge * 0.22);
     vec3 beamColor = mix(outer, smokeTint, saturate(smokeRidge * 0.62 + rim * 0.24));
@@ -125,5 +110,6 @@ void main() {
         (0.52 + rim * 0.16 + flow * 0.04 + wave * 0.04 + shock * 0.08 + smokeRidge * 0.24);
     beamColor *= 1.0 - smokeGroove * 0.34;
 
-    FragColor = shapeAlpha > 0.002 ? vec4(beamColor, shapeAlpha * opacity) : vec4(0.0);
+    FragColor = vec4(beamColor, shapeAlpha * opacity);
+    MaskColor = FragColor;
 }
