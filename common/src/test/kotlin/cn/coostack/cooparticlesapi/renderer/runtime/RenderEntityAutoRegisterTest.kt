@@ -190,6 +190,27 @@ class RenderEntityAutoRegisterTest {
         assertTrue(StaticInitializationState.initialized)
     }
 
+    @Test
+    fun `metadata loading does not depend on thread context classloader`() {
+        val rendererClass = TestRenderer::class.java
+
+        val thread = Thread.currentThread()
+        val originalClassLoader = thread.contextClassLoader
+        thread.contextClassLoader = object : ClassLoader(originalClassLoader) {
+            override fun loadClass(name: String, resolve: Boolean): Class<*> {
+                if (name == rendererClass.name) throw ClassNotFoundException(name)
+                return super.loadClass(name, resolve)
+            }
+        }
+        val loadedClass = try {
+            SimpleClassInfo(rendererClass.name, hashSetOf()).toClass(false)
+        } finally {
+            thread.contextClassLoader = originalClassLoader
+        }
+
+        assertSame(rendererClass, loadedClass)
+    }
+
     private class TestRenderEntity : RenderEntity(null, Vec3.ZERO) {
         override fun getCodec(): StreamCodec<FriendlyByteBuf, RenderEntity> = CODEC
 

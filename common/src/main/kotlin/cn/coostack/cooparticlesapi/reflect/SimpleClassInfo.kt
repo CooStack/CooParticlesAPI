@@ -21,8 +21,7 @@ class SimpleClassInfo(val type: String, val annotations: HashSet<String>) {
      * 客户端 renderer 扫描使用 `initialize = false`，防止注册阶段提前创建渲染资源。
      */
     fun toClass(initialize: Boolean): Class<*> {
-        val classLoader = Thread.currentThread().contextClassLoader ?: SimpleClassInfo::class.java.classLoader
-        return Class.forName(type, initialize, classLoader)
+        return Class.forName(type, initialize, SimpleClassInfo::class.java.classLoader)
     }
 
 }
