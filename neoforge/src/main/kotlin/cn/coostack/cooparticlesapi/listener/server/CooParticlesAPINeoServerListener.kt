@@ -7,6 +7,7 @@ import cn.coostack.cooparticlesapi.event.CooEventBus
 import cn.coostack.cooparticlesapi.event.events.server.ServerPostTickEvent
 import cn.coostack.cooparticlesapi.event.events.server.ServerPreTickEvent
 import cn.coostack.cooparticlesapi.network.particle.composition.manager.ParticleCompositionManager
+import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersManager
 import cn.coostack.cooparticlesapi.test.TestManager
 import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.fml.common.EventBusSubscriber
@@ -36,6 +37,7 @@ object CooParticlesAPINeoServerListener {
         if (!event.entity.level().isClientSide) {
             TestManager.clearServerFor(event.entity)
             ParticleCompositionManager.clearVisibleFor(event.entity)
+            ParticleEmittersManager.clearVisibleFor(event.entity)
         }
     }
 

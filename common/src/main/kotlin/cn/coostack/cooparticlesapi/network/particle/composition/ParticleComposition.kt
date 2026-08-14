@@ -2,6 +2,7 @@ package cn.coostack.cooparticlesapi.network.particle.composition
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.annotations.codec.CodecHelper
+import cn.coostack.cooparticlesapi.api.NetworkDirtyMarkable
 import cn.coostack.cooparticlesapi.extend.asRelative
 import cn.coostack.cooparticlesapi.api.controler.server.ServerControler
 import cn.coostack.cooparticlesapi.network.particle.composition.manager.ParticleCompositionManager
@@ -51,7 +52,7 @@ import kotlin.math.PI
  * @see cn.coostack.cooparticlesapi.annotations.composition.ParticleCompositionRegister
  */
 abstract class ParticleComposition : ServerControler<ParticleComposition>,
-    Controlable<ParticleComposition>, Tickable<ParticleComposition> {
+    Controlable<ParticleComposition>, Tickable<ParticleComposition>, NetworkDirtyMarkable {
     companion object {
         @JvmStatic
         fun encodeBase(data: ParticleComposition, buf: FriendlyByteBuf) {
@@ -106,6 +107,11 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
      * 粒子可视范围
      */
     var visibleRange = 256.0
+        set(value) {
+            if (field == value) return
+            field = value
+            markNetworkStateDirty()
+        }
 
     var scale = 1.0
         private set
@@ -157,6 +163,74 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
     private var gpuTransformActive = false
     private var cParticleAppliedScale = 1.0
     private var cParticleScaleCollapsed = false
+    private var networkStateDirty = true
+    private var networkFullDirty = true
+    private var lastNetworkStatus = status.displayStatus
+    private var lastNetworkStatusInterval = status.closedInternal
+
+    /**
+     * 标记此 Composition 的完整网络状态需要重新同步。
+     *
+     * 自定义同步字段优先使用 `var value by dirty(initial)`；普通 `@CodecField` 修改后需要显式调用本方法。
+     */
+    override fun markDirty() {
+        if (world?.isClientSide != true) {
+            networkFullDirty = true
+            networkStateDirty = true
+        }
+    }
+
+    internal fun markNetworkStateDirty() {
+        if (world?.isClientSide != true) {
+            networkStateDirty = true
+        }
+    }
+
+    internal fun consumeNetworkFullDirty(): Boolean {
+        val dirty = networkFullDirty
+        networkFullDirty = false
+        return dirty
+    }
+
+    internal fun hasNetworkFullDirty(): Boolean = networkFullDirty
+
+    internal fun hasNetworkStateDirty(): Boolean {
+        updateNetworkStatusDirty()
+        return networkStateDirty
+    }
+
+    internal fun consumeNetworkStateDirty(): Boolean {
+        updateNetworkStatusDirty()
+        val dirty = networkStateDirty
+        networkStateDirty = false
+        return dirty
+    }
+
+    private fun updateNetworkStatusDirty() {
+        if (lastNetworkStatus != status.displayStatus ||
+            lastNetworkStatusInterval != status.closedInternal
+        ) {
+            networkStateDirty = true
+            lastNetworkStatus = status.displayStatus
+            lastNetworkStatusInterval = status.closedInternal
+        }
+    }
+
+    internal fun applyRemoteState(
+        position: Vec3,
+        visibleRange: Double,
+        scale: Double,
+        displayStatus: Int,
+        closedInterval: Int,
+        current: Int,
+    ) {
+        this.visibleRange = visibleRange
+        if (this.position != position) teleportTo(position)
+        if (this.scale != scale) scale(scale)
+        status.setStatus(displayStatus)
+        status.closedInternal = closedInterval
+        status.updateCurrent(current)
+    }
 
     abstract fun getCodec(): StreamCodec<FriendlyByteBuf, ParticleComposition>
 
@@ -172,6 +246,7 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
      */
     fun setDisabledInterval(interval: Int): ParticleComposition {
         this.status.closedInternal = interval
+        markNetworkStateDirty()
         return this
     }
 
@@ -443,7 +518,9 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
             CooParticlesConstants.logger.error("scale can not be less than zero")
             return
         }
+        if (scale == new) return
         scale = new
+        markNetworkStateDirty()
         // 如果没有创建, 那么此处的环境100%是创建此对象时使用的环境
         // 多为服务端(除非有人使在Client环境创建了这个类)
         if (displayed) {
@@ -558,6 +635,10 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
         ParticleCompositionManager.setClientLoaded(this, false)
         canceled = false
         displayed = false
+        networkStateDirty = true
+        networkFullDirty = true
+        lastNetworkStatus = status.displayStatus
+        lastNetworkStatusInterval = status.closedInternal
     }
 
     /**
@@ -663,7 +744,9 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
     }
 
     override fun teleportTo(to: Vec3) {
+        if (position == to) return
         position = to
+        markNetworkStateDirty()
         toggleRelative()
     }
 

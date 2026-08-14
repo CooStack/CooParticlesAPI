@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi.network.particle.util
 
+import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleBatchS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleS2C
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
@@ -8,6 +9,40 @@ import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.phys.Vec3
 
 object ServerParticleUtil {
+
+    @JvmStatic
+    fun spawnBatch(
+        type: ParticleOptions,
+        world: ServerLevel,
+        positions: Iterable<Vec3>,
+        velocity: Vec3,
+        range: Double,
+    ) {
+        val allPositions = positions.toList()
+        if (allPositions.isEmpty()) return
+        world.players().forEach { player ->
+            val visiblePositions = allPositions.filter { player.position().distanceTo(it) <= range }
+            visiblePositions.chunked(PacketParticleBatchS2C.MAX_PARTICLES).forEach { batch ->
+                CooParticlesServices.SERVER_NETWORK.send(PacketParticleBatchS2C(type, batch, velocity), player)
+            }
+        }
+    }
+
+    @JvmStatic
+    fun spawnBatch(
+        type: ParticleOptions,
+        world: ServerLevel,
+        positions: Iterable<Vec3>,
+        velocity: Vec3,
+    ) {
+        positions.toList()
+            .chunked(PacketParticleBatchS2C.MAX_PARTICLES)
+            .filter { it.isNotEmpty() }
+            .forEach { batch ->
+                val packet = PacketParticleBatchS2C(type, batch, velocity)
+                world.players().forEach { CooParticlesServices.SERVER_NETWORK.send(packet, it) }
+            }
+    }
     /**
      * 使用minecraft的 spawnParticle方法
      * 可能无法设置粒子移动方向

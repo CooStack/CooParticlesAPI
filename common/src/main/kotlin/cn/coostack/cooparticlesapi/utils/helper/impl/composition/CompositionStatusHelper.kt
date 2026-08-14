@@ -12,7 +12,7 @@ class CompositionStatusHelper : StatusHelper() {
     private var composition: ParticleComposition? = null
     private var init = false
     override fun changeStatus(status: Int) {
-        // composition 无需手动调用 会有自动同步的
+        composition?.markNetworkStateDirty()
     }
 
     fun updateCurrent(current: Int) {

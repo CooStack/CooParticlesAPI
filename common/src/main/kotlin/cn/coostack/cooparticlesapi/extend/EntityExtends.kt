@@ -8,6 +8,9 @@ import cn.coostack.cooparticlesapi.data.holder.DataHolder
 import cn.coostack.cooparticlesapi.data.holder.DataHolderManager
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
+import net.minecraft.sounds.SoundEvent
+import net.minecraft.sounds.SoundEvents
+import net.minecraft.sounds.SoundSource
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.level.ClipContext
 import net.minecraft.world.phys.AABB
@@ -97,6 +100,20 @@ inline fun <reified T : Entity> Entity.getEntitiesByClass(size: Double, predicat
 
 inline fun <reified T : Entity> Entity.getEntitiesByClass(box: HitBox, predicate: Predicate<T>) = let {
     level().getEntitiesOfClass<T>(T::class.java, box.ofBox(position()), predicate)
+}
+
+@JvmOverloads
+fun Entity.playSoundAt(sound: SoundEvent, volume: Float = 1f, pitch: Float = 1f) = apply {
+    this.level().playSound(
+        null, blockPosition(), sound, soundSource, volume, pitch
+    )
+}
+
+@JvmOverloads
+fun Entity.playSoundAt(sound: SoundEvent, source: SoundSource, volume: Float = 1f, pitch: Float = 1f) = apply {
+    this.level().playSound(
+        null, blockPosition(), sound, source, volume, pitch
+    )
 }
 
 private fun Vec3.toCylinderOffset(length: Double): Vec3 {

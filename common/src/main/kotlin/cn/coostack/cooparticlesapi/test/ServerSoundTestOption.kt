@@ -256,6 +256,7 @@ abstract class BaseServerSoundTestOption<T : BaseServerSoundTestOption<T>>(
             .name(testId)
             .layer(layer)
             .looping()
+            .lifetime(-1)
             .spawn()
             .track()
     }

@@ -17,6 +17,7 @@ import net.minecraft.client.Minecraft
 import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.server.level.ServerPlayer
+import net.minecraft.world.entity.player.Player
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
 import java.util.HashSet
@@ -32,6 +33,7 @@ object ParticleEmittersManager {
      */
     val serverEmitters = HashMap<UUID, ParticleEmitters>()
     internal val visible = ConcurrentHashMap<UUID, MutableSet<ParticleEmitters>>()
+    private val dirtyEmitters = ConcurrentHashMap.newKeySet<UUID>()
 
     /**
      * 客户端可视
@@ -79,25 +81,44 @@ object ParticleEmittersManager {
         serverEmitters[emitters.uuid] = emitters
         emitters.start()
         updateClientVisible(emitters)
+        dirtyEmitters.remove(emitters.uuid)
+    }
+
+    fun createClient(emitters: ParticleEmitters, viewWorld: Level) {
+        emitters.world = viewWorld
+        clientEmitters.remove(emitters.uuid)?.let { previous ->
+            previous.canceled = true
+            finishClientSystems(previous)
+            CooEventBus.call(EmitterRemoveEvent(previous, true))
+        }
+        emitters.canceled = false
+        emitters.playing = false
+        clientEmitters[emitters.uuid] = emitters
+        emitters.start()
+        CooEventBus.call(EmitterSpawnEvent(emitters, true))
+    }
+
+    fun changeClient(emitters: ParticleEmitters, viewWorld: Level) {
+        val current = clientEmitters[emitters.uuid] ?: return
+        if (current.canceled) return
+        emitters.world = viewWorld
+        current.update(emitters)
+        current.world = viewWorld
+    }
+
+    fun removeClient(uuid: UUID) {
+        val emitters = clientEmitters.remove(uuid) ?: return
+        emitters.canceled = true
+        finishClientSystems(emitters)
+        CooEventBus.call(EmitterRemoveEvent(emitters, true))
     }
 
     fun createOrChangeClient(emitters: ParticleEmitters, viewWorld: Level) {
-        emitters.world = viewWorld
-        if (emitters.canceled) {
-            clientEmitters.remove(emitters.uuid)
-            finishClientSystems(emitters)
-            return
-        }
         if (clientEmitters.containsKey(emitters.uuid)) {
-            clientEmitters[emitters.uuid]!!.apply {
-                update(emitters)
-                world = viewWorld
-            }
+            changeClient(emitters, viewWorld)
         } else {
-            clientEmitters[emitters.uuid] = emitters
-            CooEventBus.call(EmitterSpawnEvent(emitters, true))
+            createClient(emitters, viewWorld)
         }
-
     }
 
     fun doTickServer() {
@@ -105,15 +126,29 @@ object ParticleEmittersManager {
         while (iterator.hasNext()) {
             val emitter = iterator.next()
             val emitters = emitter.value
-            updateClientVisible(emitter.value)
-            emitters.tick()
-            if (emitter.value.canceled) {
-                filterVisiblePlayer(emitters).forEach {
+            if (emitters.canceled) {
+                dirtyEmitters.remove(emitters.uuid)
+                val players = filterVisiblePlayer(emitters)
+                if (players.isEmpty()) {
+                    iterator.remove()
+                    continue
+                }
+                val packet = createRemovePacket(emitters)
+                players.forEach {
                     val player = emitters.world!!.getPlayerByUUID(it) ?: return@forEach
-                    removeView(player as ServerPlayer, emitters)
+                    CooParticlesServices.SERVER_NETWORK.send(packet, player as ServerPlayer)
                     visible[it]?.remove(emitters)
                 }
+                if (players.isNotEmpty()) {
+                    CooEventBus.call(EmitterRemoveEvent(emitters, false))
+                }
                 iterator.remove()
+                continue
+            }
+            updateClientVisible(emitters)
+            emitters.tick()
+            if (dirtyEmitters.remove(emitters.uuid)) {
+                sendUpdate(emitters)
             }
         }
     }
@@ -146,6 +181,15 @@ object ParticleEmittersManager {
         return set
     }
 
+    /**
+     * 玩家离开服务器时清理其 Emitter 可见缓存，使重连后重新发送创建包。
+     *
+     * @param player 已断开连接的服务端玩家
+     */
+    fun clearVisibleFor(player: Player) {
+        visible.remove(player.uuid)
+    }
+
     fun updateClientVisible(emitters: ParticleEmitters) {
         CooEventBus.call(EmitterSpawnEvent(emitters, false))
         val server = CooParticlesAPI.serverOrNull ?: return
@@ -166,23 +210,45 @@ object ParticleEmittersManager {
                 }
                 return@forEach
             }
+            val shouldView = p.position().distanceTo(emitters.pos) <= 256.0
+            if (!shouldView) {
+                if (emitters in visibleSet) {
+                    removeView(p, emitters)
+                    visibleSet.remove(emitters)
+                }
+                return@forEach
+            }
             if (emitters in visibleSet) {
                 return@forEach
             }
             addView(p, emitters)
+            visibleSet.add(emitters)
         }
     }
 
-    fun updateEmitters(emitters: ParticleEmitters) {
-        filterVisiblePlayer(emitters).forEach {
-            val player = emitters.world!!.getPlayerByUUID(it) ?: return@forEach
+    internal fun enqueueDirty(emitters: ParticleEmitters) {
+        if (serverEmitters[emitters.uuid] === emitters && !emitters.canceled) {
+            dirtyEmitters.add(emitters.uuid)
+        }
+    }
 
-            val data = encodeEmittersToArray(emitters)
-            val packet = PacketParticleEmittersS2C(
-                emitters.getEmittersID(),
-                data,
-                PacketParticleEmittersS2C.PacketType.CHANGE_OR_CREATE
-            )
+    private fun sendUpdate(emitters: ParticleEmitters) {
+        if (emitters.canceled) {
+            return
+        }
+        val players = filterVisiblePlayer(emitters)
+        if (players.isEmpty()) {
+            return
+        }
+        val data = encodeEmittersToArray(emitters)
+        val packet = PacketParticleEmittersS2C(
+            emitters.getEmittersID(),
+            emitters.uuid,
+            data,
+            PacketParticleEmittersS2C.PacketType.CHANGE
+        )
+        players.forEach {
+            val player = emitters.world!!.getPlayerByUUID(it) ?: return@forEach
             CooParticlesServices.SERVER_NETWORK.send(packet, player as ServerPlayer)
         }
     }
@@ -191,8 +257,9 @@ object ParticleEmittersManager {
         val data = encodeEmittersToArray(emitters)
         val packet = PacketParticleEmittersS2C(
             emitters.getEmittersID(),
+            emitters.uuid,
             data,
-            PacketParticleEmittersS2C.PacketType.CHANGE_OR_CREATE
+            PacketParticleEmittersS2C.PacketType.CHANGE
         )
         CooParticlesServices.SERVER_NETWORK.send(packet, to)
     }
@@ -202,8 +269,9 @@ object ParticleEmittersManager {
 
         val packet = PacketParticleEmittersS2C(
             emitters.getEmittersID(),
+            emitters.uuid,
             data,
-            PacketParticleEmittersS2C.PacketType.CHANGE_OR_CREATE
+            PacketParticleEmittersS2C.PacketType.CREATE
         )
         CooParticlesServices.SERVER_NETWORK.send(packet, player)
     }
@@ -220,17 +288,21 @@ object ParticleEmittersManager {
     fun clearServer() {
         serverEmitters.onEach { it.value.canceled = true }.clear()
         visible.clear()
+        dirtyEmitters.clear()
     }
 
     private fun removeView(player: ServerPlayer, emitters: ParticleEmitters) {
-        val data = encodeEmittersToArray(emitters)
-        val packet = PacketParticleEmittersS2C(
+        CooParticlesServices.SERVER_NETWORK.send(createRemovePacket(emitters), player)
+        CooEventBus.call(EmitterRemoveEvent(emitters, false))
+    }
+
+    private fun createRemovePacket(emitters: ParticleEmitters): PacketParticleEmittersS2C {
+        return PacketParticleEmittersS2C(
             emitters.getEmittersID(),
-            data,
+            emitters.uuid,
+            ByteArray(0),
             PacketParticleEmittersS2C.PacketType.REMOVE
         )
-        CooParticlesServices.SERVER_NETWORK.send(packet, player)
-        CooEventBus.call(EmitterRemoveEvent(emitters, false))
     }
 
 
@@ -241,11 +313,12 @@ object ParticleEmittersManager {
             Unpooled.buffer(),
             registryAccess
         )
-        codec.encode(buf, emitters)
-
-        val data = ByteArray(buf.readableBytes())
-        buf.readBytes(data) // 只读 writerIndex 之前的内容
-        return data
+        return try {
+            codec.encode(buf, emitters)
+            ByteArray(buf.readableBytes()).also { buf.readBytes(it) }
+        } finally {
+            buf.release()
+        }
     }
 
     internal fun init() {

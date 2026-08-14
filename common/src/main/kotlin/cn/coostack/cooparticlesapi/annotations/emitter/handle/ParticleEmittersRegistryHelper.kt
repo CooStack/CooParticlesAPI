@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi.annotations.emitter.handle
 
-import cn.coostack.cooparticlesapi.annotations.CodecField
+import cn.coostack.cooparticlesapi.annotations.codec.CodecFieldAccessor
 import cn.coostack.cooparticlesapi.annotations.codec.CodecHelper
 import cn.coostack.cooparticlesapi.network.particle.emitters.ClassEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.ClassParticleEmitters
@@ -10,8 +10,6 @@ import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
-import java.lang.reflect.Field
-import java.lang.reflect.Modifier
 
 /**
  * 注解处理器
@@ -107,32 +105,21 @@ object ParticleEmittersRegistryHelper {
         )
     }
 
-    private fun codecFields(type: Class<*>): List<Field> {
-        return type.declaredFields
-            .filter {
-                it.isAnnotationPresent(CodecField::class.java) &&
-                        !Modifier.isFinal(it.modifiers) &&
-                        !Modifier.isStatic(it.modifiers)
-            }
-            .sortedBy { it.name }
-    }
-
+    @Suppress("UNCHECKED_CAST")
     private fun encodeFields(type: Class<*>, emitter: Any, buf: RegistryFriendlyByteBuf) {
-        codecFields(type).forEach { field ->
-            field.isAccessible = true
-            codecByField(field).encode(buf, field.get(emitter))
-        }
-    }
-
-    private fun decodeFields(type: Class<*>, emitter: Any, buf: RegistryFriendlyByteBuf) {
-        codecFields(type).forEach { field ->
-            field.isAccessible = true
-            field.set(emitter, codecByField(field).decode(buf))
+        CodecFieldAccessor.fields(type).forEach { field ->
+            val codec = CodecHelper.registryCodecOf(CodecFieldAccessor.valueType(field)) as
+                    StreamCodec<RegistryFriendlyByteBuf, Any>
+            codec.encode(buf, CodecFieldAccessor.get(field, emitter))
         }
     }
 
     @Suppress("UNCHECKED_CAST")
-    private fun codecByField(field: Field): StreamCodec<RegistryFriendlyByteBuf, Any> {
-        return CodecHelper.registryCodecOf(field.genericType) as StreamCodec<RegistryFriendlyByteBuf, Any>
+    private fun decodeFields(type: Class<*>, emitter: Any, buf: RegistryFriendlyByteBuf) {
+        CodecFieldAccessor.fields(type).forEach { field ->
+            val codec = CodecHelper.registryCodecOf(CodecFieldAccessor.valueType(field)) as
+                    StreamCodec<RegistryFriendlyByteBuf, Any>
+            CodecFieldAccessor.set(field, emitter, codec.decode(buf))
+        }
     }
 }

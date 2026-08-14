@@ -1,14 +1,13 @@
 package cn.coostack.cooparticlesapi.annotations.composition.handler
 
-import cn.coostack.cooparticlesapi.annotations.CodecField
 import cn.coostack.cooparticlesapi.annotations.codec.CodecHelper
+import cn.coostack.cooparticlesapi.annotations.codec.CodecFieldAccessor
 import cn.coostack.cooparticlesapi.network.particle.composition.ParticleComposition
 import cn.coostack.cooparticlesapi.network.particle.composition.SequencedParticleComposition
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
-import java.lang.reflect.Modifier
 
 object ParticleCompositionRegistryHelper {
     /**
@@ -45,21 +44,15 @@ object ParticleCompositionRegistryHelper {
                 } else {
                     ParticleComposition.encodeBase(composition, buf)
                 }
-                val fields =
-                    type.declaredFields.filter {
-                        it.isAnnotationPresent(CodecField::class.java) && !Modifier.isFinal(
-                            it.modifiers
-                        )
-                    }
-                        .sortedBy { it.name }
+                val fields = CodecFieldAccessor.fields(type)
 
                 fields.forEach {
                     it.isAccessible = true
                     // 获取对应的参数
                     @Suppress("UNCHECKED_CAST")
                     val codec: StreamCodec<FriendlyByteBuf, Any> =
-                        CodecHelper.codecOf(it.genericType) as StreamCodec<FriendlyByteBuf, Any>
-                    codec.encode(buf, it.get(composition))
+                        CodecHelper.codecOf(CodecFieldAccessor.valueType(it)) as StreamCodec<FriendlyByteBuf, Any>
+                    codec.encode(buf, CodecFieldAccessor.get(it, composition))
                 }
             }, { buf ->
                 val instance = when {
@@ -76,22 +69,16 @@ object ParticleCompositionRegistryHelper {
                     } else {
                         ParticleComposition.decodeBase(this, buf)
                     }
-                    val fields =
-                        type.declaredFields.filter {
-                            it.isAnnotationPresent(CodecField::class.java) && !Modifier.isFinal(
-                                it.modifiers
-                            )
-                        }
-                            .sortedBy { it.name }
+                    val fields = CodecFieldAccessor.fields(type)
 
                     fields.forEach {
                         it.isAccessible = true
                         @Suppress("UNCHECKED_CAST")
                         val codec: StreamCodec<FriendlyByteBuf, Any> =
-                            CodecHelper.codecOf(it.genericType) as StreamCodec<FriendlyByteBuf, Any>
+                            CodecHelper.codecOf(CodecFieldAccessor.valueType(it)) as StreamCodec<FriendlyByteBuf, Any>
 
                         val value = codec.decode(buf)
-                        it.set(this, value)
+                        CodecFieldAccessor.set(it, this, value)
                     }
                 }
 

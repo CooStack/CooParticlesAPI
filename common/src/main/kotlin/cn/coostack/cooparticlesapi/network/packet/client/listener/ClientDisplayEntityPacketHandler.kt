@@ -13,6 +13,12 @@ object ClientDisplayEntityPacketHandler {
         payload: PacketDisplayEntityS2C,
         context: ClientContext
     ) {
+        context.client().execute {
+            apply(payload, context)
+        }
+    }
+
+    private fun apply(payload: PacketDisplayEntityS2C, context: ClientContext) {
         if (payload.removed) {
             DisplayEntityManager.clientView.remove(payload.uuid)
             return

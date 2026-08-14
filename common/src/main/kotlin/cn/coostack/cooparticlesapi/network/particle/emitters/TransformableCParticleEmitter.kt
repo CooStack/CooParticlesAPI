@@ -142,9 +142,6 @@ abstract class TransformableCParticleEmitter(
         lastTickPos = pos
         emitterVelocity = Vec3.ZERO
         lastSyncedTransform = TransformSnapshot.capture(this)
-        if (world?.isClientSide == false) {
-            ParticleEmittersManager.updateEmitters(this)
-        }
         if (enableInterpolator) {
             emittersInterpolator.insertPoint(pos)
         }
@@ -152,9 +149,6 @@ abstract class TransformableCParticleEmitter(
 
     override fun stop() {
         canceled = true
-        if (world?.isClientSide == false) {
-            ParticleEmittersManager.updateEmitters(this)
-        }
     }
 
     override fun tick() {
@@ -377,7 +371,7 @@ abstract class TransformableCParticleEmitter(
     private fun syncServerTransformIfChanged() {
         val current = TransformSnapshot.capture(this)
         if (current == lastSyncedTransform) return
-        ParticleEmittersManager.updateEmitters(this)
+        markDirty()
         lastSyncedTransform = current
     }
 

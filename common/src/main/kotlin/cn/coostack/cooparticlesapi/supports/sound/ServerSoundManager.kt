@@ -192,7 +192,10 @@ object ServerSoundManager {
 
     @JvmStatic
     fun tick() {
-        sounds.values.toList().forEach(::syncSound)
+        sounds.values.toList().forEach {
+            it.tickLifetime()
+            syncSound(it)
+        }
         duckingEffects.values.toList().forEach { syncDucking(it, forceStart = false) }
     }
 
@@ -855,8 +858,7 @@ object ServerSoundManager {
         instance.tick()
         val server = CooParticlesAPI.serverOrNull
         if (server == null) {
-            val discardAfterSync = instance.canDiscardAfterSync()
-            if (instance.isStopped || discardAfterSync) {
+            if (instance.isStopped) {
                 sounds.remove(instance.key, instance)
                 soundViewers.remove(instance.key)
             }
@@ -889,11 +891,7 @@ object ServerSoundManager {
             }
         }
 
-        val discardAfterSync = instance.canDiscardAfterSync()
         if (instance.isStopped) {
-            sounds.remove(instance.key, instance)
-            soundViewers.remove(instance.key)
-        } else if (discardAfterSync) {
             sounds.remove(instance.key, instance)
             soundViewers.remove(instance.key)
         }

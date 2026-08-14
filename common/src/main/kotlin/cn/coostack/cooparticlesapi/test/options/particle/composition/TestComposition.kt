@@ -1,7 +1,6 @@
 package cn.coostack.cooparticlesapi.test.options.particle.composition
 
 import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
-import cn.coostack.cooparticlesapi.annotations.CodecField
 import cn.coostack.cooparticlesapi.network.particle.composition.AutoParticleComposition
 import cn.coostack.cooparticlesapi.network.particle.composition.CompositionData
 import cn.coostack.cooparticlesapi.particles.CooParticleTextureSheet
@@ -14,8 +13,7 @@ import kotlin.math.PI
 
 @CooAutoRegister
 class TestComposition(position: Vec3, world: Level? = null) : AutoParticleComposition(position, world) {
-    @CodecField
-    var movement = RelativeLocation.yAxis()
+    var movement by dirty(RelativeLocation.yAxis())
     override fun getParticles(): Map<CompositionData, RelativeLocation> {
         return PointsBuilder()
             .addCircle(1.0, 100)

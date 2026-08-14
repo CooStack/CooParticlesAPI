@@ -201,9 +201,6 @@ abstract class ClassParticleEmitters(
         playing = true
         lastTickPos = pos
         emitterVelocity = Vec3.ZERO
-        if (world?.isClientSide == false) {
-            ParticleEmittersManager.updateEmitters(this)
-        }
         if (enableInterpolator) {
             emittersInterpolator.insertPoint(pos)
         }
@@ -211,9 +208,6 @@ abstract class ClassParticleEmitters(
 
     override fun stop() {
         canceled = true
-        if (world?.isClientSide == false) {
-            ParticleEmittersManager.updateEmitters(this)
-        }
     }
 
     override fun tick() {

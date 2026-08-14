@@ -1,6 +1,7 @@
 package cn.coostack.cooparticlesapi.display
 
 import cn.coostack.cooparticlesapi.annotations.codec.CodecHelper
+import cn.coostack.cooparticlesapi.api.NetworkDirtyMarkable
 import cn.coostack.cooparticlesapi.api.controler.server.ServerControler
 import cn.coostack.cooparticlesapi.api.controler.Controlable
 import cn.coostack.cooparticlesapi.api.controler.Tickable
@@ -38,7 +39,7 @@ import kotlin.math.PI
 abstract class DisplayEntity(
     var pos: Vec3,
     var world: Level?
-) : Controlable<DisplayEntity>, ServerControler<DisplayEntity>, Tickable<DisplayEntity> {
+) : Controlable<DisplayEntity>, ServerControler<DisplayEntity>, Tickable<DisplayEntity>, NetworkDirtyMarkable {
     companion object {
         fun encodeBase(data: DisplayEntity, buf: FriendlyByteBuf) {
             buf.writeVec3(data.pos)
@@ -66,6 +67,9 @@ abstract class DisplayEntity(
 
     var controlUUID: UUID = UUID.randomUUID()
 
+    /** 服务端向玩家同步此展示实体的最大距离。 */
+    var visibleRange = 256.0
+
     var prevPos = pos
 
 
@@ -85,6 +89,15 @@ abstract class DisplayEntity(
     var scale = 1f
 
     private var valid = true
+    private var networkStateDirty = true
+    private var networkFullDirty = true
+    private var lastNetworkPos = pos
+    private var lastNetworkYaw = yaw
+    private var lastNetworkPitch = pitch
+    private var lastNetworkRoll = roll
+    private var lastNetworkScale = scale
+    private var lastNetworkValid = valid
+    private var pendingRemoteState: RemoteState? = null
     private val preTickActions = ArrayList<DisplayEntity.() -> Unit>()
     private val postTickActions = ArrayList<DisplayEntity.() -> Unit>()
 
@@ -96,6 +109,41 @@ abstract class DisplayEntity(
      * 如果想要自己应用旋转， 请设置 manageRotation = false
      */
     var manageRotation = true
+
+    /** 自定义同步字段优先使用 `var value by dirty(initial)`；普通 `@CodecField` 修改后调用本方法。 */
+    override fun markDirty() {
+        if (world?.isClientSide != true) {
+            networkFullDirty = true
+            networkStateDirty = true
+        }
+    }
+
+    internal fun consumeNetworkFullDirty(): Boolean {
+        val dirty = networkFullDirty
+        networkFullDirty = false
+        return dirty
+    }
+
+    internal fun consumeNetworkStateDirty(): Boolean {
+        if (lastNetworkPos != pos || lastNetworkYaw != yaw || lastNetworkPitch != pitch ||
+            lastNetworkRoll != roll || lastNetworkScale != scale || lastNetworkValid != valid
+        ) {
+            networkStateDirty = true
+            lastNetworkPos = pos
+            lastNetworkYaw = yaw
+            lastNetworkPitch = pitch
+            lastNetworkRoll = roll
+            lastNetworkScale = scale
+            lastNetworkValid = valid
+        }
+        val dirty = networkStateDirty
+        networkStateDirty = false
+        return dirty
+    }
+
+    internal fun applyRemoteState(position: Vec3, yaw: Float, pitch: Float, roll: Float, scale: Float) {
+        pendingRemoteState = RemoteState(position, yaw, pitch, roll, scale)
+    }
 
     /**
      * 渲染该实体
@@ -205,11 +253,26 @@ abstract class DisplayEntity(
         yaw %= 360
         pitch %= 360
         roll %= 360
-        this.prevPos = pos
-        this.prevYaw = yaw
-        this.prevPitch = pitch
-        this.prevRoll = roll
-        this.prevScale = scale
+        val remoteState = pendingRemoteState
+        if (remoteState != null) {
+            this.prevPos = pos
+            this.prevYaw = yaw
+            this.prevPitch = pitch
+            this.prevRoll = roll
+            this.prevScale = scale
+            this.pos = remoteState.position
+            this.yaw = remoteState.yaw
+            this.pitch = remoteState.pitch
+            this.roll = remoteState.roll
+            this.scale = remoteState.scale
+            pendingRemoteState = null
+        } else {
+            this.prevPos = pos
+            this.prevYaw = yaw
+            this.prevPitch = pitch
+            this.prevRoll = roll
+            this.prevScale = scale
+        }
         postTickActions.forEach { it(this) }
     }
 
@@ -292,12 +355,8 @@ abstract class DisplayEntity(
     }
 
     open fun update(other: DisplayEntity) {
-        this.pos = other.pos
+        applyRemoteState(other.pos, other.yaw, other.pitch, other.roll, other.scale)
         this.valid = other.valid
-        this.yaw = other.yaw
-        this.pitch = other.pitch
-        this.roll = other.roll
-        this.scale = other.scale
         CodecHelper.updateFields(this, other)
     }
 
@@ -317,4 +376,12 @@ abstract class DisplayEntity(
     override fun getValue(): DisplayEntity {
         return this
     }
+
+    private data class RemoteState(
+        val position: Vec3,
+        val yaw: Float,
+        val pitch: Float,
+        val roll: Float,
+        val scale: Float,
+    )
 }

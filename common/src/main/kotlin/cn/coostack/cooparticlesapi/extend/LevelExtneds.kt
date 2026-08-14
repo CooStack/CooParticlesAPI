@@ -5,7 +5,10 @@ import cn.coostack.cooparticlesapi.network.packet.api.CooServerPacketManager
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
+import net.minecraft.sounds.SoundEvent
+import net.minecraft.sounds.SoundSource
 import net.minecraft.world.level.Level
+import net.minecraft.world.phys.Vec3
 
 /**
  * 把 [packet] 广播到当前世界的所有在线玩家。
@@ -43,3 +46,9 @@ val Level.clientWorld: ClientLevel?
 
 val Level.clientLevel: ClientLevel?
     get() = this as? ClientLevel
+
+@JvmOverloads
+fun Level.playSoundAt(pos: Vec3, sound: SoundEvent, source: SoundSource, volume: Float = 1f, pitch: Float = 1f) =
+    apply {
+        this.playSound(null, pos.x, pos.y, pos.z, sound, source, volume, pitch)
+    }

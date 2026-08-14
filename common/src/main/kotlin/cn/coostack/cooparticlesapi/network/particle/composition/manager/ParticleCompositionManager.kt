@@ -6,6 +6,7 @@ import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
 import cn.coostack.cooparticlesapi.annotations.composition.handler.ParticleCompositionRegistryHelper
 import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleCompositionRotateS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleCompositionS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleCompositionStateS2C
 import cn.coostack.cooparticlesapi.network.particle.composition.ParticleComposition
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
@@ -14,6 +15,7 @@ import io.netty.buffer.Unpooled
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
+import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.entity.player.Player
 import java.lang.ref.ReferenceQueue
 import java.lang.ref.WeakReference
@@ -79,8 +81,8 @@ object ParticleCompositionManager {
         composition.resetLifecycleForSpawn()
         removeVisibleComposition(composition)
         serverView[composition.controlUUID] = composition
-        sendCreateOrUpdate(composition)
         composition.display()
+        sendCreateOrUpdate(composition)
     }
 
 
@@ -134,7 +136,7 @@ object ParticleCompositionManager {
                 sendRemove(entry.value)
                 continue
             }
-            sendCreateOrUpdate(entry.value)
+            syncVisible(entry.value, false)
             entry.value.tick()
         }
     }
@@ -150,39 +152,100 @@ object ParticleCompositionManager {
     }
 
     fun sendCreateOrUpdate(composition: ParticleComposition) {
+        syncVisible(composition, true)
+    }
+
+    private fun syncVisible(composition: ParticleComposition, forceUpdate: Boolean) {
         val server = CooParticlesAPI.serverOrNull ?: return
+        val createTargets = ArrayList<ServerPlayer>()
+        val updateTargets = ArrayList<ServerPlayer>()
+        val removeTargets = ArrayList<ServerPlayer>()
+        server.playerList.players.forEach { player ->
+            val compositions = playerPlayerVisibleSet.getOrPut(player.uuid) { HashSet() }
+            val shouldView = player.level().dimension() == composition.world?.dimension() &&
+                composition.position.distanceTo(player.position()) <= composition.visibleRange
+            if (composition in compositions) {
+                if (shouldView) {
+                    updateTargets.add(player)
+                } else {
+                    compositions.remove(composition)
+                    removeTargets.add(player)
+                }
+            } else if (shouldView) {
+                createTargets.add(player)
+            }
+        }
+
+        if (removeTargets.isNotEmpty()) {
+            val removePacket = PacketParticleCompositionS2C(
+                composition.controlUUID,
+                composition::class.java.name,
+                ByteArray(0)
+            ).apply {
+                distanceRemove = true
+            }
+            removeTargets.forEach { CooParticlesServices.SERVER_NETWORK.send(removePacket, it) }
+        }
+
+        if (createTargets.isEmpty() && updateTargets.isEmpty()) {
+            return
+        }
+        val fullDirty = composition.hasNetworkFullDirty()
+        val stateDirty = composition.hasNetworkStateDirty()
+        if (createTargets.isEmpty() && !forceUpdate && !fullDirty) {
+            if (stateDirty) {
+                val statePacket = PacketParticleCompositionStateS2C(
+                    composition.controlUUID,
+                    composition.position,
+                    composition.visibleRange,
+                    composition.scale,
+                    composition.status.displayStatus,
+                    composition.status.closedInternal,
+                    composition.status.current,
+                )
+                updateTargets.forEach { CooParticlesServices.SERVER_NETWORK.send(statePacket, it) }
+                composition.consumeNetworkStateDirty()
+            }
+            return
+        }
         val registryAccess = CooParticlesAPI.registryAccessOrNull ?: return
-        val uuid = composition.controlUUID
         val type = composition::class.java.name
         val buf = RegistryFriendlyByteBuf(Unpooled.buffer(), registryAccess)
-        registeredTypes[composition::class.java.name]!!
-            .encode(buf, composition)
-        val data = ByteArray(buf.readableBytes()).apply {
-            buf.readBytes(this)
+        val data = try {
+            registeredTypes[type]!!.encode(buf, composition)
+            ByteArray(buf.readableBytes()).also { buf.readBytes(it) }
+        } finally {
+            buf.release()
         }
-        val packet = PacketParticleCompositionS2C(uuid, type, data)
-        server.playerList.players.forEach {
-            if (it.level().dimension() != composition.world?.dimension()) {
-                return@forEach
+        if (createTargets.isNotEmpty()) {
+            val createPacket = PacketParticleCompositionS2C(composition.controlUUID, type, data).apply {
+                recreate = true
             }
-
-            val compositions = playerPlayerVisibleSet.getOrPut(it.uuid) { HashSet() }
-            val shouldJoinOrUpdate = composition.position.distanceTo(it.position()) <= composition.visibleRange
-            if (compositions.contains(composition)) {
-                if (shouldJoinOrUpdate) {
-                    CooParticlesServices.SERVER_NETWORK.send(packet, it)
-                } else {
-                    // remove
-                    compositions.remove(composition)
-                    packet.distanceRemove = true
-                    CooParticlesServices.SERVER_NETWORK.send(packet, it)
-                }
-            } else if (shouldJoinOrUpdate) {
-                // join
-                compositions.add(composition)
-                // 发包
-                CooParticlesServices.SERVER_NETWORK.send(packet, it)
+            createTargets.forEach { player ->
+                CooParticlesServices.SERVER_NETWORK.send(createPacket, player)
+                playerPlayerVisibleSet.getValue(player.uuid).add(composition)
             }
+        }
+        if (forceUpdate || fullDirty) {
+            val updatePacket = PacketParticleCompositionS2C(composition.controlUUID, type, data)
+            updateTargets.forEach { CooParticlesServices.SERVER_NETWORK.send(updatePacket, it) }
+        } else if (stateDirty) {
+            val statePacket = PacketParticleCompositionStateS2C(
+                composition.controlUUID,
+                composition.position,
+                composition.visibleRange,
+                composition.scale,
+                composition.status.displayStatus,
+                composition.status.closedInternal,
+                composition.status.current,
+            )
+            updateTargets.forEach { CooParticlesServices.SERVER_NETWORK.send(statePacket, it) }
+        }
+        if (forceUpdate || fullDirty || createTargets.isNotEmpty()) {
+            composition.consumeNetworkFullDirty()
+        }
+        if (stateDirty) {
+            composition.consumeNetworkStateDirty()
         }
     }
 

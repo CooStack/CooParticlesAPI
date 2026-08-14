@@ -177,9 +177,6 @@ abstract class ClassEmitters(
     override fun start() {
         if (playing) return
         playing = true
-        if (world?.isClientSide == false) {
-            ParticleEmittersManager.updateEmitters(this)
-        }
         if (enableInterpolator) {
             emittersInterpolator.insertPoint(pos)
         }
@@ -187,9 +184,6 @@ abstract class ClassEmitters(
 
     override fun stop() {
         canceled = true
-        if (world?.isClientSide == false) {
-            ParticleEmittersManager.updateEmitters(this)
-        }
     }
 
     override fun tick() {

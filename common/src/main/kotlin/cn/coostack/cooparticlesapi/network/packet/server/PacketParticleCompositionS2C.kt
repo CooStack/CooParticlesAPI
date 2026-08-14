@@ -14,6 +14,7 @@ class PacketParticleCompositionS2C(val uuid: UUID, val type: String, val data: B
      * 是否是因为距离过长而移除
      */
     var distanceRemove = false
+    var recreate = false
 
     companion object {
         private val identifierID =
@@ -24,19 +25,19 @@ class PacketParticleCompositionS2C(val uuid: UUID, val type: String, val data: B
                 buf.writeUtf(packet.type)
                 buf.writeUUID(packet.uuid)
                 buf.writeBoolean(packet.distanceRemove)
+                buf.writeBoolean(packet.recreate)
                 buf.writeInt(packet.data.size)
                 buf.writeBytes(packet.data)
             }, { buf ->
                 val type = buf.readUtf()
                 val uuid = buf.readUUID()
                 val distanceRemove = buf.readBoolean()
+                val recreate = buf.readBoolean()
                 val size = buf.readInt()
-                val copy = buf.readBytes(size).copy()
-                val data = ByteArray(size).apply {
-                    copy.readBytes(this)
-                }
+                val data = ByteArray(size).also { buf.readBytes(it) }
                 PacketParticleCompositionS2C(uuid, type, data).apply {
                     this.distanceRemove = distanceRemove
+                    this.recreate = recreate
                 }
             })
     }

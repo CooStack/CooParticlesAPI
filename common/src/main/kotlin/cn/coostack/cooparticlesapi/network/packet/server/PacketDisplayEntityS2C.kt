@@ -29,10 +29,7 @@ class PacketDisplayEntityS2C(
                 val uuid = buf.readUUID()
                 val removed = buf.readBoolean()
                 val size = buf.readInt()
-                val copy = buf.readBytes(size).copy()
-                val data = ByteArray(size).apply {
-                    copy.readBytes(this)
-                }
+                val data = ByteArray(size).also { buf.readBytes(it) }
                 PacketDisplayEntityS2C(uuid, type, data, removed)
             })
     }

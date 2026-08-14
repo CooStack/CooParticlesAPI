@@ -69,6 +69,7 @@ class ServerManagedSoundInstance(
         volumeFalloff = spec.volumeFalloff
         syncEveryTick = spec.syncEveryTick
         stopWhenBoundEntityMissing = spec.stopWhenBoundEntityMissing
+        lifetime = spec.lifetime
     }
 
     var soundId: ResourceLocation = soundId
@@ -239,6 +240,19 @@ class ServerManagedSoundInstance(
     var isStopped: Boolean = false
         private set
 
+    /** 服务端实例已经存活的 tick 数。 */
+    var currentAge: Int = 0
+        private set
+
+    /**
+     * 服务端实例的生命周期，单位为 tick。`-1` 表示不自动结束。
+     */
+    var lifetime: Int = SoundInstanceSpec.DEFAULT_LIFETIME
+        set(value) {
+            require(value >= -1) { "声音实例生命周期必须为 -1 或非负数。" }
+            field = value
+        }
+
     private var dirty = true
     private var restartRequested = true
     private var updatingFromBoundEntity = false
@@ -347,6 +361,21 @@ class ServerManagedSoundInstance(
         setRawPosition(bound.position())
     }
 
+    /** 推进一次服务端生命周期；到期时将实例标记为停止。 */
+    internal fun tickLifetime() {
+        if (isStopped || lifetime == -1) {
+            return
+        }
+        if (currentAge >= lifetime) {
+            stopNow()
+            return
+        }
+        currentAge++
+        if (currentAge >= lifetime) {
+            stopNow()
+        }
+    }
+
     fun shouldSyncTo(player: ServerPlayer): Boolean {
         val target = targetPlayer
         if (target != null && player.uuid != target.uuid) {
@@ -424,7 +453,8 @@ class ServerManagedSoundInstance(
             visibleRange = visibleRange,
             volumeFalloff = volumeFalloff,
             syncEveryTick = syncEveryTick,
-            stopWhenBoundEntityMissing = stopWhenBoundEntityMissing
+            stopWhenBoundEntityMissing = stopWhenBoundEntityMissing,
+            lifetime = lifetime
         )
     }
 
@@ -434,10 +464,6 @@ class ServerManagedSoundInstance(
 
     internal fun needsPlayPacket(): Boolean {
         return restartRequested
-    }
-
-    internal fun canDiscardAfterSync(): Boolean {
-        return !isStopped && !loopingSound && !syncEveryTick
     }
 
     internal fun clearSyncFlags() {

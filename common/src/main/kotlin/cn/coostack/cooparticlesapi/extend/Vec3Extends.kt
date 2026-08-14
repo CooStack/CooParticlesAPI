@@ -4,7 +4,10 @@ import cn.coostack.cooparticlesapi.barrages.HitBox
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import net.minecraft.core.Vec3i
+import net.minecraft.sounds.SoundEvent
+import net.minecraft.sounds.SoundSource
 import net.minecraft.util.RandomSource
+import net.minecraft.world.level.Level
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3d
@@ -29,6 +32,11 @@ fun Vec3.withZ(handler: Vec3.() -> Double): Vec3 {
     return Vec3(x, y, handler())
 }
 
+@JvmOverloads
+fun Vec3.playSoundAt(world: Level, sound: SoundEvent, source: SoundSource, volume: Float = 1f, pitch: Float = 1f) =
+    apply {
+        world.playSound(null, this.x, this.y, this.z, sound, source, volume, pitch)
+    }
 
 fun Vec3.asRelative() = RelativeLocation.of(this)
 

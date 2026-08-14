@@ -5,6 +5,7 @@ import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
 import cn.coostack.cooparticlesapi.extend.plus
 import cn.coostack.cooparticlesapi.network.packet.server.PacketDisplayEntityS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketDisplayEntityStateS2C
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
 import cn.coostack.cooparticlesapi.utils.MinecraftRendererUtil
@@ -15,6 +16,7 @@ import net.minecraft.client.DeltaTracker
 import net.minecraft.client.renderer.MultiBufferSource
 import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
+import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
 import org.joml.Matrix4f
@@ -25,6 +27,8 @@ object DisplayEntityManager {
     val clientView = ConcurrentHashMap<UUID, DisplayEntity>()
 
     val serverView = ConcurrentHashMap<UUID, DisplayEntity>()
+
+    val playerVisibleSet = ConcurrentHashMap<UUID, HashSet<DisplayEntity>>()
 
     val registeredTypes = ConcurrentHashMap<String, StreamCodec<in RegistryFriendlyByteBuf, DisplayEntity>>()
 
@@ -38,6 +42,7 @@ object DisplayEntityManager {
     }
 
     fun spawn(entity: DisplayEntity) {
+        playerVisibleSet.values.forEach { it.remove(entity) }
         serverView[entity.controlUUID] = entity
         sendCreateOrUpdate(entity)
     }
@@ -145,44 +150,95 @@ object DisplayEntityManager {
         val iterator = serverView.entries.iterator()
         while (iterator.hasNext()) {
             val entry = iterator.next()
-            entry.value.tick()
             if (!entry.value.isValid()) {
                 sendRemove(entry.value)
                 iterator.remove()
                 continue
             }
-            sendCreateOrUpdate(entry.value)
+            syncVisible(entry.value, false)
+            entry.value.tick()
         }
     }
 
 
     fun sendCreateOrUpdate(entity: DisplayEntity) {
+        syncVisible(entity, true)
+    }
+
+    private fun syncVisible(entity: DisplayEntity, forceUpdate: Boolean) {
         val server = CooParticlesAPI.serverOrNull ?: return
+        val updateTargets = ArrayList<ServerPlayer>()
+        val removeTargets = ArrayList<ServerPlayer>()
+        var hasNewTarget = false
+        server.playerList.players.forEach { player ->
+            val visible = playerVisibleSet.getOrPut(player.uuid) { HashSet() }
+            val shouldView = player.level().dimension() == entity.world?.dimension() &&
+                player.position().distanceTo(entity.pos) <= entity.visibleRange
+            if (entity in visible) {
+                if (shouldView) {
+                    updateTargets.add(player)
+                } else {
+                    visible.remove(entity)
+                    removeTargets.add(player)
+                }
+            } else if (shouldView) {
+                visible.add(entity)
+                updateTargets.add(player)
+                hasNewTarget = true
+            }
+        }
+
+        if (removeTargets.isNotEmpty()) {
+            val packet = PacketDisplayEntityS2C(
+                entity.controlUUID,
+                entity::class.java.name,
+                ByteArray(0),
+                true
+            )
+            removeTargets.forEach { CooParticlesServices.SERVER_NETWORK.send(packet, it) }
+        }
+
+        val fullDirty = entity.consumeNetworkFullDirty()
+        val stateDirty = entity.consumeNetworkStateDirty()
+        if (updateTargets.isEmpty()) {
+            return
+        }
+        if (!forceUpdate && !hasNewTarget && !fullDirty) {
+            if (stateDirty) {
+                val statePacket = PacketDisplayEntityStateS2C(
+                    entity.controlUUID,
+                    entity.pos,
+                    entity.yaw,
+                    entity.pitch,
+                    entity.roll,
+                    entity.scale,
+                )
+                updateTargets.forEach { CooParticlesServices.SERVER_NETWORK.send(statePacket, it) }
+            }
+            return
+        }
         val registryAccess = CooParticlesAPI.registryAccessOrNull ?: return
         val uuid = entity.controlUUID
         val type = entity::class.java.name
         val buf = RegistryFriendlyByteBuf(Unpooled.buffer(), registryAccess)
-        entity.getCodec().encode(buf, entity)
-        val data = ByteArray(buf.readableBytes()).apply {
-            buf.readBytes(this)
+        val data = try {
+            entity.getCodec().encode(buf, entity)
+            ByteArray(buf.readableBytes()).also { buf.readBytes(it) }
+        } finally {
+            buf.release()
         }
         val packet = PacketDisplayEntityS2C(uuid, type, data)
-        server.playerList.players.forEach {
-            if (it.level().dimension() != entity.world?.dimension()) {
-                return@forEach
-            }
-            CooParticlesServices.SERVER_NETWORK.send(packet, it)
-        }
+        updateTargets.forEach { CooParticlesServices.SERVER_NETWORK.send(packet, it) }
     }
 
     fun sendRemove(entity: DisplayEntity) {
         val server = CooParticlesAPI.serverOrNull ?: return
         val packet = PacketDisplayEntityS2C(entity.controlUUID, entity::class.java.name, ByteArray(0), true)
-        server.playerList.players.forEach {
-            if (it.level().dimension() != entity.world?.dimension()) {
-                return@forEach
+        server.playerList.players.forEach { player ->
+            val visible = playerVisibleSet[player.uuid] ?: return@forEach
+            if (visible.remove(entity)) {
+                CooParticlesServices.SERVER_NETWORK.send(packet, player)
             }
-            CooParticlesServices.SERVER_NETWORK.send(packet, it)
         }
     }
 
@@ -192,6 +248,7 @@ object DisplayEntityManager {
 
     fun clearServer() {
         serverView.clear()
+        playerVisibleSet.clear()
     }
 
 }

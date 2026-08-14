@@ -15,7 +15,6 @@ import cn.coostack.cooparticlesapi.animation.timeline.Vec3ConstSpeedAnimator
 import cn.coostack.cooparticlesapi.animation.timeline.Vec3ConstTimeAnimator
 import cn.coostack.cooparticlesapi.animation.timeline.Vector3fConstSpeedAnimator
 import cn.coostack.cooparticlesapi.animation.timeline.Vector3fConstTimeAnimator
-import cn.coostack.cooparticlesapi.annotations.CodecField
 import cn.coostack.cooparticlesapi.barrages.HitBox
 import cn.coostack.cooparticlesapi.cparticle.CParticleTextureSource
 import cn.coostack.cooparticlesapi.cparticle.CParticleColorCurve
@@ -52,8 +51,6 @@ import net.minecraft.world.phys.Vec3
 import org.joml.Quaternionf
 import org.joml.Vector3f
 import org.joml.Vector4f
-import java.lang.reflect.Field
-import java.lang.reflect.Modifier
 import java.lang.reflect.ParameterizedType
 import java.lang.reflect.Type
 import java.lang.reflect.WildcardType
@@ -478,6 +475,19 @@ object CodecHelper {
             }
             return type.upperBounds.firstOrNull() ?: Any::class.java
         }
+        if (type is Class<*>) {
+            return when (type) {
+                java.lang.Short::class.java -> Short::class.java
+                java.lang.Integer::class.java -> Int::class.java
+                java.lang.Long::class.java -> Long::class.java
+                java.lang.Float::class.java -> Float::class.java
+                java.lang.Double::class.java -> Double::class.java
+                java.lang.Byte::class.java -> Byte::class.java
+                java.lang.Boolean::class.java -> Boolean::class.java
+                java.lang.Character::class.java -> Char::class.java
+                else -> type
+            }
+        }
         return type
     }
 
@@ -656,14 +666,8 @@ object CodecHelper {
 
     fun updateFields(current: Any, other: Any) {
         if (current::class.java != other::class.java) return
-        val fields = current::class.java.declaredFields
-        fields.filter {
-            it.isAnnotationPresent(CodecField::class.java) &&
-                    !Modifier.isFinal(it.modifiers) &&
-                    !Modifier.isStatic(it.modifiers)
-        }.forEach { field ->
-            field.isAccessible = true
-            field.set(current, field.get(other))
+        CodecFieldAccessor.fields(current::class.java).forEach { field ->
+            CodecFieldAccessor.set(field, current, CodecFieldAccessor.get(field, other))
         }
     }
 

@@ -10,7 +10,9 @@ object ClientParticleCompositionRotateHandler {
         payload: PacketParticleCompositionRotateS2C,
         context: ClientContext
     ) {
-        val composition = ParticleCompositionManager.clientView[payload.uuid] ?: return
-        composition.applyRemoteRotation(payload.direction?.asRelative(), payload.rollDelta)
+        context.client().execute {
+            val composition = ParticleCompositionManager.clientView[payload.uuid] ?: return@execute
+            composition.applyRemoteRotation(payload.direction?.asRelative(), payload.rollDelta)
+        }
     }
 }

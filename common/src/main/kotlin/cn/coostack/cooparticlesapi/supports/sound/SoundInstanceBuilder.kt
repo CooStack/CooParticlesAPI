@@ -43,8 +43,10 @@ class SoundInstanceBuilder @JvmOverloads constructor(
     private var includeSelf: Boolean = true
     private var configuredVisibleRange: Double = -1.0
     private var configuredVolumeFalloff: SoundVolumeFalloff = SoundVolumeFalloff.NONE
-    private var configuredSyncEveryTick: Boolean = true
+    private var configuredSyncEveryTick: Boolean = false
     private var configuredStopWhenBoundEntityMissing: Boolean = true
+    /** 构建出的服务端实例生命周期，单位为 tick。 */
+    private var configuredLifetime: Int = SoundInstanceSpec.DEFAULT_LIFETIME
     private var cachedAutoKey: String? = null
 
     /**
@@ -244,11 +246,31 @@ class SoundInstanceBuilder @JvmOverloads constructor(
         return this
     }
 
+    fun syncEveryTick(): SoundInstanceBuilder {
+        configuredSyncEveryTick = true
+        return this
+    }
+
     /**
      * 设置绑定实体丢失或死亡时，客户端声音是否自动停止。
      */
     fun stopWhenBoundEntityMissing(stopWhenBoundEntityMissing: Boolean): SoundInstanceBuilder {
         configuredStopWhenBoundEntityMissing = stopWhenBoundEntityMissing
+        return this
+    }
+
+    /**
+     * 设置服务端声音实例的生命周期，单位为 tick。`-1` 表示不自动结束。
+     * `0` 会在实例进入下一次 [ServerSoundManager.tick] 时结束。
+     *
+     * 示例：`builder.lifetime(-1)`。
+     *
+     * @param ticks 生命周期 tick 数，只能为 `-1` 或非负数
+     * @throws IllegalArgumentException 当 [ticks] 小于 `-1` 时抛出
+     */
+    fun lifetime(ticks: Int): SoundInstanceBuilder {
+        require(ticks >= -1) { "声音实例生命周期必须为 -1 或非负数。" }
+        configuredLifetime = ticks
         return this
     }
 
@@ -272,7 +294,8 @@ class SoundInstanceBuilder @JvmOverloads constructor(
             visibleRange = configuredVisibleRange,
             volumeFalloff = configuredVolumeFalloff,
             syncEveryTick = configuredSyncEveryTick,
-            stopWhenBoundEntityMissing = configuredStopWhenBoundEntityMissing
+            stopWhenBoundEntityMissing = configuredStopWhenBoundEntityMissing,
+            lifetime = configuredLifetime
         )
     }
 

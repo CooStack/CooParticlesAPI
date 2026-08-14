@@ -1,9 +1,26 @@
 package cn.coostack.cooparticlesapi.network.packet.client.listener
 
+import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleBatchS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleS2C
 import cn.coostack.cooparticlesapi.platform.network.ClientContext
 
 object ClientParticlePacketHandler {
+    fun receive(packet: PacketParticleBatchS2C, context: ClientContext) {
+        val world = context.player().level()
+        packet.positions.forEach { position ->
+            world.addParticle(
+                packet.type,
+                true,
+                position.x,
+                position.y,
+                position.z,
+                packet.velocity.x,
+                packet.velocity.y,
+                packet.velocity.z,
+            )
+        }
+    }
+
     fun receive(packet: PacketParticleS2C, context: ClientContext) {
         val player = context.player()
         val world = player.level()

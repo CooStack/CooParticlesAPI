@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi.network.particle.emitters
 
+import cn.coostack.cooparticlesapi.api.NetworkDirtyMarkable
 import cn.coostack.cooparticlesapi.api.controler.server.ServerControler
 import cn.coostack.cooparticlesapi.network.particle.emitters.event.ParticleEventHandler
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
@@ -19,7 +20,7 @@ import java.util.UUID
  * -> 不固定数量的ParticleStyleData
  * -> 方便输入的
  */
-interface ParticleEmitters : ServerControler<ParticleEmitters> {
+interface ParticleEmitters : ServerControler<ParticleEmitters>, NetworkDirtyMarkable {
     var pos: Vec3
     var world: Level?
     var tick: Int
@@ -74,6 +75,17 @@ interface ParticleEmitters : ServerControler<ParticleEmitters> {
         return this
     }
 
+    /**
+     * 标记发射器的完整网络状态需要更新。
+     *
+     * Manager 会在当前服务端 tick 结束时合并发送，同一发射器一 tick 内只会更新一次。
+     */
+    override fun markDirty() {
+        if (world?.isClientSide != true) {
+            ParticleEmittersManager.enqueueDirty(this)
+        }
+    }
+
     override fun remove() {
         canceled = true
     }
@@ -99,7 +111,9 @@ interface ParticleEmitters : ServerControler<ParticleEmitters> {
     }
 
     override fun teleportTo(to: Vec3) {
+        if (pos == to) return
         pos = to
+        markDirty()
     }
 
     override fun teleportTo(x: Double, y: Double, z: Double) {

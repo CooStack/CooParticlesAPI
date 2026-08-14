@@ -17,10 +17,13 @@ import cn.coostack.cooparticlesapi.network.packet.server.PacketCameraShakeS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketClearClientStateS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketDataHolderS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketDisplayEntityS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketDisplayEntityStateS2C
 import cn.coostack.cooparticlesapi.network.packet.client.PacketKeyActionC2S
 import cn.coostack.cooparticlesapi.network.packet.server.PacketKeyBindingCountdownS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleCompositionRotateS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleCompositionS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleCompositionStateS2C
+import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleBatchS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleEmittersS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleGroupS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketParticleS2C
@@ -30,6 +33,8 @@ import cn.coostack.cooparticlesapi.network.packet.server.PacketRendererPostEffec
 import cn.coostack.cooparticlesapi.network.packet.server.PacketSoundInstanceS2C
 import cn.coostack.cooparticlesapi.network.packet.server.PacketSoundLoopS2C
 import cn.coostack.cooparticlesapi.network.packet.server.listener.ServerKeyActionHandler
+import cn.coostack.cooparticlesapi.network.particle.composition.manager.ParticleCompositionManager
+import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersManager
 import cn.coostack.cooparticlesapi.platform.network.FabricServerContext
 import cn.coostack.cooparticlesapi.particles.CooModParticles
 import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
@@ -62,14 +67,18 @@ object CooParticlesAPIFabric : ModInitializer {
         PayloadTypeRegistry.playS2C().register(PacketCameraShakeS2C.payloadID, PacketCameraShakeS2C.CODEC)
         PayloadTypeRegistry.playS2C().register(PacketClearClientStateS2C.payloadID, PacketClearClientStateS2C.CODEC)
         PayloadTypeRegistry.playS2C().register(PacketParticleS2C.payloadID, PacketParticleS2C.CODEC)
+        PayloadTypeRegistry.playS2C().register(PacketParticleBatchS2C.payloadID, PacketParticleBatchS2C.CODEC)
         PayloadTypeRegistry.playS2C().register(PacketParticleEmittersS2C.payloadID, PacketParticleEmittersS2C.CODEC)
         PayloadTypeRegistry.playS2C().register(PacketParticleGroupS2C.payloadID, PacketParticleGroupS2C.CODEC)
         PayloadTypeRegistry.playS2C().register(PacketParticleStyleS2C.payloadID, PacketParticleStyleS2C.CODEC)
         PayloadTypeRegistry.playS2C().register(PacketRenderEntityS2C.payloadID, PacketRenderEntityS2C.CODEC)
         PayloadTypeRegistry.playS2C().register(PacketRendererPostEffectS2C.payloadID, PacketRendererPostEffectS2C.CODEC)
         PayloadTypeRegistry.playS2C().register(PacketDisplayEntityS2C.payloadID, PacketDisplayEntityS2C.CODEC)
+        PayloadTypeRegistry.playS2C().register(PacketDisplayEntityStateS2C.payloadID, PacketDisplayEntityStateS2C.CODEC)
         PayloadTypeRegistry.playS2C().register(PacketDataHolderS2C.payloadID, PacketDataHolderS2C.CODEC)
         PayloadTypeRegistry.playS2C().register(PacketParticleCompositionS2C.payloadID, PacketParticleCompositionS2C.CODEC)
+        PayloadTypeRegistry.playS2C()
+            .register(PacketParticleCompositionStateS2C.payloadID, PacketParticleCompositionStateS2C.CODEC)
         PayloadTypeRegistry.playS2C()
             .register(PacketParticleCompositionRotateS2C.payloadID, PacketParticleCompositionRotateS2C.CODEC)
         PayloadTypeRegistry.playS2C()
@@ -127,6 +136,8 @@ object CooParticlesAPIFabric : ModInitializer {
         }
         ServerPlayConnectionEvents.DISCONNECT.register { handler, _ ->
             TestManager.clearServerFor(handler.player)
+            ParticleCompositionManager.clearVisibleFor(handler.player)
+            ParticleEmittersManager.clearVisibleFor(handler.player)
         }
 
         UseBlockCallback.EVENT.register { player, level, hand, result ->
