@@ -39,10 +39,13 @@ import kotlin.math.max
  * @param world 发射器所在世界
  */
 abstract class TransformableCParticleEmitter(
-    /** 发射器当前的世界坐标；直接修改后最迟在下一次 tick 同步。 */
-    override var pos: Vec3,
+    pos: Vec3,
     override var world: Level?,
 ) : ParticleEmitters {
+
+    /** 发射器当前的世界坐标；直接修改后最迟在下一次 tick 同步。 */
+    private val posState = dirty(pos)
+    override var pos by posState
 
     /** 当前生命周期 tick。 */
     override var tick: Int = 0
@@ -334,7 +337,7 @@ abstract class TransformableCParticleEmitter(
 
     override fun update(emitters: ParticleEmitters) {
         if (emitters !is TransformableCParticleEmitter || getEmittersID() != emitters.getEmittersID()) return
-        pos = emitters.pos
+        posState.setCodecValue(emitters.pos)
         world = world ?: emitters.world
         tick = emitters.tick
         maxTick = emitters.maxTick
@@ -448,7 +451,7 @@ abstract class TransformableCParticleEmitter(
 
         /** 解码所有可变换 GPU emitter 共用的网络字段。 */
         fun decodeBase(container: TransformableCParticleEmitter, buf: FriendlyByteBuf) {
-            container.pos = buf.readVec3()
+            container.posState.setCodecValue(buf.readVec3())
             container.tick = buf.readInt()
             container.maxTick = buf.readInt()
             container.delay = buf.readInt()

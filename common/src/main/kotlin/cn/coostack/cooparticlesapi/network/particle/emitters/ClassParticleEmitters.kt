@@ -36,9 +36,11 @@ import kotlin.math.pow
 
 /** 通过自定义类来实现一些发散性粒子样式 (实在懒得写表达式了) */
 abstract class ClassParticleEmitters(
-    override var pos: Vec3,
+    pos: Vec3,
     override var world: Level?,
 ) : ParticleEmitters {
+    private val posState = dirty(pos)
+    override var pos by posState
     override var tick: Int = 0
     override var maxTick: Int = 120
     override var delay: Int = 0
@@ -154,7 +156,7 @@ abstract class ClassParticleEmitters(
             val wind = WindDirections.getCodecFromID(id)
                 .decode(buf)
             container.apply {
-                this.pos = pos
+                this.posState.setCodecValue(pos)
                 this.tick = tick
                 this.maxTick = maxTick
                 this.delay = delay
@@ -556,7 +558,7 @@ abstract class ClassParticleEmitters(
      */
     override fun update(emitters: ParticleEmitters) {
         if (emitters !is ClassParticleEmitters) return
-        this.pos = emitters.pos
+        this.posState.setCodecValue(emitters.pos)
         this.world = emitters.world
         this.tick = emitters.tick
         this.maxTick = emitters.maxTick

@@ -40,9 +40,11 @@ import kotlin.math.max
  * - [DisplayEntity]
  */
 abstract class ClassEmitters(
-    override var pos: Vec3,
+    pos: Vec3,
     override var world: Level?,
 ) : ParticleEmitters {
+    private val posState = dirty(pos)
+    override var pos by posState
     override var tick: Int = 0
     override var maxTick: Int = 120
     override var delay: Int = 0
@@ -149,7 +151,7 @@ abstract class ClassEmitters(
             val windID = buf.readUtf()
             val wind = WindDirections.getCodecFromID(windID).decode(buf)
             container.apply {
-                this.pos = pos
+                this.posState.setCodecValue(pos)
                 this.tick = tick
                 this.maxTick = maxTick
                 this.delay = delay
@@ -393,7 +395,7 @@ abstract class ClassEmitters(
      */
     override fun update(emitters: ParticleEmitters) {
         if (emitters !is ClassEmitters) return
-        this.pos = emitters.pos
+        this.posState.setCodecValue(emitters.pos)
         this.world = emitters.world
         this.tick = emitters.tick
         this.maxTick = emitters.maxTick

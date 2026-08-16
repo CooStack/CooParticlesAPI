@@ -113,7 +113,6 @@ interface ParticleEmitters : ServerControler<ParticleEmitters>, NetworkDirtyMark
     override fun teleportTo(to: Vec3) {
         if (pos == to) return
         pos = to
-        markDirty()
     }
 
     override fun teleportTo(x: Double, y: Double, z: Double) {
