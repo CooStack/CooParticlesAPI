@@ -60,7 +60,7 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
         return GamingTestGroup(player, groupID())
             .appendOption {
                 SimpleCompositionOption(
-                    TestSimpleParticleComposition(player.eyePosition.add(player.forward.scale(3.0)), player.level()),
+                    TestSimpleParticleComposition(player.eyePosition + player.forward * 3.0, player.level()),
                     -1
                 )
             }
@@ -72,8 +72,8 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
                         ringRadius = 3.0
                         ringPoints = 16
                         axisDirection = player.forward
-                        lineWidth = 0.08f
-                        lineLength = 1.35f
+                        lineWidth = 0.08F
+                        lineLength = 1.35F
                         inwardSpeed = 0.18
                         lineLife = 22
                     }, -1
@@ -92,10 +92,10 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
             }
             .appendOption {
                 SimpleDisplayEntityOption(
-                    CylinderBoardDisplayEntity(player.eyePosition.add(player.forward.scale(4.0)), player.level()).apply {
+                    CylinderBoardDisplayEntity(player.eyePosition + player.forward * 4.0, player.level()).apply {
                         direction = player.forward
-                        lineWidth = 0.12f
-                        length = 4.0f
+                        lineWidth = 0.12F
+                        length = 4.0F
                         maxAge = 200
                         fadeOut = false
                     }, 200
@@ -119,7 +119,7 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
                     TestEventEmitter(player.eyePosition, player.level())
                         .apply {
                             gravity = PhysicConstant.EARTH_GRAVITY
-                            shootDirection = player.forward.scale(1.0)
+                            shootDirection = player.forward
                             addEventHandler(TestCollideEventHandler, false)
                         }, -1
                 )
@@ -128,7 +128,7 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
                     TestEventEmitter(player.eyePosition, player.level())
                         .apply {
                             gravity = PhysicConstant.EARTH_GRAVITY
-                            shootDirection = player.forward.scale(1.0)
+                            shootDirection = player.forward
                             templateData.effect = ControlableSplashEffect(templateData.uuid)
                             templateData.color = Math3DUtil.colorOf(255, 0, 0)
                             addEventHandler(TestCollideEventHandler, false)
@@ -147,7 +147,7 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
                                         TestEventEmitter(player.eyePosition, player.level())
                                             .apply {
                                                 gravity = PhysicConstant.EARTH_GRAVITY
-                                                shootDirection = player.forward.scale(1.0)
+                                                shootDirection = player.forward
                                                 addEventHandler(TestCollideEventHandler, false)
                                             }
                                     ) {}
@@ -156,7 +156,7 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
                                         TestEventEmitter(player.eyePosition, player.level())
                                             .apply {
                                                 gravity = PhysicConstant.EARTH_GRAVITY
-                                                shootDirection = player.forward.scale(-1.0)
+                                                shootDirection = player.forward * -1.0
                                                 addEventHandler(TestCollideEventHandler, false)
                                             }
                                     ) {}
@@ -217,7 +217,7 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
             .appendOption {
                 SimpleCompositionOption(
                     SequenceTestGPUComposition(
-                        player.eyePosition.add(player.forward.scale(3.0)),
+                        player.eyePosition + player.forward * 3.0,
                         player.level()
                     ),
                     1000
@@ -244,7 +244,7 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
                         direction = player.forward
                         gravity = 0.05
                         template.setTextureSheet(CooParticleTextureSheet.ADDITION_BLEND_TRANSLUCENT)
-                        template.color = Vector3f(0.35f, 0.70f, 1.00f)
+                        template.color = Vector3f(0.35F, 0.70F, 1.00F)
                         maxTick = -1
                         ballRadius = 1.0
                         ballOption.apply {

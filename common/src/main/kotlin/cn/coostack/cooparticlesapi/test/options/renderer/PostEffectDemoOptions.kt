@@ -4,6 +4,7 @@ import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelineIteration
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooShaderEffects
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooUniformValue
+import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.CooTextureFormat
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.entity.player.Player
 
@@ -83,6 +84,45 @@ object PostEffectDemoOptions {
         outputToScreen()
     }
 
+    private val ORBITAL_RAILGUN = CooShaderEffects.register(id("post/demo/orbital_railgun")) {
+        val screenVertex = vertexShader("orbital_railgun_screen")
+        val strike = pass("strike") {
+            vertex(screenVertex)
+            fragment(shader("orbital_railgun_strike"))
+            input("scene")
+            input("depth", optional = true)
+            outputFormat(CooTextureFormat.RGBA16F)
+        }
+        val extract = pass("bright_extract") {
+            vertex(screenVertex)
+            fragment(shader("orbital_railgun_bright_extract"))
+            input("scene")
+            outputFormat(CooTextureFormat.RGBA16F)
+        }
+        val blur = pingPong("blur", iterations = 2, feedbackSampler = "bright") {
+            vertex(screenVertex)
+            fragment(shader("orbital_railgun_blur"))
+            alternate("Axis", 0, 1)
+            iterationUniform("Iteration") { iteration: CooPipelineIteration ->
+                CooUniformValue.IntValue(iteration.index)
+            }
+            outputFormat(CooTextureFormat.RGBA16F)
+        }
+        val composite = pass("composite") {
+            vertex(screenVertex)
+            fragment(shader("orbital_railgun_composite"))
+            input("scene")
+            input("bloom")
+            outputToScreen()
+        }
+        line(sceneColor(), strike.input("scene"))
+        line(sceneDepth(), strike.input("depth"))
+        line(strike.color(), extract.input("scene"))
+        line(extract.color(), blur.input("bright"))
+        line(strike.color(), composite.input("scene"))
+        line(blur.color(), composite.input("bloom"))
+    }
+
     fun init() = Unit
 
     fun grayscale(player: Player): PostEffectDemoOption {
@@ -112,6 +152,33 @@ object PostEffectDemoOptions {
                 uniform("progress", 0.35F)
             },
             description = "Server-triggered screen ShaderEffect using the new play(player) entry."
+        )
+    }
+
+    fun orbitalRailgun(player: Player): PostEffectDemoOption {
+        val target = player.pick(96.0, 0F, false).location
+        return PostEffectDemoOption(
+            player = player,
+            displayName = "shader_effect/orbital_railgun",
+            testingTick = 220,
+            effect = ORBITAL_RAILGUN,
+            configure = {
+                uniform("cooEffectCenterX", target.x)
+                uniform("cooEffectCenterY", target.y)
+                uniform("cooEffectCenterZ", target.z)
+                uniform("lineColor", CooUniformValue.Vec3Value(0.58F, 0.94F, 1F))
+                uniform("orbHeight", 14F)
+                uniform("maxRadius", 72F)
+                uniform("lineWidth", 0.42F)
+                uniform("darkness", 0.12F)
+                uniform("threshold", 0.85F)
+                uniform("softKnee", 0.35F)
+                uniform("Intensity", 1F)
+                uniform("blurRadius", 4F)
+                uniform("bloomStrength", 1.45F)
+                uniform("chromaticStrength", 0.012F)
+            },
+            description = "Aim at terrain before starting. Verify depth-occluded orbital geometry, terrain-following shells, bloom, darkening, and chromatic separation."
         )
     }
 
@@ -221,6 +288,10 @@ object PostEffectDemoOptions {
 
     private fun id(path: String): ResourceLocation {
         return ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, path)
+    }
+
+    private fun vertexShader(path: String): ResourceLocation {
+        return ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "post/$path.vsh")
     }
 
     private fun shader(path: String): ResourceLocation {
