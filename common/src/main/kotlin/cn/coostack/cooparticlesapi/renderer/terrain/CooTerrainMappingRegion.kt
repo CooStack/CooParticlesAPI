@@ -34,6 +34,17 @@ sealed interface CooTerrainMappingRegion {
     /** 返回可用于服务端候选筛选的轴对齐方块边界。 */
     fun bounds(): CooTerrainMappingBounds
 
+    /** 判断一个包含式 section 包围盒是否与区域相交。 */
+    fun intersects(
+        minX: Int,
+        minY: Int,
+        minZ: Int,
+        maxX: Int,
+        maxY: Int,
+        maxZ: Int
+    ): Boolean = bounds().intersects(minX, minY, minZ, maxX, maxY, maxZ)
+
+
     /** 球形空间选择域。 */
     data class Sphere(val center: Vec3, val radius: Double) : CooTerrainMappingRegion {
         init {
@@ -64,6 +75,23 @@ sealed interface CooTerrainMappingRegion {
                 ceil(center.z + radius).toInt()
             )
         }
+
+        override fun intersects(
+            minX: Int,
+            minY: Int,
+            minZ: Int,
+            maxX: Int,
+            maxY: Int,
+            maxZ: Int
+        ): Boolean {
+            val nearestX = center.x.coerceIn(minX.toDouble(), maxX.toDouble())
+            val nearestY = center.y.coerceIn(minY.toDouble(), maxY.toDouble())
+            val nearestZ = center.z.coerceIn(minZ.toDouble(), maxZ.toDouble())
+            val dx = center.x - nearestX
+            val dy = center.y - nearestY
+            val dz = center.z - nearestZ
+            return dx * dx + dy * dy + dz * dz <= radius * radius
+        }
     }
 
     companion object {
@@ -83,7 +111,7 @@ sealed interface CooTerrainMappingRegion {
     }
 }
 
-/** 区域候选边界；上限和下限均为包含式方块坐标。 */
+/** 区域候选边界；上限和下限均为包含式方块坐标，可用于服务端和客户端 section 筛选。 */
 data class CooTerrainMappingBounds(
     val minX: Int,
     val minY: Int,
@@ -91,4 +119,18 @@ data class CooTerrainMappingBounds(
     val maxX: Int,
     val maxY: Int,
     val maxZ: Int
-)
+) {
+    /** 判断本区域边界是否与包含式方块包围盒相交。 */
+    fun intersects(
+        minX: Int,
+        minY: Int,
+        minZ: Int,
+        maxX: Int,
+        maxY: Int,
+        maxZ: Int
+    ): Boolean {
+        return this.maxX >= minX && this.minX <= maxX &&
+            this.maxY >= minY && this.minY <= maxY &&
+            this.maxZ >= minZ && this.minZ <= maxZ
+    }
+}

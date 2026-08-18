@@ -90,9 +90,10 @@ internal object CooTerrainPipelineManager {
     /** Iris 最终合成完成前不能执行的原版 section 覆盖绘制。 */
     private val deferredVanillaDraws = ArrayList<DeferredVanillaDraw>()
     private val shaders = LinkedHashMap<CooTerrainShaderCacheKey, CooTerrainShaderInstance>()
+    private val shaderFragmentSources = LinkedHashMap<ResourceLocation, String?>()
     private val failedShaders = linkedSetOf<CooTerrainShaderCacheKey>()
     private var terrainEffectRevision = -1L
-    private var terrainMappingRevision = -1L
+    private var terrainMappingTopologyRevision = -1L
     private var initialized = false
     @Volatile
     private var sodiumLoaded = false
@@ -191,10 +192,10 @@ internal object CooTerrainPipelineManager {
             if (changedPositions.isNotEmpty()) {
                 requestSectionRebuild(changedPositions)
             }
-            val currentMappingRevision = CooTerrainMappingRegistry.revision()
-            if (currentMappingRevision != terrainMappingRevision) {
-                terrainMappingRevision = currentMappingRevision
-                requestSectionRebuild()
+            val currentMappingTopologyRevision = CooTerrainMappingRegistry.topologyRevision()
+            if (currentMappingTopologyRevision != terrainMappingTopologyRevision) {
+                terrainMappingTopologyRevision = currentMappingTopologyRevision
+                requestMappingSectionRebuild(CooTerrainMappingRegistry.drainTopologyRegions(dimension))
             }
         }
         synchronized(pendingPostDraws) {
@@ -397,6 +398,7 @@ internal object CooTerrainPipelineManager {
     @JvmStatic
     fun activationAt(renderType: RenderType, pos: BlockPos): Long {
         val pipeline = synchronized(terrainLayers) { terrainPipelines[renderType] } ?: return 0L
+        if (isMappingRenderType(renderType)) return 0L
         val level = Minecraft.getInstance().level
         return level?.let {
             CooTerrainEffectRegistry.activationAt(
@@ -435,6 +437,50 @@ internal object CooTerrainPipelineManager {
     @JvmStatic
     fun isMappingRenderType(renderType: RenderType): Boolean {
         return synchronized(terrainLayers) { renderType in terrainMappings }
+    }
+
+    /** 判断加法合成的 Mapping 覆盖层是否可只在后处理捕获阶段绘制。 */
+    @JvmStatic
+    fun isTerrainPostRenderType(renderType: RenderType): Boolean {
+        val (pipeline, batchKey) = synchronized(terrainLayers) {
+            terrainPipelines[renderType] to terrainMappingBatchKeys[renderType]
+        }
+        if (batchKey?.composition != CooTerrainEffectComposition.ADDITIVE) return false
+        val resolvedPipeline = pipeline ?: return false
+        return CooPipelineCompiler.compile(resolvedPipeline).nodes.any {
+            it.kind != CooPipelineNodeKind.WORLD
+        }
+    }
+
+    /** 判断当前 Mapping 区域是否与一个 Sodium section 的包围盒相交。 */
+    @JvmStatic
+    fun isTerrainMappingSectionVisible(
+        renderType: RenderType,
+        minX: Int,
+        minY: Int,
+        minZ: Int,
+        maxX: Int,
+        maxY: Int,
+        maxZ: Int
+    ): Boolean {
+        val batchKey = synchronized(terrainLayers) { terrainMappingBatchKeys[renderType] }
+            ?: return true
+        val mapping = CooTerrainMappingRegistry.current(batchKey) ?: return false
+        return mapping.region.intersects(minX, minY, minZ, maxX, maxY, maxZ)
+    }
+
+    /** 判断是否没有 REPLACE Mapping，因而可以保留原版 terrain 几何。 */
+    @JvmStatic
+    fun shouldPreserveVanillaTerrainGeometry(renderTypes: List<RenderType>): Boolean {
+        if (shouldPreserveVanillaTerrainGeometry()) return true
+        return synchronized(terrainLayers) {
+            val compositions = renderTypes.mapNotNull { renderType ->
+                terrainMappingBatchKeys[renderType]?.composition
+            }
+            compositions.isNotEmpty() && compositions.none {
+                it == CooTerrainEffectComposition.REPLACE
+            }
+        }
     }
 
     /**
@@ -652,8 +698,17 @@ internal object CooTerrainPipelineManager {
             terrainSceneResources = resources
             val sources = synchronized(terrainLayers) {
                 renderTypes.mapNotNull(terrainPipelines::get)
-                    .flatMap { it.lines }
-                    .map { it.output }
+                    .flatMap { pipeline ->
+                        val worldNodes = pipeline.nodes
+                            .filter { it.kind == CooPipelineNodeKind.WORLD }
+                            .mapTo(linkedSetOf()) { it.name }
+                        pipeline.lines
+                            .filter { line ->
+                                val input = line.input as? CooPipelineInputPort
+                                input != null && input.node in worldNodes
+                            }
+                            .map { it.output }
+                    }
             }
             val sourceFramebuffer = glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING)
             terrainColorWidth = targets.width.coerceAtLeast(1)
@@ -787,7 +842,12 @@ internal object CooTerrainPipelineManager {
         mapping: CooTerrainMappingInstance? = null
     ): ShaderInstance? {
         val shaderId = requireNotNull(pipeline.terrainShader)
-        val descriptor = buildGeneratedDescriptor(shaderId, pipeline)
+        val resources = Minecraft.getInstance().resourceManager
+        val descriptor = buildGeneratedDescriptor(
+            shaderId,
+            pipeline,
+            terrainFragmentSource(resources, shaderId)
+        )
         val cacheKey = CooTerrainShaderCacheKey(shaderId, descriptor)
         val shader = synchronized(shaders) {
                 shaders[cacheKey] ?: createShader(cacheKey)?.also { shaders[cacheKey] = it }
@@ -862,6 +922,33 @@ internal object CooTerrainPipelineManager {
         }
     }
 
+    /** 缓存已预处理的 terrain 片元源码，避免每次 section draw 重新读取资源。 */
+    private fun terrainFragmentSource(
+        resources: ResourceProvider,
+        shaderId: ResourceLocation
+    ): String? {
+        synchronized(shaderFragmentSources) {
+            if (shaderFragmentSources.containsKey(shaderId)) {
+                return shaderFragmentSources[shaderId]
+            }
+        }
+        val location = ResourceLocation.fromNamespaceAndPath(
+            shaderId.namespace,
+            "shaders/core/${shaderId.path}.fsh"
+        )
+        val source = runCatching { CooShaderSourceLoader.load(resources, location) }.getOrNull()
+        synchronized(shaderFragmentSources) {
+            shaderFragmentSources[shaderId] = source
+        }
+        return source
+    }
+
+    /** 判断片元是否实际消费指定的顶点 varying；声明本身不算使用。 */
+    private fun shaderUses(source: String, symbol: String): Boolean {
+        val first = source.indexOf(symbol)
+        return first >= 0 && source.indexOf(symbol, first + symbol.length) >= 0
+    }
+
     /** 将桥接层的源码请求映射为经过 Coo 预处理的 shader 文本。 */
     private fun remapTerrainShaderSource(
         resources: ResourceProvider,
@@ -889,11 +976,13 @@ internal object CooTerrainPipelineManager {
      *
      * @param shaderId Pipeline 声明的 fragment shader ID
      * @param pipeline 提供 sampler 和 uniform 声明的方块 Pipeline
+     * @param fragmentSource 已预处理的 fragment 源码；为空时保留兼容性的完整内置 uniform 集合
      * @return 可由 [ShaderInstance] 读取的 JSON 描述文本
      */
     internal fun buildGeneratedDescriptor(
         shaderId: ResourceLocation,
-        pipeline: CooRenderPipeline<BlockState>
+        pipeline: CooRenderPipeline<BlockState>,
+        fragmentSource: String? = null
     ): String {
         val world = pipeline.nodes.firstOrNull { it.kind == CooPipelineNodeKind.WORLD }
         val samplers = linkedSetOf<String>().apply {
@@ -920,6 +1009,18 @@ internal object CooTerrainPipelineManager {
             put("CooMappingDepthAvailable", intUniform("CooMappingDepthAvailable"))
             put("CooIrisComposite", intUniform("CooIrisComposite"))
             put("CooMappingComposition", intUniform("CooMappingComposition"))
+        }
+        if (fragmentSource != null) {
+            if (!shaderUses(fragmentSource, "effectUv")) {
+                uniforms.remove("CooEffectUvCameraPosition")
+                uniforms.remove("CooEffectUvMode")
+            }
+            if (!shaderUses(fragmentSource, "effectElapsedTicks")) {
+                uniforms.remove("CooGameTime")
+            }
+            if (!shaderUses(fragmentSource, "CooMappingDepthAvailable")) {
+                uniforms.remove("CooMappingDepthAvailable")
+            }
         }
         return buildString {
             append("{\n  \"vertex\": \"cooparticlesapi/terrain/block_effect\",\n")
@@ -1014,6 +1115,7 @@ internal object CooTerrainPipelineManager {
                     put(name, value)
                 }
             }
+            mapping?.uniforms?.forEach { (name, value) -> put(name, value) }
         }
         shader.getUniform("ScreenSize")?.set(terrainColorWidth.toFloat(), terrainColorHeight.toFloat())
         val mappingRegion = mapping?.region
@@ -1255,6 +1357,35 @@ internal object CooTerrainPipelineManager {
         if (minecraft.level != null) minecraft.levelRenderer.allChanged()
     }
 
+    private fun requestMappingSectionRebuild(regions: Collection<CooTerrainMappingRegion>) {
+        if (regions.isEmpty()) return
+        val sections = LinkedHashSet<SectionCoordinate>()
+        regions.forEach { region ->
+            val bounds = region.bounds()
+            val minSectionX = Math.floorDiv(bounds.minX, 16)
+            val minSectionY = Math.floorDiv(bounds.minY, 16)
+            val minSectionZ = Math.floorDiv(bounds.minZ, 16)
+            val maxSectionX = Math.floorDiv(bounds.maxX, 16)
+            val maxSectionY = Math.floorDiv(bounds.maxY, 16)
+            val maxSectionZ = Math.floorDiv(bounds.maxZ, 16)
+            for (sectionX in minSectionX..maxSectionX) {
+                for (sectionY in minSectionY..maxSectionY) {
+                    for (sectionZ in minSectionZ..maxSectionZ) {
+                        sections += SectionCoordinate(sectionX, sectionY, sectionZ)
+                    }
+                }
+            }
+        }
+        if (sections.isEmpty()) return
+        val minecraft = Minecraft.getInstance()
+        minecraft.execute {
+            if (minecraft.level == null) return@execute
+            sections.forEach { section ->
+                minecraft.levelRenderer.setSectionDirty(section.x, section.y, section.z)
+            }
+        }
+    }
+
     private fun requestSectionRebuild(positions: Collection<BlockPos>) {
         if (positions.isEmpty()) return
         val sections = positions
@@ -1335,6 +1466,9 @@ internal object CooTerrainPipelineManager {
             shaders.values.forEach(ShaderInstance::close)
             shaders.clear()
         }
+        synchronized(shaderFragmentSources) {
+            shaderFragmentSources.clear()
+        }
         failedShaders.clear()
         terrainColorTextureId = null
         sceneDepthTextureId = null
@@ -1351,7 +1485,7 @@ internal object CooTerrainPipelineManager {
         terrainAttachmentCaptureActive = false
         finalCompositeTerrainOverlayActive = false
         terrainEffectRevision = -1L
-        terrainMappingRevision = -1L
+        terrainMappingTopologyRevision = -1L
         synchronized(pendingPostDraws) {
             pendingPostDraws.clear()
         }

@@ -60,9 +60,14 @@ data class CooFxSceneSpec(
     val cameraPriority: Int = 0,
     /**
      * 只允许该玩家在本地接管 camera；模型仍会同步给所有可见玩家。
-     * `null` 表示所有收到场景的玩家都跟踪 camera。
+     * `null` 表示所有收到场景的玩家都跟踪 camera。该字段保留为单玩家调用方的兼容入口。
      */
     val cameraTargetPlayer: UUID? = null,
+    /**
+     * 指定本地接管 camera 的多个玩家。`null` 表示所有收到场景的玩家都跟踪 camera；单玩家调用方
+     * 应继续使用 [cameraTargetPlayer]。两个字段不能同时设置，避免接收者语义不明确。
+     */
+    val cameraTargetPlayers: Set<UUID>? = null,
     val emitterId: String? = null,
     val emitterCount: Int? = null,
     val emitterDelayTicks: Int? = null,
@@ -74,6 +79,12 @@ data class CooFxSceneSpec(
         require(clipId == null || clipId.isNotBlank()) { "CooFX scene clip id 不能为空" }
         require(playbackSpeed.isFinite() && playbackSpeed >= 0F) { "CooFX scene playbackSpeed 必须非负且有限" }
         require(cameraId == null || cameraId.isNotBlank()) { "CooFX scene camera id 不能为空" }
+        require(cameraTargetPlayer == null || cameraTargetPlayers == null) {
+            "CooFX scene 不能同时指定单个和多个 camera 接收者"
+        }
+        require(cameraTargetPlayers == null || cameraTargetPlayers.isNotEmpty()) {
+            "CooFX scene 多个 camera 接收者不能为空"
+        }
         require(emitterId == null || emitterId.isNotBlank()) { "CooFX scene emitter id 不能为空" }
         require(emitterCount == null || emitterCount >= 0) { "CooFX scene emitter count 不能为负数" }
         require(emitterDelayTicks == null || emitterDelayTicks >= 0) { "CooFX scene emitter delay 不能为负数" }
@@ -95,6 +106,8 @@ data class CooFxScenePatch(
     val cameraPriority: Int? = null,
     /** 只更新 camera 跟踪目标；清空目标请使用完整 [CooFxSceneSpec] 替换。 */
     val cameraTargetPlayer: UUID? = null,
+    /** 只更新多个 camera 跟踪目标；清空目标请使用完整 [CooFxSceneSpec] 替换。 */
+    val cameraTargetPlayers: Set<UUID>? = null,
     val emitterId: String? = null,
     val emitterCount: Int? = null,
     val emitterDelayTicks: Int? = null,
@@ -106,6 +119,12 @@ data class CooFxScenePatch(
             "CooFX scene patch playbackSpeed 必须非负且有限"
         }
         require(cameraId == null || cameraId.isNotBlank()) { "CooFX scene patch camera id 不能为空" }
+        require(cameraTargetPlayer == null || cameraTargetPlayers == null) {
+            "CooFX scene patch 不能同时指定单个和多个 camera 接收者"
+        }
+        require(cameraTargetPlayers == null || cameraTargetPlayers.isNotEmpty()) {
+            "CooFX scene patch 多个 camera 接收者不能为空"
+        }
         require(emitterId == null || emitterId.isNotBlank()) { "CooFX scene patch emitter id 不能为空" }
         require(emitterCount == null || emitterCount >= 0) { "CooFX scene patch emitter count 不能为负数" }
         require(emitterDelayTicks == null || emitterDelayTicks >= 0) { "CooFX scene patch emitter delay 不能为负数" }

@@ -19,6 +19,7 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import java.util.ArrayList;
 
 /**
  * 把 Coo 粒子系统、地形 Pipeline 和统一后处理生命周期接入原版世界渲染器。
@@ -199,8 +200,8 @@ public class LevelRendererMixin {
     /**
      * 绘制建立在一个原版 terrain layer 上的全部 Coo 覆盖层。
      *
-     * <p>Sodium 已接管时不进入原版路径。Iris 最终合成模式会保存绘制回调；其他模式立即准备
-     * overlay batch、绘制各扩展层并记录需要重放的后处理输入。任一覆盖层失败都会切回原版几何。
+     * <p>Sodium 已接管时不进入原版路径。带后处理的加法 Mapping 只登记 attachment 捕获回调，
+     * 避免先写世界目标再重放同一 section；其余覆盖层按普通或 Iris 最终合成路径绘制。任一覆盖层失败都会切回原版几何。
      *
      * @param baseLayer 刚完成绘制的原版 terrain layer
      * @param camera 当前世界相机
@@ -221,27 +222,35 @@ public class LevelRendererMixin {
         if (layers.isEmpty()) {
             return;
         }
-        if (CooTerrainPipelineManager.shouldDeferVanillaTerrainOverlay()) {
-            for (RenderType renderType : layers) {
-                CooTerrainPipelineManager.deferVanillaTerrainOverlay(renderType, () -> renderSectionLayer(
-                        renderType,
-                        camera.getPosition().x,
-                        camera.getPosition().y,
-                        camera.getPosition().z,
-                        frustumMatrix,
-                        projectionMatrix
-                ));
+        var immediateLayers = new ArrayList<RenderType>();
+        for (RenderType renderType : layers) {
+            Runnable draw = () -> renderSectionLayer(
+                    renderType,
+                    camera.getPosition().x,
+                    camera.getPosition().y,
+                    camera.getPosition().z,
+                    frustumMatrix,
+                    projectionMatrix
+            );
+            if (CooTerrainPipelineManager.isTerrainPostRenderType(renderType)) {
+                CooTerrainPipelineManager.recordPostDraw(renderType, draw);
+            } else if (CooTerrainPipelineManager.shouldDeferVanillaTerrainOverlay()) {
+                CooTerrainPipelineManager.deferVanillaTerrainOverlay(renderType, draw);
+            } else {
+                immediateLayers.add(renderType);
             }
+        }
+        if (immediateLayers.isEmpty()) {
             return;
         }
-        if (!CooTerrainPipelineManager.beginOverlayBatch(layers)) {
+        if (!CooTerrainPipelineManager.beginOverlayBatch(immediateLayers)) {
             return;
         }
         try {
             if (!CooTerrainPipelineManager.isTerrainOverlayEnabled()) {
                 return;
             }
-            for (RenderType renderType : layers) {
+            for (RenderType renderType : immediateLayers) {
                 try {
                     renderSectionLayer(
                             renderType,
@@ -251,14 +260,6 @@ public class LevelRendererMixin {
                             frustumMatrix,
                             projectionMatrix
                     );
-                    CooTerrainPipelineManager.recordPostDraw(renderType, () -> renderSectionLayer(
-                            renderType,
-                            camera.getPosition().x,
-                            camera.getPosition().y,
-                            camera.getPosition().z,
-                            frustumMatrix,
-                            projectionMatrix
-                    ));
                 } catch (RuntimeException error) {
                     if (!CooTerrainPipelineManager.handleOverlayDrawFailure(renderType, error)) {
                         throw error;

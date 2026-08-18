@@ -49,7 +49,7 @@ public abstract class SectionCompilerMixin {
     ) {
         RenderType baseLayer = ItemBlockRenderTypes.getRenderLayer(fluidState);
         List<RenderType> overlayLayers = CooTerrainPipelineManager.resolveOverlayRenderTypes(state, baseLayer, pos);
-        if (overlayLayers.isEmpty() || CooTerrainPipelineManager.shouldPreserveVanillaTerrainGeometry()) {
+        if (overlayLayers.isEmpty() || CooTerrainPipelineManager.shouldPreserveVanillaTerrainGeometry(overlayLayers)) {
             original.call(dispatcher, pos, level, consumer, state, fluidState);
         }
         for (RenderType overlayLayer : overlayLayers) {
@@ -93,7 +93,7 @@ public abstract class SectionCompilerMixin {
     ) {
         RenderType baseLayer = ItemBlockRenderTypes.getChunkRenderType(state);
         List<RenderType> overlayLayers = CooTerrainPipelineManager.resolveOverlayRenderTypes(state, baseLayer, pos);
-        if (overlayLayers.isEmpty() || CooTerrainPipelineManager.shouldPreserveVanillaTerrainGeometry()) {
+        if (overlayLayers.isEmpty() || CooTerrainPipelineManager.shouldPreserveVanillaTerrainGeometry(overlayLayers)) {
             poseStack.pushPose();
             try {
                 original.call(dispatcher, state, pos, level, poseStack, consumer, checkSides, random);

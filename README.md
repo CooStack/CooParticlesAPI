@@ -102,7 +102,11 @@ CooAPIScanner.registerPacket("your.mod.package")
 - DisplayEntity：[`docs/display-entity.md`](docs/display-entity.md)
 - Pipeline / RenderEntity / ShaderEffect：[
   `docs/shader-renderentity-post-framework.md`](docs/shader-renderentity-post-framework.md)
+- Terrain Mapping：[`docs/terrain-mapping.md`](docs/terrain-mapping.md)
 - Utils：[`docs/utils.md`](docs/utils.md)
+- CooFX Blender 导入与运行时使用：[`docs/coofx/blender-import-and-usage.md`](docs/coofx/blender-import-and-usage.md)
+- CooFX v1 资产格式：[`docs/coofx/format-v1.md`](docs/coofx/format-v1.md)
+- CooFX 架构与生命周期：[`docs/coofx/architecture.md`](docs/coofx/architecture.md)
 
 ---
 

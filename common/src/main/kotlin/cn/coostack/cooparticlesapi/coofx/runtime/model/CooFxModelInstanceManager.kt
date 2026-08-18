@@ -107,7 +107,7 @@ internal class CooFxModelInstanceManager {
             if (compiled.contentDigest != state.contentDigest) return@forEach
             val packedLight = lightResolver(state.transform.x, state.transform.y, state.transform.z)
             require(packedLight in 0..0xFFFFFF) { "Resolved model packed light must fit in 24 bits" }
-            val templatesByPrimitive = compiled.batchTemplates.associateBy { template -> template.primitiveIndex }
+            val templatesByPrimitive = compiled.batchTemplatesByPrimitive
             val clipTimeSeconds = state.ageTicks.toFloat() * secondsPerTick * state.playbackSpeed
             val previousClipTimeSeconds = (state.ageTicks - 1L).coerceAtLeast(0L).toFloat() *
                 secondsPerTick * state.playbackSpeed

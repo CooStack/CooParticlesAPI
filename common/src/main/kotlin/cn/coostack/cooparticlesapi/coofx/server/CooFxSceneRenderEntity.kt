@@ -94,6 +94,11 @@ class CooFxSceneRenderEntity() : AutoRenderEntity(null, Vec3.ZERO) {
     var cameraTargetPlayerText: String = ""
         private set
 
+    /** 逗号分隔且排序的多个 camera 接收者 UUID；为空时兼容读取 [cameraTargetPlayerText]。 */
+    @CodecField
+    var cameraTargetPlayersText: String = ""
+        private set
+
     /** 空字符串表示不启动 emitter。 */
     @CodecField
     var emitterIdText: String = ""
@@ -158,6 +163,12 @@ class CooFxSceneRenderEntity() : AutoRenderEntity(null, Vec3.ZERO) {
         cameraIdText = spec.cameraId.orEmpty()
         cameraPriority = spec.cameraPriority
         cameraTargetPlayerText = spec.cameraTargetPlayer?.toString().orEmpty()
+        cameraTargetPlayersText = spec.cameraTargetPlayers
+            ?.asSequence()
+            ?.map(UUID::toString)
+            ?.sorted()
+            ?.joinToString(",")
+            .orEmpty()
         emitterIdText = spec.emitterId.orEmpty()
         emitterCount = spec.emitterCount ?: -1
         emitterDelayTicks = spec.emitterDelayTicks ?: -1
@@ -185,7 +196,14 @@ class CooFxSceneRenderEntity() : AutoRenderEntity(null, Vec3.ZERO) {
         patch.playbackSpeed?.let { playbackSpeed = it }
         patch.cameraId?.let { cameraIdText = it }
         patch.cameraPriority?.let { cameraPriority = it }
-        patch.cameraTargetPlayer?.let { cameraTargetPlayerText = it.toString() }
+        patch.cameraTargetPlayer?.let { target ->
+            cameraTargetPlayerText = target.toString()
+            cameraTargetPlayersText = ""
+        }
+        patch.cameraTargetPlayers?.let { targets ->
+            cameraTargetPlayerText = ""
+            cameraTargetPlayersText = targets.asSequence().map(UUID::toString).sorted().joinToString(",")
+        }
         patch.emitterId?.let { emitterIdText = it }
         patch.emitterCount?.let { emitterCount = it }
         patch.emitterDelayTicks?.let { emitterDelayTicks = it }
@@ -213,6 +231,17 @@ class CooFxSceneRenderEntity() : AutoRenderEntity(null, Vec3.ZERO) {
     fun cameraTargetPlayer(): UUID? = cameraTargetPlayerText
         .takeIf { value -> value.isNotBlank() }
         ?.let { value -> UUID.fromString(value) }
+
+    /** @return 本地 camera 跟踪接收者；`null` 表示不限制玩家，且兼容旧单玩家字段。 */
+    fun cameraTargetPlayers(): Set<UUID>? {
+        if (cameraTargetPlayersText.isNotBlank()) {
+            return cameraTargetPlayersText.split(',').map(UUID::fromString).toSet()
+        }
+        return cameraTargetPlayer()?.let(::setOf)
+    }
+
+    /** @return 当前玩家是否可在本地接管该 scene 的 camera。 */
+    fun isCameraTargetedAt(playerId: UUID): Boolean = cameraTargetPlayers()?.contains(playerId) ?: true
 
     /** @return 当前 emitter，空字符串表示不播放 emitter。 */
     fun emitterId(): String? = emitterIdText.takeIf { value -> value.isNotBlank() }
@@ -242,6 +271,10 @@ class CooFxSceneRenderEntity() : AutoRenderEntity(null, Vec3.ZERO) {
         require(lifetimeTicks >= -1L) { "CooFX scene lifetimeTicks 非法" }
         if (cameraTargetPlayerText.isNotBlank()) {
             UUID.fromString(cameraTargetPlayerText)
+        }
+        if (cameraTargetPlayersText.isNotBlank()) {
+            require(cameraTargetPlayerText.isBlank()) { "CooFX scene 不能同时保存单个和多个 camera 接收者" }
+            cameraTargetPlayersText.split(',').forEach(UUID::fromString)
         }
     }
 

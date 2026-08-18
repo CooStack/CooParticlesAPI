@@ -38,8 +38,6 @@ import org.lwjgl.opengl.GL11.GL_DEPTH_TEST
 import org.lwjgl.opengl.GL11.GL_DEPTH_WRITEMASK
 import org.lwjgl.opengl.GL11.GL_LEQUAL
 import org.lwjgl.opengl.GL11.GL_VIEWPORT
-import org.lwjgl.opengl.GL11.glDisable
-import org.lwjgl.opengl.GL11.glEnable
 import org.lwjgl.opengl.GL11.glGetBoolean
 import org.lwjgl.opengl.GL11.glGetIntegerv
 import org.lwjgl.opengl.GL11.glIsEnabled
@@ -230,15 +228,67 @@ internal object CooSodiumTerrainOverlay {
         cameraZ: Double
     ) {
         if (!CooTerrainPipelineManager.isSodiumTerrainOverlayEnabled()) return
-        val drawGroups = collectDrawGroups(renderLists, pass)
+        val collectedDrawGroups = collectDrawGroups(renderLists, pass)
+        if (collectedDrawGroups.isEmpty()) return
+        val drawGroups = LinkedHashMap<RenderType, MutableList<DrawEntry>>()
+        collectedDrawGroups.forEach { (renderType, entries) ->
+            val visibleEntries = if (!CooTerrainPipelineManager.isMappingRenderType(renderType)) {
+                entries
+            } else {
+                val sectionMaxOffset = 15
+                entries.filterTo(ArrayList<DrawEntry>()) { entry ->
+                    CooTerrainPipelineManager.isTerrainMappingSectionVisible(
+                        renderType,
+                        entry.section.originX,
+                        entry.section.originY,
+                        entry.section.originZ,
+                        entry.section.originX + sectionMaxOffset,
+                        entry.section.originY + sectionMaxOffset,
+                        entry.section.originZ + sectionMaxOffset
+                    )
+                }
+            }
+            if (visibleEntries.isNotEmpty()) {
+                drawGroups[renderType] = visibleEntries
+            }
+        }
         if (drawGroups.isEmpty()) return
+        val postDrawGroups = LinkedHashMap<RenderType, MutableList<DrawEntry>>()
+        val immediateDrawGroups = LinkedHashMap<RenderType, MutableList<DrawEntry>>()
+        drawGroups.forEach { (renderType, entries) ->
+            if (CooTerrainPipelineManager.isTerrainPostRenderType(renderType)) {
+                postDrawGroups[renderType] = entries
+            } else {
+                immediateDrawGroups[renderType] = entries
+            }
+        }
+
+        val modelView = Matrix4f(matrices.modelView())
+        val projection = Matrix4f(matrices.projection())
+        postDrawGroups.forEach { (renderType, entries) ->
+            val snapshot = entries.toList()
+            CooTerrainPipelineManager.recordPostDraw(renderType) {
+                drawSafely(
+                    renderType,
+                    snapshot,
+                    modelView,
+                    projection,
+                    cameraX,
+                    cameraY,
+                    cameraZ,
+                    false
+                )
+            }
+        }
+        if (immediateDrawGroups.isEmpty()) return
+
         if (CooTerrainPipelineManager.shouldPreserveVanillaTerrainGeometry()) {
             when (IrisCompat.shadowPassState()) {
                 IrisShadowPassState.ACTIVE -> return
                 IrisShadowPassState.UNKNOWN -> {
                     CooTerrainPipelineManager.handleSodiumOverlayFailure(
                         "Iris shadow-pass detection",
-                        drawGroups.keys.firstOrNull(),
+                        immediateDrawGroups.keys.firstOrNull(),
                         IllegalStateException("Iris shadow-pass state is unavailable")
                     )
                     return
@@ -247,9 +297,9 @@ internal object CooSodiumTerrainOverlay {
             }
             synchronized(deferredDraws) {
                 deferredDraws += DeferredDraw(
-                    drawGroups.mapValues { (_, entries) -> entries.toList() },
-                    Matrix4f(matrices.modelView()),
-                    Matrix4f(matrices.projection()),
+                    immediateDrawGroups.mapValues { (_, entries) -> entries.toList() },
+                    modelView,
+                    projection,
                     cameraX,
                     cameraY,
                     cameraZ
@@ -258,9 +308,9 @@ internal object CooSodiumTerrainOverlay {
             return
         }
         renderDrawGroups(
-            drawGroups,
-            Matrix4f(matrices.modelView()),
-            Matrix4f(matrices.projection()),
+            immediateDrawGroups,
+            modelView,
+            projection,
             cameraX,
             cameraY,
             cameraZ,

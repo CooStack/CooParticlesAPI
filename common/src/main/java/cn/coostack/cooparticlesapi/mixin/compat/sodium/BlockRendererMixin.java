@@ -47,7 +47,7 @@ public abstract class BlockRendererMixin extends AbstractBlockRenderContext {
         for (RenderType overlay : overlays) {
             CooSodiumTerrainOverlay.captureQuad(overlay, pass, pos, quad, vertices);
         }
-        if (!CooTerrainPipelineManager.shouldPreserveVanillaTerrainGeometry()) {
+        if (!CooTerrainPipelineManager.shouldPreserveVanillaTerrainGeometry(overlays)) {
             info.cancel();
         }
     }

@@ -30,6 +30,7 @@ object CooFXClient {
     private var runtime: CooFxClientRuntime? = null
     private var resourcesPrepared = false
     private var invalidFrameWarningLogged = false
+    private var renderFailures = createRenderFailureReporter()
 
     @JvmStatic
     fun init() {
@@ -49,8 +50,17 @@ object CooFXClient {
         return requireNotNull(runtime).playModel(request)
     }
 
-    /** 客户端 scene registry 用于原位更新模型，不创建新的模型实例。 */
-    internal fun updateModel(handle: CooFxPlaybackHandle, request: CooFxModelPlayRequest): Boolean {
+    /**
+     * 在客户端线程将已启动的模型实例原位更新到新请求。
+     *
+     * 调用方应只保留 [CooFxModelPlayResult.Started] 的 handle，并在每个客户端 tick
+     * 用 [CooFxPlayerRelativeTransforms.fromPlayerView] 或 [CooFxPlayerRelativeTransforms.fromView]
+     * 计算 transform 后重建 request。此方法不会创建模型实例、接管 CooFX camera 或拦截鼠标输入，
+     * 也不会发起服务端调用。只能在客户端线程调用；world clear、资源 reload 或客户端停止后，
+     * 旧 handle 会失效，返回 `false` 时应停止并清除本地 handle，不要持续重试同一 handle。
+     */
+    @JvmStatic
+    fun updateModel(handle: CooFxPlaybackHandle, request: CooFxModelPlayRequest): Boolean {
         return runtime?.updateModel(handle.instanceId, request) == true
     }
 
@@ -118,6 +128,7 @@ object CooFXClient {
         runtime = null
         resourcesPrepared = false
         invalidFrameWarningLogged = false
+        renderFailures = createRenderFailureReporter()
     }
 
     private fun renderWorldFrame(context: RenderFrameContext) {
@@ -135,16 +146,31 @@ object CooFXClient {
             .joinToString(",")
         val backendSignature = "${context.backend.javaClass.name}:$capabilities"
         val cameraPosition = Minecraft.getInstance().gameRenderer.mainCamera.position
-        runtime?.renderWorldFrame(
-            CooFxFrameRequest(
-                partialTick = context.tickDelta,
-                backendCapabilitySignature = backendSignature,
-                viewMatrix = context.viewMatrix,
-                projectionMatrix = context.projMatrix,
-                cameraX = cameraPosition.x,
-                cameraY = cameraPosition.y,
-                cameraZ = cameraPosition.z,
+        runCatching {
+            requireNotNull(runtime).renderWorldFrame(
+                CooFxFrameRequest(
+                    partialTick = context.tickDelta,
+                    backendCapabilitySignature = backendSignature,
+                    viewMatrix = context.viewMatrix,
+                    projectionMatrix = context.projMatrix,
+                    cameraX = cameraPosition.x,
+                    cameraY = cameraPosition.y,
+                    cameraZ = cameraPosition.z,
+                )
             )
-        )
+        }.onSuccess {
+            renderFailures.onSuccess()
+        }.onFailure { failure ->
+            renderFailures.onFailure(failure)
+        }
     }
+
+    private fun createRenderFailureReporter(): CooFxFailureTransitionReporter = CooFxFailureTransitionReporter(
+        emitFailure = { failure ->
+            CooParticlesConstants.logger.error("CooFX world pass 渲染失败；将继续重试并抑制重复诊断", failure)
+        },
+        emitRecovery = {
+            CooParticlesConstants.logger.info("CooFX world pass 渲染已恢复")
+        },
+    )
 }

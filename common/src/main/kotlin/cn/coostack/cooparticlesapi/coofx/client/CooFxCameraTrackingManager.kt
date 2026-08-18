@@ -84,6 +84,10 @@ internal object CooFxCameraTrackingManager {
     @JvmStatic
     fun isMouseSuppressed(): Boolean = applied
 
+    /** @return CooFX 非玩家 camera 生效时是否应屏蔽原版受伤和行走视角摆动。 */
+    @JvmStatic
+    fun isVanillaCameraEffectsSuppressed(): Boolean = applied
+
     /** @return 当前获胜透视 camera 的垂直 FOV 角度；没有覆盖时返回 `null`。 */
     @JvmStatic
     fun activePerspectiveFovDegrees(): Double? = perspectiveFovDegrees

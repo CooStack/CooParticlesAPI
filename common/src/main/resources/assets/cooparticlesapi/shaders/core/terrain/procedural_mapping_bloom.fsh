@@ -35,29 +35,35 @@ float ringBand(float distanceValue, float width) {
 }
 
 void main() {
+    vec3 delta = worldPosition - CooMappingRegion.xyz;
+    float distanceToCenter = length(delta);
+    float regionMask = CooMappingRegion.w > 0.0
+        ? 1.0 - smoothstep(
+            CooMappingRegion.w,
+            CooMappingRegion.w + max(RingWidth, 0.01),
+            distanceToCenter
+        )
+        : 0.0;
+    float ring = ringBand(distanceToCenter - RingRadius, max(RingWidth, 0.01)) * regionMask;
+    ring *= clamp(CooMappingProgress, 0.0, 1.0) * clamp(RingProgress, 0.0, 1.0);
+    if (CooMappingComposition == 2 && ring <= 0.0) {
+        discard;
+    }
+
     vec4 atlasColor = texture(BaseSampler, baseUv) * vertexColor * ColorModulator;
     if (atlasColor.a < CooAlphaCutoff) {
         discard;
     }
 
     vec3 baseColor = atlasColor.rgb;
-    if (CooIrisComposite != 0) {
+    if (CooMappingComposition != 2 && CooIrisComposite != 0) {
         baseColor = texture(SceneColor, gl_FragCoord.xy / max(ScreenSize, vec2(1.0))).rgb;
     }
 
-    vec3 delta = worldPosition - CooMappingRegion.xyz;
-    float distanceToCenter = length(delta);
-    float regionMask = CooMappingRegion.w > 0.0
-        ? 1.0 - smoothstep(CooMappingRegion.w * 0.88, CooMappingRegion.w, distanceToCenter)
-        : 0.0;
-    float ring = ringBand(distanceToCenter - RingRadius, max(RingWidth, 0.01)) * regionMask;
-    if (CooMappingDepthAvailable == 0) {
-        ring = 0.0;
-    }
-    ring *= clamp(CooMappingProgress, 0.0, 1.0) * clamp(RingProgress, 0.0, 1.0);
-
     float facing = mix(0.72, 1.0, abs(normalize(worldNormal).y));
     vec3 emissive = RingColor * ring * RingIntensity * facing;
+    float ringAlpha = atlasColor.a * clamp(ring, 0.0, 1.0);
+    float effectAlpha = CooMappingComposition == 2 ? atlasColor.a : ringAlpha;
     vec3 mappedColor = baseColor + emissive;
     vec3 outputColor = mix(baseColor, mappedColor, clamp(ring * 1.4, 0.0, 1.0));
     float outputAlpha = atlasColor.a;
@@ -66,8 +72,12 @@ void main() {
     }
 
     vec4 color = vec4(outputColor, outputAlpha);
-    FragColor = CooIrisComposite != 0
-        ? color
-        : linear_fog(color, vertexDistance, FogStart, FogEnd, FogColor);
-    MaskColor = vec4(emissive, atlasColor.a * clamp(ring, 0.0, 1.0));
+    float fogFade = linear_fog_fade(vertexDistance, FogStart, FogEnd);
+    vec3 foggedEmissive = emissive * fogFade;
+    FragColor = CooMappingComposition == 2
+        ? vec4(foggedEmissive, effectAlpha)
+        : (CooIrisComposite != 0
+            ? color
+            : linear_fog(color, vertexDistance, FogStart, FogEnd, FogColor));
+    MaskColor = vec4(foggedEmissive, effectAlpha);
 }

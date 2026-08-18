@@ -51,6 +51,11 @@ class CooFxMeshParticleRenderer {
     private var expandedEntityVbo = 0
     private var expandedEntityCapacity = 0
     private var expandedEntityVertexCount = 0
+    private var vertexAttributeCount = 0
+    private var validatedFeedbackProgram = 0
+    private var frameUploadPrepared = false
+    private val drawStateScope = CooFxRenderStateScope(::captureDrawState, ::restoreDrawState)
+    private val frameUploadAllocator = CooFxFrameUploadAllocator()
 
     val initialized: Boolean
         get() = instanceBuffer != 0 && nodeMatrixBuffer != 0
@@ -60,6 +65,33 @@ class CooFxMeshParticleRenderer {
         if (initialized) return
         instanceBuffer = glGenBuffers()
         nodeMatrixBuffer = glGenBuffers()
+        vertexAttributeCount = glGetInteger(GL_MAX_VERTEX_ATTRIBS)
+    }
+
+    /** 在外层批次循环中一次保存并恢复调用方 VAO 状态。 */
+    fun <T> withPreservedDrawState(block: () -> T): T = drawStateScope.use(block)
+
+    /** 在当前 world pass 为动态实例数据建立不重叠的流式上传区间。 */
+    internal fun prepareFrame(batches: List<CooFxMeshInstanceBatch>) {
+        if (!initialized) return
+        val instanceBytes = batches.sumOf { it.instanceData.size.toLong() * Float.SIZE_BYTES }
+        val nodeMatrixBytes = batches.sumOf { it.nodeMatrixData.size.toLong() * Float.SIZE_BYTES }
+        frameUploadAllocator.prepare(instanceBytes, nodeMatrixBytes)
+        frameUploadPrepared = true
+        if (instanceBytes > 0L) {
+            glBindBuffer(GL_ARRAY_BUFFER, instanceBuffer)
+            orphanInstanceBuffer(instanceBytes)
+        }
+        if (nodeMatrixBytes > 0L) {
+            glBindBuffer(GL_ARRAY_BUFFER, nodeMatrixBuffer)
+            orphanNodeMatrixBuffer(nodeMatrixBytes)
+        }
+    }
+
+    /** 结束当前 world pass 的流式上传作用域。 */
+    internal fun finishFrame() {
+        frameUploadPrepared = false
+        frameUploadAllocator.clear()
     }
 
     /**
@@ -145,7 +177,7 @@ class CooFxMeshParticleRenderer {
             glBindVertexArray(expandedEntityVao)
             glDrawArrays(GL_TRIANGLES, 0, vertexCount)
         } finally {
-            glBindVertexArray(previousVao)
+            restoreVertexArray(previousVao)
         }
     }
 
@@ -171,6 +203,9 @@ class CooFxMeshParticleRenderer {
         allocatedNodeMatrixBytes = 0L
         expandedEntityCapacity = 0
         expandedEntityVertexCount = 0
+        vertexAttributeCount = 0
+        validatedFeedbackProgram = 0
+        finishFrame()
         scratch?.let(MemoryUtil::memFree)
         scratch = null
         nodeMatrixScratch?.let(MemoryUtil::memFree)
@@ -178,13 +213,24 @@ class CooFxMeshParticleRenderer {
     }
 
     private fun bindBatch(batch: CooFxMeshInstanceBatch, binding: CooFxMeshDrawBinding) {
+        check(glIsVertexArray(binding.vertexArrayObject)) {
+            "CooFX mesh draw binding vertex array object is no longer valid: ${binding.vertexArrayObject}"
+        }
+        val instanceBytes = batch.instanceData.size.toLong() * Float.SIZE_BYTES
+        val nodeMatrixBytes = batch.nodeMatrixData.size.toLong() * Float.SIZE_BYTES
+        val useFrameUpload = frameUploadPrepared
+        val uploadRange = if (useFrameUpload) {
+            frameUploadAllocator.reserve(instanceBytes, nodeMatrixBytes)
+        } else {
+            CooFxFrameUploadRange(0L, 0L)
+        }
         glBindVertexArray(binding.vertexArrayObject)
         glVertexAttrib3f(1, 0F, 1F, 0F)
         glVertexAttrib2f(2, 0F, 0F)
         glVertexAttrib4f(3, 1F, 1F, 1F, 1F)
         glBindBuffer(GL_ARRAY_BUFFER, instanceBuffer)
-        ensureCapacity(batch.instanceData.size.toLong() * Float.SIZE_BYTES)
-        scratch = upload(batch.instanceData, scratch)
+        if (!useFrameUpload) ensureCapacity(instanceBytes)
+        scratch = upload(batch.instanceData, scratch, uploadRange.instanceByteOffset)
         val instanceAttributes = CooFxMeshInstanceLayout.attributes(binding.firstInstanceAttributeLocation)
         instanceAttributes.forEach { attribute ->
             glVertexAttribPointer(
@@ -193,14 +239,14 @@ class CooFxMeshParticleRenderer {
                 GL_FLOAT,
                 false,
                 CooFxMeshInstanceLayout.BYTE_STRIDE,
-                attribute.byteOffset.toLong(),
+                uploadRange.instanceByteOffset + attribute.byteOffset,
             )
             glEnableVertexAttribArray(attribute.shaderLocation)
             CParticleCapabilities.setVertexAttribDivisor(attribute.shaderLocation, attribute.divisor)
         }
         glBindBuffer(GL_ARRAY_BUFFER, nodeMatrixBuffer)
-        ensureNodeMatrixCapacity(batch.nodeMatrixData.size.toLong() * Float.SIZE_BYTES)
-        nodeMatrixScratch = upload(batch.nodeMatrixData, nodeMatrixScratch)
+        if (!useFrameUpload) ensureNodeMatrixCapacity(nodeMatrixBytes)
+        nodeMatrixScratch = upload(batch.nodeMatrixData, nodeMatrixScratch, uploadRange.nodeMatrixByteOffset)
         val firstNodeMatrixLocation = binding.firstInstanceAttributeLocation + instanceAttributes.size
         repeat(3) { row ->
             val location = firstNodeMatrixLocation + row
@@ -210,48 +256,90 @@ class CooFxMeshParticleRenderer {
                 GL_FLOAT,
                 false,
                 12 * Float.SIZE_BYTES,
-                (row * 4 * Float.SIZE_BYTES).toLong(),
+                uploadRange.nodeMatrixByteOffset + row * 4L * Float.SIZE_BYTES,
             )
             glEnableVertexAttribArray(location)
             CParticleCapabilities.setVertexAttribDivisor(location, 1)
         }
     }
 
-    private fun <T> withDrawState(block: () -> T): T {
-        val previousVao = glGetInteger(GL_VERTEX_ARRAY_BINDING)
-        val previousArrayBuffer = glGetInteger(GL_ARRAY_BUFFER_BINDING)
-        val attributeCount = glGetInteger(GL_MAX_VERTEX_ATTRIBS)
-        val previousEnabled = IntArray(attributeCount)
-        val previousDivisors = IntArray(attributeCount)
-        for (location in 0 until attributeCount) {
-            previousEnabled[location] = glGetVertexAttribi(location, GL_VERTEX_ATTRIB_ARRAY_ENABLED)
-            previousDivisors[location] = glGetVertexAttribi(location, GL_VERTEX_ATTRIB_ARRAY_DIVISOR)
-        }
+    private fun <T> withDrawState(block: () -> T): T = drawStateScope.use(block)
+
+    private fun captureDrawState(): CooFxDrawState {
+        val vertexArrayObject = glGetInteger(GL_VERTEX_ARRAY_BINDING)
+        val capturesVertexArrayState = vertexArrayObject != 0 && glIsVertexArray(vertexArrayObject)
         return MemoryStack.stackPush().use { stack ->
-            val previousNormal = stack.mallocFloat(4)
-            val previousTexCoord = stack.mallocFloat(4)
-            val previousColor = stack.mallocFloat(4)
-            glGetVertexAttribfv(1, GL_CURRENT_VERTEX_ATTRIB, previousNormal)
-            glGetVertexAttribfv(2, GL_CURRENT_VERTEX_ATTRIB, previousTexCoord)
-            glGetVertexAttribfv(3, GL_CURRENT_VERTEX_ATTRIB, previousColor)
-            try {
-                block()
-            } finally {
-                glBindVertexArray(previousVao)
-                glBindBuffer(GL_ARRAY_BUFFER, previousArrayBuffer)
-                for (location in 0 until attributeCount) {
-                    if (previousEnabled[location] == GL_TRUE) {
-                        glEnableVertexAttribArray(location)
-                    } else {
-                        glDisableVertexAttribArray(location)
-                    }
-                    CParticleCapabilities.setVertexAttribDivisor(location, previousDivisors[location])
+            val normal = readCurrentVertexAttribute(1, stack)
+            val textureCoordinates = readCurrentVertexAttribute(2, stack)
+            val color = readCurrentVertexAttribute(3, stack)
+            if (!capturesVertexArrayState) {
+                return@use CooFxDrawState(
+                    vertexArrayObject = vertexArrayObject,
+                    arrayBufferObject = glGetInteger(GL_ARRAY_BUFFER_BINDING),
+                    enabledAttributes = null,
+                    attributeDivisors = null,
+                    normal = normal,
+                    textureCoordinates = textureCoordinates,
+                    color = color,
+                )
+            }
+            val attributeCount = vertexAttributeCount.takeIf { it > 0 } ?: glGetInteger(GL_MAX_VERTEX_ATTRIBS)
+            val previousEnabled = IntArray(attributeCount)
+            val previousDivisors = IntArray(attributeCount)
+            for (location in 0 until attributeCount) {
+                previousEnabled[location] = glGetVertexAttribi(location, GL_VERTEX_ATTRIB_ARRAY_ENABLED)
+                previousDivisors[location] = glGetVertexAttribi(location, GL_VERTEX_ATTRIB_ARRAY_DIVISOR)
+            }
+            CooFxDrawState(
+                vertexArrayObject = vertexArrayObject,
+                arrayBufferObject = glGetInteger(GL_ARRAY_BUFFER_BINDING),
+                enabledAttributes = previousEnabled,
+                attributeDivisors = previousDivisors,
+                normal = normal,
+                textureCoordinates = textureCoordinates,
+                color = color,
+            )
+        }
+    }
+
+    private fun readCurrentVertexAttribute(location: Int, stack: MemoryStack): FloatArray {
+        val values = stack.mallocFloat(4)
+        glGetVertexAttribfv(location, GL_CURRENT_VERTEX_ATTRIB, values)
+        return FloatArray(4) { values[it] }
+    }
+
+    private fun restoreDrawState(state: CooFxDrawState) {
+        val restoresVertexArrayState = restoreVertexArray(state.vertexArrayObject)
+        glBindBuffer(GL_ARRAY_BUFFER, state.arrayBufferObject)
+        val enabledAttributes = state.enabledAttributes
+        val attributeDivisors = state.attributeDivisors
+        if (restoresVertexArrayState && enabledAttributes != null && attributeDivisors != null) {
+            enabledAttributes.indices.forEach { location ->
+                if (enabledAttributes[location] == GL_TRUE) {
+                    glEnableVertexAttribArray(location)
+                } else {
+                    glDisableVertexAttribArray(location)
                 }
-                glVertexAttrib4fv(1, previousNormal)
-                glVertexAttrib4fv(2, previousTexCoord)
-                glVertexAttrib4fv(3, previousColor)
+                CParticleCapabilities.setVertexAttribDivisor(location, attributeDivisors[location])
             }
         }
+        state.normal?.let { normal -> glVertexAttrib4f(1, normal[0], normal[1], normal[2], normal[3]) }
+        state.textureCoordinates?.let { textureCoordinates ->
+            glVertexAttrib4f(
+                2,
+                textureCoordinates[0],
+                textureCoordinates[1],
+                textureCoordinates[2],
+                textureCoordinates[3],
+            )
+        }
+        state.color?.let { color -> glVertexAttrib4f(3, color[0], color[1], color[2], color[3]) }
+    }
+
+    private fun restoreVertexArray(vertexArrayObject: Int): Boolean {
+        val restoresVertexArrayState = vertexArrayObject != 0 && glIsVertexArray(vertexArrayObject)
+        glBindVertexArray(if (restoresVertexArrayState) vertexArrayObject else 0)
+        return restoresVertexArrayState
     }
 
     private fun ensureCapacity(requiredBytes: Long) {
@@ -266,9 +354,30 @@ class CooFxMeshParticleRenderer {
         glBufferData(GL_ARRAY_BUFFER, allocatedNodeMatrixBytes, GL_DYNAMIC_DRAW)
     }
 
+    private fun orphanInstanceBuffer(requiredBytes: Long) {
+        if (requiredBytes > allocatedBytes) {
+            allocatedBytes = maxOf(
+                requiredBytes,
+                (allocatedBytes * 2L).coerceAtLeast(CooFxMeshInstanceLayout.BYTE_STRIDE.toLong()),
+            )
+        }
+        glBufferData(GL_ARRAY_BUFFER, allocatedBytes, GL_STREAM_DRAW)
+    }
+
+    private fun orphanNodeMatrixBuffer(requiredBytes: Long) {
+        if (requiredBytes > allocatedNodeMatrixBytes) {
+            allocatedNodeMatrixBytes = maxOf(
+                requiredBytes,
+                (allocatedNodeMatrixBytes * 2L).coerceAtLeast(16L * Float.SIZE_BYTES),
+            )
+        }
+        glBufferData(GL_ARRAY_BUFFER, allocatedNodeMatrixBytes, GL_STREAM_DRAW)
+    }
+
     private fun validateIrisEntityFeedbackLayout() {
         val program = glGetInteger(GL_CURRENT_PROGRAM)
         require(program > 0) { "Iris entity 展开必须绑定 CooFX shader program" }
+        if (program == validatedFeedbackProgram) return
         val varyingCount = glGetProgrami(program, GL_TRANSFORM_FEEDBACK_VARYINGS)
         val expectedNames = arrayOf(
             "tfEntityPosition",
@@ -303,6 +412,7 @@ class CooFxMeshParticleRenderer {
                     "${DefaultVertexFormat.NEW_ENTITY.vertexSize} 不一致"
             }
         }
+        validatedFeedbackProgram = program
     }
 
     private fun ensureExpandedEntityCapacity(requiredVertices: Int) {
@@ -330,7 +440,7 @@ class CooFxMeshParticleRenderer {
                     }
                 }
             } finally {
-                glBindVertexArray(previousVao)
+                restoreVertexArray(previousVao)
                 glBindBuffer(GL_ARRAY_BUFFER, previousArrayBuffer)
             }
         }
@@ -378,7 +488,7 @@ class CooFxMeshParticleRenderer {
         glVertexAttrib4f(8, 1F, 0F, 0F, 1F)
     }
 
-    private fun upload(data: FloatArray, currentScratch: FloatBuffer?): FloatBuffer {
+    private fun upload(data: FloatArray, currentScratch: FloatBuffer?, byteOffset: Long): FloatBuffer {
         var buffer = currentScratch
         if (buffer == null || buffer.capacity() < data.size) {
             buffer?.let(MemoryUtil::memFree)
@@ -387,7 +497,85 @@ class CooFxMeshParticleRenderer {
         buffer.clear()
         buffer.put(data)
         buffer.flip()
-        glBufferSubData(GL_ARRAY_BUFFER, 0L, buffer)
+        glBufferSubData(GL_ARRAY_BUFFER, byteOffset, buffer)
         return buffer
+    }
+}
+
+private data class CooFxDrawState(
+    val vertexArrayObject: Int,
+    val arrayBufferObject: Int,
+    val enabledAttributes: IntArray?,
+    val attributeDivisors: IntArray?,
+    val normal: FloatArray?,
+    val textureCoordinates: FloatArray?,
+    val color: FloatArray?,
+)
+
+internal data class CooFxFrameUploadRange(
+    val instanceByteOffset: Long,
+    val nodeMatrixByteOffset: Long,
+)
+
+/** 为单个 CooFX world pass 分配不重叠的动态 VBO 写入区间。 */
+internal class CooFxFrameUploadAllocator {
+    private var instanceLimit = 0L
+    private var nodeMatrixLimit = 0L
+    private var nextInstanceByteOffset = 0L
+    private var nextNodeMatrixByteOffset = 0L
+    private var prepared = false
+
+    fun prepare(instanceBytes: Long, nodeMatrixBytes: Long) {
+        require(instanceBytes >= 0L) { "Instance upload bytes must not be negative" }
+        require(nodeMatrixBytes >= 0L) { "Node matrix upload bytes must not be negative" }
+        instanceLimit = instanceBytes
+        nodeMatrixLimit = nodeMatrixBytes
+        nextInstanceByteOffset = 0L
+        nextNodeMatrixByteOffset = 0L
+        prepared = true
+    }
+
+    fun reserve(instanceBytes: Long, nodeMatrixBytes: Long): CooFxFrameUploadRange {
+        check(prepared) { "Frame upload allocator must be prepared before reserving data" }
+        require(instanceBytes >= 0L) { "Instance upload bytes must not be negative" }
+        require(nodeMatrixBytes >= 0L) { "Node matrix upload bytes must not be negative" }
+        check(instanceBytes <= instanceLimit - nextInstanceByteOffset) {
+            "Instance upload range exceeds prepared frame capacity"
+        }
+        check(nodeMatrixBytes <= nodeMatrixLimit - nextNodeMatrixByteOffset) {
+            "Node matrix upload range exceeds prepared frame capacity"
+        }
+        val range = CooFxFrameUploadRange(nextInstanceByteOffset, nextNodeMatrixByteOffset)
+        nextInstanceByteOffset += instanceBytes
+        nextNodeMatrixByteOffset += nodeMatrixBytes
+        return range
+    }
+
+    fun clear() {
+        instanceLimit = 0L
+        nodeMatrixLimit = 0L
+        nextInstanceByteOffset = 0L
+        nextNodeMatrixByteOffset = 0L
+        prepared = false
+    }
+}
+
+/** 把可嵌套的 CooFX 绘制调用合并为一次状态快照。 */
+internal class CooFxRenderStateScope<State>(
+    private val capture: () -> State,
+    private val restore: (State) -> Unit,
+) {
+    private var depth = 0
+
+    fun <T> use(block: () -> T): T {
+        if (depth != 0) return block()
+        val state = capture()
+        depth = 1
+        try {
+            return block()
+        } finally {
+            depth = 0
+            restore(state)
+        }
     }
 }

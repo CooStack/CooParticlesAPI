@@ -28,6 +28,7 @@ import org.lwjgl.opengl.GL33.glEnableVertexAttribArray
 import org.lwjgl.opengl.GL33.glGenBuffers
 import org.lwjgl.opengl.GL33.glGenVertexArrays
 import org.lwjgl.opengl.GL33.glGetInteger
+import org.lwjgl.opengl.GL33.glIsVertexArray
 import org.lwjgl.opengl.GL33.glVertexAttribPointer
 import org.lwjgl.system.MemoryUtil
 
@@ -119,7 +120,7 @@ internal class CooFxOpenGlGpuPackageUploader : CooFxGpuPackageUploader {
             indexBuffers.filter { it > 0 }.forEach(::glDeleteBuffers)
             throw failure
         } finally {
-            glBindVertexArray(previousVertexArray)
+            glBindVertexArray(if (previousVertexArray == 0 || glIsVertexArray(previousVertexArray)) previousVertexArray else 0)
             glBindBuffer(GL_ARRAY_BUFFER, previousArrayBuffer)
         }
     }

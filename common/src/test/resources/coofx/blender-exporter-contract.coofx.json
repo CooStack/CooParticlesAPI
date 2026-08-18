@@ -1,0 +1,73 @@
+{
+  "$schema": "cooparticlesapi:coofx/schema/v1",
+  "schemaVersion": 1,
+  "coordinateSystem": "coofx_rh_y_up_z_south",
+  "assetSeed": "0123456789abcdef",
+  "model": "test:coofx/models/triangle.gltf",
+  "scene": 0,
+  "clips": [
+    {
+      "id": "burst_loop",
+      "animation": "BurstAnim",
+      "loopMode": "LOOP"
+    }
+  ],
+  "materials": [
+    {
+      "id": "spark",
+      "gltfMaterial": "SparkMaterial",
+      "baseColorTexture": "test:textures/coofx/spark.png",
+      "alphaMode": "MASK",
+      "doubleSided": true,
+      "alphaCutoff": 0.25
+    }
+  ],
+  "emitters": [
+    {
+      "id": "burst",
+      "mesh": "TriangleMesh",
+      "node": "TriangleNode",
+      "count": 2,
+      "delayTicks": 1,
+      "lifetimeTicks": 20,
+      "velocity": {
+        "min": [
+          -0.2,
+          -0.2,
+          -0.8
+        ],
+        "max": [
+          0.2,
+          0.2,
+          -0.4
+        ]
+      },
+      "rotationRadians": {
+        "min": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "max": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "scale": {
+        "min": [
+          0.5,
+          0.5,
+          0.5
+        ],
+        "max": [
+          1.5,
+          1.5,
+          1.5
+        ]
+      }
+    }
+  ],
+  "requiredExtensions": [],
+  "extensions": {}
+}

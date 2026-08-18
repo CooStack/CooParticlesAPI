@@ -55,7 +55,7 @@ class CooFxModelBlockTestOption(
                 requestSeed = 0x5EEDL,
                 mode = sceneMode,
                 cameraId = "Camera",
-                cameraTargetPlayer = player.uuid,
+                cameraTargetPlayer = null,
                 cameraPriority = if (sceneMode == CooFxSceneMode.MODEL) 0 else 10,
                 clipId = null
             ),

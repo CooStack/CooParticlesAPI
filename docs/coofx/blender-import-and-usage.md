@@ -1,1639 +1,677 @@
 # CooFX Blender 导入与使用完全教程
 
-本文是 CooFX Blender 工具链的完整使用手册，针对本仓库当前实现编写。
+本文是 CooFX v1 的端到端使用指南，面向把 Blender 资产接入 Minecraft 1.21.1 的 Fabric 与 NeoForge 开发者。内容只使用当前仓库审计确认的公开 API 和运行时行为。
 
 适用版本：
 
 - Blender 4.2 或更高版本
 - Minecraft 1.21.1
 - Java 21
-- CooParticlesAPI 2.5.5.3
-- Fabric 或 NeoForge
+- CooParticlesAPI `2.5.6-SNAPSHOT`（仓库当前 `gradle.properties` 版本）
+- Fabric API `0.115.1+1.21.1` 或 NeoForge `21.1.200`
 - CooFX v1
 
-本文同时说明当前实现边界。CooFX 的目标是把 Blender 中制作的模型、刚性动画和受约束的粒子发射语义转换成 Minecraft 可以加载的资源；它不是在 Minecraft 中运行 Blender，也不会读取 `.blend` 文件，更不会自动翻译任意 Shader Nodes 或 Geometry Nodes 节点图。
+> 本文是使用手册，不是完整 Blender 模拟器说明。CooFX 不读取 `.blend`，不翻译任意 Shader Nodes 或 Geometry Nodes，也不承诺任意 Iris shaderpack 的视觉结果。
 
-## 1. CooFX Blender 工具是什么
+## 1. 先选择正确的播放路径
 
-工具目录：
+CooFX 有两条公开消费路径：
+
+| 场景 | 入口 | 逻辑侧 | 适用情况 |
+|---|---|---|---|
+| 单个客户端本地效果 | `CooFXClient.playModel` / `CooFXClient.play` | 客户端 | UI、局部提示、只需本地看到的模型或 emitter |
+| 服务端权威联机效果 | `CooFxSceneManager.spawn` | 服务端 | 多人同步、可见范围、相机目标和生命周期由服务端决定 |
+
+不要在专用服务器调用 `CooFXClient`，也不要在客户端直接修改服务端场景的镜像。服务端场景必须通过 `CooFxSceneManager` 管理。
+
+普通使用者不需要直接调用 `CooFxAssetImporter`、`MinecraftCooFxResourceProvider` 或 `CooFxAssetCompiler`。这些公开类适合资源工具和集成层；正常播放应优先使用上表的入口。
+
+## 2. 前置条件与 loader 分工
+
+### 2.1 共用工程条件
+
+项目当前使用：
+
+- Minecraft `1.21.1`
+- Java `21`
+- CooParticlesAPI `2.5.6-SNAPSHOT`
+- CooFX 资源放在 `common/src/main/resources/assets/<namespace>/`
+
+Fabric 与 NeoForge 共用资源和 common API，但客户端初始化由各 loader 接线：
+
+- Fabric 客户端初始化 common client，并在 `CLIENT_STOPPING` 显式调用 `CooFXClient.stopClient()`。
+- NeoForge 在 `FMLClientSetup` 初始化 common client，并接入 tick、世界与断开事件；当前审计源码没有发现等价的 NeoForge client-stopping `stopClient()` 调用，这是已知实现缺口。
+
+这意味着业务代码应使用公开生命周期入口，不应自行假设 loader 的关闭回调细节。若需要确认具体接线，参阅 [`CooParticlesAPIClient.kt`](../../common/src/main/kotlin/cn/coostack/cooparticlesapi/CooParticlesAPIClient.kt)、Fabric client 初始化和 NeoForge client listener 源码。
+
+### 2.2 不启动 Minecraft 也能完成的验证
+
+可以先完成以下静态检查：
+
+1. Blender Add-on 校验通过。
+2. `.coofx.json`、`.gltf`、`.bin` 和 PNG 路径一致。
+3. 资源 ID 使用正确的 namespace 和相对路径。
+4. 直接播放代码只出现在客户端入口或客户端调用链。
+5. 服务端场景代码只在 Minecraft server thread 调用。
+
+Minecraft 客户端的 Vanilla/Iris 组合视觉结果仍需要开发者在目标环境中人工验收；静态测试不能代替实际画面验证。
+
+## 3. 安装 Blender Add-on
+
+仓库工具位于：
 
 ```text
 tools/blender_coofx/
 ```
 
-它是一个 Blender 4.2+ Add-on，负责完成以下工作：
-
-1. 在 Blender 场景属性中提供 CooFX 导出设置。
-2. 检查网格是否至少包含可三角化面、对象变换是否有限、是否缺少 UV0；普通四边面和 n-gon 交给官方 glTF exporter 自动三角化，负缩放允许由 exporter 应用。
-3. 从 Blender 经典 Particle System 中抽取首版可以无歧义表达的突发发射器参数。
-4. 识别带有 CooFX 官方标记和固定输入接口的 Geometry Nodes 发射器组。
-5. 调用 Blender 官方 glTF 导出器生成分离的 `.gltf` 和 `.bin`。
-6. 生成运行时使用的 `.coofx.json`。
-7. 生成仅供离线检查的 `.glb` 快照。
-8. 校验 VAT 的固定拓扑，并生成 VAT 元数据。
-9. 把 Blender 的 Z-up 坐标约定转换为 CooFX 的 Y-up 坐标约定。
-
-工具的纯 Python 核心位于：
-
-```text
-tools/blender_coofx/core/
-```
-
-这部分不导入 `bpy`，可以在普通 Python 中运行测试。
-
-Blender 专属部分位于：
-
-```text
-tools/blender_coofx/blender/
-```
-
-Add-on 入口是：
-
-```text
-tools/blender_coofx/__init__.py
-```
-
-## 2. 当前实现和未实现边界
-
-### 2.1 当前可以使用的能力
-
-当前 v1 可以使用：
-
-- 静态 mesh；Blender 四边面和 n-gon 会在 glTF 导出时转换为三角形 primitive。
-- POSITION 顶点位置。
-- NORMAL 法线。
-- TEXCOORD_0 UV0。
-- COLOR_0 顶点色。
-- 多个 glTF primitive 和基础材质引用。
-- `OPAQUE` 不透明材质。
-- `MASK` Alpha 裁剪材质。
-- 单张 PNG 基础颜色纹理。
-- glTF 节点层级。
-- 节点的 translation、rotation、scale。
-- `STEP`、`LINEAR`、`CUBICSPLINE` 动画轨道的导入和播放数学。
-- 单帧经典粒子突发发射器。
-- 受约束 Geometry Nodes 发射器组。
-- `BURST` 和 `CONTINUOUS` 两类运行时网格粒子调度。
-- `LOCAL` 和 `WORLD` 粒子模拟空间。
-- 速度、加速度、重力、风、阻力和确定性噪声。
-- 旋转、角速度、缩放、生命周期、颜色和材质变体。
-- CPU 粒子模拟和独立 144-byte 网格粒子实例布局。
-- `glDrawElementsInstanced` 形式的网格实例绘制器。
-- 资源内容摘要、GPU generation、lease 和资源释放抽象。
-- VAT 固定拓扑校验和元数据生成。
-
-### 2.2 当前不会伪装支持的能力
-
-以下能力当前会被拒绝、告警或只保留元数据：
-
-- 运行时读取 `.blend`。
-- 任意 Blender Shader Nodes 自动翻译。
-- 任意 Geometry Nodes 节点图解释。
-- Blender 刚体、流体、烟雾、布料和完整物理模拟。
-- Boids。
-- 非单帧的经典 Particle System 发射窗口导出。
-- 依赖每个发射面法线、切线或对象方向的经典粒子速度。
-- 任意名字但没有官方标记的 Geometry Nodes 组。
-- glTF skin 的运行时蒙皮。
-- glTF morph target 的运行时变形。
-- VAT 的运行时纹理采样和顶点变形。
-- mesh particle 的 `BLEND` 透明混合。
-- 任意未知的 glTF `extensionsRequired`。
-- JPEG、KTX、Draco、meshopt 和 data URI。
-- light、audio。
-- 第二套 UV 的执行。
-
-需要特别注意：当前 Kotlin 客户端已经接通资源 reload、compiled package、真实 VAO/VBO/EBO upload、144-byte 实例缓冲、每实例 48-byte affine node matrix sidecar、GLSL 150 shader、WORLD_PASS、GPU generation lease，以及 Fabric/NeoForge 共用的客户端关闭释放。纯模型资产通过 `CooFXClient.playModel` 创建持久静态/动画实例；带 emitter 的资产通过 `CooFXClient.play` 启动刚性 mesh particle。长期联机实例通过服务端 `CooFxSceneManager` 创建，复用 RenderEntity 的 CREATE/TOGGLE/REMOVE 同步位置、旋转、缩放、clip、camera 选择和 emitter 基础参数。Blender 1.0.5 开始把多个标准 glTF camera 一起导出，camera node 可以沿用已有 clip 动画驱动视角位置、旋转和透视 FOV。`skin`、`morph`、VAT 和 `BLEND` 继续明确拒绝；Vanilla/Iris 实机视觉矩阵仍需人工验收。
-
-## 3. 安装 Blender Add-on
-
-### 3.1 生成快速安装包
-
-仓库提供确定性打包脚本。在仓库根目录执行：
+在仓库根目录生成安装包：
 
 ```text
 python tools/blender_coofx/build_extension.py
 ```
 
-输出文件固定为：
+输出：
 
 ```text
 build/distributions/coofx_exporter-1.0.5.zip
 ```
 
-该 ZIP 的根目录直接包含 `__init__.py`、`blender_manifest.toml`、`LICENSE`、`core/` 和 `blender/`，可以直接用于 Blender 的 `Install from Disk`。不要把整个 `tools/blender_coofx` 再套一层目录压缩，也不要只复制 `core` 或 `blender`。
+ZIP 根目录应直接包含 `__init__.py`、`blender_manifest.toml`、`LICENSE`、`core/` 和 `blender/`，不能再套一层 `tools/blender_coofx` 目录。
 
-`blender_manifest.toml` 声明的最低版本是 Blender 4.2.0，Extension ID 是 `coofx_exporter`。打包测试会拒绝嵌套 package root、`tests/`、`__pycache__/` 和 `.pyc` 文件进入安装包。
+Blender 中的安装步骤：
 
-### 3.2 通过 Blender Extension 安装
+1. 打开 `Edit > Preferences`。
+2. 进入 `Get Extensions` 或 `Extensions`。
+3. 选择 `Install from Disk`。
+4. 选择 CooFX ZIP 并启用 `CooFX Exporter`。
+5. 重新打开场景。
+6. 在 `Scene Properties` 或 3D View 的 `N > CooFX` 中确认面板出现。
 
-推荐把 `tools/blender_coofx` 的内容打包为一个 ZIP，然后在 Blender 中安装：
+面板至少应提供资产校验、CooFX 导出和 GLB 快照导出入口。
 
-1. 打开 Blender。
-2. 进入 `Edit > Preferences`。
-3. 打开 `Get Extensions` 或 `Extensions` 页面。
-4. 选择右上角菜单中的 `Install from Disk`。
-5. 选择 CooFX Add-on ZIP。
-6. 安装后启用 `CooFX Exporter`。
-7. 新建或重新打开一个场景。
-8. 在 `Scene Properties` 中确认存在 `CooFX` 面板；也可以把鼠标移到 3D View，按 `N`，切换到 `CooFX` 标签。
+## 4. Blender 场景准备
 
-如果 Scene Properties 页面较长，先点击场景属性图标并滚动到顶部；新版扩展还会在 3D View 的 N 侧栏提供同一套面板。
+### 4.1 模型与材质
 
-如果 Blender 版本或发行版没有 Extension 页面，也可以在 `Add-ons` 页面使用 `Install...` 选择 ZIP，然后启用该 Add-on。
+首次验证建议使用一个简单的 Cube、Icosphere 或低模网格：
 
-### 3.3 安装后的验证
+- 至少有一个面；四边面和 n-gon 会由官方 glTF exporter 三角化。
+- 纹理材质必须有 UV0。
+- 使用 PNG 基础颜色纹理。
+- 材质使用 `OPAQUE` 或 `MASK`。
+- 材质名保持稳定，因为 `.coofx.json` 会引用导出的 glTF 材质名。
 
-在 Blender 中检查：
+`BLEND`、第二套 UV、JPEG、KTX、Draco、meshopt 和 data URI 不属于当前可保证的运行时路径。
 
-- Add-on 名称是 `CooFX Exporter`。
-- 最低版本提示不高于当前 Blender 版本。
-- 场景属性中出现 `CooFX` 面板。
-- 面板中存在 `校验 CooFX 资产`、`导出 CooFX 资产` 和 `导出 GLB 快照` 按钮。
+### 4.2 Camera
 
-如果普通 Python 运行 `import blender_coofx`，它不应该因为缺少 `bpy` 而在导入阶段崩溃；只有调用 `register()` 时才会提示必须在 Blender 环境中注册。这是设计行为。
+需要资产相机时：
 
-## 4. 推荐的 Blender 场景准备流程
+1. 把一个或多个 Camera 放在导出集合中。
+2. 使用稳定且唯一的名称，例如 `Camera_Main`。
+3. 需要镜头运动时，给 Camera node 制作 location/rotation 动画。
+4. 运行时使用 `cameraId` 选择镜头；为空时选择第一个 camera。
 
-### 4.1 建立最小模型
+`cameraId` 先匹配编译后的稳定 glTF camera-node ID，再匹配唯一的可读 Blender Camera 名称。透视相机驱动位置、旋转和垂直 FOV；正交相机当前只驱动姿态，不替换 Minecraft 主投影，也不覆盖主 FOV。
 
-建议第一次使用时只制作一个简单模型：
+### 4.3 Blender 坐标与单位
 
-1. 添加一个 Cube、Icosphere、Suzanne 或自定义低模。
-2. 删除不需要的灯光和辅助对象；需要运行时 camera tracking 时，把一个或多个 Camera 保留在导出集合中。
-3. 确保模型至少包含一个面；四边面和 n-gon 可以保留。
-4. 确保模型具有 UV0。
-5. 确保法线方向正确。
-6. 为模型创建一个材质。
-7. 如果需要纹理，在材质中使用 Image Texture 节点。
-
-CooFX runtime 的 glTF primitive 最终仍然是 `TRIANGLES`，但 Blender 源模型不再要求用户手动三角化。官方 glTF exporter 会在导出临时结果时转换四边面和 n-gon，不会修改当前 `.blend` 中的原始网格。只有完全没有面的 mesh 才会在场景校验阶段被拒绝。
-
-#### 4.1.1 准备运行时摄像机
-
-1. 在导出集合中保留需要的 Camera 对象；1.0.5 会全部交给官方 glTF exporter。
-2. 给 Camera 对象设置唯一、稳定的名称，例如 `Camera_Main`、`Camera_Close`。
-3. Camera 可以挂在 Empty 或其他父节点下，父子 TRS 会参与最终 world pose。
-4. 给 Camera node 制作 location/rotation 动画时，它会沿用同一个 clip；镜头参数本身暂不做动画。
-5. Perspective camera 会驱动位置、旋转和垂直 FOV；Orthographic camera 当前只驱动位置和旋转。
-6. 导出后在服务端 `CooFxSceneSpec.cameraId` 中填写 Camera 对象名称；为空时选择第一个。多个 Camera 可以分别创建场景，CooFX 会按名称提取各自的节点轨迹。
-
-旧版导出的 glTF 不会自动补出 camera。升级插件后必须重新执行一次“导出 CooFX 资产”。
-
-### 4.2 处理缩放
-
-CooFX 允许模型对象使用负缩放，例如：
+Blender 源场景是右手 Z-up；导出的 glTF/CooFX 运行时约定是右手 Y-up：
 
 ```text
-Scale X = -1
-Scale Y = 1
-Scale Z = 1
+Blender (x, y, z) -> CooFX (x, z, -y)
 ```
 
-导出器使用 `export_apply=True` 把对象变换应用到 glTF 几何，并负责镜像变换对应的 winding。无需为了导出强制执行 `Object > Apply > Scale`；仍应在 Blender 中确认法线方向符合预期。发射器的 `scale.min/max` 是另一套粒子初始尺寸范围，仍要求为正值。
+该换轴由官方 glTF exporter 负责。Minecraft runtime 不应再换轴，否则会发生二次旋转。
 
-### 4.3 UV 和纹理
-
-如果材质使用图片纹理，mesh 必须有 UV0。当前运行时只读取 glTF 的 `TEXCOORD_0`，不会执行第二套 UV。
-
-建议：
-
-1. 进入 UV Editing 工作区。
-2. 为所有需要纹理的面展开 UV。
-3. 确认至少存在一个 UV Map。
-4. 材质中使用 Image Texture 节点。
-5. 使用 PNG 图片。
-6. 把最终 PNG 复制到 Minecraft 资源目录的 `textures/coofx/` 下。
-
-CooFX 运行时使用 glTF UV 数值，不会隐式翻转 V。不要在 Minecraft 侧再额外做一次 UV 翻转。
-
-### 4.4 材质模式
-
-首版推荐使用两种材质模式：
-
-```text
-OPAQUE：完全不透明
-MASK：按 alphaCutoff 丢弃像素
-```
-
-`BLEND` 目前不能进入网格粒子编译。即使 glTF 能保存透明材质，CooFX compiler 也会拒绝它，以避免把透明排序问题伪装成已解决。
-
-如果要做裁剪材质：
-
-1. 在 Blender 材质中提供 Alpha。
-2. 在 CooFX 面板把 Alpha 模式设为 `裁剪`。
-3. 设置 Alpha Cutoff，例如 `0.5`。
-4. 确认纹理实际包含透明通道。
-5. 在 Minecraft 侧使用 PNG，而不是 JPEG。
-
-### 4.5 自发光
-
-CooFX 读取 glTF 的 `emissiveFactor`、`emissiveTexture` 和 `KHR_materials_emissive_strength`。在 Blender 的 Principled BSDF 中设置 Emission Color 和 Emission Strength 即可；强度大于 `1` 时，官方 exporter 通常会写入 emissive-strength 扩展。当前渲染只支持 `TEXCOORD_0`；如果材质纹理声明 `texCoord=1`，导入器会明确拒绝资源，避免把第二套 UV 静默当成第一套 UV 使用。
-
-材质进入游戏后的计算是：
-
-```text
-最终颜色 = 基础颜色 * Minecraft lightmap + 自发光贴图 * 自发光颜色 * 自发光强度
-```
-
-基础颜色会随方块光、天空光和昼夜变化。自发光部分不受黑暗影响。使用自发光贴图时仍需 UV0，并应导出 PNG。
-
-Iris 开启光影包后，基础材质会进入 entity G-buffer，自发光再向当前主颜色附件追加亮度。CooFX 会隔离并恢复其他 G-buffer 附件，但部分 deferred 光影包会在后续阶段重新解释主附件，因此只保证表面自发光，不保证出现 bloom 光晕。原版 Vanilla 路径同样会显示亮起的表面，但不会自动增加模糊光晕。
-
-CooFX 的基础 mesh/material ABI 已验证，但不能无条件保证任意 Iris shaderpack 的 entity color modulation、UV/overlay、PBR、雾、deferred/G-buffer、顶点位移或 emissive second pass 结果。当前资产的着色结果可能与无光影不同；CooFX 阴影暂不支持。没有通过目标 shaderpack 实际验证时，应将该 shaderpack 视为 shader 部分不兼容。运行时不会虚构 shaderpack identity，也不会把普通 CooFX shader 静默当作通用 fallback；首次进入活动 Iris entity bridge 时只会在当前客户端 session 发出一次 warning。
-
-Blender 的自发光描述的是表面亮度，不是 Minecraft 动态光源。它不会提高附近方块的 block light；需要照亮周围环境时，应另接动态光源模组或光影包专用能力。
-
-### 4.6 对象命名
-
-对象名会影响导出文档中的 mesh、node 和 emitter 引用。建议使用稳定的小写或易读名称：
-
-```text
-CooFX_BurstMesh
-CooFX_BurstNode
-```
-
-不要频繁改名，否则 `.coofx.json` 中的 emitter 引用需要重新生成。运行时的批次键不会把粒子位置、年龄和 seed 放进去，但 mesh、primitive 和材质引用必须稳定。
-
-## 5. 坐标、单位和方向
-
-### 5.1 CooFX 坐标约定
-
-CooFX 使用右手坐标系：
-
-```text
-+X = Minecraft 世界东
-+Y = 世界上方
-+Z = Minecraft 世界南，也是局部前方
-1 CooFX unit = 1 Minecraft block
-```
-
-角度使用弧度，四元数顺序是：
-
-```text
-(x, y, z, w)
-```
-
-局部变换组合语义是：
-
-```text
-world = parentWorld * local
-local = T * R * S
-```
-
-### 5.2 Blender 到 CooFX
-
-Blender 原生是右手 Z-up。官方 glTF exporter 负责转换到标准 Y-up glTF。概念映射为：
-
-```text
-(x_blender, y_blender, z_blender)
-  -> (x_coofx, y_coofx, z_coofx)
-  -> (x_blender, z_blender, -y_blender)
-```
-
-这个转换由 Blender 官方 glTF exporter 负责。运行时读取 glTF 后不能再次换轴，否则模型会旋转两次。
-
-### 5.3 单位缩放
-
-默认情况下：
+默认单位是：
 
 ```text
 1 Blender unit = 1 Minecraft block
 ```
 
-如果你的 Blender 项目使用厘米、毫米或其他单位，先在 `Scene Properties > Units > Unit Scale` 设置场景单位，再把 CooFX 面板的 `单位缩放` 设为相同数值。校验器会拒绝两者不一致的场景，防止官方 glTF geometry 与 CooFX emitter 速度使用不同单位。
+如果 Blender 使用厘米或毫米，CooFX 面板的 `unitScale` 必须与 Blender 场景单位一致。资产的世界变换仍使用 Minecraft 世界坐标。
 
-导出时，Blender 官方 glTF exporter 负责 mesh/node 的 Y-up 与场景单位转换；CooFX emitter extractor 使用同一 `单位缩放` 转换 Geometry Nodes 的 velocity，通过 `B * R * B^-1` 四元数基变换转换 XYZ Euler rotation，并按无符号轴映射转换 scale。扩展审计元数据会记录：
-
-```json
-"extensions": {
-  "cooparticlesapi:blender_export": {
-    "unitScale": 1.0,
-    "vectorMapping": ["x", "z", "-y"],
-    "conversionOwner": "blender_official_gltf_exporter_and_coofx_emitter_extractor"
-  }
-}
-```
-
-Minecraft runtime 不会再做第二次换轴或单位缩放。
-
-## 6. CooFX 面板设置
-
-在 `Scene Properties > CooFX` 中配置以下字段。
-
-### 6.1 命名空间
-
-例如：
-
-```text
-cooparticlesapi
-```
-
-命名空间只能使用小写字母、数字、点、下划线和连字符。
-
-### 6.2 资产名称
-
-例如：
-
-```text
-examples/rigid_burst
-```
-
-资产名称可以包含安全的子目录，但不能包含 `..`，不能使用反斜杠，不能使用绝对路径。
-
-### 6.3 资源命名空间目录
-
-点击面板中的 `选择资源目录`，选择某个 namespace 对应的 `assets/<namespace>` 目录，例如：
-
-```text
-D:/CodeSources/java/mods/CooParticlesAPI-MultiPlatform/common/src/main/resources/assets/cooparticlesapi
-```
-
-注意这里已经包含 `assets/cooparticlesapi`。不要再选择仓库根目录，也不要选择只读的 `assets` 父目录。选择结果会保存在当前 `.blend` 场景中；以后可以再次点击按钮调整。
-
-如果目录为空，点击 `导出 CooFX 资产` 会先自动打开目录选择器，不再回退到 Blender 或 Steam 的工作目录。选择正确后，导出器会在这个目录下创建：
-
-```text
-coofx/
-coofx/models/
-```
-
-### 6.4 资产种子
-
-资产种子必须是 16 位小写十六进制字符串，例如：
-
-```text
-0123456789abcdef
-```
-
-不要使用十进制数字、带 `0x` 前缀的字符串或大写字母。
-
-这个 seed 是资源级确定性随机的基础。相同资源、相同请求 seed、相同 tick 输入应产生相同的发射序列。
-
-### 6.5 基础颜色纹理
-
-面板中的基础颜色纹理字段应该填写完整 ResourceLocation，例如：
-
-```text
-cooparticlesapi:textures/coofx/rigid_burst.png
-```
-
-对应文件应该放在：
-
-```text
-common/src/main/resources/assets/cooparticlesapi/textures/coofx/rigid_burst.png
-```
-
-不要填写 Windows 文件系统绝对路径。这里填的是 Minecraft 资源 ID，不是本机路径。
-
-### 6.6 glTF 材质名
-
-这个字段必须与 Blender 材质导出后的 glTF 材质名一致。默认值是：
-
-```text
-Material
-```
-
-如果你在 Blender 中把材质命名为 `RigidBurstMaterial`，就把面板中的 glTF 材质改为相同名称。
-
-### 6.7 动画 Clip
-
-启用“导出动画 Clip”后，填写稳定的 Clip ID 和 Blender 官方 glTF exporter 生成的 animation 名称，再选择 `ONCE`、`LOOP` 或 `PING_PONG`。当前面板支持一个可选 clip；纯 Python 模型和 JSON 格式支持多个 clip，但多项列表编辑 UI 尚未实现。
-
-## 7. 经典 Particle System 导出
-
-### 7.1 当前支持的经典粒子范围
-
-当前 Add-on 只抽取可以无歧义表达成 CooFX 突发发射器的经典粒子系统。
-
-支持的主要字段是：
-
-| Blender 参数 | CooFX 字段 |
-|---|---|
-| Number | `count` |
-| Frame Start，且必须等于 Frame End | `delayTicks` |
-| Lifetime | `lifetimeTicks` |
-| Particle Size | `scale.min/max` 的基础值 |
-| Size Random | `scale.min/max` 的范围 |
-
-### 7.2 创建单帧 Burst
-
-操作步骤：
-
-1. 选中一个 mesh 对象。
-2. 添加 Particle System。
-3. 类型选择 `Emitter`。
-4. 把 `Frame Start` 和 `Frame End` 设置为同一个值，例如都为 `1`。
-5. 设置 `Number`，例如 `16`。
-6. 设置 `Lifetime`，例如 `2` 秒。
-7. 设置 `Particle Size`，例如 `1.0`。
-8. 设置 `Size Random`，例如 `0.25`。
-9. 把 Normal、Tangent、Object 速度方向系数设为 `0`。
-10. 点击 CooFX 面板的 `校验 CooFX 资产`。
-
-对于 20 FPS 的 Minecraft tick，帧延迟和生命周期会按下式转换：
-
-```text
-ticks = round(frame_or_seconds * 20 / Blender FPS)
-```
-
-### 7.3 当前会跳过的经典粒子设置
-
-以下情况会产生中文 warning 并跳过该粒子系统：
-
-- `Frame Start != Frame End`。
-- 粒子类型不是 `EMITTER`，例如 HAIR。
-- Normal、Tangent 或 Object 速度系数非零。
-
-原因是当前 v1 emitter 使用全局向量范围，无法无损表达“每个面按照自己的法线或切线发射”。静默把它改成统一方向会改变美术结果，因此工具选择明确跳过。
-
-### 7.4 Object 和 Collection 实例化的当前边界
-
-CooFX runtime 的 mesh emitter 定义已经有 `OBJECT` 和 `COLLECTION` 选择模式，collection 变体也使用稳定 seed 选择。但是当前 Blender Add-on 的经典 Particle System 抽取器还没有把 Blender 的 `Render As Object`、`Render As Collection` 成员列表完整写入 v1 文档。
-
-因此当前推荐：
-
-- 经典 Particle System 只用于验证 count、delay、lifetime、scale 等基础 burst 语义。
-- 真正需要多个对象或集合变体时，使用受约束 Geometry Nodes 输入，或在 Kotlin runtime 中显式配置 `CooFxMeshVariant` 列表。
-- 不要根据对象名称猜测 collection 成员。
-
-## 8. 受约束 Geometry Nodes 导出
-
-### 8.1 为什么不能导出任意 Geometry Nodes
-
-Geometry Nodes 是通用节点图系统。任意节点图可能包含几何生成、实例化、场、时间、随机、属性传递和自定义逻辑，Minecraft runtime 无法安全地解释所有节点。
-
-CooFX 只识别明确标记的官方组：
-
-```text
-cooparticlesapi:coofx/emitter_v1
-```
-
-没有这个标记，即使节点组名字叫 `CooFX Mesh Emitter`，也不会被自动识别。
-
-### 8.2 官方组标记
-
-在 Geometry Nodes node group 上设置自定义属性：
-
-```text
-coofx_official_group = "cooparticlesapi:coofx/emitter_v1"
-```
-
-属性应设置在 node group 数据块上，而不是只设置在对象或 modifier 上。
-
-### 8.3 必需接口输入
-
-官方发射器组必须提供以下输入 socket，名称必须完全一致：
-
-```text
-Count
-Delay Ticks
-Lifetime Ticks
-Mesh
-Node
-```
-
-可选输入：
-
-```text
-Emitter ID
-Velocity Min
-Velocity Max
-Rotation Min
-Rotation Max
-Scale Min
-Scale Max
-```
-
-Add-on 使用 Geometry Nodes interface socket 的稳定 identifier 读取 modifier 值，不依赖 UI 顺序。
-
-### 8.4 推荐节点组制作步骤
-
-1. 创建 Geometry Nodes Modifier。
-2. 新建一个独立 node group。
-3. 在 group interface 中创建上述输入 socket。
-4. 设置 group 自定义属性 `coofx_official_group`。
-5. 使用输入值驱动实例数量、局部速度和局部变换。
-6. 不要引入未定义的自定义输出语义。
-7. 保持 Mesh 和 Node 输入可以映射到导出对象或节点名称。
-8. 保存并执行 CooFX 校验。
-
-如果缺少任意必需输入，工具会报告缺少的 socket 并跳过该组。
-
-### 8.5 非官方 Geometry Nodes 的两条路线
-
-对于任意节点图，只能选择下面的路线之一：
-
-1. 在 Blender 中 `Realize Instances`，把最终结果导出为静态 mesh。
-2. 先烘焙成固定拓扑 VAT，再通过 VAT 元数据流程处理。
-
-不要把任意节点图直接交给 Minecraft runtime，也不要只改节点组名字来绕过官方标记。
-
-## 9. 导出运行时资产
-
-### 9.1 第一次导出推荐配置
-
-使用下面的示例配置：
-
-```text
-命名空间：cooparticlesapi
-资产名称：examples/rigid_burst
-单位缩放：1.0
-资产种子：0123456789abcdef
-glTF 材质：RigidBurstMaterial
-基础颜色纹理：cooparticlesapi:textures/coofx/rigid_burst.png
-Alpha 模式：OPAQUE
-双面：关闭
-```
-
-### 9.2 校验
-
-先点击：
-
-```text
-校验 CooFX 资产
-```
-
-通过后再点击：
-
-```text
-导出 CooFX 资产
-```
-
-校验会检查：
-
-- 对象路径和名称。
-- 对象变换是否有限；负缩放允许由官方 glTF exporter 应用。
-- 是否至少包含一个可由 glTF exporter 三角化的面。
-- 纹理网格的 UV0。
-- namespace 和 asset name。
-- asset seed。
-- emitter 数值范围。
-- 材质 Alpha 模式。
-- ResourceLocation 格式。
-- 生成文档的 schemaVersion。
-
-### 9.3 导出结果
-
-如果资源根目录是：
-
-```text
-common/src/main/resources/assets/cooparticlesapi
-```
-
-资产名称是：
-
-```text
-examples/rigid_burst
-```
-
-则会生成：
-
-```text
-common/src/main/resources/assets/cooparticlesapi/
-  coofx/
-    examples/
-      rigid_burst.coofx.json
-    models/
-      examples/
-        rigid_burst.gltf
-        rigid_burst.bin
-```
-
-纹理需要单独确保存在：
-
-```text
-common/src/main/resources/assets/cooparticlesapi/
-  textures/
-    coofx/
-      rigid_burst.png
-```
-
-导出过程先在临时目录中生成 glTF 和 JSON，确认文件完整后再替换目标文件。这样不会在官方 exporter 中途失败时留下半个资产。
-
-新资产如果只填写单段名称，例如 `people`，导出器会直接使用 `coofxAsset` 的同名目录约定：
-
-```text
-coofx/people/people.coofx.json
-coofx/models/people/people.gltf
-coofx/models/people/people.bin
-```
-
-带 `/` 的资产名称继续使用原有路径布局，已有项目不需要迁移。
-
-### 9.4 GLB 快照和运行时包的区别
-
-`导出 GLB 快照` 用于：
-
-- 离线检查模型。
-- 交给外部 glTF 检查器查看。
-- 为未来 VAT 流程保留一个单文件快照。
-
-它不会自动写入 CooFX 运行时清单。
-
-运行时资产流程推荐始终使用：
-
-```text
-.gltf + .bin + PNG + .coofx.json
-```
-
-不要把生成的 GLB 当成已经接入游戏资源清单的运行时资产。
-
-## 10. 生成 JSON 的结构说明
-
-一个最小 CooFX v1 文档如下：
-
-```json
-{
-  "$schema": "cooparticlesapi:coofx/schema/v1",
-  "schemaVersion": 1,
-  "coordinateSystem": "coofx_rh_y_up_z_south",
-  "assetSeed": "0123456789abcdef",
-  "model": "cooparticlesapi:coofx/models/examples/rigid_burst.gltf",
-  "scene": 0,
-  "clips": [],
-  "materials": [
-    {
-      "id": "default",
-      "gltfMaterial": "RigidBurstMaterial",
-      "baseColorTexture": "cooparticlesapi:textures/coofx/rigid_burst.png",
-      "alphaMode": "OPAQUE",
-      "doubleSided": false
-    }
-  ],
-  "emitters": [
-    {
-      "id": "rigid_burst",
-      "mesh": "RigidBurstMesh",
-      "node": "RigidBurstNode",
-      "count": 16,
-      "delayTicks": 0,
-      "lifetimeTicks": 40,
-      "velocity": {
-        "min": [-0.05, 0.1, -0.05],
-        "max": [0.05, 0.2, 0.05]
-      },
-      "rotationRadians": {
-        "min": [0.0, 0.0, 0.0],
-        "max": [0.0, 6.283185307179586, 0.0]
-      },
-      "scale": {
-        "min": [0.8, 0.8, 0.8],
-        "max": [1.2, 1.2, 1.2]
-      }
-    }
-  ],
-  "requiredExtensions": [],
-  "extensions": {}
-}
-```
-
-字段规则：
-
-- `schemaVersion` 必须是整数 `1`。
-- `coordinateSystem` 必须是 `coofx_rh_y_up_z_south`。
-- `assetSeed` 必须是 16 位小写十六进制字符串。
-- `model` 必须引用安全的 `.gltf` 或 `.glb` ResourceLocation；Blender runtime bundle 默认生成分离 `.gltf`。
-- `scene` 是非负 scene 索引。
-- `clips` 的 loop mode 接受 `ONCE`、`LOOP` 和 `PING_PONG`，animation 可以使用唯一名称或索引。
-- `materials` 当前只接受 `OPAQUE` 和 `MASK` 进入网格粒子 compiler。
-- `emitters` 的时间单位是 tick。
-- 旋转范围的单位是弧度。
-- `requiredExtensions` 中的未知扩展会导致硬失败。
-- 非 required 的未知扩展可以保留，但应产生诊断。
-
-## 11. Minecraft 资源放置
-
-### 11.1 Common 资源
-
-如果该资产属于两个 loader 共用资源，放入：
-
-```text
-common/src/main/resources/assets/<namespace>/
-```
-
-完整示例：
-
-```text
-common/src/main/resources/assets/cooparticlesapi/coofx/examples/rigid_burst.coofx.json
-common/src/main/resources/assets/cooparticlesapi/coofx/models/examples/rigid_burst.gltf
-common/src/main/resources/assets/cooparticlesapi/coofx/models/examples/rigid_burst.bin
-common/src/main/resources/assets/cooparticlesapi/textures/coofx/rigid_burst.png
-```
-
-### 11.2 资源 ID
-
-入口 JSON 的完整 ResourceLocation 是：
-
-```text
-cooparticlesapi:coofx/examples/rigid_burst.coofx.json
-```
-
-模型的完整 ResourceLocation 是：
-
-```text
-cooparticlesapi:coofx/models/examples/rigid_burst.gltf
-```
-
-纹理的完整 ResourceLocation 是：
-
-```text
-cooparticlesapi:textures/coofx/rigid_burst.png
-```
-
-当前 importer 会检查 `.coofx.json` 后缀，因此在直接调用 importer 时应传入完整入口资源 ID。
-
-### 11.3 不要使用的路径
-
-不要把运行时资源放到：
-
-```text
-common/src/test/resources/
-```
-
-除非它只是测试 fixture。
-
-不要把资源放到：
-
-```text
-assets/<namespace>/models/
-```
-
-来代替 CooFX 约定的：
-
-```text
-assets/<namespace>/coofx/models/
-```
-
-不要把 Windows 绝对路径写进 JSON：
-
-```json
-"model": "D:/model/rigid_burst.gltf"
-```
-
-这种路径会被拒绝。
-
-## 12. Kotlin runtime 导入流程
-
-Python 只在 Blender 中生成资源文件，不参与 Minecraft 启动、资源重载或渲染。下面的 importer/compiler 说明用于理解内部资产链；普通客户端调用方只需把导出文件放入 `assets/<namespace>`。只有模型时调用 `CooFXClient.playModel`，资产包含 emitter 且需要粒子发射时调用 `CooFXClient.play`。
-
-### 12.1 ResourceProvider 适配
-
-导入器的核心只依赖：
+CooFX 世界变换使用位置、四元数和缩放，而不是欧拉角：
 
 ```kotlin
-fun interface CooFxResourceProvider {
-    fun read(resource: ResourceLocation): ByteArray
-}
-```
-
-在 Minecraft 资源加载环境中使用：
-
-```kotlin
-val provider = MinecraftCooFxResourceProvider(resourceProvider)
-val importer = CooFxAssetImporter(provider)
-```
-
-其中 `resourceProvider` 是现有资源重载或资源访问阶段提供的 `ResourceProvider`。
-
-### 12.2 导入 CooFX JSON 和 glTF
-
-示例：
-
-```kotlin
-val assetId = ResourceLocation.fromNamespaceAndPath(
-    "cooparticlesapi",
-    "coofx/examples/rigid_burst.coofx.json",
+CooFxWorldTransform(
+    x = 10.0,
+    y = 64.0,
+    z = -4.0,
+    rotationX = 0F,
+    rotationY = 0F,
+    rotationZ = 0F,
+    rotationW = 1F,
+    scaleX = 1F,
+    scaleY = 1F,
+    scaleZ = 1F,
 )
-val result = CooFxAssetImporter(
-    MinecraftCooFxResourceProvider(resourceProvider),
-).import(assetId)
-
-if (result.asset == null) {
-    val message = result.diagnostics.joinToString("\n") { diagnostic ->
-        "${diagnostic.code}: ${diagnostic.message}"
-    }
-    error("CooFX 导入失败：$message")
-}
-
-val sourceAsset = result.asset
 ```
 
-导入器会依次读取：
+位置和四元数分量必须是有限值；四元数必须归一化到允许范围；三个缩放分量必须是有限且严格为正。模型播放的浮点实例 ABI 还要求位置可表示为运行时使用的 float。
 
-1. `.coofx.json`。
-2. JSON 中的 `.gltf`。
-3. glTF 引用的外部 `.bin`。
-4. glTF 引用的 PNG。
-5. glTF accessor、mesh、node、material 和 animation。
+## 5. 导出与资源布局
 
-导入器会把结果规范化为 `CooFxSourceAsset`，下游不应继续传递 Gson `JsonObject`。
+### 5.1 推荐导出顺序
 
-### 12.3 导入阶段会拒绝的错误
+1. 在 CooFX 面板填入 namespace、资产 ID、单位缩放和固定 seed。
+2. 先点击 `校验 CooFX 资产`。
+3. 修复 error；warning 必须理解后再继续。
+4. 点击 `导出 CooFX 资产`。
+5. 把 PNG 放进 Minecraft 资源目录。
+6. 检查 JSON 中引用的模型和纹理 ResourceLocation。
 
-常见错误包括：
+运行时清单通常是分离文件：
 
-- JSON schemaVersion 不是 1。
-- coordinateSystem 不匹配。
-- assetSeed 格式不正确。
-- 资源路径为空、绝对路径、反斜杠或包含 `..`。
-- glTF 版本不是 2.0。
-- buffer 不存在或长度不足。
-- accessor 越界。
-- POSITION 不是 VEC3。
-- primitive 不是 TRIANGLES。
-- 索引超出顶点范围。
-- animation 时间不递增。
-- 节点图存在循环。
-- material 索引越界。
-- 使用非 PNG 图片。
-- light、audio 或未知 required extension。
+```text
+.coofx.json + .gltf + .bin + .png
+```
 
-错误应该作为 `CooFxDiagnostic` 记录，不能删除问题字段后继续绘制。
+GLB 快照只用于离线检查，不会自动成为 CooFX 运行时清单。
 
-### 12.4 播放纯模型资产
+### 5.2 `coofxAsset` 的固定约定
 
-`emitters: []` 表示资产只有模型，这是合法状态。以下代码直接播放本教程中实际导出的 `test_moudles` 资产，不会创建 emitter：
+推荐使用：
+
+```kotlin
+val resourceId = coofxAsset("examplemod", "people")
+```
+
+它解析为：
+
+```text
+examplemod:coofx/people/people.coofx.json
+```
+
+因此资源文件应位于：
+
+```text
+assets/examplemod/coofx/people/people.coofx.json
+assets/examplemod/coofx/people/people.gltf
+assets/examplemod/coofx/people/people.bin
+```
+
+`assetID` 必须是一个小写段，并匹配 `[a-z0-9][a-z0-9._-]*`。如果资产使用嵌套路径或入口文件与目录不完全同名，应传入显式入口 ResourceLocation，并确保 JSON 中的模型引用是安全的相对资源 ID。
+
+例如显式入口：
+
+```text
+cooparticlesapi:coofx/test/test_moudles.coofx.json
+```
+
+不要使用旧示例中的：
+
+```text
+assets/<namespace>/coofx/<name>.coofx.json
+```
+
+对于 `coofxAsset("mod", "name")`，正确路径一定包含同名目录：
+
+```text
+assets/mod/coofx/name/name.coofx.json
+```
+
+### 5.3 资源 ID 检查表
+
+- JSON 后缀是 `.coofx.json`。
+- 模型引用是 `.gltf` 或当前契约支持的 `.glb` ResourceLocation，而不是 Windows 路径。
+- glTF 的 BIN URI 是相对路径，且实际文件名一致。
+- 图片是 PNG，ResourceLocation 使用 `/`。
+- 不要把资源放在 `common/src/test/resources`，除非它是测试 fixture。
+
+更严格的 schema、字段和路径契约见 [`format-v1.md`](format-v1.md)。
+
+## 6. 服务端权威场景
+
+### 6.1 创建一个模型场景
+
+以下代码只能在 Minecraft server thread 执行：
+
+```kotlin
+val scene = CooFxSceneManager.spawn(
+    level = serverLevel,
+    spec = CooFxSceneSpec(
+        resourceId = coofxAsset("examplemod", "people"),
+        transform = CooFxWorldTransform(
+            x = 10.0,
+            y = 64.0,
+            z = -4.0,
+        ),
+        requestSeed = 0x5EEDL,
+        mode = CooFxSceneMode.MODEL,
+        clipId = "idle",
+        playbackSpeed = 1F,
+        renderRange = 256.0,
+    ),
+)
+```
+
+`CooFxSceneSpec` 的 ID 不能为空；播放速度必须有限且非负；render range 必须有限且为正。emitter 相关的数量和延迟不能为负，生命周期必须为正。
+
+`spawn` 会注册场景的 RenderEntity 可见性，并立即应用维度和距离过滤。相同 `ownerKey` 或相同 `sceneId` 的旧场景会先停止。默认 scene ID 是随机 UUID，也可以由调用者传入稳定 UUID。
+
+### 6.2 所有场景模式
+
+`CooFxSceneMode` 当前支持：
+
+| 模式 | 模型 | 相机 | emitter |
+|---|---:|---:|---:|
+| `MODEL` | 是 | 否 | 否 |
+| `CAMERA_TRACKING` | 否 | 是 | 否 |
+| `CAMERA_ONLY` | 否 | 是 | 否 |
+| `MODEL_AND_CAMERA` | 是 | 是 | 否 |
+| `MODEL_AND_EMITTER` | 是 | 否 | 是 |
+| `MODEL_CAMERA_AND_EMITTER` | 是 | 是 | 是 |
+| `EMITTER` | 否 | 否 | 是 |
+| `CAMERA_AND_EMITTER` | 否 | 是 | 是 |
+
+`CAMERA_ONLY` 是 `CAMERA_TRACKING` 的 JVM 字段别名。模式只决定场景参与哪些客户端子流程；emitter 模式还必须提供有效的 `emitterId` 才能启动 emitter。
+
+### 6.3 相机接收者：所有、一个、多个
+
+相机目标只决定本地镜头接管，不决定模型发送对象。三种明确写法如下。
+
+所有收到场景的客户端都可以竞争相机：
+
+```kotlin
+CooFxSceneSpec(
+    resourceId = coofxAsset("examplemod", "people"),
+    transform = transform,
+    requestSeed = seed,
+    mode = CooFxSceneMode.MODEL_AND_CAMERA,
+    cameraId = "Camera_Main",
+    cameraTargetPlayer = null,
+    cameraTargetPlayers = null,
+)
+```
+
+只允许一个玩家接管：
+
+```kotlin
+CooFxSceneSpec(
+    resourceId = resourceId,
+    transform = transform,
+    requestSeed = seed,
+    mode = CooFxSceneMode.MODEL_AND_CAMERA,
+    cameraTargetPlayer = targetPlayer.uuid,
+)
+```
+
+允许多个指定玩家接管：
+
+```kotlin
+CooFxSceneSpec(
+    resourceId = resourceId,
+    transform = transform,
+    requestSeed = seed,
+    mode = CooFxSceneMode.MODEL_AND_CAMERA,
+    cameraTargetPlayers = setOf(playerOne.uuid, playerTwo.uuid),
+)
+```
+
+`cameraTargetPlayer` 与 `cameraTargetPlayers` 互斥；multiple 集合必须非空。两个字段都为 `null` 表示所有收到场景的客户端都可以参与相机竞争。目标玩家离开可见范围时不会再接管镜头，但场景模型是否发送仍由维度、距离和 RenderEntity 可见性决定。
+
+同时可见的相机由每个客户端逐 tick 选择：`cameraPriority` 更高者胜出；同优先级按 scene UUID 字符串稳定决胜。相机目标过滤只作用于本地 camera claim，不会隐藏模型。
+
+### 6.4 动态更新、替换和停止
+
+句柄提供 `sceneId`、`isActive`、`update`、`replace` 和 `stop`：
+
+```kotlin
+scene.update(
+    CooFxScenePatch(
+        transform = nextTransform,
+        playbackSpeed = 0.5F,
+        cameraId = "Camera_Close",
+        cameraPriority = 20,
+        emitterCount = 48,
+    ),
+)
+```
+
+`CooFxSceneManager.update(sceneId, patch)` 与句柄的 `update` 等价；返回 `false` 表示场景不存在或已经停止。
+
+Patch 是增量更新：字段为 `null` 时保留现值，不能用 `null` 清除 clip、camera 或 emitter，也不能用它改变资源 ID 或 seed。Patch 中的单玩家与多玩家 camera target 字段同样互斥，multiple 集合不能是空集合；Patch 不能清除现有 camera target。需要清除字段、换资源或换 seed 时，构造完整快照：
+
+```kotlin
+scene.replace(
+    CooFxSceneSpec(
+        resourceId = newResourceId,
+        transform = nextTransform,
+        requestSeed = newSeed,
+        mode = CooFxSceneMode.MODEL,
+        clipId = null,
+        cameraId = null,
+        emitterId = null,
+    ),
+)
+```
+
+`replace` 会返回布尔值；场景已经不存在时为 `false`。完成后调用：
+
+```kotlin
+scene.stop()
+// 或 CooFxSceneManager.stop(scene.sceneId)
+```
+
+服务端还提供 `syncTo(player)`、`isActive(sceneId)`、`size()` 和 `clearServer()`。登录玩家会由现有同步 listener 接收可见场景；需要针对特定玩家立即补发时使用 `syncTo`，同样必须在 server thread。
+
+### 6.5 生命周期时间
+
+`lifetimeTicks` 是服务端场景 TTL；它不是 emitter 粒子生命周期。`emitterLifetimeTicks` 只是 emitter 粒子的生命周期覆盖值。两者都必须遵守各自的正值约束。
+
+默认 `renderRange` 是 `256.0`。场景发送给同维度且在范围内的玩家；离开范围会移除，重新进入范围会重新同步。`cameraTargetPlayer` 和 `cameraTargetPlayers` 不改变这一模型可见性规则。
+
+## 7. 客户端本地播放
+
+### 7.1 模型播放
+
+纯模型资产使用 `CooFXClient.playModel`。这段代码只能在客户端：
 
 ```kotlin
 val result = CooFXClient.playModel(
     CooFxModelPlayRequest(
-        resourceId = coofxAsset("cooparticlesapi", "test_moudles"),
+        resourceId = coofxAsset("examplemod", "people"),
         transform = CooFxWorldTransform(
             x = position.x,
             y = position.y,
             z = position.z,
         ),
         requestSeed = 0x5EEDL,
-        clipId = null,
+        clipId = "idle",
         playbackSpeed = 1F,
-    )
-)
-
-val handle = when (result) {
-    is CooFxModelPlayResult.Started -> result.handle
-    is CooFxModelPlayResult.Queued -> null
-    is CooFxModelPlayResult.Failed -> error(result.failure.message)
-}
-```
-
-模型实例会绘制导出 scene 中的全部 mesh node，并一直存在到 `handle.stop()`、退出世界或资源重载。`clipId = null` 时，有动画就播放第一个 compiled clip，没有动画就保持静态 bind pose。每个模型实例拥有独立 tick 时钟。
-
-资源 snapshot 或 GPU generation 尚未准备时返回 `Queued`，下一次有效 WORLD_PASS 会自动启动；已经准备时返回 `Started`。该入口只能在客户端调用。联机业务不要手写临时 S2C 包，应使用 12.6 节的服务端权威 `CooFxSceneManager`。
-
-仓库已把当前资产接入 BlockTest。打开测试控制器，在 `Block API` 测试组中选择 `coofx/model/test_moudles` 检查固定世界坐标模型；重新使用 1.0.5 插件导出包含 camera 后，选择 `coofx/model-camera/test_moudles` 检查模型与资产 camera 跟踪。通过、失败、跳过、取消、断线或切换世界都会停止本次场景并恢复玩家视角。
-
-### 12.5 播放资产内置 emitter
-
-只有 `.coofx.json` 的 `emitters` 非空时才使用粒子入口：
-
-```kotlin
-val result = CooFXClient.play(
-    CooFxPlayRequest(
-        resourceId = ResourceLocation.fromNamespaceAndPath(
-            "cooparticlesapi",
-            "coofx/examples/rigid_burst.coofx.json",
-        ),
-        transform = CooFxWorldTransform(position.x, position.y, position.z),
-        requestSeed = 0x5EEDL,
-        clipId = null,
-        emitterId = "rigid_burst",
-    )
-)
-```
-
-粒子入口返回 `CooFxPlayResult`，并按 emitter 的 count、lifetime、velocity 等语义进入确定性粒子模拟。不要在调用方运行 Python、手动解析 JSON、伪造 emitter 或直接创建 GL 对象。
-
-### 12.6 服务端权威同步实例
-
-联机玩法使用 `CooFxSceneManager`。它复用 RenderEntity 的可见范围与 CREATE/TOGGLE/REMOVE，同步的服务端字段包括资源、位置、四元数旋转、缩放、clip、播放速度、模式、camera、camera 优先级、camera 目标玩家、emitter ID、count、delay 和 lifetime：
-
-```kotlin
-val scene = CooFxSceneManager.spawn(
-    level = serverLevel,
-    spec = CooFxSceneSpec(
-        resourceId = ResourceLocation.fromNamespaceAndPath(
-            "cooparticlesapi",
-            "coofx/test/test_moudles.coofx.json",
-        ),
-        transform = CooFxWorldTransform(position.x, position.y, position.z),
-        requestSeed = 0x5EEDL,
-        mode = CooFxSceneMode.MODEL_CAMERA_AND_EMITTER,
-        clipId = null,
-        playbackSpeed = 1F,
-        // 对应 Blender Camera 对象名；多个 Camera 时手动指定要播放的轨迹。
-        cameraId = "Camera",
-        // 只有该玩家接管镜头；留空则所有收到场景的玩家都接管镜头。
-        cameraTargetPlayer = targetPlayer.uuid,
-        cameraPriority = 10,
-        emitterId = "sparks",
-        emitterCount = 24,
-        emitterDelayTicks = 0,
-        emitterLifetimeTicks = 40,
     ),
 )
 ```
 
-服务端更新时使用 patch，不要在客户端直接改镜像：
+### 7.2 `Started`、`Queued`、`Failed`
+
+播放结果是 sealed interface，必须分别处理：
 
 ```kotlin
-scene.update(
-    CooFxScenePatch(
-        transform = CooFxWorldTransform(nextX, nextY, nextZ),
-        playbackSpeed = 0.5F,
-        cameraId = "Camera_Close",
-        emitterCount = 48,
-    )
-)
-
-// 需要更换资源、seed，或显式清空 clip/camera/emitter 时使用完整快照：
-scene.replace(nextSceneSpec)
-scene.stop()
-```
-
-API 必须在 Minecraft server thread 调用。`coofxAsset(modid, assetID)` 是推荐的资源入口构造方法：例如 `coofxAsset("examplemod", "people")` 固定解析为 `examplemod:coofx/people/people.coofx.json`。`assetID` 只能是小写单段资源名，目录和入口文件必须同名；Blender 面板把资产名称填写为 `people` 时会直接生成这套目录。
-
-`cameraId` 优先匹配 glTF camera node 的稳定 ID，也可匹配唯一 Blender Camera 对象名称；选择器为空时使用场景中的第一个 camera。多个 camera tracking scene 同时可见时，客户端使用 `cameraPriority` 最大者。`CooFxSceneMode.CAMERA_ONLY` 是只跟踪镜头、不绘制模型的易用别名（等同于 `CAMERA_TRACKING`）。透视 camera 会同步位置、旋转和垂直 FOV；正交 camera 当前只同步姿态，不替换 Minecraft 主投影。
-
-场景的模型仍按同世界且距离不超过 `renderRange`（默认 256）发送给每个可见玩家；`cameraTargetPlayer` 只在客户端过滤镜头接管，不会隐藏模型。目标玩家离开可见范围后会收到场景移除，重新进入范围会恢复模型和镜头状态。
-
-## 13. CPU compiled render package
-
-导入得到 source asset 后，进入 compiler：
-
-```kotlin
-val compiled = CooFxAssetCompiler().compile(sourceAsset)
-```
-
-`CooFxCompiledRenderPackage` 是不可变的 CPU 包，包含：
-
-- 扁平顶点字节。
-- 索引字节。
-- 顶点布局。
-- primitive draw range。
-- material 编译描述。
-- animation clip 元数据与可执行轨道。
-- scene 中每个模型 primitive 到 node 的绑定。
-- 多个 perspective/orthographic camera 描述符及 camera node 绑定。
-- 可选 emitter 到 primitive 的映射。
-- batch template。
-- deformation plan。
-- content digest。
-
-它不包含：
-
-- VAO。
-- VBO。
-- EBO。
-- OpenGL texture handle。
-- shader program handle。
-- framebuffer。
-
-这保证 JSON/glTF 解析和 CPU 编译可以在非渲染线程完成，而 GPU 对象只在渲染线程建立。
-
-当前 compiler 的能力边界是：
-
-```text
-RIGID node + OPAQUE/MASK + TRIANGLES
-```
-
-以下内容会在 compiler 阶段明确拒绝：
-
-```text
-skin
-morph target
-weights animation
-VAT extension
-BLEND
-```
-
-## 14. Playback 使用
-
-### 14.1 播放时钟
-
-`CooFxPlaybackClock` 使用绝对 tick 计算 clip 时间，不累计每帧浮点误差：
-
-```kotlin
-val clock = CooFxPlaybackClock(
-    startTick = effectStartTick,
-    durationSeconds = 2.0F,
-    speed = 1.0F,
-    loopMode = CooFxLoopMode.LOOP,
-)
-
-val time = clock.timeAt(currentTick, partialTick)
-val seconds = time.seconds
-```
-
-时间换算是：
-
-```text
-seconds = (tick - startTick + partialTick) / 20 * speed
-```
-
-`ONCE` 到达末尾后将 `completed` 设为 `true`；`LOOP` 会回到起点；`PING_PONG` 支持往返采样。
-
-### 14.2 轨道插值
-
-CooFX 不使用现有 `Animate` 保存 glTF 轨道。播放模块独立支持：
-
-- `STEP`：保持前一关键帧。
-- `LINEAR`：平移和缩放使用线性插值，旋转使用归一化球面插值。
-- `CUBICSPLINE`：使用 glTF 的 in tangent、value、out tangent 布局做 Hermite 采样。
-
-动画时间是秒，粒子生命周期和发射调度是 tick。不要把两种时间单位混用。
-
-### 14.3 VAT 和 morph 采样边界
-
-当前播放模块已经有 VAT 相邻帧采样和 morph weight track 的纯数学类型，用于后端规划和测试：
-
-```kotlin
-val sample = CooFxVatFrameSampler.sample(
-    timeSeconds = seconds,
-    frameCount = frameCount,
-    framesPerSecond = fps,
-    loopMode = CooFxLoopMode.LOOP,
-)
-```
-
-但 compiler 当前不会执行 VAT 或 morph 变形。调用这些类型不能表示 GPU deformation 已经接线。
-
-## 15. 网格粒子 runtime 使用
-
-### 15.1 一个 controller 管理全部粒子
-
-模型粒子不应为每个粒子创建一个 RenderEntity。当前 runtime 的核心控制器是：
-
-```kotlin
-val manager = CooFxMeshParticleManager(capacity = 1024)
-```
-
-它统一管理：
-
-- dense particle store。
-- emitter 状态。
-- stable particle id。
-- emission ordinal。
-- deterministic seed。
-- CPU tick。
-- batch 构建。
-
-### 15.2 发射器定义
-
-`CooFxMeshEmitterDefinition` 的重要字段包括：
-
-```text
-emitterId
-simulationSpace: WORLD 或 LOCAL
-emissionMode: BURST 或 CONTINUOUS
-selectionMode: OBJECT 或 COLLECTION
-variants
-延迟、持续时间、数量、每 tick 数量
-生命周期范围
-位置、速度、加速度范围
-旋转、角速度、缩放范围
-颜色范围
-gravity、wind、drag、noise
-clipIndex、playbackSpeed
-```
-
-所有范围都是逐分量的闭区间。`COLLECTION` 模式要求变体列表顺序稳定；运行时使用粒子 seed 选择成员，不依赖集合迭代顺序。
-
-### 15.3 WORLD 和 LOCAL
-
-`WORLD`：
-
-- 粒子生成时把发射器变换应用到位置、速度、加速度和旋转。
-- 生成后不再跟随发射器。
-
-`LOCAL`：
-
-- 粒子保留局部模拟数据。
-- 构建批次时使用发射器 previous/current transform 转换到世界空间。
-- 适合附着在移动 RenderEntity 或移动特效主体上的局部粒子。
-
-### 15.4 逻辑 tick
-
-每个客户端逻辑 tick 调用：
-
-```kotlin
-manager.tick()
-```
-
-tick 顺序是：
-
-1. 推进已有粒子。
-2. 回收达到 lifetime 的粒子。
-3. 按 emitter 注册顺序处理当前 tick 的 burst 或 continuous 发射。
-4. 增加 emitter age。
-
-模拟器不会读取系统时间、世界随机或外部随机单例。
-
-### 15.5 构建实例批次
-
-渲染阶段调用：
-
-```kotlin
-val batches = manager.buildBatches()
-```
-
-批次按 `CooFxMeshBatchKey` 和 stable particle id 排序。批次键只包含共享资源和光栅状态，不包含：
-
-- 粒子位置。
-- 粒子年龄。
-- 粒子颜色。
-- 粒子 seed。
-- clip time。
-- 相机距离。
-
-### 15.6 实例布局
-
-CooFX 网格实例使用独立 ABI，不复用 CParticle billboard 的 36-float 语义。
-
-当前布局是：
-
-```text
-9 个 vec4
-36 个 float
-144 bytes
-```
-
-布局包含 previous/current 位置、旋转、缩放、颜色、年龄、生命周期、clip time、seed 等实例数据。具体字段顺序由 `CooFxMeshInstanceLayout` 统一定义，shader 和 Kotlin 端必须共享同一个版本号。
-
-### 15.7 GPU 绘制
-
-`CooFxMeshParticleRenderer` 对每个非空 batch：
-
-1. 上传当前 batch 的实例数据。
-2. 绑定静态 mesh VAO/EBO。
-3. 设置 instance vertex attributes。
-4. 设置 divisor。
-5. 执行一次：
-
-```text
-glDrawElementsInstanced
-```
-
-静态 mesh、material、shader/pipeline 和实例 VBO 必须由对应的 GPU package 和 Coo Pipeline 生命周期管理。不要在每帧把不可变 glTF mesh 重新转成临时顶点集合。
-
-## 16. GL、Shader 和 CooRenderPipeline 约束
-
-CooFX 不能建立平行的 vanilla `ShaderInstance` 入口。
-
-所有 shader 必须：
-
-- 通过 CooParticlesAPI 的 shader source loader 加载。
-- 使用现有 `CooRenderPipeline` 或底层 Coo shader API。
-- 在 Coo Pipeline 的 world pass 中绑定。
-- 复用现有 Iris/Sodium 兼容路径。
-
-直接修改 blend、depth、cull、scissor、color mask 或 polygon offset 时，必须在：
-
-```kotlin
-CooGLSLStateManager.useState {
-    // 绘制调用
+when (result) {
+    is CooFxModelPlayResult.Started -> {
+        val handle = result.handle
+        // 保存 handle；需要结束时调用 handle.stop()。
+    }
+    is CooFxModelPlayResult.Queued -> {
+        // 资源 snapshot 或 GPU generation 尚未准备好。
+        // 这是正常异步状态，不是失败。
+    }
+    is CooFxModelPlayResult.Failed -> {
+        val failure = result.failure
+        // 记录 resourceId、stage、message 和可选 cause。
+    }
 }
 ```
 
-中完成，或者使用严格配对的 `createState/resetState` 生命周期。不能在 Renderer 末尾写“恢复默认 OpenGL 状态”的硬编码代码，因为用户当前状态不一定是默认状态。
+`Queued` 请求会在有效的 `WORLD_PASS` 中由运行时重试和启动；调用者不应自行解析 JSON、创建 GL 对象或建立另一个 shader/framebuffer 路径。失败应记录结构化 `CooFxPlaybackFailure`，不要在 render loop 中无限重试格式错误的资产。
 
-`CooFxMeshParticleRenderer` 自身只负责 144-byte instance VBO、48-byte affine node matrix sidecar VBO、VAO/VBO 绑定恢复和 instanced draw。调用方仍然必须负责：
+`CooFxPlaybackHandle` 提供 `instanceId`、`isAlive` 和 `stop()`。资源重载、断开连接、世界切换和 `stopClient()` 后，旧 handle 必须视为无效。
 
-- Coo Pipeline program。
-- texture binding。
-- framebuffer/viewport 生命周期。
-- CooGLSLStateManager 状态生命周期。
-- Iris world pass 适配。
+包含 emitter 的入口使用 `CooFXClient.play` 和 `CooFxPlayRequest`。只有资源确实带 emitter 并且需要发射时才使用它；不要把 `play` 当成纯模型 API。
 
-当前 `CooFXClient.play` 已把请求排队到资源 snapshot，在 WORLD_PASS 中完成 GPU generation upload 后启动 emitter；调用方无需也不得直接持有 GL package。暂不支持的 `parameterOverrides` 会返回结构化失败。clip node pose 已按每粒子时间在 batcher 中求值并通过 sidecar 合成到 instanced draw。
+### 7.3 原地更新模型
 
-## 17. RenderEntity 和 CParticle 适配原则
-
-### 17.1 RenderEntity
-
-RenderEntity 只应该同步整个特效的业务状态，例如：
-
-```text
-effectId
-startTick
-seed
-world transform
-动态参数
-```
-
-它不应该逐粒子同步位置、速度、旋转和颜色。客户端根据 seed、startTick 和当前 tick 确定性生成粒子。
-
-适配边界是：
+`CooFXClient.updateModel(handle, request)` 只能在客户端线程执行：
 
 ```kotlin
-fun interface CooFxRenderEntityRequestAdapter<T : Any> {
-    fun createRequest(entity: T): CooFxPlayRequest?
+val updated = CooFXClient.updateModel(
+    handle = handle,
+    request = CooFxModelPlayRequest(
+        resourceId = coofxAsset("examplemod", "people"),
+        transform = nextTransform,
+        requestSeed = 0x5EEDL,
+        clipId = "idle",
+        playbackSpeed = 1F,
+    ),
+)
+
+if (!updated) {
+    // handle 在 stop、清理、世界切换或资源重载后失效。
+    handle.stop()
 }
 ```
 
-这个适配器只读取实体状态并构造不可变请求，不持有当前实体的可变渲染状态，也不承诺跨 RenderEntity 合批。
+该方法更新已有模型实例，不创建实例，不接管 camera，不拦截输入，也不调用服务器。返回 `false` 时应停止并丢弃 handle，而不是继续提交更新。
 
-### 17.2 CParticle
+## 8. 被动的玩家相对变换
 
-CParticle 触发适配器是：
+`CooFxPlayerRelativeTransforms` 是一个纯变换工具，不是 camera callback。它读取玩家位置和视角角度，返回新的世界变换；不会修改玩家旋转，不写输入，不注册鼠标回调，也不会接管 CooFX camera。
 
-```kotlin
-fun interface CooFxCParticleTriggerAdapter<T : Any> {
-    fun createEmitterRequest(trigger: T): CooFxEmitterRequest?
-}
-```
-
-它只负责把已有触发上下文转换为 CooFX emitter request，不读取或写入 CParticleStore 的 36-float ABI，也不推进 CooFX 模拟。
-
-不要把 CooFX 网格实例直接塞进 CParticle billboard 的字段布局中。
-
-## 18. 资源重载和 GPU generation
-
-CooFX 资产分三层：
+Blender 局部约定：
 
 ```text
-CooFxSourceAsset
-  -> CooFxCompiledRenderPackage
-  -> CooFxGpuPackage
++Z = 前方
++X = 玩家右侧
++Y = 上方
 ```
 
-资源重载推荐流程：
+### 8.1 使用当前本地玩家视角
 
-1. 在资源线程读取 JSON、glTF、BIN 和 PNG。
-2. 解析为 source asset。
-3. 编译成 CPU compiled package。
-4. 等待渲染线程。
-5. 在渲染线程上传 GPU package。
-6. 原子替换 active generation。
-7. 旧 generation 进入 retired。
-8. 等已有 lease 释放后再 release。
-
-`CooFxGpuPackageRegistry` 用 resource ID、content digest 和 backend capability signature 区分 generation。上传失败时不能替换仍然可用的旧 generation。
-
-GPU 包的 `release()` 只能在渲染线程调用，并且必须幂等。
-
-## 19. VAT 工作流
-
-### 19.1 当前 VAT 功能
-
-当前 Blender 工具的 VAT 支持是：
-
-- 采样评估后的网格帧。
-- 转换到 CooFX 坐标。
-- 校验固定拓扑。
-- 计算 topology SHA-256。
-- 计算 frame data SHA-256。
-- 生成帧数、FPS、时长、bounds 和纹理尺寸等元数据。
-
-当前没有可见的“一键烘焙 VAT 纹理”按钮，runtime compiler 也不会执行 VAT deformation。
-
-### 19.2 固定拓扑要求
-
-所有帧必须满足：
-
-- 顶点数量相同。
-- 三角形索引顺序相同。
-- 法线布局相同。
-- 所有位置和法线分量是有限数。
-
-以下动画不适合直接 VAT：
-
-- 会改变拓扑的 Boolean。
-- 不同帧顶点数量变化。
-- 动态重拓扑。
-- 不稳定的实例 realize 结果。
-
-如果固定拓扑校验失败，不能通过删除某些帧或重新排序索引来掩盖问题；应修复烘焙输入。
-
-### 19.3 VAT 元数据示例
-
-```python
-metadata = build_vat_metadata(
-    frames=frames,
-    fps=24.0,
-    loop_mode="LOOP",
+```kotlin
+val worldTransform = CooFxPlayerRelativeTransforms.fromPlayerView(
+    player = localPlayer,
+    blenderLocalTransform = CooFxWorldTransform(
+        x = 0.0,
+        y = 1.2,
+        z = 2.0,
+        scaleX = 0.5F,
+        scaleY = 0.5F,
+        scaleZ = 0.5F,
+    ),
 )
 ```
 
-返回的数据包含：
+### 8.2 充能效果示例
 
-```text
-version
-vertexCount
-frameCount
-fps
-durationSeconds
-bounds
-textureDimensions
-loopMode
-hasNormals
-meshTopologySha256
-frameDataSha256
-coordinateSystem
+充能效果可以在客户端 tick 中根据当前视角重新计算位置，再调用 `updateModel`：
+
+```kotlin
+val localTransform = CooFxWorldTransform(
+    x = 0.0,
+    y = 1.2,
+    z = 2.0,
+    scaleX = 0.5F,
+    scaleY = 0.5F,
+    scaleZ = 0.5F,
+)
+
+val nextTransform = CooFxPlayerRelativeTransforms.fromView(
+    playerPosition = localPlayer.position(),
+    viewYawDegrees = localPlayer.yRot,
+    viewPitchDegrees = localPlayer.xRot,
+    blenderLocalTransform = localTransform,
+)
+
+CooFXClient.updateModel(
+    handle = chargeHandle,
+    request = CooFxModelPlayRequest(
+        resourceId = coofxAsset("examplemod", "charge"),
+        transform = nextTransform,
+        requestSeed = 0xCAFEL,
+        clipId = "charge",
+        playbackSpeed = 1F,
+    ),
+)
 ```
 
-## 20. 完整示例：从 Blender 到资源目录
+上例中的 seed 应写成合法 Kotlin 数字字面量 `0xCAFEL`，不要在实际代码中保留空格。这个流程是被动的玩家相对模型，不会触发外部相机行为。
 
-下面以 `rigid_burst` 为例。
+## 9. 外部相机行为
 
-### 步骤 A：创建场景
+只有场景模式包含 camera，且当前客户端赢得 camera claim 时，CooFX 外部相机才会生效：
 
-1. 创建一个三角化的低模网格。
-2. 命名为 `RigidBurstMesh`。
-3. 确认 UV0 存在。
-4. 创建材质 `RigidBurstMaterial`。
-5. 使用 PNG 基础颜色纹理。
-6. 可选：创建名为 `Spin` 的刚性节点动画。
-7. 添加单帧 Particle System，设置 count 和 lifetime。
-8. 或创建带官方标记的 Geometry Nodes emitter。
+- 透视资产相机会驱动 camera 位置、旋转和垂直 FOV。
+- 当前玩家身体仍由游戏世界渲染；camera claim 不会删除或隐藏玩家实体。
+- 第一人称手部渲染会被取消，因此不会出现在被接管的镜头中。
+- Vanilla walking bob 和 hurt bob 会被取消。
+- 鼠标移动会被取消，玩家不会用鼠标改变该外部镜头。
+- 该行为与 `fromPlayerView/fromView` 完全不同；后者永远不拥有输入或镜头。
+- 正交 camera 目前只提供姿态，不替换 Minecraft 主投影，也不提供主投影 FOV 覆盖。
 
-### 步骤 B：安装并打开面板
+相机优先级冲突时检查 `cameraPriority`、目标玩家集合和 scene UUID。相机没有匹配到有效 camera、场景被移除或 registry 被清理时，claim 会失效并恢复普通视角。
 
-1. 启用 `CooFX Exporter`。
-2. 打开 Scene Properties。
-3. 找到 `CooFX` 面板。
-4. 填写：
+## 10. 线程、逻辑侧与生命周期
 
-```text
-namespace = cooparticlesapi
-asset_name = examples/rigid_burst
-output_root = .../common/src/main/resources/assets/cooparticlesapi
-unit_scale = 1.0
-asset_seed = 0123456789abcdef
-gltf_material = RigidBurstMaterial
-base_color_texture = cooparticlesapi:textures/coofx/rigid_burst.png
-alpha_mode = OPAQUE
-double_sided = false
-```
+| 操作 | 允许线程/逻辑侧 | 不应做的事 |
+|---|---|---|
+| `CooFxSceneManager.spawn/update/replace/stop/syncTo/clearServer` | Minecraft server thread，服务端 | 触碰 GPU 或客户端状态 |
+| `CooFXClient.init/play/playModel/stopClient` | 客户端生命周期/客户端调用链 | 在专用服务器调用 |
+| `CooFXClient.updateModel` | 客户端线程 | 跨线程提交或调用服务器 |
+| JSON、glTF、BIN、PNG 读取和 CPU 资源处理 | 资源线程或普通 CPU 线程 | 创建 GL 对象 |
+| GPU generation 创建、上传、绘制、释放 | Coo Pipeline 的 `WORLD_PASS` / render thread | 在业务线程创建 VAO、VBO、纹理或 shader |
 
-### 步骤 C：校验
+客户端流程由 common client 初始化，资源 reload 时释放并重新建立渲染资源，世界切换和断开连接时清理瞬态模型、emitter handle 与 camera claim。客户端关闭时应在 GL context 销毁前调用 `CooFXClient.stopClient()`；Fabric 已有明确 wiring，NeoForge 当前源码的 stop hook 是实现缺口。
 
-点击 `校验 CooFX 资产`。如果出现错误，先处理错误再导出。warning 不一定阻止导出，但必须理解它代表哪一项被跳过。
+不要解析 JSON、创建 OpenGL 对象、修改 VAO 或建立平行 vanilla shader/framebuffer 路径来绕过这些边界。CooFX 必须继续使用现有 Coo Pipeline `WORLD_PASS` 与 render-thread 生命周期。
 
-### 步骤 D：导出
+## 11. Iris、材质和已知限制
 
-点击 `导出 CooFX 资产`。确认出现：
+### 11.1 运行时保证范围
 
-```text
-coofx/examples/rigid_burst.coofx.json
-coofx/models/examples/rigid_burst.gltf
-coofx/models/examples/rigid_burst.bin
-```
+当前可靠能力包括：
 
-### 步骤 E：复制纹理
+- rigid node/TRS
+- `TRIANGLES`
+- `OPAQUE` 与 `MASK`
+- POSITION、NORMAL、TEXCOORD_0、COLOR_0
+- 基础 PNG 颜色纹理
+- glTF 节点层级与 translation/rotation/scale
+- 受支持的刚性动画 clip
+- 受约束的 emitter 语义
 
-确认：
+### 11.2 明确不保证或不执行
 
-```text
-textures/coofx/rigid_burst.png
-```
+以下功能会被拒绝、告警或只保留元数据：
 
-与 JSON 中的 ResourceLocation 一致。
+- skin runtime
+- morph target runtime
+- VAT runtime 纹理采样和顶点变形
+- `BLEND` 网格粒子材质
+- shadows
+- 第二套 UV 执行
+- arbitrary Shader Nodes 或 Geometry Nodes
+- Blender 刚体、流体、烟雾、布料、完整物理和 Boids
+- JPEG、KTX、Draco、meshopt、data URI
+- 未知的 required glTF extension
+- light、audio
 
-### 步骤 F：资源重载
+### 11.3 Iris 兼容边界
 
-在开发环境中启动资源重载后，查看日志中是否存在：
+CooFX 只知道当前是否有 Iris shaderpack 活动，不知道 shaderpack 的身份和能力协商结果。运行时会对 Iris `NEW_ENTITY` 路径提供通用中性属性，但不能保证任意 shaderpack 对以下内容的解释：
 
-```text
-找不到资源
-CooFX import failed
-schemaVersion
-model 路径非法
-primitive 索引越界
-```
+- entity color modulation
+- UV/overlay
+- PBR
+- fog
+- deferred/G-buffer
+- vertex displacement
+- emissive second pass
+- shadows 或 bloom
 
-CooFX importer 必须在 import 或 compile 阶段报错，不应该等到真正 draw 时才发现资源坏了。
+进入 Iris entity bridge 时，当前客户端 session 会发出一次 warning。没有对目标 shaderpack 做实际视觉验证时，应将其 shader 部分视为未验证，而不是宣称通用兼容。正交相机也不会替换 Minecraft 主投影。
 
-## 21. Python 离线验证
+## 12. 性能与 VAO 状态边界
 
-工具自带测试位于：
+普通消费者不应直接使用内部 renderer 或 GPU package。若你在 CooParticlesAPI 的集成层实现渲染扩展，必须遵守：
 
-```text
-tools/blender_coofx/tests/
-```
+- 模型播放会绘制导出 scene 中的每个 mesh node。
+- mesh particle 实例数据是独立的 144-byte ABI；另有 48-byte affine node-matrix sidecar。
+- 静态 VAO/EBO、shader、纹理、framebuffer、viewport 和 Pipeline 状态由对应生命周期所有者管理。
+- 实例数据按稳定 batch 批量绘制，不要为每个粒子创建 RenderEntity。
+- 任何状态保存与恢复都必须包含 VAO 0 的 generic attributes，以及 live VAO 的 enabled attributes/divisors。
+- 不要在绘制结束时把 OpenGL 状态硬编码重置为“默认值”；调用方必须恢复进入绘制前的真实状态。
 
-可以在仓库根目录执行：
+这些是集成层约束，不是让普通业务调用方自行创建 GL 资源的授权。直接 GL、vanilla `ShaderInstance`、平行 framebuffer 或绕过 Coo Pipeline 的示例都不属于公共 CooFX 使用方式。
 
-```powershell
-python -m unittest discover -s tools/blender_coofx/tests -p "test_*.py"
-```
+## 13. 清理、重载与关闭
 
-如果只想检查核心模型、坐标和序列化：
+### 13.1 本地句柄
 
-```powershell
-python -m unittest tools.blender_coofx.tests.test_core
-```
+保存 `Started.handle`，在效果结束时调用 `handle.stop()`。停止后不要继续调用 `updateModel`。
 
-如果要在 Blender 无界面模式中执行 Add-on smoke test，使用项目允许的 Blender 可执行文件：
+以下边界会使旧句柄失效：
 
-```powershell
-blender --background --factory-startup --python tools/blender_coofx/tests/blender_export_smoke.py
-```
-
-该命令只验证 Blender API 和 Add-on 入口，不代表 Minecraft 客户端的视觉渲染已经验证。
-
-## 22. 常见错误排查
-
-### 22.1 面板没有出现
-
-检查：
-
-1. 当前 Blender 版本是否至少 4.2。
-2. ZIP 内是否直接包含 `__init__.py` 和 `blender_manifest.toml`。
-3. 是否启用了 Add-on。
-4. 是否重新打开了 Preferences 或场景。
-5. 是否在 Scene Properties 中寻找，而不是 Object Properties。
-
-### 22.2 提示网格必须至少包含一个可三角化的面
-
-这表示选中的 mesh 没有任何 polygon，只有顶点或边。进入 Edit Mode 创建至少一个面后重新校验。普通四边面和 n-gon 不需要手动处理，官方 glTF exporter 会在导出结果中自动三角化。
-
-### 22.3 提示使用图片纹理但没有 UV0
-
-处理：
-
-1. 选择 mesh。
-2. 进入 UV Editing。
-3. 创建 UV Map。
-4. 展开全部面。
-5. 保存并重新校验。
-
-### 22.4 负缩放模型的面朝向
-
-CooFX 不会因为对象 scale 含负分量而拒绝导出。官方 glTF exporter 会在 `export_apply=True` 下应用对象变换并调整导出几何；如果模型仍出现背面消失或法线方向异常，请在 Blender 中检查法线，或对对象执行 Apply Scale 后重新导出。
-
-### 22.5 经典粒子系统被跳过
-
-检查 warning：
-
-- 是否是 `EMITTER`。
-- Frame Start 是否等于 Frame End。
-- Normal/Tangent/Object velocity 是否都是零。
-
-如果需要持续发射，应把发射语义迁移到 CooFX runtime 的 `CONTINUOUS` definition，而不是强行让 v1 Add-on 把连续系统伪装成 burst。
-
-### 22.6 Geometry Nodes 没有被识别
-
-逐项检查：
-
-```text
-node_group["coofx_official_group"]
-  == "cooparticlesapi:coofx/emitter_v1"
-```
-
-并确认接口中存在：
-
-```text
-Count
-Delay Ticks
-Lifetime Ticks
-Mesh
-Node
-```
-
-输入名称必须匹配，不能只靠同义词。
-
-### 22.7 Minecraft 找不到 glTF 或 BIN
-
-检查资源布局：
-
-```text
-assets/<namespace>/coofx/<name>.coofx.json
-assets/<namespace>/coofx/models/<name>.gltf
-assets/<namespace>/coofx/models/<name>.bin
-```
-
-检查 JSON 中 `model` 是否使用：
-
-```text
-<namespace>:coofx/models/<name>.gltf
-```
-
-检查 `.gltf` 中的 BIN URI 是否是相对路径，并且文件名和实际文件一致。
-
-### 22.8 找不到 PNG
-
-检查：
-
-1. PNG 是否位于 `assets/<namespace>/textures/coofx/`。
-2. JSON 中是否写完整 ResourceLocation。
-3. ResourceLocation 是否使用 `/`，而不是 `\`。
-4. 文件扩展名是否为 `.png`。
-5. 是否误写了本机绝对路径。
-
-### 22.9 compiler 拒绝 BLEND、skin、morph 或 VAT
-
-这不是导入器随机失败，而是当前能力边界。解决方式是：
-
-- 将材质改为 OPAQUE 或 MASK。
-- 将 skin/morph 烘焙为刚性节点或静态结果。
-- 将动态形变单独准备为 VAT，并等待 VAT runtime backend 接入。
-- 不要删除 metadata 来绕过 compiler。
-
-## 23. 资源发布前检查清单
-
-### Blender 检查
-
-- [ ] Blender 版本至少 4.2。
-- [ ] Add-on 已启用。
-- [ ] 目标对象只包含需要导出的 mesh。
-- [ ] 每个目标 mesh 至少包含一个面；四边面和 n-gon 可由 glTF exporter 自动三角化。
-- [ ] 纹理 mesh 具有 UV0。
-- [ ] 负缩放对象的法线和背面剔除结果已在 Blender 中确认。
-- [ ] 材质名稳定。
-- [ ] 基础颜色纹理是 PNG。
-- [ ] Alpha 使用 OPAQUE 或 MASK。
-- [ ] Particle System 的限制已确认。
-- [ ] Geometry Nodes 使用官方组标记。
-- [ ] unitScale 已明确设置。
-- [ ] asset seed 已固定。
-
-### 导出检查
-
-- [ ] 先点击校验，再点击导出。
-- [ ] `.coofx.json` 存在。
-- [ ] `.gltf` 存在。
-- [ ] 同名 `.bin` 存在。
-- [ ] 纹理存在。
+- `CooFXClient.stopClient()`
+- 资源重载
+- 世界切换
+- 断开连接
+- 客户端 registry 或瞬态状态清理
+
+### 13.2 服务端场景
+
+服务端逻辑结束时调用 scene handle 的 `stop()`，或调用 `CooFxSceneManager.stop(sceneId)`。服务器关闭、世界清理或模组状态重置时可调用 `clearServer()`。不要直接构造或修改 RenderEntity carrier，也不要手动修改客户端镜像。
+
+### 13.3 资源重载
+
+资源解析和 CPU 编译可以在非 render thread；GPU generation 的创建、替换、旧 generation retirement 和 release 必须回到 render thread。上传失败时不应把仍可用的旧 generation 误替换掉。调用方只需处理 `Started/Queued/Failed` 和失效 handle，不需要管理 GPU package。
+
+## 14. 结构化诊断与排障矩阵
+
+| 现象 | 优先检查 | 修复方向 |
+|---|---|---|
+| `Queued` 长时间存在 | 资源 snapshot、GPU generation、有效 WORLD_PASS | 不要把 `Queued` 当失败；确认客户端 render lifecycle 正常 |
+| `Failed` | `failure.resourceId`、`stage`、`message`、`cause` | 修复对应资源或请求；不要在 render loop 无限重试 |
+| 找不到 `.coofx.json` | `coofxAsset` 目录约定和 namespace | 使用 `assets/<ns>/coofx/<id>/<id>.coofx.json` |
+| 找不到 glTF 或 BIN | JSON 的 `model`、相对 BIN URI、文件名大小写 | ResourceLocation 使用 `/`，不要写磁盘绝对路径 |
+| 找不到 PNG | `baseColorTexture` ResourceLocation、PNG 文件位置、UV0 | 放入 `assets/<ns>/textures/...`，确认 JSON 使用完整 ID |
+| 资源导入失败 | schemaVersion、coordinateSystem、路径安全、primitive、accessor | 查看 `CooFxDiagnostic`，不要删除字段后继续绘制 |
+| compiler 拒绝 BLEND/skin/morph/VAT | 当前能力边界 | 改为 OPAQUE/MASK 或刚性节点；不要伪造 metadata 绕过拒绝 |
+| 相机没有接管 | mode、cameraId、目标 UUID、优先级、相机是否可见 | `null` 选择第一个 camera；确认目标只影响本地 camera claim |
+| 模型不显示但相机可用 | renderRange、维度、RenderEntity 可见性、资源是否为模型参与模式 | 模型可见性与 camera target 是两套规则 |
+| 多个相机结果不稳定 | `cameraPriority` 和 UUID 决胜 | 提高目标场景 priority；同优先级由 UUID 字符串稳定决胜 |
+| 旧 handle 更新返回 `false` | reload、world change、disconnect、stop | 丢弃旧 handle，重新发起合法播放请求 |
+| `Invalid VAO` 或 GL 状态日志 | 是否由业务代码自行创建/释放 GL，是否跨线程绘制 | 移除直接 GL；交给 Coo Pipeline/render-thread 生命周期；不要重置到假定默认状态 |
+| Iris 画面与 Vanilla 不同 | shaderpack 的 G-buffer、PBR、fog、emissive、vertex 行为 | 把任意 shaderpack 视为未验证，进行目标环境人工视觉验收 |
+| 正交镜头大小不符合预期 | 当前只采样 pose | 不要期待它替换 Minecraft 主 projection 或提供 FOV override |
+
+## 15. 最小发布前检查清单
+
+### Blender
+
+- [ ] Blender 至少 4.2。
+- [ ] CooFX Add-on 已启用。
+- [ ] 目标 mesh 至少有一个面。
+- [ ] 纹理 mesh 有 UV0。
+- [ ] 材质使用 OPAQUE 或 MASK。
+- [ ] Camera 名称稳定且唯一。
+- [ ] unitScale 与 Blender 场景单位一致。
+- [ ] asset seed 固定且符合格式。
+
+### 资源
+
+- [ ] JSON、glTF、BIN 和 PNG 都存在。
 - [ ] JSON 是 UTF-8 无 BOM。
-- [ ] JSON 中资源 ID 没有绝对路径。
-- [ ] 不依赖 GLB 快照作为运行时清单。
+- [ ] `coofxAsset` 使用同名目录约定，或显式 ID 已逐项核对。
+- [ ] JSON 没有 Windows 绝对路径、反斜杠或 `..`。
+- [ ] glTF 的 BIN URI 和实际文件一致。
+- [ ] 没有依赖 GLB 快照代替运行时清单。
 
-### Minecraft 检查
+### 代码
 
-- [ ] 资源放在 common 或正确 loader 的 assets 目录。
-- [ ] namespace 与 JSON 一致。
-- [ ] glTF 相对 BIN URI 正确。
-- [ ] PNG ResourceLocation 正确。
-- [ ] 资源重载没有 CooFX diagnostic error。
-- [ ] importer 成功返回 `CooFxSourceAsset`。
-- [ ] compiler 成功生成 `CooFxCompiledRenderPackage`。
-- [ ] GPU upload 在渲染线程执行。
-- [ ] renderer 使用 CooRenderPipeline 和 CooGLSLStateManager。
-- [ ] 没有为单个粒子创建 RenderEntity。
-- [ ] 没有把 CooFX 实例布局混入 CParticle 36-float ABI。
+- [ ] 服务端场景调用在 server thread。
+- [ ] `CooFXClient` 调用只在客户端。
+- [ ] `updateModel` 在 client thread。
+- [ ] 所有 transform 位置和四元数有限，四元数归一化，scale 严格为正。
+- [ ] 以 `Started/Queued/Failed` 处理播放结果。
+- [ ] reload/world change/disconnect 后不复用旧 handle。
+- [ ] camera target 没有被误当作模型可见性过滤。
+- [ ] 没有直接创建 GL、vanilla shader 或平行 framebuffer 路径。
 
-## 24. 当前推荐的开发顺序
+## 16. 相关文档与源码
 
-如果要继续完善 CooFX，推荐按以下顺序推进：
+- 资产主指南：本文
+- [`format-v1.md`](format-v1.md)：CooFX JSON/glTF 资产契约
+- [`architecture.md`](architecture.md)：线程、pipeline、GPU generation 与生命周期架构
+- [`CooFXClient.kt`](../../common/src/main/kotlin/cn/coostack/cooparticlesapi/coofx/client/CooFXClient.kt)：客户端公开入口
+- [`CooFxPlayerRelativeTransforms.kt`](../../common/src/main/kotlin/cn/coostack/cooparticlesapi/coofx/client/CooFxPlayerRelativeTransforms.kt)：被动玩家相对变换
+- [`CooFxSceneManager.kt`](../../common/src/main/kotlin/cn/coostack/cooparticlesapi/coofx/server/CooFxSceneManager.kt)：服务端权威场景管理
+- [`CooFxSceneSpec.kt`](../../common/src/main/kotlin/cn/coostack/cooparticlesapi/coofx/server/CooFxSceneSpec.kt)：场景规格、Patch、Handle 和模式
+- [`CooFxConsumerContracts.kt`](../../common/src/main/kotlin/cn/coostack/cooparticlesapi/coofx/adapter/CooFxConsumerContracts.kt)：公开消费契约和变换约束
+- [`CooFxAssets.kt`](../../common/src/main/kotlin/cn/coostack/cooparticlesapi/coofx/CooFxAssets.kt)：`coofxAsset` 路径约定
 
-1. 先用本教程导出一个静态三角网格和 OPAQUE 材质。
-2. 在 common test 中验证 JSON、glTF、BIN、PNG 引用和 diagnostics。
-3. 验证 `CooFxAssetCompiler` 能生成不可变 CPU compiled package。
-4. 使用 `CooFxPlaybackClock` 和轨道 sampler 验证动画时间。
-5. 使用 `CooFxMeshParticleManager` 验证 burst、continuous、WORLD、LOCAL 和确定性 seed。
-6. 在渲染线程实现 CooFX GPU package uploader。
-7. 把 shader 接入现有 CooRenderPipeline world pass。
-8. 把资源 reload 和 GPU generation 接到现有 ShaderReloadBus/client lifecycle。
-9. 再实现 RenderEntity 和 CParticle 的触发入口。
-10. 最后才接入 VAT、morph 和 skin 的具体 deformation backend。
+## 17. 结论
 
-不要先实现“看起来能画”的独立 vanilla shader，再回头处理 Coo Pipeline 或 Iris 兼容。CooFX 的资源语义、CPU 模拟、编译包和 GPU lifecycle 必须保持分层。
-
-## 25. 相关文件
-
-核心文档：
-
-```text
-docs/coofx/architecture.md
-docs/coofx/format-v1.md
-docs/coofx/schema/coofx-v1.schema.json
-docs/coofx/examples/rigid-burst.coofx.json
-```
-
-Blender 工具：
-
-```text
-tools/blender_coofx/__init__.py
-tools/blender_coofx/blender/addon.py
-tools/blender_coofx/blender/extract.py
-tools/blender_coofx/blender/build.py
-tools/blender_coofx/blender/export.py
-tools/blender_coofx/blender/scene.py
-tools/blender_coofx/core/model.py
-tools/blender_coofx/core/validation.py
-tools/blender_coofx/core/coordinates.py
-tools/blender_coofx/core/vat.py
-```
-
-Kotlin runtime：
-
-```text
-common/src/main/kotlin/cn/coostack/cooparticlesapi/coofx/asset/
-common/src/main/kotlin/cn/coostack/cooparticlesapi/coofx/playback/
-common/src/main/kotlin/cn/coostack/cooparticlesapi/coofx/runtime/mesh/
-common/src/main/kotlin/cn/coostack/cooparticlesapi/coofx/render/
-common/src/main/kotlin/cn/coostack/cooparticlesapi/coofx/adapter/
-```
-
-本教程描述的是当前仓库真实存在的工具和 runtime 边界。新增能力后，应同时更新本文、`format-v1.md` 和 `architecture.md`，尤其是支持矩阵、资源布局、shader 接线和客户端生命周期部分。
-
-## 26. 一句话总结
-
-`tools/blender_coofx` 的作用是：把 Blender 中经过约束的模型、材质、刚性动画和发射器设置，校验并导出为 CooFX JSON + 分离 glTF/BIN + PNG 资源，让 Minecraft 侧的 CooFX asset importer、playback、mesh particle runtime 和已接通的 CooRenderPipeline WORLD_PASS GPU backend 使用同一套稳定资产契约。
-
-它不是 Blender 文件读取器，不是完整 Blender 粒子物理模拟器，也不是任意节点图翻译器。
-
-可继续扩展的方向包括：完整 Object/Collection 导出、连续粒子参数导出、Blender clip/loop authoring 控件、官方 Geometry Nodes 组库、VAT 纹理烘焙、morph/skin backend、RenderEntity/CParticle 业务触发封装，以及 Vanilla/Iris/Sodium 实机组合验证。
-
-文档状态：针对当前 CooFX v1 首版实现。
+推荐的最短路径是：在 Blender 中使用受约束的模型、刚性节点动画和 emitter，导出 `.coofx.json + .gltf + .bin + PNG`，按 `coofxAsset` 约定放入 common 资源目录；单机本地效果使用 `CooFXClient.playModel/play`，多人同步效果使用 server-thread 的 `CooFxSceneManager`。把 `Queued` 当作正常异步状态，把资源重载和世界切换后的 handle 当作失效状态，并把 Vanilla/Iris 实际画面验证留在目标客户端环境中完成。

@@ -14,14 +14,21 @@ internal object CooTerrainMappingRegistry {
     private val mappings = ConcurrentHashMap<MappingKey, CooTerrainMappingInstance>()
     private val revisions = ConcurrentHashMap<MappingKey, Long>()
     private val changed = AtomicLong()
+    private val topologyChanged = AtomicLong()
+    private val topologyRegions = ArrayList<TopologyRegion>()
 
     /** 安装或替换完整 Mapping 快照。 */
     @Synchronized
     fun install(instance: CooTerrainMappingInstance) {
         val key = MappingKey(instance.dimension, instance.instanceId)
         if (!acceptRevision(key, instance.revision)) return
-        mappings[key] = instance
+        val previous = mappings.put(key, instance)
         changed.incrementAndGet()
+        if (previous == null || topologySignature(previous) != topologySignature(instance)) {
+            previous?.let { topologyRegions += TopologyRegion(it.dimension, it.region) }
+            topologyRegions += TopologyRegion(instance.dimension, instance.region)
+            topologyChanged.incrementAndGet()
+        }
     }
 
     /** 替换一个实例的完整 uniform 集合。 */
@@ -44,7 +51,11 @@ internal object CooTerrainMappingRegistry {
     fun remove(dimension: ResourceLocation, instanceId: ResourceLocation, revision: Long) {
         val key = MappingKey(dimension, instanceId)
         if (!acceptRevision(key, revision)) return
-        mappings.remove(key)
+        val removed = mappings.remove(key)
+        if (removed != null) {
+            topologyRegions += TopologyRegion(removed.dimension, removed.region)
+            topologyChanged.incrementAndGet()
+        }
         changed.incrementAndGet()
     }
 
@@ -82,16 +93,44 @@ internal object CooTerrainMappingRegistry {
             .thenByDescending { it.sequence }
             .thenBy { it.instanceId.toString() }
 
-    /** 返回状态版本，供帧入口在参数变化后重建 Mapping render type。 */
+    /** 返回包含区域和 uniform 更新的状态版本，供运行时快照观察。 */
     fun revision(): Long = changed.get()
 
-    /** 清理客户端世界切换或断开连接时的 Mapping 状态。 */
+    /** 返回只在绘制拓扑变化时递增的版本，供 section 几何重建使用。 */
+    fun topologyRevision(): Long = topologyChanged.get()
+
+    /** 取出最近 topology 变化涉及的 region，用于定向标记 terrain section。 */
+    @Synchronized
+    fun drainTopologyRegions(dimension: ResourceLocation): List<CooTerrainMappingRegion> {
+        val selected = topologyRegions.filter { it.dimension == dimension }.map(TopologyRegion::region)
+        topologyRegions.removeIf { it.dimension == dimension }
+        return selected
+    }
+
     @Synchronized
     fun clear() {
         mappings.clear()
         revisions.clear()
+        topologyRegions.clear()
         changed.incrementAndGet()
+        topologyChanged.incrementAndGet()
     }
+
+    private fun topologySignature(instance: CooTerrainMappingInstance): TopologySignature = TopologySignature(
+        instance.mappingId,
+        instance.priority,
+        instance.composition,
+        instance.sequence,
+        instance.isPaused()
+    )
+
+    private data class TopologySignature(
+        val mappingId: ResourceLocation,
+        val priority: Int,
+        val composition: CooTerrainEffectComposition,
+        val sequence: Long,
+        val paused: Boolean
+    )
 
     private fun acceptRevision(key: MappingKey, revision: Long): Boolean {
         val previous = revisions[key]
@@ -99,6 +138,11 @@ internal object CooTerrainMappingRegistry {
         revisions[key] = revision
         return true
     }
+
+    private data class TopologyRegion(
+        val dimension: ResourceLocation,
+        val region: CooTerrainMappingRegion
+    )
 
     private data class MappingKey(val dimension: ResourceLocation, val id: ResourceLocation)
 }

@@ -26,7 +26,7 @@ internal object CooFxSceneClientRegistry {
         scenes.remove(entity.uuid)?.stop()
         scenes[entity.uuid] = ClientSceneState(entity)
         CooParticlesConstants.logger.info(
-            "[CooFX-CREATE] scene registry accepted sceneId=${entity.uuid}, resource=${entity.resourceIdText}, mode=${entity.mode()}, cameraTarget=${entity.cameraTargetPlayer()}, activeScenes=${scenes.size}",
+            "[CooFX-CREATE] scene registry accepted sceneId=${entity.uuid}, resource=${entity.resourceIdText}, mode=${entity.mode()}, cameraTargets=${entity.cameraTargetPlayers()}, activeScenes=${scenes.size}",
         )
     }
 
@@ -50,11 +50,14 @@ internal object CooFxSceneClientRegistry {
                 continue
             }
             runCatching { updateModel(state) }
-                .onFailure { failure -> CooParticlesConstants.logger.error("CooFX scene 模型更新失败", failure) }
+                .onSuccess { state.modelUpdateFailure.onSuccess() }
+                .onFailure(state.modelUpdateFailure::onFailure)
             runCatching { updateEmitter(state) }
-                .onFailure { failure -> CooParticlesConstants.logger.error("CooFX scene emitter 更新失败", failure) }
+                .onSuccess { state.emitterUpdateFailure.onSuccess() }
+                .onFailure(state.emitterUpdateFailure::onFailure)
             runCatching { updateCamera(state) }
-                .onFailure { failure -> CooParticlesConstants.logger.error("CooFX scene camera 更新失败", failure) }
+                .onSuccess { state.cameraUpdateFailure.onSuccess() }
+                .onFailure(state.cameraUpdateFailure::onFailure)
         }
         CooFxCameraTrackingManager.apply()
     }
@@ -170,8 +173,8 @@ internal object CooFxSceneClientRegistry {
             CooFxCameraTrackingManager.remove(entity.uuid)
             return
         }
-        val targetPlayer = entity.cameraTargetPlayer()
-        if (targetPlayer != null && Minecraft.getInstance().player?.uuid != targetPlayer) {
+        val player = Minecraft.getInstance().player
+        if (player == null || !entity.isCameraTargetedAt(player.uuid)) {
             CooFxCameraTrackingManager.remove(entity.uuid)
             return
         }
@@ -219,6 +222,19 @@ internal object CooFxSceneClientRegistry {
         var emitterHandle: CooFxPlaybackHandle? = null,
         var emitterDefinitionKey: String? = null,
     ) {
+        val modelUpdateFailure = failureReporter("模型")
+        val emitterUpdateFailure = failureReporter("emitter")
+        val cameraUpdateFailure = failureReporter("camera")
+
+        private fun failureReporter(component: String): CooFxFailureTransitionReporter = CooFxFailureTransitionReporter(
+            emitFailure = { failure ->
+                CooParticlesConstants.logger.error("CooFX scene $component 更新失败：sceneId=${entity.uuid}", failure)
+            },
+            emitRecovery = {
+                CooParticlesConstants.logger.info("CooFX scene $component 更新已恢复：sceneId=${entity.uuid}")
+            },
+        )
+
         fun stop() {
             modelHandle?.stop()
             modelHandle = null

@@ -75,8 +75,8 @@ class RenderEntityIrisPipelineContractTest {
          assertFalse("particleRenderer.render(listOf(batch))" in cooFxEntityPhase)
         assertTrue("glCullFace(GL_BACK)" in cooFxRuntime)
         assertTrue("glFrontFace(GL_CCW)" in cooFxRuntime)
-        assertTrue("glCullFace(previousCullFace)" in cooFxRuntime)
-        assertTrue("glFrontFace(previousFrontFace)" in cooFxRuntime)
+        assertTrue("glCullFace(state.previousCullFace)" in cooFxRuntime)
+        assertTrue("glFrontFace(state.previousFrontFace)" in cooFxRuntime)
     }
 
     private fun readProjectFile(relativePath: String): String {

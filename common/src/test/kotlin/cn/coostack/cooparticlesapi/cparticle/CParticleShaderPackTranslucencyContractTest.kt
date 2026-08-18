@@ -41,7 +41,7 @@ class CParticleShaderPackTranslucencyContractTest {
         assertTrue("expandForParticleShader(" in renderer)
         assertTrue("drawExpanded(" in renderer)
         assertTrue("DefaultVertexFormat.PARTICLE.setupBufferState()" in buffer)
-        assertTrue("const val EXPANDED_VERTEX_STRIDE = 28" in buffer)
+        assertTrue("DefaultVertexFormat.PARTICLE.vertexSize.toLong()" in buffer)
         assertTrue("transformFeedbackVaryings(\"tfPosition\", \"tfUv\", \"tfPacked\")" in renderer)
         assertTrue("tfPacked = uvec2(" in vertex)
         assertTrue("layer.applyIndexedState(0)" in renderer)

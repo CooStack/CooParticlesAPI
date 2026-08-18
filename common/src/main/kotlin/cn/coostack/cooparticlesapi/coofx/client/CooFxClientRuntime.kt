@@ -25,6 +25,7 @@ import cn.coostack.cooparticlesapi.coofx.client.render.CooFxShaderProgramFactory
 import cn.coostack.cooparticlesapi.coofx.client.render.CooFxShaderSourceBundle
 import cn.coostack.cooparticlesapi.coofx.render.compiled.CooFxAlphaMode
 import cn.coostack.cooparticlesapi.coofx.render.compiled.CooFxAssetCompiler
+import cn.coostack.cooparticlesapi.coofx.render.compiled.CooFxCompiledMaterial
 import cn.coostack.cooparticlesapi.coofx.render.compiled.CooFxCompiledRenderPackage
 import cn.coostack.cooparticlesapi.coofx.render.compiled.CooFxCullMode
 import cn.coostack.cooparticlesapi.coofx.render.compiled.CooFxDepthTest
@@ -52,7 +53,6 @@ import net.minecraft.server.packs.resources.ResourceManager
 import org.joml.Matrix4f
 import org.joml.Quaternionf
 import org.joml.Vector3f
-import org.joml.Vector4f
 import org.lwjgl.opengl.GL11.GL_ALWAYS
 import org.lwjgl.opengl.GL11.GL_BACK
 import org.lwjgl.opengl.GL11.GL_BLEND
@@ -82,6 +82,12 @@ import org.lwjgl.opengl.GL13.GL_TEXTURE1
 import org.lwjgl.opengl.GL13.GL_TEXTURE2
 import org.lwjgl.opengl.GL13.GL_TEXTURE_BINDING_2D
 import org.lwjgl.opengl.GL20.GL_MAX_DRAW_BUFFERS
+import org.lwjgl.opengl.GL20.glGetUniformLocation
+import org.lwjgl.opengl.GL20.glUniform1f
+import org.lwjgl.opengl.GL20.glUniform1i
+import org.lwjgl.opengl.GL20.glUniform3f
+import org.lwjgl.opengl.GL20.glUniform4f
+import org.lwjgl.opengl.GL20.glUniformMatrix4fv
 import org.lwjgl.opengl.GL33.GL_BLEND_DST_ALPHA
 import org.lwjgl.opengl.GL33.GL_BLEND_DST_RGB
 import org.lwjgl.opengl.GL33.GL_BLEND_EQUATION_ALPHA
@@ -119,6 +125,7 @@ internal class CooFxClientRuntime(
     private val pending = ArrayDeque<PendingPlay>()
     private val pendingModels = ArrayDeque<PendingModelPlay>()
     private val uploaded = LinkedHashMap<ResourceLocation, UploadedAsset>()
+    private val uploadFailures = LinkedHashMap<ResourceLocation, CooFxFailureTransitionReporter>()
 
     @Volatile
     private var snapshot = PreparedSnapshot(0L, emptyMap(), null)
@@ -126,6 +133,7 @@ internal class CooFxClientRuntime(
     private var nextRequestId = 1L
     private var currentBackendSignature = ""
     private var shaderProgram: CooShaderProgram? = null
+    private var shaderUniforms: CooFxShaderUniforms? = null
     private var shaderRevision = -1L
     private var irisShaderPackWarningEmitted = false
     private var irisEmissiveWarningEmitted = false
@@ -344,18 +352,57 @@ internal class CooFxClientRuntime(
             (particleBatches + modelBatches).sortedBy(CooFxMeshInstanceBatch::key)
         }
         if (batches.isEmpty()) return
-        val leases = activeSnapshot.assets.keys.mapNotNull { assetId ->
-            gpuPackages.acquire(assetId)
-        }
+        val irisShaderPackActive = CooParticlesAPIClient.checkIrisShaderPackUsed()
+        warnAboutIrisShaderPackCompatibilityIfNeeded(irisShaderPackActive)
+        val batchGlState = captureBatchGlState()
+        val activeGenerations = batches.asSequence().map(CooFxMeshInstanceBatch::key).map { it.generation }.toSet()
+        val leases = uploaded.asSequence()
+            .filter { (_, uploadedAsset) -> uploadedAsset.generation in activeGenerations }
+            .mapNotNull { (assetId, _) -> gpuPackages.acquire(assetId) }
+            .toList()
         try {
             val packagesByGeneration = leases.associateBy { it.generation }
-            batches.forEach { batch ->
-                val packageForBatch = packagesByGeneration[batch.key.generation]?.gpuPackage as? CooFxOpenGlGpuPackage
-                    ?: return@forEach
-                val primitive = packageForBatch.primitive(batch.key.primitiveId)
-                renderBatch(request, batch, primitive)
+            withRenderBatchStatePreserved(irisShaderPackActive) {
+                particleRenderer.withPreservedDrawState {
+                    particleRenderer.prepareFrame(batches)
+                    val program = requireNotNull(shaderProgram)
+                    if (irisShaderPackActive) {
+                        batches.forEach { batch ->
+                            val packageForBatch = packagesByGeneration[batch.key.generation]?.gpuPackage as? CooFxOpenGlGpuPackage
+                                ?: return@forEach
+                            val primitive = packageForBatch.primitive(batch.key.primitiveId)
+                            renderBatch(
+                                request,
+                                batch,
+                                primitive,
+                                irisShaderPackActive,
+                                program,
+                                frameUniformsReady = false,
+                            )
+                        }
+                    } else {
+                        program.useOnContext {
+                            configureFrameUniforms(request, irisShaderPackActive)
+                            batches.forEach { batch ->
+                                val packageForBatch = packagesByGeneration[batch.key.generation]?.gpuPackage as? CooFxOpenGlGpuPackage
+                                    ?: return@forEach
+                                val primitive = packageForBatch.primitive(batch.key.primitiveId)
+                                renderBatch(
+                                    request,
+                                    batch,
+                                    primitive,
+                                    irisShaderPackActive,
+                                    this,
+                                    frameUniformsReady = true,
+                                )
+                            }
+                        }
+                    }
+                }
             }
         } finally {
+            particleRenderer.finishFrame()
+            restoreBatchGlState(batchGlState)
             leases.asReversed().forEach { it.close() }
         }
     }
@@ -406,6 +453,7 @@ internal class CooFxClientRuntime(
             modelManager.clear()
             pending.clear()
             pendingModels.clear()
+            uploadFailures.clear()
             snapshot = PreparedSnapshot(snapshot.revision + 1L, assets, sources)
         }
     }
@@ -436,6 +484,7 @@ internal class CooFxClientRuntime(
         removedAssetIds.forEach { assetId ->
             gpuPackages.retire(assetId)
             uploaded.remove(assetId)
+            uploadFailures.remove(assetId)
         }
         appliedRevision = prepared.revision
     }
@@ -444,9 +493,11 @@ internal class CooFxClientRuntime(
         check(RenderSystem.isOnRenderThread()) { "CooFX GPU 资源必须在渲染线程释放" }
         gpuPackages.disposeAll()
         uploaded.clear()
+        uploadFailures.clear()
         particleRenderer.release()
         CooFxShaderProgramFactory.releaseProgram(shaderProgram)
         shaderProgram = null
+        shaderUniforms = null
         shaderRevision = -1L
         appliedRevision = -1L
     }
@@ -454,11 +505,14 @@ internal class CooFxClientRuntime(
     private fun ensureShaderProgram(sources: CooFxShaderSourceBundle, revision: Long) {
         if (shaderProgram != null && shaderRevision == revision) return
         val candidate = CooFxShaderProgramFactory.createProgram(sources)
-        runCatching { candidate.init() }
-            .onFailure { CooFxShaderProgramFactory.releaseProgram(candidate) }
+        val uniforms = runCatching {
+            candidate.init()
+            CooFxShaderUniforms(candidate.program)
+        }.onFailure { CooFxShaderProgramFactory.releaseProgram(candidate) }
             .getOrThrow()
         val previous = shaderProgram
         shaderProgram = candidate
+        shaderUniforms = uniforms
         shaderRevision = revision
         CooFxShaderProgramFactory.releaseProgram(previous)
     }
@@ -468,14 +522,25 @@ internal class CooFxClientRuntime(
         prepared.assets.forEach { (assetId, asset) ->
             val cached = uploaded[assetId]
             if (cached?.digest == asset.compiled.contentDigest && cached.backendSignature == backendSignature) return@forEach
+            val uploadFailure = uploadFailures.getOrPut(assetId) {
+                CooFxFailureTransitionReporter(
+                    emitFailure = { failure ->
+                        CooParticlesConstants.logger.error("上传 CooFX GPU package 失败：$assetId", failure)
+                    },
+                    emitRecovery = {
+                        CooParticlesConstants.logger.info("CooFX GPU package 上传已恢复：$assetId")
+                    },
+                )
+            }
             gpuPackages.uploadAndReplace(
                 compiledPackage = asset.compiled,
                 backendCapabilitySignature = backendSignature,
             ).onSuccess { generation ->
                 uploaded[assetId] = UploadedAsset(asset.compiled.contentDigest, backendSignature, generation, asset.compiled)
+                uploadFailure.onSuccess()
             }.onFailure { failure ->
                 succeeded = false
-                CooParticlesConstants.logger.error("上传 CooFX GPU package 失败：$assetId", failure)
+                uploadFailure.onFailure(failure)
             }
         }
         return succeeded
@@ -640,151 +705,155 @@ internal class CooFxClientRuntime(
         )
     }
 
+    private fun captureBatchGlState(): CooFxBatchGlState {
+        val previousActiveTexture = glGetInteger(GL_ACTIVE_TEXTURE)
+        val previousTextures = IntArray(3) { index ->
+            glActiveTexture(GL_TEXTURE0 + index)
+            glGetInteger(GL_TEXTURE_BINDING_2D)
+        }
+        glActiveTexture(previousActiveTexture)
+        return CooFxBatchGlState(
+            previousCullFace = glGetInteger(GL_CULL_FACE_MODE),
+            previousFrontFace = glGetInteger(GL_FRONT_FACE),
+            previousActiveTexture = previousActiveTexture,
+            previousTextures = previousTextures,
+        )
+    }
+
+    private fun restoreBatchGlState(state: CooFxBatchGlState) {
+        glCullFace(state.previousCullFace)
+        glFrontFace(state.previousFrontFace)
+        state.previousTextures.forEachIndexed { index, texture ->
+            glActiveTexture(GL_TEXTURE0 + index)
+            glBindTexture(GL_TEXTURE_2D, texture)
+        }
+        glActiveTexture(state.previousActiveTexture)
+    }
+
     private fun renderBatch(
         request: CooFxFrameRequest,
         batch: CooFxMeshInstanceBatch,
         primitive: CooFxOpenGlPrimitive,
+        irisShaderPackActive: Boolean,
+        program: CooShaderProgram,
+        frameUniformsReady: Boolean,
     ) {
-        val irisShaderPackActive = CooParticlesAPIClient.checkIrisShaderPackUsed()
-        warnAboutIrisShaderPackCompatibilityIfNeeded(irisShaderPackActive)
-        val previousCullFace = glGetInteger(GL_CULL_FACE_MODE)
-        val previousFrontFace = glGetInteger(GL_FRONT_FACE)
+        glEnable(GL_DEPTH_TEST)
+        glDepthFunc(
+            when (primitive.material.depthTest) {
+                CooFxDepthTest.LESS_OR_EQUAL -> GL_LEQUAL
+                CooFxDepthTest.ALWAYS -> GL_ALWAYS
+            }
+        )
+        glDepthMask(primitive.material.depthWrite)
+        when (primitive.material.cullMode) {
+            CooFxCullMode.NONE -> glDisable(GL_CULL_FACE)
+            CooFxCullMode.BACK -> {
+                glEnable(GL_CULL_FACE)
+                glCullFace(GL_BACK)
+                glFrontFace(GL_CCW)
+            }
+        }
+        if (irisShaderPackActive && CParticleIndexedBlendState.isAvailable()) {
+            glDisablei(GL_BLEND, 0)
+        } else {
+            glDisable(GL_BLEND)
+        }
+        val minecraft = Minecraft.getInstance()
+        val lightTexture = minecraft.gameRenderer.lightTexture()
+        val lightmapWasEnabled = RenderSystem.getShaderTexture(2) != 0
         try {
-            withRenderBatchStatePreserved(irisShaderPackActive) {
-                glEnable(GL_DEPTH_TEST)
-                glDepthFunc(
-                    when (primitive.material.depthTest) {
-                        CooFxDepthTest.LESS_OR_EQUAL -> GL_LEQUAL
-                        CooFxDepthTest.ALWAYS -> GL_ALWAYS
-                    }
+            if (!lightmapWasEnabled) lightTexture.turnOnLightLayer()
+            val baseColorTexture = primitive.material.baseColorTexture
+            val emissiveTexture = primitive.material.emissiveTexture
+            val baseColorTextureId = baseColorTexture?.let { minecraft.textureManager.getTexture(it).id } ?: 0
+            val emissiveTextureId = emissiveTexture?.let { minecraft.textureManager.getTexture(it).id } ?: 0
+            glActiveTexture(GL_TEXTURE0)
+            glBindTexture(GL_TEXTURE_2D, baseColorTextureId)
+            glActiveTexture(GL_TEXTURE1)
+            glBindTexture(GL_TEXTURE_2D, emissiveTextureId)
+            glActiveTexture(GL_TEXTURE2)
+            glBindTexture(GL_TEXTURE_2D, RenderSystem.getShaderTexture(2))
+            val expandedEntityVertexCount = if (frameUniformsReady) {
+                drawCooFxBatch(
+                    request,
+                    batch,
+                    primitive,
+                    irisShaderPackActive,
+                    frameUniformsReady = true,
                 )
-                glDepthMask(primitive.material.depthWrite)
-                when (primitive.material.cullMode) {
-                    CooFxCullMode.NONE -> glDisable(GL_CULL_FACE)
-                    CooFxCullMode.BACK -> {
-                        glEnable(GL_CULL_FACE)
-                        glCullFace(GL_BACK)
-                        glFrontFace(GL_CCW)
-                    }
+            } else {
+                var vertexCount = 0
+                program.useOnContext {
+                    vertexCount = drawCooFxBatch(
+                        request,
+                        batch,
+                        primitive,
+                        irisShaderPackActive,
+                        frameUniformsReady = false,
+                    )
                 }
-                if (irisShaderPackActive && CParticleIndexedBlendState.isAvailable()) {
-                    glDisablei(GL_BLEND, 0)
+                vertexCount
+            }
+            if (irisShaderPackActive && expandedEntityVertexCount > 0) {
+                val previousShaderTexture0 = RenderSystem.getShaderTexture(0)
+                val previousShaderTexture1 = RenderSystem.getShaderTexture(1)
+                val entityBaseTextureId = if (baseColorTextureId != 0) {
+                    baseColorTextureId
                 } else {
-                    glDisable(GL_BLEND)
+                    minecraft.textureManager.getTexture(ofVanillaID("textures/misc/white.png")).id
                 }
-                val previousActiveTexture = glGetInteger(GL_ACTIVE_TEXTURE)
-                val previousTextures = IntArray(3) { index ->
-                    glActiveTexture(GL_TEXTURE0 + index)
-                    glGetInteger(GL_TEXTURE_BINDING_2D)
-                }
-                val minecraft = Minecraft.getInstance()
-                val lightTexture = minecraft.gameRenderer.lightTexture()
-                val lightmapWasEnabled = RenderSystem.getShaderTexture(2) != 0
+                val overlayTexture = minecraft.gameRenderer.overlayTexture()
                 try {
-                    if (!lightmapWasEnabled) lightTexture.turnOnLightLayer()
-                    val baseColorTexture = primitive.material.baseColorTexture
-                    val emissiveTexture = primitive.material.emissiveTexture
-                    val baseColorTextureId = baseColorTexture?.let { minecraft.textureManager.getTexture(it).id } ?: 0
-                    val emissiveTextureId = emissiveTexture?.let { minecraft.textureManager.getTexture(it).id } ?: 0
-                    glActiveTexture(GL_TEXTURE0)
-                    glBindTexture(GL_TEXTURE_2D, baseColorTextureId)
-                    glActiveTexture(GL_TEXTURE1)
-                    glBindTexture(GL_TEXTURE_2D, emissiveTextureId)
-                    glActiveTexture(GL_TEXTURE2)
-                    glBindTexture(GL_TEXTURE_2D, RenderSystem.getShaderTexture(2))
-                    val program = requireNotNull(shaderProgram)
-                    var expandedEntityVertexCount = 0
-                    program.useOnContext {
-                        setMatrix4("uView", request.viewMatrix)
-                        setMatrix4("uProjection", request.projectionMatrix)
-                        setFloat3(
-                            "uCameraPosition",
-                            Vector3f(request.cameraX.toFloat(), request.cameraY.toFloat(), request.cameraZ.toFloat()),
-                        )
-                        setFloat("uPartialTick", request.partialTick)
-                        setInt("uBaseColor", 0)
-                        setInt("uEmissiveTexture", 1)
-                        setInt("uLightmap", 2)
-                        setFloat4(
-                            "uBaseColorFactor",
-                            Vector4f(
-                                primitive.material.baseColorFactor.red,
-                                primitive.material.baseColorFactor.green,
-                                primitive.material.baseColorFactor.blue,
-                                primitive.material.baseColorFactor.alpha,
-                            ),
-                        )
-                        setFloat3(
-                            "uEmissiveFactor",
-                            Vector3f(
-                                primitive.material.emissiveFactor.red,
-                                primitive.material.emissiveFactor.green,
-                                primitive.material.emissiveFactor.blue,
-                            ),
-                        )
-                        setFloat("uEmissiveStrength", primitive.material.emissiveStrength)
-                        setBoolean("uHasBaseColorTexture", baseColorTexture != null)
-                        setBoolean("uHasEmissiveTexture", emissiveTexture != null)
-                        setBoolean("uUseAlphaCutoff", primitive.material.alphaMode == CooFxAlphaMode.MASK)
-                        setBoolean("uEmissiveOnly", false)
-                        setBoolean("uFullBright", primitive.material.lightMode == CooFxLightMode.FULL_BRIGHT)
-                        setFloat("uAlphaCutoff", primitive.material.alphaCutoff)
-                         setBoolean("uIrisEntitySpace", irisShaderPackActive)
-                        if (irisShaderPackActive) {
-                            expandedEntityVertexCount = particleRenderer.expandForIrisEntity(
-                                batch,
-                                primitive.drawBinding,
-                            )
-                        } else {
-                            particleRenderer.render(listOf(batch)) { primitive.drawBinding }
-                        }
+                    RenderSystem.setShaderTexture(0, entityBaseTextureId)
+                    overlayTexture.setupOverlayColor()
+                    if (primitive.material.emissiveStrength > 0F) {
+                        warnIrisEmissiveDeferred()
                     }
-                    if (irisShaderPackActive && expandedEntityVertexCount > 0) {
-                        val previousShaderTexture0 = RenderSystem.getShaderTexture(0)
-                        val previousShaderTexture1 = RenderSystem.getShaderTexture(1)
-                        val entityBaseTextureId = if (baseColorTextureId != 0) {
-                            baseColorTextureId
+                    IrisCompat.runWithRenderEntityShader(
+                        request.viewMatrix,
+                        request.projectionMatrix,
+                        shaderKind = if (primitive.material.alphaMode == CooFxAlphaMode.MASK) {
+                            IrisEntityShaderKind.CUTOUT
                         } else {
-                            minecraft.textureManager.getTexture(ofVanillaID("textures/misc/white.png")).id
+                            IrisEntityShaderKind.SOLID
+                        },
+                    ) {
+                        withPrimaryColorWriteOnly {
+                            particleRenderer.drawExpandedIrisEntity(expandedEntityVertexCount)
                         }
-                        val overlayTexture = minecraft.gameRenderer.overlayTexture()
-                        try {
-                            RenderSystem.setShaderTexture(0, entityBaseTextureId)
-                            overlayTexture.setupOverlayColor()
-                            if (primitive.material.emissiveStrength > 0F) {
-                                warnIrisEmissiveDeferred()
-                            }
-                            IrisCompat.runWithRenderEntityShader(
-                                request.viewMatrix,
-                                request.projectionMatrix,
-                                shaderKind = if (primitive.material.alphaMode == CooFxAlphaMode.MASK) {
-                                    IrisEntityShaderKind.CUTOUT
-                                } else {
-                                    IrisEntityShaderKind.SOLID
-                                },
-                            ) {
-                                particleRenderer.drawExpandedIrisEntity(expandedEntityVertexCount)
-                                // emissive 第二次提交待 NEW_ENTITY 专用实现与状态测试后恢复。
-                            }
-                        } finally {
-                            overlayTexture.teardownOverlayColor()
-                            RenderSystem.setShaderTexture(0, previousShaderTexture0)
-                            RenderSystem.setShaderTexture(1, previousShaderTexture1)
-                        }
+                        // emissive 第二次提交待 NEW_ENTITY 专用实现与状态测试后恢复。
                     }
                 } finally {
-                    if (!lightmapWasEnabled) lightTexture.turnOffLightLayer()
-                    previousTextures.forEachIndexed { index, texture ->
-                        glActiveTexture(GL_TEXTURE0 + index)
-                        glBindTexture(GL_TEXTURE_2D, texture)
-                    }
-                    glActiveTexture(previousActiveTexture)
+                    overlayTexture.teardownOverlayColor()
+                    RenderSystem.setShaderTexture(0, previousShaderTexture0)
+                    RenderSystem.setShaderTexture(1, previousShaderTexture1)
                 }
             }
         } finally {
-            glCullFace(previousCullFace)
-            glFrontFace(previousFrontFace)
+            if (!lightmapWasEnabled) lightTexture.turnOffLightLayer()
         }
+    }
+
+    private fun drawCooFxBatch(
+        request: CooFxFrameRequest,
+        batch: CooFxMeshInstanceBatch,
+        primitive: CooFxOpenGlPrimitive,
+        irisShaderPackActive: Boolean,
+        frameUniformsReady: Boolean,
+    ): Int {
+        if (!frameUniformsReady) configureFrameUniforms(request, irisShaderPackActive)
+        requireNotNull(shaderUniforms).setMaterial(primitive.material)
+        return if (irisShaderPackActive) {
+            particleRenderer.expandForIrisEntity(batch, primitive.drawBinding)
+        } else {
+            particleRenderer.render(listOf(batch)) { primitive.drawBinding }
+            0
+        }
+    }
+
+    private fun configureFrameUniforms(request: CooFxFrameRequest, irisShaderPackActive: Boolean) {
+        requireNotNull(shaderUniforms).setFrame(request, irisShaderPackActive)
     }
 
     private fun CooFxPlayRequest.intOverride(name: String): Int? {
@@ -967,6 +1036,13 @@ internal class CooFxClientRuntime(
         val request: CooFxModelPlayRequest,
     )
 
+    private data class CooFxBatchGlState(
+        val previousCullFace: Int,
+        val previousFrontFace: Int,
+        val previousActiveTexture: Int,
+        val previousTextures: IntArray,
+    )
+
     private data class CooFxDrawBufferState(
         val blendEnabled: Boolean,
         val sourceRgb: Int,
@@ -977,6 +1053,89 @@ internal class CooFxClientRuntime(
         val equationAlpha: Int,
         val colorMask: IntArray,
     )
+
+    private class CooFxShaderUniforms(program: Int) {
+        private val view = glGetUniformLocation(program, "uView")
+        private val projection = glGetUniformLocation(program, "uProjection")
+        private val cameraPosition = glGetUniformLocation(program, "uCameraPosition")
+        private val partialTick = glGetUniformLocation(program, "uPartialTick")
+        private val baseColorSampler = glGetUniformLocation(program, "uBaseColor")
+        private val emissiveSampler = glGetUniformLocation(program, "uEmissiveTexture")
+        private val lightmapSampler = glGetUniformLocation(program, "uLightmap")
+        private val irisEntitySpace = glGetUniformLocation(program, "uIrisEntitySpace")
+        private val baseColorFactor = glGetUniformLocation(program, "uBaseColorFactor")
+        private val emissiveFactor = glGetUniformLocation(program, "uEmissiveFactor")
+        private val emissiveStrength = glGetUniformLocation(program, "uEmissiveStrength")
+        private val hasBaseColorTexture = glGetUniformLocation(program, "uHasBaseColorTexture")
+        private val hasEmissiveTexture = glGetUniformLocation(program, "uHasEmissiveTexture")
+        private val useAlphaCutoff = glGetUniformLocation(program, "uUseAlphaCutoff")
+        private val emissiveOnly = glGetUniformLocation(program, "uEmissiveOnly")
+        private val fullBright = glGetUniformLocation(program, "uFullBright")
+        private val alphaCutoff = glGetUniformLocation(program, "uAlphaCutoff")
+
+        fun setFrame(request: CooFxFrameRequest, irisShaderPackActive: Boolean) {
+            setMatrix(view, request.viewMatrix)
+            setMatrix(projection, request.projectionMatrix)
+            setVec3(
+                cameraPosition,
+                request.cameraX.toFloat(),
+                request.cameraY.toFloat(),
+                request.cameraZ.toFloat(),
+            )
+            setFloat(partialTick, request.partialTick)
+            setInt(baseColorSampler, 0)
+            setInt(emissiveSampler, 1)
+            setInt(lightmapSampler, 2)
+            setBoolean(irisEntitySpace, irisShaderPackActive)
+        }
+
+        fun setMaterial(material: CooFxCompiledMaterial) {
+            setVec4(
+                baseColorFactor,
+                material.baseColorFactor.red,
+                material.baseColorFactor.green,
+                material.baseColorFactor.blue,
+                material.baseColorFactor.alpha,
+            )
+            setVec3(
+                emissiveFactor,
+                material.emissiveFactor.red,
+                material.emissiveFactor.green,
+                material.emissiveFactor.blue,
+            )
+            setFloat(emissiveStrength, material.emissiveStrength)
+            setBoolean(hasBaseColorTexture, material.baseColorTexture != null)
+            setBoolean(hasEmissiveTexture, material.emissiveTexture != null)
+            setBoolean(useAlphaCutoff, material.alphaMode == CooFxAlphaMode.MASK)
+            setBoolean(emissiveOnly, false)
+            setBoolean(fullBright, material.lightMode == CooFxLightMode.FULL_BRIGHT)
+            setFloat(alphaCutoff, material.alphaCutoff)
+        }
+
+        private fun setMatrix(location: Int, matrix: Matrix4f) {
+            if (location >= 0) glUniformMatrix4fv(location, false, matrix.get(FloatArray(16)))
+        }
+
+        private fun setInt(location: Int, value: Int) {
+            if (location >= 0) glUniform1i(location, value)
+        }
+
+        private fun setBoolean(location: Int, value: Boolean) {
+            setInt(location, if (value) 1 else 0)
+        }
+
+        private fun setFloat(location: Int, value: Float) {
+            if (location >= 0) glUniform1f(location, value)
+        }
+
+        private fun setVec3(location: Int, x: Float, y: Float, z: Float) {
+            if (location >= 0) glUniform3f(location, x, y, z)
+        }
+
+        private fun setVec4(location: Int, x: Float, y: Float, z: Float, w: Float) {
+            if (location >= 0) glUniform4f(location, x, y, z, w)
+        }
+    }
 
     private data class UploadedAsset(
         val digest: String,

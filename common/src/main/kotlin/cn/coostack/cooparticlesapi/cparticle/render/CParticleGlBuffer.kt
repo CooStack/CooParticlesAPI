@@ -8,7 +8,6 @@ import org.lwjgl.opengl.GL31
 import org.lwjgl.opengl.GL33.*
 import org.lwjgl.opengl.GL43
 import org.lwjgl.system.MemoryUtil
-import org.slf4j.LoggerFactory
 import java.nio.FloatBuffer
 import java.nio.ByteOrder
 
@@ -43,14 +42,8 @@ internal fun nextScratchCapacity(currentCapacity: Int, requiredFloats: Int, maxF
  */
 class CParticleGlBuffer(val capacity: Int) {
     private companion object {
-        val LOGGER = LoggerFactory.getLogger("CooParticlesAPI/CParticleGlBuffer")
-        const val SPARSE_PATCH_THRESHOLD = 64
         const val VISUAL_FLOAT_COUNT = CParticleStore.STRIDE - CParticleStore.OFF_FLAGS
         const val EXPANDED_VERTICES_PER_PARTICLE = 6
-        const val EXPANDED_VERTEX_STRIDE = 28
-
-        @Volatile
-        var expandedDrawStateLogged = false
     }
 
     var vao = 0
@@ -82,7 +75,7 @@ class CParticleGlBuffer(val capacity: Int) {
             glEnableVertexAttribArray(loc)
             CParticleCapabilities.setVertexAttribDivisor(loc, 1)
         }
-        glBindVertexArray(prevVao)
+        restoreVertexArray(prevVao)
         glBindBuffer(GL_ARRAY_BUFFER, prevVbo)
     }
 
@@ -162,7 +155,7 @@ class CParticleGlBuffer(val capacity: Int) {
         if (!initialized || count <= 0) return
         val prev = glGetInteger(GL_ARRAY_BUFFER_BINDING)
         glBindBuffer(GL_ARRAY_BUFFER, vbo)
-        if (count <= SPARSE_PATCH_THRESHOLD) {
+        if (count <= 64) {
             val s = smallPatchBuffer()
             for (i in 0 until count) {
                 val floatOffset = slots[i] * CParticleStore.STRIDE + CParticleStore.OFF_FLAGS
@@ -230,7 +223,7 @@ class CParticleGlBuffer(val capacity: Int) {
         val prevVao = glGetInteger(GL_VERTEX_ARRAY_BINDING)
         glBindVertexArray(vao)
         GL31.glDrawArraysInstanced(GL_TRIANGLES, 0, EXPANDED_VERTICES_PER_PARTICLE, instances)
-        glBindVertexArray(prevVao)
+        restoreVertexArray(prevVao)
     }
 
     /**
@@ -274,7 +267,7 @@ class CParticleGlBuffer(val capacity: Int) {
             if (rasterizerDiscardEnabled) glEnable(GL_RASTERIZER_DISCARD) else glDisable(GL_RASTERIZER_DISCARD)
             glBindBufferBase(GL_TRANSFORM_FEEDBACK_BUFFER, 0, previousFeedbackBase[0])
             glBindBuffer(GL_TRANSFORM_FEEDBACK_BUFFER, previousFeedbackBuffer)
-            glBindVertexArray(previousVao)
+            restoreVertexArray(previousVao)
         }
     }
 
@@ -289,55 +282,9 @@ class CParticleGlBuffer(val capacity: Int) {
     fun drawExpanded(instances: Int) {
         if (expandedVao == 0 || instances <= 0 || instances > expandedInstances) return
         val previousVao = glGetInteger(GL_VERTEX_ARRAY_BINDING)
-        val errorBeforeDraw = glGetError()
         glBindVertexArray(expandedVao)
-        if (!expandedDrawStateLogged) {
-            synchronized(CParticleGlBuffer::class.java) {
-                if (!expandedDrawStateLogged) {
-                    expandedDrawStateLogged = true
-                    val program = glGetInteger(GL_CURRENT_PROGRAM)
-                    val locations = listOf(
-                        "iris_Position",
-                        "iris_UV0",
-                        "iris_Color",
-                        "iris_UV2",
-                        "Position",
-                        "UV0",
-                        "Color",
-                        "UV2",
-                    )
-                        .joinToString(prefix = "[", postfix = "]") { name ->
-                            "$name=${glGetAttribLocation(program, name)}"
-                        }
-                    val arrays = (0..3).joinToString(prefix = "[", postfix = "]") { location ->
-                        "$location:{enabled=${glGetVertexAttribi(location, GL_VERTEX_ATTRIB_ARRAY_ENABLED)}," +
-                            "size=${glGetVertexAttribi(location, GL_VERTEX_ATTRIB_ARRAY_SIZE)}," +
-                            "type=0x${glGetVertexAttribi(location, GL_VERTEX_ATTRIB_ARRAY_TYPE).toString(16)}," +
-                            "normalized=${glGetVertexAttribi(location, GL_VERTEX_ATTRIB_ARRAY_NORMALIZED)}," +
-                            "stride=${glGetVertexAttribi(location, GL_VERTEX_ATTRIB_ARRAY_STRIDE)}," +
-                            "buffer=${glGetVertexAttribi(location, GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING)}}"
-                    }
-                    LOGGER.info(
-                        "[DEBUG-cparticle-iris] expandedDraw program={} vao={} vbo={} instances={} expandedInstances={} " +
-                            "errorBefore=0x{} locations={} arrays={}",
-                        program,
-                        expandedVao,
-                        expandedVbo,
-                        instances,
-                        expandedInstances,
-                        errorBeforeDraw.toString(16),
-                        locations,
-                        arrays,
-                    )
-                }
-            }
-        }
         glDrawArrays(GL_TRIANGLES, 0, instances * EXPANDED_VERTICES_PER_PARTICLE)
-        val errorAfterDraw = glGetError()
-        if (errorAfterDraw != GL_NO_ERROR) {
-            LOGGER.warn("[DEBUG-cparticle-iris] expandedDraw errorAfter=0x{}", errorAfterDraw.toString(16))
-        }
-        glBindVertexArray(previousVao)
+        restoreVertexArray(previousVao)
     }
 
     /**
@@ -357,7 +304,7 @@ class CParticleGlBuffer(val capacity: Int) {
             glBindVertexArray(expandedVao)
             glBindBuffer(GL_ARRAY_BUFFER, expandedVbo)
             DefaultVertexFormat.PARTICLE.setupBufferState()
-            glBindVertexArray(previousVao)
+            restoreVertexArray(previousVao)
             glBindBuffer(GL_ARRAY_BUFFER, previousVbo)
         }
         if (requiredInstances <= expandedCapacity) return
@@ -371,11 +318,15 @@ class CParticleGlBuffer(val capacity: Int) {
         glBindBuffer(GL_ARRAY_BUFFER, expandedVbo)
         glBufferData(
             GL_ARRAY_BUFFER,
-            nextCapacity.toLong() * EXPANDED_VERTICES_PER_PARTICLE * EXPANDED_VERTEX_STRIDE,
+            nextCapacity.toLong() * EXPANDED_VERTICES_PER_PARTICLE * DefaultVertexFormat.PARTICLE.vertexSize.toLong(),
             GL_STREAM_DRAW,
         )
         glBindBuffer(GL_ARRAY_BUFFER, previousVbo)
         expandedCapacity = nextCapacity
+    }
+
+    private fun restoreVertexArray(vertexArrayObject: Int) {
+        glBindVertexArray(if (vertexArrayObject != 0 && glIsVertexArray(vertexArrayObject)) vertexArrayObject else 0)
     }
 
     fun release() {

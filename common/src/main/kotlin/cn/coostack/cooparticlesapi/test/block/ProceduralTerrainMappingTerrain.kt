@@ -17,7 +17,6 @@ internal object ProceduralTerrainMappingTerrain {
         val geometry = world("geometry") {
             shader(ofID("terrain/procedural_mapping_bloom"))
             inputBlockAtlas("BaseSampler")
-            inputSceneColor("SceneColor", optional = true)
             maskOutput()
             outputFormat(CooTextureFormat.RGBA16F)
             uniform("RingRadius", CooUniformValue.FloatValue(4F))
@@ -30,7 +29,7 @@ internal object ProceduralTerrainMappingTerrain {
             fragment(ofID("post/bloom_bright_extract.fsh"))
             input("scene", format = CooTextureFormat.RGBA16F)
             outputFormat(CooTextureFormat.RGBA16F)
-            mipLevels(12)
+            mipLevels(4)
             uniform("threshold", 0F)
             uniform("softKnee", 0.5F)
             uniform("PremultipliedInput", CooUniformValue.BoolValue(true))
@@ -38,19 +37,20 @@ internal object ProceduralTerrainMappingTerrain {
         }
         val bloomBslAtlas = pass("bloom_bsl_atlas") {
             fragment(ofID("post/bloom_bsl_atlas.fsh"))
-            input("BloomInput", format = CooTextureFormat.RGBA16F, mipLevels = 12)
+            input("BloomInput", format = CooTextureFormat.RGBA16F, mipLevels = 4)
             outputFormat(CooTextureFormat.RGBA16F)
-            uniform("BloomLevels", CooUniformValue.IntValue(7))
+            uniform("BloomLevels", CooUniformValue.IntValue(3))
         }
         val composite = pass("composite") {
-            fragment(ofID("post/mask_bloom_composite.fsh"))
+            fragment(ofID("post/procedural_mapping_bloom_composite.fsh"))
             input("SceneColor")
+            input("EffectColor", format = CooTextureFormat.RGBA16F)
             input("BloomAtlas", format = CooTextureFormat.RGBA16F)
-            uniform("MipLevels", CooUniformValue.IntValue(7))
+            uniform("MipLevels", CooUniformValue.IntValue(3))
             outputFormat(CooTextureFormat.RGBA8)
         }
 
-        line(geometry.color(), worldTarget())
+        line(geometry.color(), composite.input("EffectColor"))
         line(geometry.mask(), extract.input("scene"))
         line(extract.color(), bloomBslAtlas.input("BloomInput"))
         line(sceneColor(), composite.input("SceneColor"))

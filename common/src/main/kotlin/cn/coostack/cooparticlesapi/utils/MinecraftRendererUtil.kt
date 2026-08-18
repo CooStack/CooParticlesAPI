@@ -5,11 +5,15 @@ import cn.coostack.cooparticlesapi.mixin.events.world.client.ItemRendererInvoker
 import com.mojang.blaze3d.vertex.PoseStack
 import com.mojang.blaze3d.vertex.VertexConsumer
 import net.minecraft.client.Camera
+import net.minecraft.client.Minecraft
+import net.minecraft.client.renderer.LightTexture
 import net.minecraft.client.renderer.MultiBufferSource
 import net.minecraft.client.renderer.RenderType
 import net.minecraft.client.renderer.entity.ItemRenderer
+import net.minecraft.client.renderer.texture.OverlayTexture
 import net.minecraft.client.resources.model.BakedModel
 import net.minecraft.world.item.ItemStack
+import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
 import org.joml.Quaternionf
 import kotlin.math.abs
@@ -261,6 +265,43 @@ object MinecraftRendererUtil {
         sampleTriangle(v0, v1, v2, density, out)
         sampleTriangle(v0, v2, v3, density, out)
         return out
+    }
+
+    /**
+     * 光速渲染一个stack，渲染一个物品模型的重复工作超级的多
+     *
+     * 这里的模型并没有处理过45度的问题， 如果需要初始偏移可能需要其他实现
+     *
+     * @param item 栈物品
+     * @param world 世界
+     * @param consumer 渲染的类型 （从RenderType/RenderLayer获取)
+     * @param modelMatrixStack 模型矩阵
+     */
+    fun fastRenderItem(
+        item: ItemStack,
+        world: Level,
+        consumer: VertexConsumer,
+        modelMatrixStack: PoseStack,
+        yaw: Float,
+        pitch: Float,
+        roll: Float,
+        xScale: Float,
+        yScale: Float,
+        zScale: Float,
+        light: Int = LightTexture.pack(15, 15)
+    ) {
+        val itemRenderer = Minecraft.getInstance().itemRenderer ?: return
+        val model = itemRenderer.getModel(item, world, null, 0)
+        applyRotation(modelMatrixStack, yaw, pitch, roll)
+        modelMatrixStack.scale(xScale, yScale, zScale)
+        applyAtPoint(
+            Vec3(-0.5, -0.5, -0.5), modelMatrixStack
+        ) {
+            renderItemModel(
+                itemRenderer, item, modelMatrixStack, model, light,
+                OverlayTexture.NO_OVERLAY, consumer
+            )
+        }
     }
 
     private fun perpendicular(axis: Vec3): Vec3 {
