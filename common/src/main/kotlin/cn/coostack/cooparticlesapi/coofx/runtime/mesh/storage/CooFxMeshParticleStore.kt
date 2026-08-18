@@ -49,6 +49,7 @@ class CooFxMeshParticleStore(val capacity: Int) {
     internal val playbackSpeeds = FloatArray(capacity)
     internal val meshVariants = IntArray(capacity)
     internal val materialVariants = IntArray(capacity)
+    internal val nodeIndices = IntArray(capacity)
 
     internal val gravities = FloatArray(capacity * 3)
     internal val winds = FloatArray(capacity * 3)
@@ -84,6 +85,7 @@ class CooFxMeshParticleStore(val capacity: Int) {
         playbackSpeeds[index] = particle.playbackSpeed
         meshVariants[index] = particle.meshVariant
         materialVariants[index] = particle.materialVariant
+        nodeIndices[index] = particle.nodeIndex
         setVector3(gravities, index, particle.forces.gravity)
         setVector3(winds, index, particle.forces.wind)
         drags[index] = particle.forces.drag
@@ -116,6 +118,10 @@ class CooFxMeshParticleStore(val capacity: Int) {
         }
         return removed
     }
+
+    /** 判断指定发射器是否仍有活跃粒子。 */
+    fun containsEmitterParticles(emitterRuntimeId: Long): Boolean =
+        (0 until size).any { index -> emitterRuntimeIds[index] == emitterRuntimeId }
 
     /** 清空全部实例，但保留已分配的数组容量。 */
     fun clear() {
@@ -207,6 +213,7 @@ class CooFxMeshParticleStore(val capacity: Int) {
         require(particle.playbackSpeed.isFinite()) { "Playback speed must be finite" }
         require(particle.meshVariant in 0..0xFFFFFF) { "Mesh variant must fit in 24 bits" }
         require(particle.materialVariant in 0..0xFFFFFF) { "Material variant must fit in 24 bits" }
+        require(particle.nodeIndex >= 0) { "Node index must be non-negative" }
     }
 
     private fun copySlot(source: Int, target: Int) {
@@ -233,6 +240,7 @@ class CooFxMeshParticleStore(val capacity: Int) {
         playbackSpeeds[target] = playbackSpeeds[source]
         meshVariants[target] = meshVariants[source]
         materialVariants[target] = materialVariants[source]
+        nodeIndices[target] = nodeIndices[source]
         copyComponents(gravities, source, target, 3)
         copyComponents(winds, source, target, 3)
         drags[target] = drags[source]

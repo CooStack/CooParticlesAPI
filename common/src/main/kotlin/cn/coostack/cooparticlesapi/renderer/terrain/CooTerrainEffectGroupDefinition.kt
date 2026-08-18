@@ -13,5 +13,7 @@ import net.minecraft.core.BlockPos
 internal data class CooTerrainEffectGroupDefinition(
     val activationOffsets: Map<BlockPos, Long>,
     val uniforms: Map<String, CooUniformValue>,
-    val durationTicks: Long?
+    val durationTicks: Long?,
+    val priority: Int,
+    val composition: CooTerrainEffectComposition
 )

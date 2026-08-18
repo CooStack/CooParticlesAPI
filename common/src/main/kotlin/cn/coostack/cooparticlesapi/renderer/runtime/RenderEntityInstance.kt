@@ -110,7 +110,7 @@ class RenderEntityInstance<T : RenderEntity>(
         // Iris 后续会再次捕获同一实体的 mask；复用本次可见绘制的插值矩阵，避免位置更新后两次绘制错位。
         frameWorldModelMatrix.set(modelMatrix)
         frameWorldModelPrepared = true
-        IrisCompat.runWithRenderEntityShader {
+        IrisCompat.runWithRenderEntityShader(viewMatrix, projMatrix) {
             renderWorld(tickDelta, viewMatrix, projMatrix, modelMatrix, stateGuard)
         }
         irisWorldPassSubmitted = true

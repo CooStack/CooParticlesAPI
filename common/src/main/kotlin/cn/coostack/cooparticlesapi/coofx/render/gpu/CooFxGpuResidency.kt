@@ -143,6 +143,17 @@ class CooFxGpuPackageRegistry(
         active[resourceId]?.gpuPackage?.generation
     }
 
+    fun retire(resourceId: ResourceLocation): Boolean {
+        renderThreadGuard.assertRenderThread()
+        return synchronized(monitor) {
+            val entry = active.remove(resourceId) ?: return@synchronized false
+            entry.state = CooFxGpuGenerationState.RETIRED
+            retired += entry
+            releaseIfUnused(entry)
+            true
+        }
+    }
+
     fun disposeAll() {
         renderThreadGuard.assertRenderThread()
         synchronized(monitor) {

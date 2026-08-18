@@ -3,6 +3,7 @@ package cn.coostack.cooparticlesapi.renderer.runtime
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
 import cn.coostack.cooparticlesapi.annotations.CooAutoRegisterRenderer
+import cn.coostack.cooparticlesapi.coofx.server.CooFxSceneRenderEntity
 import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
 import cn.coostack.cooparticlesapi.reflect.SimpleClassInfo
 import cn.coostack.cooparticlesapi.renderer.RenderEntity
@@ -133,6 +134,12 @@ object RenderEntityAutoRegistry {
         }
         throwIfInvalid(errors, failures)
         ClientRenderEntityRegistry.applyRegistrations(registrations)
+        val sceneType = ClientRenderEntityRegistry.get(CooFxSceneRenderEntity.ID)
+        CooParticlesConstants.logger.info(
+            "[CooFX-REGISTRY] RenderEntity auto registration complete: total=${registrations.size}, " +
+                "sceneId=${CooFxSceneRenderEntity.ID}, sceneRegistered=${sceneType != null}, " +
+                "sceneRenderer=${sceneType?.rendererFactory != null}",
+        )
     }
 
     /**

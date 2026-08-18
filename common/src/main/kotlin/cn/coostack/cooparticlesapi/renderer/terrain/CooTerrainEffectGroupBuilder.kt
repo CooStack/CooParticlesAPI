@@ -29,6 +29,11 @@ class CooTerrainEffectGroupBuilder internal constructor() {
     /** 组持续 tick 数；`null` 表示不自动到期。 */
     private var durationTicks: Long? = null
 
+    private var priorityValue: Int = 0
+
+    /** 组与此前层的合成方式。 */
+    private var compositionValue: CooTerrainEffectComposition = CooTerrainEffectComposition.REPLACE
+
     /**
      * 加入一个方块位置，并设置它相对组开始时间的生效延迟。
      *
@@ -114,6 +119,26 @@ class CooTerrainEffectGroupBuilder internal constructor() {
     }
 
     /**
+     * 设置组的绘制优先级，数值越小越早绘制，数值越大越晚绘制。
+     *
+     * @param value 有符号排序优先级
+     * @return 当前构建器，便于继续链式配置
+     */
+    fun priority(value: Int) = apply {
+        priorityValue = value
+    }
+
+    /**
+     * 设置组与排序中此前结果的合成方式。
+     *
+     * @param value 当前组使用的合成方式
+     * @return 当前构建器，便于继续链式配置
+     */
+    fun composition(value: CooTerrainEffectComposition) = apply {
+        compositionValue = value
+    }
+
+    /**
      * 设置整组从开始时间起可持续的 tick 数。
      *
      * 示例：`duration(40L)` 会让效果持续 2 秒左右；未调用时该组不会自动到期。
@@ -136,7 +161,9 @@ class CooTerrainEffectGroupBuilder internal constructor() {
         return CooTerrainEffectGroupDefinition(
             activationOffsets = activationOffsets.toMap(),
             uniforms = uniforms.toMap(),
-            durationTicks = durationTicks
+            durationTicks = durationTicks,
+            priority = priorityValue,
+            composition = compositionValue
         )
     }
 }

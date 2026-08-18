@@ -107,6 +107,7 @@ import org.lwjgl.opengl.GL33.glGetTexLevelParameteri
 import org.lwjgl.opengl.GL33.glGetTexParameteri
 import org.lwjgl.opengl.GL33.glGetUniformLocation
 import org.lwjgl.opengl.GL33.glIsEnabled
+import org.lwjgl.opengl.GL33.glIsVertexArray
 import org.lwjgl.opengl.GL11.glPolygonOffset
 import org.lwjgl.opengl.GL33.glReadBuffer
 import org.lwjgl.opengl.GL33.glUseProgram
@@ -816,6 +817,7 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
                 ?.colorAttachments
                 ?.firstOrNull()
             PostEffectInputSource.SCENE_DEPTH -> resolveSceneDepthTexture(step, input)
+            PostEffectInputSource.TERRAIN_DEPTH -> resolveTerrainDepthTexture(step, input)
             PostEffectInputSource.MASK -> state.lastOutputTextures[PostEffectOutput.MASK]
                 ?: ensureBindingMask(step, state)
             PostEffectInputSource.BRIGHT_COLOR -> state.lastOutputTextures[PostEffectOutput.BLOOM]
@@ -830,6 +832,18 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
                 }
         }?.takeIf { it > 0 } ?: return null
         return texture.takeIf { validateTextureContract(step, input, texture) }
+    }
+
+    /** 解析 terrain opaque depth；不可用时返回 null，不回退到颜色或方块图集。 */
+    private fun resolveTerrainDepthTexture(
+        step: PostEffectExecutionStep,
+        input: PostEffectResolvedInput
+    ): Int? {
+        if (step.context.externalFramebuffer) {
+            return IrisCompat.currentTerrainDepthTexture()?.textureId?.takeIf { textureId -> textureId > 0 }
+        }
+        return input.textureId?.takeIf { textureId -> textureId > 0 }
+            ?: step.context.sceneResources[RenderSceneTargets.TERRAIN_DEPTH]?.depthTextureId
     }
 
     /** Iris 外部 framebuffer 激活时只接受 Iris 当前地形深度；不存在时由 optional 输入降级。 */
@@ -970,15 +984,34 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
             "cooCameraPosition",
             Vector3f(camera.x.toFloat(), camera.y.toFloat(), camera.z.toFloat())
         )
-        (step.uniforms["effectCenter"] as? PostEffectParamValue.Vec3Value)?.let { effectCenter ->
+        val effectCenter = (step.uniforms["effectCenter"] as? PostEffectParamValue.Vec3Value)?.let { value ->
+            Triple(value.x, value.y, value.z)
+        } ?: run {
+            val x = numericUniform(step.uniforms, "cooEffectCenterX")
+            val y = numericUniform(step.uniforms, "cooEffectCenterY")
+            val z = numericUniform(step.uniforms, "cooEffectCenterZ")
+            if (x == null || y == null || z == null) null else Triple(x, y, z)
+        }
+        program.setFloat3("cooEffectCenterRelative", Vector3f())
+        effectCenter?.let { (x, y, z) ->
             program.setFloat3(
                 "cooEffectCenterRelative",
                 Vector3f(
-                    (effectCenter.x - camera.x).toFloat(),
-                    (effectCenter.y - camera.y).toFloat(),
-                    (effectCenter.z - camera.z).toFloat()
+                    (x - camera.x).toFloat(),
+                    (y - camera.y).toFloat(),
+                    (z - camera.z).toFloat()
                 )
             )
+        }
+    }
+
+    private fun numericUniform(uniforms: Map<String, PostEffectParamValue>, name: String): Double? {
+        return when (val value = uniforms[name]) {
+            is PostEffectParamValue.IntValue -> value.value.toDouble()
+            is PostEffectParamValue.LongValue -> value.value.toDouble()
+            is PostEffectParamValue.FloatValue -> value.value.toDouble()
+            is PostEffectParamValue.DoubleValue -> value.value
+            else -> null
         }
     }
 
@@ -1350,7 +1383,12 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
             }
             glUseProgram(previousProgram)
             RenderSystem.setShader { previousShader }
-            glBindVertexArray(previousVertexArray)
+            val safePreviousVertexArray = if (previousVertexArray == 0 || glIsVertexArray(previousVertexArray)) {
+                 previousVertexArray
+             } else {
+                 0
+             }
+             glBindVertexArray(safePreviousVertexArray)
             previousShaderTextures.forEachIndexed { index, texture ->
                 RenderSystem.setShaderTexture(index, texture)
                 RenderSystem.activeTexture(GL_TEXTURE0 + index)

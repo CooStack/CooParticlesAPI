@@ -73,24 +73,31 @@ class SimpleShaderProgram(
      */
     override fun init() {
         program = glCreateProgram()
-        attachedShaders().forEach { shader ->
-            shader.compile()
-            glAttachShader(program, shader.shaderID())
-        }
-        attributeLocationsInternal.forEach { (name, location) ->
-            glBindAttribLocation(program, location, name)
-        }
-        if (transformFeedbackVaryingsInternal.isNotEmpty()) {
-            glTransformFeedbackVaryings(
-                program,
-                transformFeedbackVaryingsInternal.toTypedArray(),
-                GL_INTERLEAVED_ATTRIBS,
-            )
-        }
-        glLinkProgram(program)
-        assertProgram()
-        attachedShaders().forEach { shader ->
-            shader.deleteShader()
+        try {
+            attachedShaders().forEach { shader ->
+                shader.compile()
+                glAttachShader(program, shader.shaderID())
+            }
+            attributeLocationsInternal.forEach { (name, location) ->
+                glBindAttribLocation(program, location, name)
+            }
+            if (transformFeedbackVaryingsInternal.isNotEmpty()) {
+                glTransformFeedbackVaryings(
+                    program,
+                    transformFeedbackVaryingsInternal.toTypedArray(),
+                    GL_INTERLEAVED_ATTRIBS,
+                )
+            }
+            glLinkProgram(program)
+            assertProgram()
+        } catch (error: Throwable) {
+            glDeleteProgram(program)
+            program = 0
+            throw error
+        } finally {
+            attachedShaders().forEach { shader ->
+                shader.deleteShader()
+            }
         }
     }
 

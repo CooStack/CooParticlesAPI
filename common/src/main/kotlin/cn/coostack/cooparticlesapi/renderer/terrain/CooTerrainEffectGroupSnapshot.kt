@@ -28,5 +28,7 @@ internal data class CooTerrainEffectGroupSnapshot(
     val activations: Map<BlockPos, Long>,
     val uniforms: Map<String, CooUniformValue>,
     val sequence: Long,
-    val revision: Long
+    val revision: Long,
+    val priority: Int = 0,
+    val composition: CooTerrainEffectComposition = CooTerrainEffectComposition.REPLACE
 )

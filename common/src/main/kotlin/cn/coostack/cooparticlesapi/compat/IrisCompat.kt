@@ -22,9 +22,19 @@ import java.lang.reflect.Field
 import java.lang.reflect.Method
 import java.util.Optional
 
+/**
+ * Iris 阴影渲染阶段的反射探测结果。
+ *
+ * 该枚举只描述当前客户端是否处于 Iris shadow pass，不参与序列化，也不应跨线程缓存。
+ * [ACTIVE] 表示 Iris 明确报告正在绘制阴影，[INACTIVE] 表示明确不在阴影阶段；[UNKNOWN]
+ * 表示 Iris 未安装、版本没有对应字段或反射失败，调用方必须按保守路径处理。
+ */
 internal enum class IrisShadowPassState {
+    /** Iris 明确处于阴影 framebuffer 绘制阶段。 */
     ACTIVE,
+    /** Iris 明确处于普通世界或实体绘制阶段。 */
     INACTIVE,
+    /** 无法从当前 Iris 版本可靠判断阶段。 */
     UNKNOWN,
 }
 
@@ -33,6 +43,23 @@ internal data class IrisTerrainDepthTexture(
     val width: Int,
     val height: Int,
 )
+
+/**
+ * CooFX 交给 Iris entity G-buffer 的基础材质程序选择。
+ *
+ * 该枚举仅用于客户端当前帧的 shader 选择，不参与资源序列化。默认值是
+ * [TRANSLUCENT]，以保持既有 RenderEntity 调用的兼容行为；CooFX glTF 材质会根据
+ * OPAQUE/MASK 选择 [SOLID] 或 [CUTOUT]。其中 [CUTOUT] 遵循 Iris entity program
+ * 固定的 alpha 阈值，不能表达任意 glTF `alphaCutoff`。
+ */
+internal enum class IrisEntityShaderKind {
+    /** 使用 Iris 的实体半透明程序，兼容旧的 RenderEntity 默认路径。 */
+    TRANSLUCENT,
+    /** 使用 Iris 的实体不透明程序，不执行 cutout alpha 丢弃。 */
+    SOLID,
+    /** 使用 Iris 的无剔除 cutout 程序，阈值由 Iris 固定为 0.1。 */
+    CUTOUT,
+}
 
 /**
  * 与 IRIS 互操作的反射桥接，不依赖 IRIS 类型也不需要 mixin。
@@ -325,23 +352,45 @@ object IrisCompat {
     }
 
     /** 在 Iris 的半透明 entity framebuffer 中执行 RenderEntity world pass。 */
-    internal fun runWithRenderEntityShader(draw: () -> Unit) {
+    internal fun runWithRenderEntityShader(
+        view: Matrix4f,
+        projection: Matrix4f,
+        shaderKind: IrisEntityShaderKind = IrisEntityShaderKind.TRANSLUCENT,
+        draw: () -> Unit,
+    ) {
         if (!CooParticlesAPIClient.checkIrisShaderPackUsed()) {
             draw()
             return
         }
 
-        val entityShader = GameRenderer.getRendertypeEntityTranslucentShader()
+        val entityShader = when (shaderKind) {
+            IrisEntityShaderKind.TRANSLUCENT -> GameRenderer.getRendertypeEntityTranslucentShader()
+            IrisEntityShaderKind.SOLID -> GameRenderer.getRendertypeEntitySolidShader()
+            IrisEntityShaderKind.CUTOUT -> GameRenderer.getRendertypeEntityCutoutNoCullShader()
+        }
         if (entityShader == null) {
             draw()
             return
         }
 
-        entityShader.apply()
+        resolveEntityRenderTypeWrapper()
+        val stateShard = entityRenderStateShard
+        stateShard?.setupRenderState()
         try {
-            draw()
+            entityShader.setDefaultUniforms(
+                VertexFormat.Mode.TRIANGLES,
+                view,
+                projection,
+                Minecraft.getInstance().window,
+            )
+            entityShader.apply()
+            try {
+                draw()
+            } finally {
+                entityShader.clear()
+            }
         } finally {
-            entityShader.clear()
+            stateShard?.clearRenderState()
         }
     }
 

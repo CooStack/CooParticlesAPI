@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi.test.block.builtin
 
+import cn.coostack.cooparticlesapi.coofx.server.CooFxSceneMode
 import cn.coostack.cooparticlesapi.extend.asRelative
 import cn.coostack.cooparticlesapi.extend.ofID
 import cn.coostack.cooparticlesapi.extend.plus
@@ -25,6 +26,9 @@ import cn.coostack.cooparticlesapi.test.api.Vec3TestOptionValue
 import cn.coostack.cooparticlesapi.test.api.Vector3fTestOptionValue
 import cn.coostack.cooparticlesapi.test.block.BlockTestGroup
 import cn.coostack.cooparticlesapi.test.block.BlockTexturePropagationTestOption
+import cn.coostack.cooparticlesapi.test.block.CooFxModelBlockTestOption
+import cn.coostack.cooparticlesapi.test.block.OrbitalRailgunBlockTestOption
+import cn.coostack.cooparticlesapi.test.block.ProceduralTerrainMappingBlockTestOption
 import cn.coostack.cooparticlesapi.test.block.StarfieldFboBlockTypeTestOption
 import cn.coostack.cooparticlesapi.test.options.display.TestBlockDisplayEntity
 import cn.coostack.cooparticlesapi.test.options.particle.composition.DynamicCParticleComposition
@@ -43,7 +47,6 @@ import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestSpreadPoint
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestTransformGPUEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.event.TestCollideEventHandler
 import cn.coostack.cooparticlesapi.test.options.particle.style.RomaMagicTestStyle
-import cn.coostack.cooparticlesapi.test.options.renderer.PostEffectDemoOptions
 import cn.coostack.cooparticlesapi.test.options.renderer.world.DemoWorldRenderEffectOptions
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
@@ -74,7 +77,10 @@ class BlockAPITestGroupBuilder(private val player: Player) : TestGroupBuilder {
                 DemoWorldRenderEffectOptions.maskBloomStraightLaser(player)
             }
             .appendOption {
-                PostEffectDemoOptions.orbitalRailgun(player)
+                OrbitalRailgunBlockTestOption(player)
+            }
+            .appendOption {
+                ProceduralTerrainMappingBlockTestOption(player)
             }
             .appendOption {
                 SimpleCompositionOption(
@@ -82,7 +88,6 @@ class BlockAPITestGroupBuilder(private val player: Player) : TestGroupBuilder {
                 ).onPlayerUpdate { player, composition ->
                     composition.direction = player.forward
                     composition.teleportTo(player.position())
-
                 }
             }
             .appendOption {
@@ -322,6 +327,17 @@ class BlockAPITestGroupBuilder(private val player: Player) : TestGroupBuilder {
             .appendOption {
                 StarfieldFboBlockTypeTestOption(player)
             }
+            .appendOption {
+                CooFxModelBlockTestOption(player)
+            }
+            .appendOption {
+                CooFxModelBlockTestOption(
+                    player = player,
+                    sceneMode = CooFxSceneMode.CAMERA_ONLY,
+                    testOptionId = CooFxModelBlockTestOption.CAMERA_OPTION_ID,
+                )
+            }
+
     }
 
     companion object {

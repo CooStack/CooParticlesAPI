@@ -4,6 +4,7 @@ import cn.coostack.cooparticlesapi.annotations.events.EventHandler
 import cn.coostack.cooparticlesapi.annotations.events.EventListener
 import cn.coostack.cooparticlesapi.event.events.entity.player.PlayerLoggedInEvent
 import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainEffectManager
+import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainMappingManager
 import net.minecraft.server.level.ServerPlayer
 
 /** 玩家登录时补发当前维度的持久方块效果组。 */
@@ -13,5 +14,6 @@ object CooTerrainEffectSyncListener {
     fun onPlayerLoggedIn(event: PlayerLoggedInEvent) {
         val player = event.player as? ServerPlayer ?: return
         CooTerrainEffectManager.syncTo(player)
+        CooTerrainMappingManager.syncTo(player)
     }
 }

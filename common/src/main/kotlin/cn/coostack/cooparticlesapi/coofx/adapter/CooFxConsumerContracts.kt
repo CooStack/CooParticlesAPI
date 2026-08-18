@@ -1,6 +1,9 @@
 package cn.coostack.cooparticlesapi.coofx.adapter
 
 import net.minecraft.resources.ResourceLocation
+import net.minecraft.server.packs.resources.ResourceManager
+import org.joml.Matrix4f
+import org.joml.Matrix4fc
 import kotlin.math.sqrt
 
 sealed interface CooFxParameterValue {
@@ -41,6 +44,20 @@ data class CooFxWorldTransform(
     }
 }
 
+object CooFxEmitterParameterNames {
+    /** 覆盖一次 burst 的发射数量。 */
+    const val COUNT = "count"
+
+    /** 覆盖 burst 的延迟 tick。 */
+    const val DELAY_TICKS = "delayTicks"
+
+    /** 覆盖 burst 粒子的统一 lifetime tick。 */
+    const val LIFETIME_TICKS = "lifetimeTicks"
+
+    /** 覆盖 emitter 粒子节点 clip 的播放速度。 */
+    const val PLAYBACK_SPEED = "playbackSpeed"
+}
+
 class CooFxPlayRequest(
     val resourceId: ResourceLocation,
     val transform: CooFxWorldTransform,
@@ -55,6 +72,30 @@ class CooFxPlayRequest(
         require(clipId == null || clipId.isNotBlank()) { "Clip id must not be blank" }
         require(emitterId == null || emitterId.isNotBlank()) { "Emitter id must not be blank" }
         require(this.parameterOverrides.keys.all { it.isNotBlank() }) { "Parameter name must not be blank" }
+    }
+}
+
+/**
+ * 创建一个独立模型实例的客户端请求。
+ *
+ * 请求渲染资产选定 scene 中的全部 mesh node，不读取或伪造 emitter。[clipId] 为空时使用第一个
+ * compiled clip；资产没有动画时保持 bind pose。[playbackSpeed] 为零时暂停在起始姿态。
+ */
+class CooFxModelPlayRequest(
+    val resourceId: ResourceLocation,
+    val transform: CooFxWorldTransform,
+    val requestSeed: Long,
+    val clipId: String? = null,
+    val playbackSpeed: Float = 1F,
+) {
+    init {
+        require(clipId == null || clipId.isNotBlank()) { "Clip id must not be blank" }
+        require(playbackSpeed.isFinite() && playbackSpeed >= 0F) {
+            "Model playback speed must be finite and non-negative"
+        }
+        require(transform.x.toFloat().isFinite() && transform.y.toFloat().isFinite() && transform.z.toFloat().isFinite()) {
+            "Model world position must fit the float instance ABI"
+        }
     }
 }
 
@@ -100,15 +141,34 @@ sealed interface CooFxPlayResult {
     data class Failed(val failure: CooFxPlaybackFailure) : CooFxPlayResult
 }
 
-data class CooFxFrameRequest(
+/** 纯模型实例创建结果；与需要 emitter 的粒子播放结果保持类型隔离。 */
+sealed interface CooFxModelPlayResult {
+    data class Started(val handle: CooFxPlaybackHandle) : CooFxModelPlayResult
+    data class Queued(val requestId: Long) : CooFxModelPlayResult
+    data class Failed(val failure: CooFxPlaybackFailure) : CooFxModelPlayResult
+}
+
+class CooFxFrameRequest(
     val partialTick: Float,
-    val backendCapabilitySignature: String
+    val backendCapabilitySignature: String,
+    viewMatrix: Matrix4fc,
+    projectionMatrix: Matrix4fc,
+    val cameraX: Double = 0.0,
+    val cameraY: Double = 0.0,
+    val cameraZ: Double = 0.0,
 ) {
+    val viewMatrix = Matrix4f(viewMatrix)
+    val projectionMatrix = Matrix4f(projectionMatrix)
+
     init {
         require(partialTick.isFinite() && partialTick in 0.0F..1.0F) {
             "Partial tick must be finite and between 0 and 1"
         }
         require(backendCapabilitySignature.isNotBlank()) { "Backend capability signature must not be blank" }
+        require(viewMatrix.isFinite && projectionMatrix.isFinite) { "Frame matrices must be finite" }
+        require(cameraX.isFinite() && cameraY.isFinite() && cameraZ.isFinite()) {
+            "Frame camera position must be finite"
+        }
     }
 }
 
@@ -123,6 +183,7 @@ interface CooFxConsumerRuntime {
     fun tickClient()
     fun renderWorldFrame(request: CooFxFrameRequest)
     fun clearTransientWorldState()
-    fun reloadResources()
+    fun reloadResources(resourceManager: ResourceManager)
+    fun releaseRenderResources()
     fun stopClient()
 }

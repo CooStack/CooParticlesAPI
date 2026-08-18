@@ -1,5 +1,7 @@
 package cn.coostack.cooparticlesapi.coofx.runtime.mesh
 
+import cn.coostack.cooparticlesapi.coofx.render.compiled.CooFxCompiledRenderPackage
+import cn.coostack.cooparticlesapi.coofx.runtime.mesh.render.CooFxMeshBatchKey
 import cn.coostack.cooparticlesapi.coofx.runtime.mesh.render.CooFxMeshBatcher
 import cn.coostack.cooparticlesapi.coofx.runtime.mesh.render.CooFxMeshEmitterTransformHistory
 import cn.coostack.cooparticlesapi.coofx.runtime.mesh.render.CooFxMeshInstanceBatch
@@ -30,6 +32,11 @@ class CooFxMeshParticleManager(
 
     val particleCount: Int
         get() = store.size
+
+    fun isEmitterActive(runtimeId: Long): Boolean = runtimeId in emitters
+
+    var droppedParticleCount: Long = 0L
+        private set
 
     /** 注册发射器，并从 asset/request seed 派生独立 emitter seed。 */
     fun startEmitter(
@@ -72,23 +79,53 @@ class CooFxMeshParticleManager(
     /** 先推进现有粒子，再按稳定的发射器注册顺序处理当前 tick 的生成计划。 */
     fun tick() {
         simulator.tick(store)
-        emitters.forEach { (runtimeId, state) ->
-            if (!state.stopped) emitScheduled(runtimeId, state)
+        val iterator = emitters.iterator()
+        while (iterator.hasNext()) {
+            val (runtimeId, state) = iterator.next()
+            if (state.stopped) {
+                if (!store.containsEmitterParticles(runtimeId)) iterator.remove()
+                continue
+            }
+            emitScheduled(runtimeId, state)
             state.ageTicks++
+            if (state.scheduleComplete() && !store.containsEmitterParticles(runtimeId)) {
+                iterator.remove()
+            }
         }
     }
 
     /** 为渲染阶段构建按 batch key 和 stable id 排序的连续实例批次。 */
-    fun buildBatches(): List<CooFxMeshInstanceBatch> = batcher.build(store) { runtimeId ->
-        emitters[runtimeId]?.let { state ->
-            CooFxMeshEmitterTransformHistory(state.previousTransform, state.currentTransform)
-        }
-    }
+    fun buildBatches(
+        partialTick: Float = 1F,
+        poseResolver: (CooFxMeshBatchKey) -> CooFxCompiledRenderPackage? = { null },
+    ): List<CooFxMeshInstanceBatch> = buildBatches(
+        partialTick = partialTick,
+        poseResolver = poseResolver,
+        packedLightResolver = null,
+    )
+
+    /** 为渲染阶段构建批次，并按当前粒子世界位置解析 packed light。 */
+    fun buildBatches(
+        partialTick: Float,
+        poseResolver: (CooFxMeshBatchKey) -> CooFxCompiledRenderPackage?,
+        packedLightResolver: ((Vector3f) -> Int)?,
+    ): List<CooFxMeshInstanceBatch> = batcher.build(
+        store = store,
+        transformResolver = { runtimeId ->
+            emitters[runtimeId]?.let { state ->
+                CooFxMeshEmitterTransformHistory(state.previousTransform, state.currentTransform)
+            }
+        },
+        partialTick = partialTick,
+        poseResolver = poseResolver,
+        packedLightResolver = packedLightResolver,
+    )
 
     /** 清空所有发射器与粒子实例，不改变已分配容量。 */
     fun clear() {
         emitters.clear()
         store.clear()
+        droppedParticleCount = 0L
     }
 
     private fun emitScheduled(runtimeId: Long, state: EmitterState) {
@@ -117,7 +154,14 @@ class CooFxMeshParticleManager(
         val definition = state.definition
         val ordinal = state.emissionOrdinal++
         val particleSeed = mix64(state.emitterSeed xor ordinal)
-        val variant = selectVariant(definition, particleSeed)
+        val variants = when (definition.selectionMode) {
+            CooFxMeshSelectionMode.ALL -> definition.variants
+            else -> listOf(selectVariant(definition, particleSeed))
+        }
+        if (store.capacity - store.size < variants.size) {
+            droppedParticleCount += variants.size
+            return
+        }
         val localPosition = sample(definition.position, particleSeed, "position")
         val localVelocity = sample(definition.velocity, particleSeed, "velocity")
         val localAcceleration = sample(definition.acceleration, particleSeed, "acceleration")
@@ -140,34 +184,36 @@ class CooFxMeshParticleManager(
         }
         val rotation = if (worldSpace) Quaternionf(transform.rotation).mul(localRotation).normalize() else localRotation
         val scale = if (worldSpace) localScale.mul(transform.scale, Vector3f()) else localScale
-        val stableParticleId = nextStableParticleId++
-        store.spawn(
-            CooFxMeshParticleSpawn(
-                stableParticleId = stableParticleId,
-                particleSeed = particleSeed,
-                emitterRuntimeId = runtimeId,
-                simulationSpace = definition.simulationSpace,
-                batchKey = variant.batchKey,
-                position = position,
-                velocity = velocity,
-                acceleration = acceleration,
-                rotation = rotation,
-                angularVelocityRadians = sample(
-                    definition.angularVelocityRadians,
-                    particleSeed,
-                    "angular_velocity",
-                ),
-                scale = scale,
-                lifetimeTicks = sampleLifetime(definition.lifetimeTicks, particleSeed),
-                color = sample(definition.color, particleSeed, "color"),
-                packedLight = definition.packedLight,
-                clipIndex = definition.clipIndex,
-                playbackSpeed = definition.playbackSpeed,
-                meshVariant = variant.meshVariant,
-                materialVariant = variant.materialVariant,
-                forces = definition.forces,
+        val angularVelocity = sample(definition.angularVelocityRadians, particleSeed, "angular_velocity")
+        val lifetime = sampleLifetime(definition.lifetimeTicks, particleSeed)
+        val color = sample(definition.color, particleSeed, "color")
+        variants.forEach { variant ->
+            val spawnedIndex = store.spawn(
+                CooFxMeshParticleSpawn(
+                    stableParticleId = nextStableParticleId++,
+                    particleSeed = particleSeed,
+                    emitterRuntimeId = runtimeId,
+                    simulationSpace = definition.simulationSpace,
+                    batchKey = variant.batchKey,
+                    position = position,
+                    velocity = velocity,
+                    acceleration = acceleration,
+                    rotation = rotation,
+                    angularVelocityRadians = angularVelocity,
+                    scale = scale,
+                    lifetimeTicks = lifetime,
+                    color = color,
+                    packedLight = definition.packedLight,
+                    clipIndex = definition.clipIndex,
+                    playbackSpeed = definition.playbackSpeed,
+                    meshVariant = variant.meshVariant,
+                    materialVariant = variant.materialVariant,
+                    nodeIndex = variant.nodeIndex,
+                    forces = definition.forces,
+                )
             )
-        )
+            if (spawnedIndex < 0) droppedParticleCount++
+        }
     }
 
     private fun selectVariant(definition: CooFxMeshEmitterDefinition, particleSeed: Long): CooFxMeshVariant =
@@ -177,6 +223,8 @@ class CooFxMeshParticleManager(
                 val index = sampleUnit(channelSeed(particleSeed, "variant")) * definition.variants.size
                 definition.variants[index.toInt().coerceAtMost(definition.variants.lastIndex)]
             }
+
+            CooFxMeshSelectionMode.ALL -> error("ALL 模式必须在 selectVariant 前展开")
         }
 
     private fun sample(range: CooFxMeshVectorRange, particleSeed: Long, channel: String): Vector3f {
@@ -239,5 +287,10 @@ class CooFxMeshParticleManager(
         var emissionAccumulator: Float = 0F,
         var burstEmitted: Boolean = false,
         var stopped: Boolean = false,
-    )
+    ) {
+        fun scheduleComplete(): Boolean = when (definition.emissionMode) {
+            CooFxMeshEmissionMode.BURST -> burstEmitted
+            CooFxMeshEmissionMode.CONTINUOUS -> ageTicks >= definition.delayTicks + definition.durationTicks
+        }
+    }
 }

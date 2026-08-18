@@ -38,34 +38,21 @@ enum class CooFxMeshEmissionMode {
 /**
  * 发射器引用 mesh/material 变体时的选择方式。
  *
- * [OBJECT] 固定使用列表中的第一个对象，适合单个 Blender object。
- * [COLLECTION] 使用粒子 seed 在有序列表中确定性选择，列表顺序属于资产契约。
- * 运行时不依赖集合迭代顺序，也不会在列表为空时静默降级。
+ * [OBJECT] 固定使用列表中的第一个对象，适合只有一个 primitive 的 Blender object。
+ * [COLLECTION] 使用粒子 seed 在有序列表中确定性选择一个对象，列表顺序属于资产契约。
+ * [ALL] 为同一逻辑粒子生成列表中的全部 primitive 实例，保证多材质模型保持完整；这些实例共享
+ * seed、初始变换和生命周期，但分别进入自己的 batch key。运行时不依赖集合迭代顺序，也不会在
+ * 列表为空时静默降级。
  */
 enum class CooFxMeshSelectionMode {
     /** 固定选择第一个变体。 */
     OBJECT,
 
-    /** 按粒子 seed 在有序变体集合中选择。 */
+    /** 按粒子 seed 在有序变体集合中选择一个变体。 */
     COLLECTION,
-}
 
-/**
- * CooFX 网格粒子的 alpha 处理方式。
- *
- * [OPAQUE] 表示完全不透明材质，是首版默认能力。
- * [MASK] 表示使用 alpha cutoff 丢弃片元，cutoff bucket 必须进入批次键。
- * [BLEND] 仅保留为可定位拒绝值；首版 runtime 创建批次或发射器时必须拒绝它。
- */
-enum class CooFxMeshAlphaMode {
-    /** 不透明材质，不执行透明混合。 */
-    OPAQUE,
-
-    /** alpha 裁剪材质，允许稳定的 opaque-like 批次排序。 */
-    MASK,
-
-    /** 首版不支持的透明混合材质，传入 runtime 时抛出参数错误。 */
-    BLEND,
+    /** 为同一逻辑粒子生成全部有序变体，适合一个模型包含多个 primitive/material。 */
+    ALL,
 }
 
 /** 发射器在世界中的当前变换；局部粒子在构建实例数据时使用该值。 */
@@ -111,10 +98,12 @@ data class CooFxMeshVariant(
     val batchKey: CooFxMeshBatchKey,
     val meshVariant: Int = 0,
     val materialVariant: Int = 0,
+    val nodeIndex: Int = 0,
 ) {
     init {
         require(meshVariant >= 0) { "Mesh variant must be non-negative" }
         require(materialVariant >= 0) { "Material variant must be non-negative" }
+        require(nodeIndex >= 0) { "Node index must be non-negative" }
     }
 }
 
@@ -180,9 +169,6 @@ data class CooFxMeshEmitterDefinition(
     init {
         require(emitterId.isNotBlank()) { "Emitter id must not be blank" }
         require(variants.isNotEmpty()) { "Emitter must contain at least one variant" }
-        require(variants.none { it.batchKey.alphaMode == CooFxMeshAlphaMode.BLEND }) {
-            "Mesh particle alpha BLEND is not supported"
-        }
         require(delayTicks >= 0) { "Delay must be non-negative" }
         require(durationTicks > 0) { "Duration must be positive" }
         require(emissionCount >= 0) { "Emission count must be non-negative" }
@@ -221,6 +207,7 @@ data class CooFxMeshParticleSpawn(
     val playbackSpeed: Float,
     val meshVariant: Int,
     val materialVariant: Int,
+    val nodeIndex: Int = 0,
     val forces: CooFxMeshForces,
 )
 

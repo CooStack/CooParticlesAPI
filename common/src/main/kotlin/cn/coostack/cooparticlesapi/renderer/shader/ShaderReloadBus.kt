@@ -1,6 +1,7 @@
 package cn.coostack.cooparticlesapi.renderer.shader
 
 import cn.coostack.cooparticlesapi.CooParticlesAPIClient
+import cn.coostack.cooparticlesapi.coofx.client.CooFXClient
 import cn.coostack.cooparticlesapi.display.CooRenderTypeResourceRegistry
 import cn.coostack.cooparticlesapi.particles.CooParticleTextureSheet
 import cn.coostack.cooparticlesapi.renderer.shader.buffer.ShaderBufferCache
@@ -147,6 +148,7 @@ object ShaderReloadBus {
             MCShaders.init(resourceManager)
             CooParticleTextureSheet.reloadShader(resourceManager)
             CooRenderTypeResourceRegistry.reload(resourceManager)
+            CooFXClient.reloadResources(resourceManager)
             ShaderProgramRegistry.invalidateAll()
             ShaderBufferCache.releaseAll()
             CooParticlesAPIClient.reloadShaderPrograms()

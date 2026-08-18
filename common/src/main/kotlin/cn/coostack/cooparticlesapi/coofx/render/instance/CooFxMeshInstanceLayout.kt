@@ -1,6 +1,13 @@
 package cn.coostack.cooparticlesapi.coofx.render.instance
 
+import cn.coostack.cooparticlesapi.coofx.runtime.mesh.CooFxMeshEmitterTransform
+import cn.coostack.cooparticlesapi.coofx.runtime.mesh.CooFxMeshSimulationSpace
+import cn.coostack.cooparticlesapi.coofx.runtime.mesh.storage.CooFxMeshParticleStore
+import cn.coostack.cooparticlesapi.extend.plus
+import cn.coostack.cooparticlesapi.extend.times
 import kotlin.math.sqrt
+import org.joml.Quaternionf
+import org.joml.Vector3f
 
 /**
  * CooFX 实例 ABI 中九个 vec4 槽位的语义。
@@ -126,6 +133,19 @@ object CooFxMeshInstanceLayout {
     const val COMPONENTS_PER_SLOT = 4
     const val FLOAT_COUNT = SLOT_COUNT * COMPONENTS_PER_SLOT
     const val STRIDE_BYTES = FLOAT_COUNT * Float.SIZE_BYTES
+    const val VECTOR_COUNT = SLOT_COUNT
+    const val FLOATS_PER_VECTOR = COMPONENTS_PER_SLOT
+    const val BYTE_STRIDE = STRIDE_BYTES
+    const val CURRENT_POSITION = 0
+    const val PREVIOUS_POSITION = 4
+    const val CURRENT_ROTATION = 8
+    const val PREVIOUS_ROTATION = 12
+    const val CURRENT_SCALE = 16
+    const val PREVIOUS_SCALE = 20
+    const val COLOR_OFFSET = 24
+    const val COLOR = COLOR_OFFSET
+    const val CLIP = 28
+    const val IDENTITY = 32
 
     fun attributes(firstShaderLocation: Int): List<CooFxInstanceAttribute> {
         require(firstShaderLocation >= 0) { "First shader location must not be negative" }
@@ -153,5 +173,82 @@ object CooFxMeshInstanceLayout {
             data.clipTimeSeconds, data.previousClipTimeSeconds, data.playbackSpeed, data.clipIndex.toFloat(),
             seedLow, seedHigh, data.flags.toFloat(), data.stableParticleIdLow24.toFloat()
         )
+    }
+
+    internal fun write(
+        store: CooFxMeshParticleStore,
+        index: Int,
+        target: FloatArray,
+        targetFloatOffset: Int,
+        currentEmitterTransform: CooFxMeshEmitterTransform?,
+        previousEmitterTransform: CooFxMeshEmitterTransform?,
+        packedLightResolver: ((Vector3f) -> Int)? = null,
+    ) {
+        require(targetFloatOffset >= 0 && targetFloatOffset + FLOAT_COUNT <= target.size) { "实例目标范围越界" }
+        val currentPosition = worldPosition(store, index, store.positions, currentEmitterTransform)
+        val previousPosition = worldPosition(store, index, store.previousPositions, previousEmitterTransform)
+        val currentRotation = worldRotation(store, index, store.rotations, currentEmitterTransform)
+        val previousRotation = worldRotation(store, index, store.previousRotations, previousEmitterTransform)
+        val currentScale = worldScale(store, index, currentEmitterTransform)
+        val previousScale = worldScale(store, index, previousEmitterTransform)
+        val color = store.vector4(store.colors, index)
+        val base = targetFloatOffset
+        putVector3(target, base + CURRENT_POSITION, currentPosition)
+        target[base + CURRENT_POSITION + 3] = store.ages[index].toFloat()
+        putVector3(target, base + PREVIOUS_POSITION, previousPosition)
+        target[base + PREVIOUS_POSITION + 3] = store.lifetimes[index].toFloat()
+        putQuaternion(target, base + CURRENT_ROTATION, currentRotation)
+        putQuaternion(target, base + PREVIOUS_ROTATION, previousRotation)
+        putVector3(target, base + CURRENT_SCALE, currentScale)
+        val packedLight = packedLightResolver?.invoke(currentPosition) ?: store.packedLights[index]
+        require(packedLight in 0..0xFFFFFF) { "Resolved particle packed light must fit in 24 bits" }
+        target[base + CURRENT_SCALE + 3] = packedLight.toFloat()
+        putVector3(target, base + PREVIOUS_SCALE, previousScale)
+        target[base + PREVIOUS_SCALE + 3] = store.materialVariants[index].toFloat()
+        target[base + COLOR] = color.x
+        target[base + COLOR + 1] = color.y
+        target[base + COLOR + 2] = color.z
+        target[base + COLOR + 3] = color.w
+        target[base + CLIP] = store.clipTimes[index]
+        target[base + CLIP + 1] = store.previousClipTimes[index]
+        target[base + CLIP + 2] = store.playbackSpeeds[index]
+        target[base + CLIP + 3] = store.clipIndices[index].toFloat()
+        val seed = store.particleSeeds[index]
+        val flags = if (store.simulationSpace(index) == CooFxMeshSimulationSpace.LOCAL) 1 else 0
+        target[base + IDENTITY] = (seed and 0xFFFFL).toFloat()
+        target[base + IDENTITY + 1] = ((seed ushr 16) and 0xFFFFL).toFloat()
+        target[base + IDENTITY + 2] = flags.toFloat()
+        target[base + IDENTITY + 3] = (store.stableParticleIds[index] and 0xFFFFFFL).toFloat()
+    }
+
+    private fun worldPosition(store: CooFxMeshParticleStore, index: Int, source: FloatArray, transform: CooFxMeshEmitterTransform?): Vector3f {
+        val position = store.vector3(source, index)
+        if (store.simulationSpace(index) != CooFxMeshSimulationSpace.LOCAL || transform == null) return position
+        return transform.position + transform.rotation.transform(position.mul(transform.scale, Vector3f()), Vector3f())
+    }
+
+    private fun worldRotation(store: CooFxMeshParticleStore, index: Int, source: FloatArray, transform: CooFxMeshEmitterTransform?): Quaternionf {
+        val rotation = store.quaternion(source, index)
+        if (store.simulationSpace(index) != CooFxMeshSimulationSpace.LOCAL || transform == null) return rotation
+        return Quaternionf(transform.rotation).mul(rotation).normalize()
+    }
+
+    private fun worldScale(store: CooFxMeshParticleStore, index: Int, transform: CooFxMeshEmitterTransform?): Vector3f {
+        val scale = store.vector3(store.scales, index)
+        if (store.simulationSpace(index) != CooFxMeshSimulationSpace.LOCAL || transform == null) return scale
+        return scale.mul(transform.scale, Vector3f())
+    }
+
+    private fun putVector3(target: FloatArray, offset: Int, value: Vector3f) {
+        target[offset] = value.x
+        target[offset + 1] = value.y
+        target[offset + 2] = value.z
+    }
+
+    private fun putQuaternion(target: FloatArray, offset: Int, value: Quaternionf) {
+        target[offset] = value.x
+        target[offset + 1] = value.y
+        target[offset + 2] = value.z
+        target[offset + 3] = value.w
     }
 }

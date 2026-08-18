@@ -173,6 +173,13 @@ class CooPipelineNodeBuilder<T : Any> internal constructor(
         textureSlot: Int = inputs.size
     ) = input(sampler, CooPipelineTextureSource.SceneDepth, optional, textureSlot)
 
+    /** 声明 terrain opaque depth 输入；默认 optional，缺失时绑定纹理 0 并由 shader 处理不可用状态。 */
+    fun inputTerrainDepth(
+        sampler: String = "TerrainDepth",
+        optional: Boolean = true,
+        textureSlot: Int = inputs.size
+    ) = input(sampler, CooPipelineTextureSource.TerrainDepth, optional, textureSlot)
+
     /**
      * 在 `CooPipelineNodeBuilder` 中配置 `inputFramebuffer`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
      *
@@ -723,6 +730,12 @@ class CooRenderPipelineBuilder<T : Any> internal constructor(
     fun inputSceneDepth(sampler: String = "SceneDepth", optional: Boolean = false, textureSlot: Int = 1) = apply {
         implicitWorldUsed = true
         implicitWorld.inputSceneDepth(sampler, optional, textureSlot)
+    }
+
+    /** 声明 terrain opaque depth 输入；默认 optional，缺失时绑定纹理 0。 */
+    fun inputTerrainDepth(sampler: String = "TerrainDepth", optional: Boolean = true, textureSlot: Int = 1) = apply {
+        implicitWorldUsed = true
+        implicitWorld.inputTerrainDepth(sampler, optional, textureSlot)
     }
 
     /**

@@ -14,9 +14,12 @@
   },
   "client": [
     "CooParticleCameraMixin",
+    "CooFxCameraMouseMixin",
+    "GameRendererCooFxCameraMixin",
     "GameRendererTerrainFinishMixin",
     "LevelRendererMixin",
     "MainTargetMixin",
+    "MinecraftClientLifecycleMixin",
     "MutableSpriteSetAccessor",
     "ParticleEngineAccessor",
     "DebugScreenOverlayMixin",

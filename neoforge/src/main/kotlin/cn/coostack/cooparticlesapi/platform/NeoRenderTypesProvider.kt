@@ -13,6 +13,8 @@ import cn.coostack.cooparticlesapi.display.CooRenderTypesProvider
 import cn.coostack.cooparticlesapi.display.CooShaderStateResolver
 import cn.coostack.cooparticlesapi.test.options.display.MCShaders
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooRenderPipeline
+import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainEffectComposition
+import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainMappingBatchKey
 import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainPipelineManager
 import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainRenderStateShard
 import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainVertexFormats
@@ -202,7 +204,14 @@ object NeoRenderTypesProvider : CooRenderTypesProvider {
                     })
                     .setTextureState(RenderStateShard.TextureStateShard(TextureAtlas.LOCATION_BLOCKS, false, mipmap))
                     .setTransparencyState(
-                        if (sorted) RenderStateShard.TRANSLUCENT_TRANSPARENCY else RenderStateShard.NO_TRANSPARENCY
+                        when (batchKey) {
+                            is CooTerrainMappingBatchKey -> when (batchKey.composition) {
+                                CooTerrainEffectComposition.REPLACE -> RenderStateShard.NO_TRANSPARENCY
+                                CooTerrainEffectComposition.ALPHA_OVER -> RenderStateShard.TRANSLUCENT_TRANSPARENCY
+                                CooTerrainEffectComposition.ADDITIVE -> RenderStateShard.ADDITIVE_TRANSPARENCY
+                            }
+                            else -> if (sorted) RenderStateShard.TRANSLUCENT_TRANSPARENCY else RenderStateShard.NO_TRANSPARENCY
+                        }
                     )
                     .setCullState(RenderStateShard.CULL)
                     .setDepthTestState(RenderStateShard.LEQUAL_DEPTH_TEST)

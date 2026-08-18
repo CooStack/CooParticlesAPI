@@ -4,10 +4,19 @@ import org.joml.Matrix4f
 import org.joml.Matrix4fc
 
 /** 一个稳定 node index 对应的父节点关系和绑定局部姿态。 */
-data class CooFxPoseNode(
+class CooFxPoseNode(
     val parentIndex: Int,
-    val bindPose: CooFxLocalPose
-)
+    val bindPose: CooFxLocalPose,
+    bindMatrix: Matrix4fc? = null,
+) {
+    private val bindMatrix = bindMatrix?.let(::Matrix4f)
+
+    internal fun localMatrix(track: CooFxTransformTrack?, timeSeconds: Float): Matrix4f {
+        if (track == null && bindMatrix != null) return Matrix4f(bindMatrix)
+        val pose = track?.sample(timeSeconds, bindPose) ?: bindPose
+        return Matrix4f().translationRotateScale(pose.translation, pose.rotation, pose.scale)
+    }
+}
 
 /** 节点姿态采样结果，列表索引始终等于稳定 node index。 */
 class CooFxPoseSnapshot(
@@ -40,8 +49,7 @@ class CooFxPoseEvaluator(nodes: List<CooFxPoseNode>) {
         }
         val worldMatrices = ArrayList<Matrix4f>(nodes.size)
         nodes.forEachIndexed { index, node ->
-            val pose = localPoses[index]
-            val local = Matrix4f().translationRotateScale(pose.translation, pose.rotation, pose.scale)
+            val local = node.localMatrix(tracksByNode[index], timeSeconds)
             worldMatrices += if (node.parentIndex < 0) local else Matrix4f(worldMatrices[node.parentIndex]).mul(local)
         }
         return CooFxPoseSnapshot(localPoses, worldMatrices)

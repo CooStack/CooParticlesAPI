@@ -32,6 +32,7 @@ object ClientRenderPipelineManager {
     private val frameViewMatrix = Matrix4f()
     private val frameProjectionMatrix = Matrix4f()
     private var lastLoggedTargetSignature: String? = null
+    internal var cooFxWorldPassDelegate: ((RenderFrameContext) -> Unit)? = null
     private val backendHooks = object : RenderBackendHooks {
         /**
          * 执行 `ClientRenderPipelineManager` 定义的 `cacheFrameState` 操作；输入和返回值用于该组件当前的渲染职责。
@@ -53,6 +54,9 @@ object ClientRenderPipelineManager {
          */
         override fun renderWorldPass(context: RenderFrameContext) {
             ClientRenderEntityManager.renderWorldPass(context.tickDelta, context.viewMatrix, context.projMatrix)
+            if (!CooParticlesAPIClient.checkIrisShaderPackUsed()) {
+                cooFxWorldPassDelegate?.invoke(context)
+            }
         }
 
         /** 在 Iris final pass 前捕获带有效世界深度的场景 attachment。 */
@@ -128,6 +132,7 @@ object ClientRenderPipelineManager {
         frameActive = false
         scenePostCaptured = false
         scenePostExecuted = false
+        cooFxWorldPassDelegate = null
     }
 
     /**
@@ -172,6 +177,19 @@ object ClientRenderPipelineManager {
     fun captureIrisScenePost() {
         if (!frameActive || !CooParticlesAPIClient.checkIrisShaderPackUsed()) return
         runStages(listOf(RenderFrameStage.SCENE_CAPTURE), frameTickDelta, frameViewMatrix, frameProjectionMatrix)
+    }
+
+    /** Iris entity G-buffer 仍有效时提交 CooFX 世界批次。 */
+    fun renderIrisCooFxWorldPass() {
+        if (!frameActive || !CooParticlesAPIClient.checkIrisShaderPackUsed()) return
+        val context = buildFrameContext(
+            frameTickDelta,
+            frameViewMatrix,
+            frameProjectionMatrix,
+            RenderFrameStage.WORLD_PASS,
+        )
+        currentFrameContext = context
+        cooFxWorldPassDelegate?.invoke(context)
     }
 
     /** Iris 在 shader pack final pass 完成后调用。 */

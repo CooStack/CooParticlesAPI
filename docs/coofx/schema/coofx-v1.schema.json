@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cooparticlesapi:coofx/schema/v1",
+  "title": "CooFX Asset v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "coordinateSystem", "assetSeed", "model"],
+  "properties": {
+    "$schema": { "const": "cooparticlesapi:coofx/schema/v1" },
+    "schemaVersion": { "const": 1 },
+    "coordinateSystem": { "const": "coofx_rh_y_up_z_south" },
+    "assetSeed": { "type": "string", "pattern": "^[0-9a-f]{16}$" },
+    "model": { "$ref": "#/$defs/resource" },
+    "scene": { "type": "integer", "minimum": 0 },
+    "clips": { "type": "array", "items": { "$ref": "#/$defs/clip" } },
+    "materials": { "type": "array", "items": { "$ref": "#/$defs/material" } },
+    "emitters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "count", "lifetimeTicks"],
+        "anyOf": [
+          { "required": ["node"] },
+          { "required": ["mesh"] }
+        ],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "node": { "oneOf": [{ "type": "integer", "minimum": 0 }, { "type": "string", "minLength": 1 }] },
+          "mesh": { "oneOf": [{ "type": "integer", "minimum": 0 }, { "type": "string", "minLength": 1 }] },
+          "count": { "type": "integer", "minimum": 0 },
+          "delayTicks": { "type": "integer", "minimum": 0, "default": 0 },
+          "lifetimeTicks": { "type": "integer", "minimum": 1 },
+          "velocity": { "$ref": "#/$defs/range3" },
+          "rotationRadians": { "$ref": "#/$defs/range3" },
+          "scale": { "$ref": "#/$defs/positiveRange3" }
+        }
+      }
+    },
+    "requiredExtensions": { "type": "array", "items": { "$ref": "#/$defs/resource" }, "uniqueItems": true },
+    "extensions": { "type": "object", "propertyNames": { "$ref": "#/$defs/resource" }, "additionalProperties": true }
+  },
+  "$defs": {
+    "resource": {
+      "type": "string",
+      "pattern": "^(?:[a-z0-9_.-]+:)?[a-z0-9_./-]+$",
+      "not": { "pattern": "(?:^|/)\\.\\.(?:/|$)|^(?:https?|file|data):|^/" }
+    },
+    "clip": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "animation"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "animation": {
+          "oneOf": [
+            { "type": "integer", "minimum": 0 },
+            { "type": "string", "minLength": 1 }
+          ]
+        },
+        "loopMode": { "enum": ["ONCE", "LOOP", "PING_PONG"], "default": "ONCE" }
+      }
+    },
+    "material": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "gltfMaterial"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "gltfMaterial": {
+          "oneOf": [
+            { "type": "integer", "minimum": 0 },
+            { "type": "string", "minLength": 1 }
+          ]
+        },
+        "baseColorTexture": { "$ref": "#/$defs/resource" },
+        "alphaMode": { "enum": ["OPAQUE", "MASK", "BLEND"] },
+        "alphaCutoff": { "type": "number", "minimum": 0, "maximum": 1 },
+        "doubleSided": { "type": "boolean" }
+      }
+    },
+    "vector3": {
+      "type": "array",
+      "prefixItems": [{ "type": "number" }, { "type": "number" }, { "type": "number" }],
+      "items": false,
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "range3": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["min", "max"],
+      "properties": {
+        "min": { "$ref": "#/$defs/vector3" },
+        "max": { "$ref": "#/$defs/vector3" }
+      }
+    },
+    "positiveRange3": {
+      "allOf": [
+        { "$ref": "#/$defs/range3" },
+        {
+          "properties": {
+            "min": { "items": { "exclusiveMinimum": 0 } },
+            "max": { "items": { "exclusiveMinimum": 0 } }
+          }
+        }
+      ]
+    }
+  }
+}

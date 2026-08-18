@@ -18,6 +18,8 @@ object RenderSceneTargets {
     val SCENE_COLOR: ResourceLocation = id("scene_color")
     /** 场景深度副本。 */
     val SCENE_DEPTH: ResourceLocation = id("scene_depth")
+    /** terrain opaque depth 的逻辑资源。 */
+    val TERRAIN_DEPTH: ResourceLocation = id("terrain_depth")
     /** bloom 相关的中间目标。 */
     val BLOOM: ResourceLocation = id("bloom")
     /** mask 相关的中间目标。 */

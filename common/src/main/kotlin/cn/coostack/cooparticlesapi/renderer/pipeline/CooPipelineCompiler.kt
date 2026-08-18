@@ -143,6 +143,10 @@ internal object CooPipelineCompiler {
                 targets += RenderSceneTargets.SCENE_DEPTH
                 capability(RenderBackendCapability.SCENE_DEPTH_READ)
             }
+            CooPipelineTextureSource.TerrainDepth -> {
+                targets += RenderSceneTargets.TERRAIN_DEPTH
+                capability(RenderBackendCapability.TERRAIN_DEPTH_READ)
+            }
             is CooPipelineTextureSource.FramebufferColor -> targets += source.target
             CooPipelineTextureSource.Mask -> targets += RenderSceneTargets.MASK
             CooPipelineTextureSource.Temporary -> targets += RenderSceneTargets.TEMPORARY

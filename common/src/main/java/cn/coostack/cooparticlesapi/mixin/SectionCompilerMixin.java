@@ -24,6 +24,7 @@ import net.minecraft.world.level.material.FluidState;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 
+import java.util.List;
 import java.util.Map;
 
 @Mixin(SectionCompiler.class)
@@ -47,27 +48,26 @@ public abstract class SectionCompilerMixin {
             @Local(argsOnly = true) SectionBufferBuilderPack sectionBufferBuilderPack
     ) {
         RenderType baseLayer = ItemBlockRenderTypes.getRenderLayer(fluidState);
-        RenderType overlayLayer = CooTerrainPipelineManager.resolveOverlayRenderType(state, baseLayer, pos);
-        if (overlayLayer == null || CooTerrainPipelineManager.shouldPreserveVanillaTerrainGeometry()) {
+        List<RenderType> overlayLayers = CooTerrainPipelineManager.resolveOverlayRenderTypes(state, baseLayer, pos);
+        if (overlayLayers.isEmpty() || CooTerrainPipelineManager.shouldPreserveVanillaTerrainGeometry()) {
             original.call(dispatcher, pos, level, consumer, state, fluidState);
         }
-        if (overlayLayer == null) {
-            return;
+        for (RenderType overlayLayer : overlayLayers) {
+            BufferBuilder overlayBuffer = renderedLayers.computeIfAbsent(
+                    overlayLayer,
+                    key -> new BufferBuilder(
+                            sectionBufferBuilderPack.buffer(key),
+                            key.mode(),
+                            CooTerrainPipelineManager.vertexFormat(key, key.format())
+                    )
+            );
+            VertexConsumer overlayConsumer = CooTerrainPipelineManager.decorateVertexConsumer(
+                    overlayLayer,
+                    pos,
+                    overlayBuffer
+            );
+            original.call(dispatcher, pos, level, overlayConsumer, state, fluidState);
         }
-        BufferBuilder overlayBuffer = renderedLayers.computeIfAbsent(
-                overlayLayer,
-                key -> new BufferBuilder(
-                        sectionBufferBuilderPack.buffer(key),
-                        key.mode(),
-                        CooTerrainPipelineManager.vertexFormat(key, key.format())
-                )
-        );
-        VertexConsumer overlayConsumer = CooTerrainPipelineManager.decorateVertexConsumer(
-                overlayLayer,
-                pos,
-                overlayBuffer
-        );
-        original.call(dispatcher, pos, level, overlayConsumer, state, fluidState);
     }
 
     @WrapOperation(
@@ -92,8 +92,8 @@ public abstract class SectionCompilerMixin {
             @Local(argsOnly = true) SectionBufferBuilderPack sectionBufferBuilderPack
     ) {
         RenderType baseLayer = ItemBlockRenderTypes.getChunkRenderType(state);
-        RenderType overlayLayer = CooTerrainPipelineManager.resolveOverlayRenderType(state, baseLayer, pos);
-        if (overlayLayer == null || CooTerrainPipelineManager.shouldPreserveVanillaTerrainGeometry()) {
+        List<RenderType> overlayLayers = CooTerrainPipelineManager.resolveOverlayRenderTypes(state, baseLayer, pos);
+        if (overlayLayers.isEmpty() || CooTerrainPipelineManager.shouldPreserveVanillaTerrainGeometry()) {
             poseStack.pushPose();
             try {
                 original.call(dispatcher, state, pos, level, poseStack, consumer, checkSides, random);
@@ -101,28 +101,27 @@ public abstract class SectionCompilerMixin {
                 poseStack.popPose();
             }
         }
-        if (overlayLayer == null) {
-            return;
-        }
-        BufferBuilder overlayBuffer = renderedLayers.computeIfAbsent(
-                overlayLayer,
-                key -> new BufferBuilder(
-                        sectionBufferBuilderPack.buffer(key),
-                        key.mode(),
-                        CooTerrainPipelineManager.vertexFormat(key, key.format())
-                )
-        );
-        VertexConsumer overlayConsumer = CooTerrainPipelineManager.decorateVertexConsumer(
-                overlayLayer,
-                pos,
-                overlayBuffer
-        );
-        random.setSeed(state.getSeed(pos));
-        poseStack.pushPose();
-        try {
-            original.call(dispatcher, state, pos, level, poseStack, overlayConsumer, checkSides, random);
-        } finally {
-            poseStack.popPose();
+        for (RenderType overlayLayer : overlayLayers) {
+            BufferBuilder overlayBuffer = renderedLayers.computeIfAbsent(
+                    overlayLayer,
+                    key -> new BufferBuilder(
+                            sectionBufferBuilderPack.buffer(key),
+                            key.mode(),
+                            CooTerrainPipelineManager.vertexFormat(key, key.format())
+                    )
+            );
+            VertexConsumer overlayConsumer = CooTerrainPipelineManager.decorateVertexConsumer(
+                    overlayLayer,
+                    pos,
+                    overlayBuffer
+            );
+            random.setSeed(state.getSeed(pos));
+            poseStack.pushPose();
+            try {
+                original.call(dispatcher, state, pos, level, poseStack, overlayConsumer, checkSides, random);
+            } finally {
+                poseStack.popPose();
+            }
         }
     }
 

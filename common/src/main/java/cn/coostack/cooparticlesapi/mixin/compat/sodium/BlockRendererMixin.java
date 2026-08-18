@@ -17,6 +17,8 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+import java.util.List;
+
 @Mixin(value = BlockRenderer.class, remap = false)
 public abstract class BlockRendererMixin extends AbstractBlockRenderContext {
     @Shadow(remap = false)
@@ -38,11 +40,13 @@ public abstract class BlockRendererMixin extends AbstractBlockRenderContext {
                                                         CallbackInfo info,
                                                         @Local(name = "pass") TerrainRenderPass pass) {
         RenderType baseLayer = CooSodiumTerrainOverlay.resolveBaseLayer(type, material, pass);
-        RenderType overlay = CooTerrainPipelineManager.resolveOverlayRenderType(state, baseLayer, pos);
-        if (overlay == null) {
+        List<RenderType> overlays = CooTerrainPipelineManager.resolveOverlayRenderTypes(state, baseLayer, pos);
+        if (overlays.isEmpty()) {
             return;
         }
-        CooSodiumTerrainOverlay.captureQuad(overlay, pass, pos, quad, vertices);
+        for (RenderType overlay : overlays) {
+            CooSodiumTerrainOverlay.captureQuad(overlay, pass, pos, quad, vertices);
+        }
         if (!CooTerrainPipelineManager.shouldPreserveVanillaTerrainGeometry()) {
             info.cancel();
         }

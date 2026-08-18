@@ -169,6 +169,8 @@ internal enum class PostEffectInputSource {
     SCENE_COLOR,
     /** 当前场景深度纹理，常用于遮挡、边缘或深度衰减。 */
     SCENE_DEPTH,
+    /** terrain opaque depth，缺失时不可绑定颜色纹理。 */
+    TERRAIN_DEPTH,
     /** 当前效果生成的 mask 纹理。 */
     MASK,
     /** bloom 流程中的亮部颜色纹理。 */

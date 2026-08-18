@@ -12,8 +12,8 @@ import static org.lwjgl.opengl.GL11.glPolygonOffset;
 /**
  * 为地形覆盖 RenderType 提供按渲染阶段切换的状态片段。
  *
- * <p>普通覆盖绘制沿用原版 terrain 输出和写入规则；捕获 attachment 时保持调用方 FBO，
- * Iris 最终合成覆盖阶段则只写颜色并启用共面深度偏移。平台 RenderType Provider 的基本组装方式如下：
+ * <p>普通覆盖绘制沿用原版 terrain 输出和写入规则；attachment 捕获和 Iris 最终合成覆盖阶段保持调用方 FBO，
+ * 并对共面地形启用深度偏移。平台 RenderType Provider 的基本组装方式如下：
  * {@code builder.setOutputState(terrainOutput(baseLayer))
  * .setLayeringState(terrainLayering())
  * .setWriteMaskState(terrainWriteMask(baseLayer))}。
@@ -64,23 +64,24 @@ public final class CooTerrainRenderStateShard extends RenderStateShard {
     }
 
     /**
-     * 创建仅在 Iris 最终合成覆盖阶段启用的共面深度偏移。
+     * 创建在 attachment 捕获和 Iris 最终合成覆盖阶段启用的共面深度偏移。
      *
-     * <p>该状态用于避免覆盖几何与保留的原版 terrain 几何产生深度闪烁，离开阶段时会恢复为无偏移。
+     * <p>覆盖几何与原版 terrain 共面；捕获 bloom mask 时同样需要偏移，否则 Iris terrain depth
+     * 会让片元在帧间交替通过 LEQUAL，产生发光闪烁。离开对应阶段时恢复为无偏移。
      *
-     * @return 仅在 Iris 最终合成覆盖阶段启用的共面深度偏移
+     * @return attachment 捕获和 Iris 最终覆盖阶段使用的共面深度偏移
      */
     public static LayeringStateShard terrainLayering() {
         return new LayeringStateShard(
                 "coo_terrain_overlay_layering",
                 () -> {
-                    if (CooTerrainPipelineManager.isFinalCompositeTerrainOverlayActive()) {
+                    if (isOffsetStageActive()) {
                         glEnable(GL_POLYGON_OFFSET_FILL);
                         glPolygonOffset(-1F, -10F);
                     }
                 },
                 () -> {
-                    if (CooTerrainPipelineManager.isFinalCompositeTerrainOverlayActive()) {
+                    if (isOffsetStageActive()) {
                         glPolygonOffset(0F, 0F);
                         glDisable(GL_POLYGON_OFFSET_FILL);
                     }
@@ -88,35 +89,21 @@ public final class CooTerrainRenderStateShard extends RenderStateShard {
         );
     }
 
+    private static boolean isOffsetStageActive() {
+        return CooTerrainPipelineManager.isTerrainAttachmentCaptureActive()
+                || CooTerrainPipelineManager.isFinalCompositeTerrainOverlayActive();
+    }
+
     /**
-     * 创建按当前地形覆盖阶段选择颜色和深度写入范围的状态。
+     * 创建地形覆盖层的只写颜色状态。
      *
-     * <p>Iris 最终合成覆盖阶段只写颜色，避免改动 shader pack 已生成的深度；
-     * 其他阶段沿用基础层是否排序上传对应的原版写入规则。
+     * <p>捕获阶段和最终合成阶段都等价于 {@code COLOR_WRITE.setupRenderState()}。
+     * 捕获和最终合成阶段仍使用相同的颜色写入状态，保证所有阶段一致。
      *
      * @param baseLayer 原方块几何所属的 terrain layer
-     * @return Iris 最终覆盖只写颜色，其他阶段沿用原 terrain 写入规则
+     * @return 始终只写颜色、不写深度的覆盖状态
      */
     public static WriteMaskStateShard terrainWriteMask(RenderType baseLayer) {
-        final WriteMaskStateShard delegate = baseLayer.sortOnUpload() ? COLOR_WRITE : COLOR_DEPTH_WRITE;
-        return new WriteMaskStateShard(true, true) {
-            @Override
-            public void setupRenderState() {
-                if (CooTerrainPipelineManager.isFinalCompositeTerrainOverlayActive()) {
-                    COLOR_WRITE.setupRenderState();
-                } else {
-                    delegate.setupRenderState();
-                }
-            }
-
-            @Override
-            public void clearRenderState() {
-                if (CooTerrainPipelineManager.isFinalCompositeTerrainOverlayActive()) {
-                    COLOR_WRITE.clearRenderState();
-                } else {
-                    delegate.clearRenderState();
-                }
-            }
-        };
+        return COLOR_WRITE;
     }
 }

@@ -201,16 +201,45 @@ data class CooFxDrawRange(
     }
 }
 
+data class CooFxColor4(
+    val red: Float,
+    val green: Float,
+    val blue: Float,
+    val alpha: Float,
+) {
+    init {
+        require(red.isFinite() && green.isFinite() && blue.isFinite() && alpha.isFinite()) {
+            "Color components must be finite"
+        }
+    }
+}
+
+data class CooFxColor3(
+    val red: Float,
+    val green: Float,
+    val blue: Float,
+) {
+    init {
+        require(red.isFinite() && green.isFinite() && blue.isFinite()) {
+            "Color components must be finite"
+        }
+    }
+}
+
 data class CooFxCompiledMaterial(
     val id: String,
     val baseColorTexture: ResourceLocation?,
+    val baseColorFactor: CooFxColor4 = CooFxColor4(1F, 1F, 1F, 1F),
     val alphaMode: CooFxAlphaMode,
     val alphaCutoff: Float,
     val cullMode: CooFxCullMode,
     val depthTest: CooFxDepthTest,
     val depthWrite: Boolean,
     val blendMode: CooFxBlendMode,
-    val lightMode: CooFxLightMode
+    val lightMode: CooFxLightMode,
+    val emissiveTexture: ResourceLocation? = null,
+    val emissiveFactor: CooFxColor3 = CooFxColor3(0F, 0F, 0F),
+    val emissiveStrength: Float = 1F,
 ) {
     init {
         require(id.isNotBlank()) { "Material id must not be blank" }
@@ -219,6 +248,12 @@ data class CooFxCompiledMaterial(
         }
         require(alphaMode == CooFxAlphaMode.MASK || alphaCutoff == 0.0F) {
             "Opaque material must use zero alpha cutoff"
+        }
+        require(emissiveFactor.red >= 0F && emissiveFactor.green >= 0F && emissiveFactor.blue >= 0F) {
+            "Emissive factor components must not be negative"
+        }
+        require(emissiveStrength.isFinite() && emissiveStrength >= 0F) {
+            "Emissive strength must be a non-negative finite value"
         }
     }
 }

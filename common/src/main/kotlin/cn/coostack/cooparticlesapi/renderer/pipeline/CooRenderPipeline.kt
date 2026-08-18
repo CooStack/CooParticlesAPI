@@ -189,6 +189,9 @@ sealed interface CooPipelineTextureSource {
     /** 当前帧场景深度纹理；可用性受 backend capability 影响。 */
     data object SceneDepth : CooPipelineTextureSource
 
+    /** terrain opaque depth；不含 translucent 深度，不能与通用 SceneDepth 混用。 */
+    data object TerrainDepth : CooPipelineTextureSource
+
     /**
      * 指定 framebuffer 的颜色 attachment。
      * @property target framebuffer 的资源标识

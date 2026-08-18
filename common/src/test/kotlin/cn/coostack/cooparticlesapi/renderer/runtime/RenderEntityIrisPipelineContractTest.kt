@@ -37,6 +37,12 @@ class RenderEntityIrisPipelineContractTest {
         val irisCompat = readProjectFile(
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/compat/IrisCompat.kt"
         )
+        val pipelineManager = readProjectFile(
+            "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/client/ClientRenderPipelineManager.kt"
+        )
+        val cooFxRuntime = readProjectFile(
+            "common/src/main/kotlin/cn/coostack/cooparticlesapi/coofx/client/CooFxClientRuntime.kt"
+        )
 
         assertTrue("renderIrisWorldPass" in levelMixin)
         assertTrue("renderIrisWorldPass" in manager)
@@ -46,6 +52,31 @@ class RenderEntityIrisPipelineContractTest {
         assertTrue("entityShader.clear()" in irisCompat)
         assertTrue("getDepthTextureNoTranslucents" in irisCompat)
         assertTrue("getDepthTextureId" in irisCompat)
+        assertTrue("renderIrisCooFxWorldPass" in levelMixin)
+        assertTrue(
+            levelMixin.indexOf("renderIrisWorldPass") < levelMixin.indexOf("renderIrisCooFxWorldPass")
+        )
+        assertTrue("if (!CooParticlesAPIClient.checkIrisShaderPackUsed())" in pipelineManager)
+        assertTrue("cooFxWorldPassDelegate?.invoke(context)" in pipelineManager)
+        assertTrue("GameRenderer.getRendertypeEntitySolidShader()" in irisCompat)
+        assertTrue("GameRenderer.getRendertypeEntityCutoutNoCullShader()" in irisCompat)
+        assertTrue("IrisEntityShaderKind.SOLID" in cooFxRuntime)
+        assertTrue("IrisEntityShaderKind.CUTOUT" in cooFxRuntime)
+        assertTrue("withIrisDrawBufferStatePreserved" in cooFxRuntime)
+        assertTrue("withPrimaryColorWriteOnly" in cooFxRuntime)
+        val cooFxEntityPhase = cooFxRuntime
+            .substringAfter("IrisCompat.runWithRenderEntityShader(")
+            .substringBefore("} finally {")
+        assertTrue("particleRenderer.drawExpandedIrisEntity" in cooFxEntityPhase)
+        assertFalse("val emitsLight = false" in cooFxRuntime)
+        assertFalse("renderIrisEmissive(program, batch, primitive)" in cooFxEntityPhase)
+        assertTrue("emissive 第二次提交待 NEW_ENTITY 专用实现与状态测试后恢复" in cooFxRuntime)
+         assertTrue("Iris emissive second pass deferred" in cooFxRuntime)
+         assertFalse("particleRenderer.render(listOf(batch))" in cooFxEntityPhase)
+        assertTrue("glCullFace(GL_BACK)" in cooFxRuntime)
+        assertTrue("glFrontFace(GL_CCW)" in cooFxRuntime)
+        assertTrue("glCullFace(previousCullFace)" in cooFxRuntime)
+        assertTrue("glFrontFace(previousFrontFace)" in cooFxRuntime)
     }
 
     private fun readProjectFile(relativePath: String): String {

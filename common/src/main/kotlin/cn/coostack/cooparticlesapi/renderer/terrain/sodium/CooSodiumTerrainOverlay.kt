@@ -523,10 +523,8 @@ internal object CooSodiumTerrainOverlay {
                 RenderSystem.depthMask(false)
                 RenderSystem.depthFunc(GL_LEQUAL)
             }
-            val shader = requireNotNull(RenderSystem.getShader()) {
-                "Sodium terrain overlay has no active shader"
-            }
-            entries.forEach { entry ->
+            val shader = RenderSystem.getShader() ?: return
+            entries.filterNot { it.batch.vertexBuffer.isInvalid() }.forEach { entry ->
                 entry.batch.sprites.forEach(SpriteUtil.INSTANCE::markSpriteActive)
                 resortTranslucent(entry, cameraX, cameraY, cameraZ)
                 shader.getUniform("ChunkOffset")?.set(
@@ -611,6 +609,7 @@ internal object CooSodiumTerrainOverlay {
     }
 
     private fun closeUploaded(batch: UploadedBatch) {
+        removeDeferredBatch(batch)
         if (RenderSystem.isOnRenderThread()) {
             batch.vertexBuffer.close()
             batch.sortBuffer?.close()
@@ -619,6 +618,27 @@ internal object CooSodiumTerrainOverlay {
                 batch.vertexBuffer.close()
                 batch.sortBuffer?.close()
             }
+        }
+    }
+
+    /** 资源被替换或释放时，从 Iris 延迟队列移除仍引用旧 GPU buffer 的绘制项。 */
+    private fun removeDeferredBatch(batch: UploadedBatch) {
+        synchronized(deferredDraws) {
+            val retainedDraws = ArrayList<DeferredDraw>(deferredDraws.size)
+            deferredDraws.forEach { draw ->
+                val retainedGroups = LinkedHashMap<RenderType, List<DrawEntry>>()
+                draw.drawGroups.forEach { (renderType, entries) ->
+                    val retainedEntries = entries.filterNot { it.batch === batch }
+                    if (retainedEntries.isNotEmpty()) {
+                        retainedGroups[renderType] = retainedEntries
+                    }
+                }
+                if (retainedGroups.isNotEmpty()) {
+                    retainedDraws += draw.copy(drawGroups = retainedGroups)
+                }
+            }
+            deferredDraws.clear()
+            deferredDraws.addAll(retainedDraws)
         }
     }
 

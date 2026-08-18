@@ -300,6 +300,7 @@ public class LevelRendererMixin {
                 projectionMatrix,
                 irisShaderPackInUse
         );
+        ClientRenderPipelineManager.INSTANCE.renderIrisCooFxWorldPass();
     }
 
     @Inject(method = "renderLevel", at = @At("RETURN"))

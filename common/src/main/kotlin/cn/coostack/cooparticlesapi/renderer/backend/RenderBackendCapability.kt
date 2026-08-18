@@ -20,6 +20,9 @@ enum class RenderBackendCapability {
      */
     SCENE_DEPTH_READ,
 
+    /** backend 能提供不含 translucent 的 terrain opaque depth。 */
+    TERRAIN_DEPTH_READ,
+
     /**
      * backend 能在世界绘制与后处理之间安全完成合成切换。
      *

@@ -1,6 +1,8 @@
 package cn.coostack.cooparticlesapi
 
 import cn.coostack.cooparticlesapi.animation.AnimateManager
+import cn.coostack.cooparticlesapi.coofx.client.CooFXClient
+import cn.coostack.cooparticlesapi.coofx.client.CooFxSceneClientRegistry
 import cn.coostack.cooparticlesapi.cparticle.CParticleCapabilities
 import cn.coostack.cooparticlesapi.cparticle.CParticleSystemManager
 import cn.coostack.cooparticlesapi.cparticle.render.CParticleRenderer
@@ -32,6 +34,7 @@ import cn.coostack.cooparticlesapi.renderer.pipeline.CooBlockPipelines
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelineRuntimeEffect
 import cn.coostack.cooparticlesapi.renderer.shader.ShaderProgramRegistry
 import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainEffectRegistry
+import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainMappingRegistry
 import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainPipelineManager
 import cn.coostack.cooparticlesapi.scheduler.CooScheduler
 import cn.coostack.cooparticlesapi.supports.sound.ClientSoundManager
@@ -81,6 +84,7 @@ object CooParticlesAPIClient {
         initStyle()
         initParticleType()
         initRender()
+        CooFXClient.init()
     }
 
     @JvmStatic
@@ -175,6 +179,8 @@ object CooParticlesAPIClient {
         CParticleCapabilities.detect()
         CParticleGpuSimulator.initializeProgramIfSupported()
         ShaderProgramRegistry.reinitializeAll()
+        CooFXClient.prepareResourcesIfNeeded(Minecraft.getInstance().resourceManager)
+        CooFXClient.onRenderPipelineReady()
         CooParticlesConstants.logger.info("初始化渲染管线")
     }
 
@@ -186,6 +192,7 @@ object CooParticlesAPIClient {
         RenderEntityModelExecutors.reset()
         PostEffectFrameExecutor.releaseBackendResources()
         PostEffectFrameExecutor.resetBackend()
+        CooFXClient.releaseRenderResources()
         ClientRenderPipelineManager.release()
         ClientRenderEntityManager.onShaderReload()
         initShaderPrograms()
@@ -228,8 +235,11 @@ object CooParticlesAPIClient {
         DisplayEntityManager.clearClient()
         ControlParticleManager.clearClient()
         CParticleSystemManager.clear()
+        CooFxSceneClientRegistry.clear()
+        CooFXClient.clearTransientWorldState()
         ClientRenderEntityManager.clear()
         CooTerrainEffectRegistry.clear()
+        CooTerrainMappingRegistry.clear()
         CooBlockPipelines.clearScopedBindings()
         CooTerrainPipelineManager.releaseResources()
         CooPostEffects.client.clear()
@@ -266,11 +276,13 @@ object CooParticlesAPIClient {
                 ParticleStyleManager.doTickClient()
                 ParticleEmittersManager.doTickClient()
                 ClientRenderEntityManager.tick()
+                CooFxSceneClientRegistry.tick()
                 DisplayEntityManager.tickClient()
                 DataHolderManager.tick()
                 ClientCameraUtil.tick()
                 ParticleCompositionManager.tickClient()
                 CParticleSystemManager.tick()
+                CooFXClient.tickClient()
                 TestManager.doTickClient()
                 AnimateManager.tickClient()
                 CooClientPacketManager.tick()

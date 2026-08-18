@@ -15,9 +15,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(Camera.class)
 public abstract class CooParticleCameraMixin {
-    @Unique
-    private static final float FORCE_BLEND_EPSILON = 1.0E-4f;
-
     @Shadow
     private float yRot;
     @Shadow
@@ -36,16 +33,16 @@ public abstract class CooParticleCameraMixin {
     protected abstract void setPosition(Vec3 vec3);
 
     @Unique
-    private float targetYawOffset = 0f;
+    private float targetYawOffset = 0F;
     @Unique
-    private float targetPitchOffset = 0f;
+    private float targetPitchOffset = 0F;
     @Unique
     private Vec3 targetPosOffset = Vec3.ZERO;
 
     @Unique
-    private float lastYawOffset = 0f;
+    private float lastYawOffset = 0F;
     @Unique
-    private float lastPitchOffset = 0f;
+    private float lastPitchOffset = 0F;
     @Unique
     private Vec3 lastPosOffset = Vec3.ZERO;
 
@@ -54,9 +51,9 @@ public abstract class CooParticleCameraMixin {
     @Unique
     private Vec3 lastForcedPos = Vec3.ZERO;
     @Unique
-    private float targetForcedBlend = 0f;
+    private float targetForcedBlend = 0F;
     @Unique
-    private float lastForcedBlend = 0f;
+    private float lastForcedBlend = 0F;
 
     @Inject(method = "setup", at = @At("TAIL"))
     private void onUpdate(BlockGetter level, Entity entity, boolean detached, boolean thirdPersonReverse, float partialTick, CallbackInfo ci) {
@@ -69,7 +66,7 @@ public abstract class CooParticleCameraMixin {
         setRotation(lerpYawOffset + yRot, lerpPitchOffset + xRot);
 
         Vec3 freePos = position.add(lerpPosOffset);
-        if (forceBlend > FORCE_BLEND_EPSILON) {
+        if (forceBlend > 0.0001F) {
             Vec3 forcedPosWithOffset = forcedPos.add(lerpPosOffset);
             setPosition(GraphMathHelper.lerp(forceBlend, freePos, forcedPosWithOffset));
             return;

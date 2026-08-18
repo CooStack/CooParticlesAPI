@@ -5,6 +5,7 @@ import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
 import cn.coostack.cooparticlesapi.network.packet.api.ClientContext
 import cn.coostack.cooparticlesapi.network.packet.api.CooPacket
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooUniformValue
+import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainEffectComposition
 import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainEffectGroupSnapshot
 import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainEffectRegistry
 import net.minecraft.core.BlockPos
@@ -46,6 +47,12 @@ class PacketTerrainEffectGroupS2C() : CooPacket() {
     /** 用于丢弃重复或乱序更新的单调协议版本号。 */
     var revision: Long = 0L
 
+    /** 完整替换和 options 更新中的有符号绘制优先级。 */
+    var priority: Int = 0
+
+    /** 完整替换和 options 更新中的合成方式。 */
+    var composition: CooTerrainEffectComposition = CooTerrainEffectComposition.REPLACE
+
     /**
      * 操作涉及的位置数据。
      *
@@ -83,7 +90,9 @@ class PacketTerrainEffectGroupS2C() : CooPacket() {
                         activations = positions,
                         uniforms = uniforms,
                         sequence = sequence,
-                        revision = revision
+                        revision = revision,
+                        priority = priority,
+                        composition = composition
                     )
                 )
                 APPEND -> CooTerrainEffectRegistry.append(dimension, groupId, revision, positions)
@@ -100,6 +109,13 @@ class PacketTerrainEffectGroupS2C() : CooPacket() {
                     uniforms
                 )
                 REMOVE_GROUP -> CooTerrainEffectRegistry.remove(dimension, groupId, revision)
+                UPDATE_GROUP_OPTIONS -> CooTerrainEffectRegistry.updateOrdering(
+                    dimension,
+                    groupId,
+                    revision,
+                    priority,
+                    composition
+                )
             }
         }
     }
@@ -112,6 +128,7 @@ class PacketTerrainEffectGroupS2C() : CooPacket() {
         private const val REMOVE_POSITIONS = 2
         private const val UPDATE_UNIFORMS = 3
         private const val REMOVE_GROUP = 4
+        private const val UPDATE_GROUP_OPTIONS = 5
 
         private val CODEC: StreamCodec<FriendlyByteBuf, PacketTerrainEffectGroupS2C> =
             StreamCodec.of(::encode, ::decode)
@@ -132,15 +149,33 @@ class PacketTerrainEffectGroupS2C() : CooPacket() {
                 it.expiresAt = snapshot.expiresAt
                 it.sequence = snapshot.sequence
                 it.revision = snapshot.revision
+                it.priority = snapshot.priority
+                it.composition = snapshot.composition
                 it.positions = snapshot.activations
                 it.uniforms = snapshot.uniforms
+            }
+        }
+
+        internal fun updateOrdering(
+            dimension: ResourceLocation,
+            groupId: ResourceLocation,
+            revision: Long,
+            priority: Int,
+            composition: CooTerrainEffectComposition
+        ): PacketTerrainEffectGroupS2C {
+            return PacketTerrainEffectGroupS2C().also {
+                it.operation = UPDATE_GROUP_OPTIONS
+                it.dimension = dimension
+                it.groupId = groupId
+                it.revision = revision
+                it.priority = priority
+                it.composition = composition
             }
         }
 
         /**
          * 创建只追加位置和绝对生效时间的协议包。
          *
-         * @param dimension 组所属维度 ID
          * @param groupId 组 ID
          * @param revision 本次更新的单调协议版本号
          * @param positions 键为新增方块坐标，值为绝对生效 tick
@@ -241,6 +276,8 @@ class PacketTerrainEffectGroupS2C() : CooPacket() {
                     buffer.writeResourceLocation(packet.pipelineId)
                     buffer.writeVarLong(packet.startedAt)
                     buffer.writeVarLong(packet.sequence)
+                    buffer.writeVarInt(packet.priority)
+                    buffer.writeVarInt(packet.composition.ordinal)
                     buffer.writeBoolean(packet.expiresAt != null)
                     packet.expiresAt?.let(buffer::writeVarLong)
                     writeUniforms(buffer, packet.uniforms)
@@ -249,6 +286,10 @@ class PacketTerrainEffectGroupS2C() : CooPacket() {
                 APPEND -> writeTimedPositions(buffer, packet.positions)
                 REMOVE_POSITIONS -> writePositions(buffer, packet.positions.keys)
                 UPDATE_UNIFORMS -> writeUniforms(buffer, packet.uniforms)
+                UPDATE_GROUP_OPTIONS -> {
+                    buffer.writeVarInt(packet.priority)
+                    buffer.writeVarInt(packet.composition.ordinal)
+                }
             }
         }
 
@@ -264,6 +305,8 @@ class PacketTerrainEffectGroupS2C() : CooPacket() {
                     packet.pipelineId = buffer.readResourceLocation()
                     packet.startedAt = buffer.readVarLong()
                     packet.sequence = buffer.readVarLong()
+                    packet.priority = buffer.readVarInt()
+                    packet.composition = CooTerrainEffectComposition.fromWire(buffer.readVarInt())
                     packet.expiresAt = if (buffer.readBoolean()) buffer.readVarLong() else null
                     packet.uniforms = readUniforms(buffer)
                     packet.positions = readTimedPositions(buffer)
@@ -271,6 +314,10 @@ class PacketTerrainEffectGroupS2C() : CooPacket() {
                 APPEND -> packet.positions = readTimedPositions(buffer)
                 REMOVE_POSITIONS -> packet.positions = readPositions(buffer).associateWith { 0L }
                 UPDATE_UNIFORMS -> packet.uniforms = readUniforms(buffer)
+                UPDATE_GROUP_OPTIONS -> {
+                    packet.priority = buffer.readVarInt()
+                    packet.composition = CooTerrainEffectComposition.fromWire(buffer.readVarInt())
+                }
             }
             return packet
         }

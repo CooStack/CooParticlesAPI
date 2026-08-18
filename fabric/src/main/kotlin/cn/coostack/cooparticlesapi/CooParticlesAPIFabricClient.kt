@@ -1,6 +1,7 @@
 package cn.coostack.cooparticlesapi
 
 import cn.coostack.cooparticlesapi.key.CooKeyBindingManager
+import cn.coostack.cooparticlesapi.coofx.client.CooFXClient
 import cn.coostack.cooparticlesapi.entities.CooModEntityTypes
 import cn.coostack.cooparticlesapi.entities.renderer.TestRenderEntityRenderer
 import cn.coostack.cooparticlesapi.event.CooEventBus
@@ -146,6 +147,9 @@ object CooParticlesAPIFabricClient : ClientModInitializer {
             CooAPIScanner.scan()
             CooParticlesAPI.loadScannerPackages()
             CooEventBus.call(ClientStartEvent(client))
+        }
+        ClientLifecycleEvents.CLIENT_STOPPING.register {
+            CooFXClient.stopClient()
         }
     }
 

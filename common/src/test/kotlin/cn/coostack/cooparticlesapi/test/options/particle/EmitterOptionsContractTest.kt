@@ -28,7 +28,7 @@ class EmitterOptionsContractTest {
         )
 
         assertTrue("SimpleDisplayEntityOption" in apiBuilder)
-        assertTrue("CylinderBoardDisplayEntity(player.eyePosition.add(player.forward.scale(4.0)), player.level())" in apiBuilder)
+        assertTrue("CylinderBoardDisplayEntity(player.eyePosition + player.forward * 4.0, player.level())" in apiBuilder)
         assertTrue("DemoWorldRenderEffectOptions.blackHole(player)" in apiBuilder)
         assertTrue("SimpleRendererEntityOption" in readProjectFile(
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/test/options/renderer/world/DemoWorldRenderEffectOptions.kt"
@@ -67,8 +67,8 @@ class EmitterOptionsContractTest {
         assertTrue("DisplayEntityEmittersData" in autoEmittersSource)
         assertTrue("CylinderBoardDisplayEntity" in autoEmittersSource)
         assertTrue("axisDirection = player.forward" in apiBuilder)
-        assertTrue("lineWidth = 0.08f" in apiBuilder)
-        assertTrue("lineLength = 1.35f" in apiBuilder)
+        assertTrue("lineWidth = 0.08F" in apiBuilder)
+        assertTrue("lineLength = 1.35F" in apiBuilder)
         assertTrue("inwardSpeed = 0.18" in apiBuilder)
         assertTrue("lineLife = 22" in apiBuilder)
         assertTrue("DisplayEntityEmittersData(createBoard(offset))" in autoEmittersSource)

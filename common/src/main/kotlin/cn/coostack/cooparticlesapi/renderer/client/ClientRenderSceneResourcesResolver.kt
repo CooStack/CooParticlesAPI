@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi.renderer.client
 
+import cn.coostack.cooparticlesapi.compat.IrisCompat
 import cn.coostack.cooparticlesapi.accessor.LevelRendererAccessor
 import cn.coostack.cooparticlesapi.renderer.backend.RenderSceneResource
 import cn.coostack.cooparticlesapi.renderer.backend.RenderSceneResources
@@ -44,6 +45,14 @@ object ClientRenderSceneResourcesResolver {
                 target = resolvedTargets.sceneDepthTarget,
                 colorTextureId = resolvedTargets.sceneDepthTarget.colorTextureId.takeIf { !resolvedTargets.externalFramebuffer },
                 depthTextureId = resolvedTargets.sceneDepthTextureId
+            ),
+            RenderSceneResource(
+                id = RenderSceneTargets.TERRAIN_DEPTH,
+                label = "${resolvedTargets.targetLabel}:terrain-depth",
+                target = resolvedTargets.sceneDepthTarget,
+                colorTextureId = null,
+                depthTextureId = IrisCompat.currentTerrainDepthTexture()?.textureId
+                    ?: resolvedTargets.sceneDepthTextureId
             )
         )
 

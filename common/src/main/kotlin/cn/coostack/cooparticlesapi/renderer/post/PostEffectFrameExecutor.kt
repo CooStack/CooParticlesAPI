@@ -486,6 +486,20 @@ internal object PostEffectFrameExecutor {
                     textureSlot = input.textureSlot
                 )
             }
+            PostEffectInputSource.TERRAIN_DEPTH -> {
+                val resource = context.sceneResources[RenderSceneTargets.TERRAIN_DEPTH]
+                val textureId = resource?.depthTextureId
+                val capabilityAvailable = RenderBackendCapability.TERRAIN_DEPTH_READ in context.backend.capabilities
+                PostEffectResolvedInput(
+                    samplerName = input.samplerName,
+                    source = input.source,
+                    optional = input.optional,
+                    available = capabilityAvailable && (textureId != null || resource != null),
+                    textureId = textureId,
+                    resource = resource,
+                    textureSlot = input.textureSlot
+                )
+            }
             PostEffectInputSource.MASK -> resolveProducedInput(context, input, PostEffectOutput.MASK, producedOutputs)
             PostEffectInputSource.BRIGHT_COLOR -> resolveProducedInput(context, input, PostEffectOutput.BLOOM, producedOutputs)
             PostEffectInputSource.CUSTOM_TEXTURE -> {

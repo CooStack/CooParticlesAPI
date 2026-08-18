@@ -33,18 +33,26 @@ internal class GltfAccessorDecoder(
         val componentCount = componentCount(accessor.requiredString("type"))
         val count = accessor.requiredInt("count")
         require(count >= 0) { "accessor count 不能为负数" }
-        val elementSize = componentSize * componentCount
-        val stride = view.optionalInt("byteStride", elementSize)
-        require(stride >= elementSize && stride % componentSize == 0) { "byteStride 与 accessor 布局不兼容" }
-        val start = view.optionalInt("byteOffset", 0) + accessor.optionalInt("byteOffset", 0)
-        val viewEnd = view.optionalInt("byteOffset", 0) + view.requiredInt("byteLength")
-        val requiredEnd = if (count == 0) start else start + (count - 1) * stride + elementSize
-        require(start >= 0 && requiredEnd <= viewEnd && viewEnd <= bytes.size) { "accessor 读取范围越界" }
+        val elementSize = componentSize.toLong() * componentCount
+        val stride = view.optionalInt("byteStride", elementSize.toInt()).toLong()
+        require(stride >= elementSize && stride % componentSize == 0L) { "byteStride 与 accessor 布局不兼容" }
+        val viewStart = view.optionalInt("byteOffset", 0).toLong()
+        val accessorOffset = accessor.optionalInt("byteOffset", 0).toLong()
+        val viewLength = view.requiredInt("byteLength").toLong()
+        require(viewStart >= 0L && accessorOffset >= 0L && viewLength >= 0L) { "accessor 偏移或长度不能为负数" }
+        val start = Math.addExact(viewStart, accessorOffset)
+        val viewEnd = Math.addExact(viewStart, viewLength)
+        val requiredEnd = if (count == 0) {
+            start
+        } else {
+            Math.addExact(start, Math.addExact(Math.multiplyExact(count.toLong() - 1L, stride), elementSize))
+        }
+        require(requiredEnd <= viewEnd && viewEnd <= bytes.size.toLong()) { "accessor 读取范围越界" }
         val normalized = accessor.get("normalized")?.asBoolean ?: false
         val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
-        val result = ArrayList<Float>(count * componentCount)
+        val result = ArrayList<Float>(Math.multiplyExact(count, componentCount))
         repeat(count) { element ->
-            var offset = start + element * stride
+            var offset = Math.addExact(start, Math.multiplyExact(element.toLong(), stride)).toInt()
             repeat(componentCount) {
                 result += readComponent(buffer, offset, componentType, normalized)
                 offset += componentSize
@@ -54,14 +62,51 @@ internal class GltfAccessorDecoder(
     }
 
     fun decodeIndices(accessorIndex: Int): List<Int> {
-        val accessor = document.getAsJsonArray("accessors").get(accessorIndex).asJsonObject
+        val accessors = document.getAsJsonArray("accessors")
+            ?: throw IllegalArgumentException("glTF 缺少 accessors")
+        val accessor = accessors.getOrNull(accessorIndex)?.asJsonObject
+            ?: throw IllegalArgumentException("accessor 索引越界：$accessorIndex")
+        require(!accessor.has("sparse")) { "不支持 sparse accessor" }
+        require(accessor.requiredString("type") == "SCALAR") { "索引 accessor 必须为 SCALAR" }
+        require(accessor.get("normalized")?.asBoolean != true) { "索引 accessor 不能声明 normalized" }
         val componentType = accessor.requiredInt("componentType")
         require(componentType == 5121 || componentType == 5123 || componentType == 5125) {
             "索引 accessor 只允许无符号整数"
         }
-        val decoded = decode(accessorIndex)
-        require(decoded.componentCount == 1) { "索引 accessor 必须为 SCALAR" }
-        return decoded.values.map { value -> value.toLong().also { require(it <= Int.MAX_VALUE) }.toInt() }
+        val viewIndex = accessor.requiredInt("bufferView")
+        val view = document.getAsJsonArray("bufferViews")?.getOrNull(viewIndex)?.asJsonObject
+            ?: throw IllegalArgumentException("bufferView 索引越界：$viewIndex")
+        val bytes = buffers.getOrNull(view.requiredInt("buffer"))
+            ?: throw IllegalArgumentException("buffer 索引越界")
+        val componentSize = componentSize(componentType)
+        val count = accessor.requiredInt("count")
+        require(count >= 0) { "accessor count 不能为负数" }
+        val stride = view.optionalInt("byteStride", componentSize).toLong()
+        require(stride >= componentSize && stride % componentSize == 0L) { "byteStride 与索引 accessor 布局不兼容" }
+        val viewStart = view.optionalInt("byteOffset", 0).toLong()
+        val accessorOffset = accessor.optionalInt("byteOffset", 0).toLong()
+        val viewLength = view.requiredInt("byteLength").toLong()
+        require(viewStart >= 0L && accessorOffset >= 0L && viewLength >= 0L) { "索引 accessor 偏移或长度不能为负数" }
+        val start = Math.addExact(viewStart, accessorOffset)
+        val viewEnd = Math.addExact(viewStart, viewLength)
+        val requiredEnd = if (count == 0) {
+            start
+        } else {
+            Math.addExact(start, Math.addExact(Math.multiplyExact(count.toLong() - 1L, stride), componentSize.toLong()))
+        }
+        require(requiredEnd <= viewEnd && viewEnd <= bytes.size.toLong()) { "索引 accessor 读取范围越界" }
+        val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+        return List(count) { element ->
+            val offset = Math.addExact(start, Math.multiplyExact(element.toLong(), stride)).toInt()
+            val value = when (componentType) {
+                5121 -> buffer.get(offset).toInt() and 0xff
+                5123 -> buffer.getShort(offset).toInt() and 0xffff
+                else -> (buffer.getInt(offset).toLong() and 0xffffffffL).also {
+                    require(it <= Int.MAX_VALUE.toLong()) { "索引值超出 JVM Int 可表示范围" }
+                }.toInt()
+            }
+            value
+        }
     }
 
     private fun readComponent(buffer: ByteBuffer, offset: Int, type: Int, normalized: Boolean): Float {

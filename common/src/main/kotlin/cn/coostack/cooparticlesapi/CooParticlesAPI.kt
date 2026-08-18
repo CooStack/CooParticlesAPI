@@ -16,11 +16,13 @@ import cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind.Wi
 import cn.coostack.cooparticlesapi.network.particle.emitters.event.ParticleEventHandlerManager
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleStyleManager
 import cn.coostack.cooparticlesapi.network.packet.server.PacketClearClientStateS2C
+import cn.coostack.cooparticlesapi.coofx.server.CooFxSceneManager
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
 import cn.coostack.cooparticlesapi.renderer.server.ServerRenderEntityManager
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityAutoRegistry
 import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainEffectManager
+import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainMappingManager
 import cn.coostack.cooparticlesapi.scheduler.CooScheduler
 import cn.coostack.cooparticlesapi.supports.sound.ServerSoundLoopManager
 import cn.coostack.cooparticlesapi.supports.sound.ServerSoundManager
@@ -133,8 +135,10 @@ object CooParticlesAPI {
         ParticleEmittersManager.clearServer()
         ParticleCompositionManager.clearServer()
         DisplayEntityManager.clearServer()
+        CooFxSceneManager.clearServer()
         ServerRenderEntityManager.clear()
         CooTerrainEffectManager.clearServerGroups()
+        CooTerrainMappingManager.clearServerInstances()
         TestManager.clearServer()
     }
 
@@ -162,6 +166,7 @@ object CooParticlesAPI {
         AnimateManager.tickServer()
         TestManager.doTickServer()
         CooTerrainEffectManager.tick(server)
+        CooTerrainMappingManager.tick(server)
         CooServerPacketManager.tick()
     }
 }

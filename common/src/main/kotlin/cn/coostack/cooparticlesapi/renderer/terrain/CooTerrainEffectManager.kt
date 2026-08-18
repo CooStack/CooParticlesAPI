@@ -93,7 +93,9 @@ object CooTerrainEffectManager {
                 activations = definition.activationOffsets.mapValues { (_, offset) -> startedAt + offset },
                 uniforms = definition.uniforms,
                 sequence = sequenceCounter.incrementAndGet(),
-                revision = protocolRevisionCounter.incrementAndGet()
+                revision = protocolRevisionCounter.incrementAndGet(),
+                priority = definition.priority,
+                composition = definition.composition
             )
             serverGroups[ServerGroupKey(snapshot.dimension, snapshot.id)] = snapshot
             CooServerPacketManager.sendWorlds(level, PacketTerrainEffectGroupS2C.replace(snapshot))
@@ -269,9 +271,43 @@ object CooTerrainEffectManager {
     }
 
     /**
+     * 原子替换组的排序和合成选项，并发送一次 options 更新。
+     *
+     * @return 找到组并完成更新时返回 `true`；组不存在时返回 `false`
+     */
+    fun updateOrdering(
+        level: ServerLevel,
+        groupId: ResourceLocation,
+        priority: Int,
+        composition: CooTerrainEffectComposition
+    ): Boolean {
+        val key = ServerGroupKey(level.dimension().location(), groupId)
+        return synchronized(serverGroupsLock) {
+            val current = serverGroups[key] ?: return false
+            if (current.priority == priority && current.composition == composition) return true
+            val updated = current.copy(
+                priority = priority,
+                composition = composition,
+                revision = protocolRevisionCounter.incrementAndGet()
+            )
+            serverGroups[key] = updated
+            CooServerPacketManager.sendWorlds(
+                level,
+                PacketTerrainEffectGroupS2C.updateOrdering(
+                    updated.dimension,
+                    updated.id,
+                    updated.revision,
+                    priority,
+                    composition
+                )
+            )
+            true
+        }
+    }
+
+    /**
      * 移除整组效果，并通知客户端局部重建受影响的 section。
      *
-     * @param level 组所属的服务端维度
      * @param groupId 要移除的组 ID
      * @return 找到并移除组时返回 `true`；组不存在时返回 `false`
      */
@@ -303,7 +339,9 @@ object CooTerrainEffectManager {
             serverGroups.values.asSequence()
                 .filter { it.dimension == level.dimension().location() }
                 .filter { it.expiresAt == null || gameTime < it.expiresAt }
-                .sortedBy(CooTerrainEffectGroupSnapshot::sequence)
+                .sortedWith(compareBy<CooTerrainEffectGroupSnapshot> { it.priority }
+                    .thenBy { it.sequence }
+                    .thenBy { it.id.toString() })
                 .forEach { snapshot ->
                     CooServerPacketManager.sendTo(player, PacketTerrainEffectGroupS2C.replace(snapshot))
                 }

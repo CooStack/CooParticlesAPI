@@ -262,10 +262,38 @@ internal object CooTerrainEffectRegistry {
         }
     }
 
+    /** 原子替换组的排序和合成字段。 */
+    @Synchronized
+    fun updateOrdering(
+        dimension: ResourceLocation,
+        groupId: ResourceLocation,
+        revision: Long,
+        priority: Int,
+        composition: CooTerrainEffectComposition
+    ) {
+        val key = GroupKey(dimension, groupId)
+        if (!acceptRevision(key, revision)) return
+        val current = groups[key]
+        if (current != null) {
+            groups[key] = current.copy(
+                snapshot = current.snapshot.copy(
+                    priority = priority,
+                    composition = composition,
+                    revision = revision
+                )
+            )
+            current.snapshot.activations.keys.forEach { position -> changedPositions += PositionKey(dimension, position) }
+            revisionCounter.incrementAndGet()
+            return
+        }
+        pendingGroups[key]?.let { pending ->
+            pendingGroups[key] = pending.copy(priority = priority, composition = composition, revision = revision)
+        }
+    }
+
     /**
      * 查询指定位置优先级最高的已生效效果组。
      *
-     * @param dimension 查询维度 ID
      * @param position 查询方块坐标
      * @param gameTime 当前维度的绝对游戏 tick
      * @return sequence 最新的有效组；没有匹配时返回 `null`
@@ -274,7 +302,11 @@ internal object CooTerrainEffectRegistry {
         dimension: ResourceLocation,
         position: BlockPos,
         gameTime: Long
-    ): CooResolvedTerrainEffectGroup? = groupsAt(dimension, position, gameTime).firstOrNull()
+    ): CooResolvedTerrainEffectGroup? {
+        val resolved = groupsAt(dimension, position, gameTime)
+        return resolved.firstOrNull { it.snapshot.composition == CooTerrainEffectComposition.REPLACE }
+            ?: resolved.firstOrNull()
+    }
 
     /**
      * 查询指定位置全部已生效且未到期的效果组。
@@ -296,7 +328,9 @@ internal object CooTerrainEffectRegistry {
                 val activation = stored.snapshot.activations[position] ?: return@filter false
                 gameTime >= activation && stored.snapshot.expiresAt?.let { gameTime < it } != false
             }
-            .sortedByDescending { it.snapshot.sequence }
+            .sortedWith(compareByDescending<StoredGroup> { it.snapshot.priority }
+                .thenByDescending { it.snapshot.sequence }
+                .thenByDescending { it.snapshot.id.toString() })
             .map { CooResolvedTerrainEffectGroup(it.snapshot, it.pipeline) }
             .toList()
     }

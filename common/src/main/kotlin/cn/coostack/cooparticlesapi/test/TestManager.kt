@@ -4,6 +4,7 @@ import cn.coostack.cooparticlesapi.test.api.TestGroup
 import cn.coostack.cooparticlesapi.test.api.TestGroupBuilder
 import cn.coostack.cooparticlesapi.test.api.TestOptionParamSpec
 import cn.coostack.cooparticlesapi.test.block.BlockTestGroup
+import cn.coostack.cooparticlesapi.test.block.ProceduralTerrainMappingTerrain
 import cn.coostack.cooparticlesapi.test.block.builtin.BlockAPITestGroupBuilder
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.entity.player.Player
@@ -37,6 +38,7 @@ object TestManager {
         if (builtinsRegistered) {
             return
         }
+        ProceduralTerrainMappingTerrain.ensureRegistered()
         builtinsRegistered = true
         register(BlockAPITestGroupBuilder.ID) {
             BlockAPITestGroupBuilder(it)

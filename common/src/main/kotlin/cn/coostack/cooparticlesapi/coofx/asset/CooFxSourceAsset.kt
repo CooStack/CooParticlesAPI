@@ -60,6 +60,33 @@ enum class CooFxAnimationPath {
     WEIGHTS,
 }
 
+/**
+ * CooFX clip 的独立播放循环策略。
+ *
+ * [ONCE] 到达末尾后停在末帧；[LOOP] 从头循环；[PING_PONG] 在首尾之间往返。
+ */
+enum class CooFxClipLoopMode {
+    /** 只播放一次并停在末帧。 */
+    ONCE,
+
+    /** 到达末尾后从零开始循环。 */
+    LOOP,
+
+    /** 在开始和结束时间之间双向往返。 */
+    PING_PONG,
+}
+
+data class CooFxClip(
+    val id: String,
+    val animation: Int,
+    val loopMode: CooFxClipLoopMode,
+) {
+    init {
+        require(id.isNotBlank()) { "CooFX clip id 不能为空" }
+        require(animation >= 0) { "CooFX clip animation 索引不能为负数" }
+    }
+}
+
 data class CooFxSourceAsset(
     val resource: ResourceLocation,
     val schemaVersion: Int,
@@ -72,7 +99,15 @@ data class CooFxSourceAsset(
     val animations: List<CooFxAnimation>,
     val emitters: List<CooFxEmitter>,
     val deformationMetadata: CooFxDeformationMetadata,
-)
+    val cameras: List<CooFxCamera> = emptyList(),
+    val clips: List<CooFxClip> = emptyList(),
+    val extensionMetadata: CooFxExtensionMetadata = CooFxExtensionMetadata(),
+) {
+    init {
+        require(clips.map(CooFxClip::id).distinct().size == clips.size) { "CooFX clip id 不能重复" }
+        require(clips.all { it.animation in animations.indices }) { "CooFX clip animation 索引越界" }
+    }
+}
 
 data class CooFxNode(
     val name: String?,
@@ -83,7 +118,51 @@ data class CooFxNode(
     val translation: List<Float>,
     val rotation: List<Float>,
     val scale: List<Float>,
+    val camera: Int? = null,
 )
+
+/** glTF 摄像机投影描述；空间姿态由引用它的 [CooFxNode] 提供。 */
+sealed interface CooFxCamera {
+    val id: String
+    val name: String?
+
+    data class Perspective(
+        override val id: String,
+        override val name: String?,
+        val yfovRadians: Float,
+        val aspectRatio: Float?,
+        val znear: Float,
+        val zfar: Float?,
+    ) : CooFxCamera {
+        init {
+            require(id.isNotBlank()) { "CooFX camera id 不能为空" }
+            require(yfovRadians.isFinite() && yfovRadians > 0F) { "透视 camera yfov 必须为正有限弧度" }
+            require(aspectRatio == null || aspectRatio.isFinite() && aspectRatio > 0F) {
+                "透视 camera aspectRatio 必须为正有限数"
+            }
+            require(znear.isFinite() && znear > 0F) { "透视 camera znear 必须为正有限数" }
+            require(zfar == null || zfar.isFinite() && zfar > znear) { "透视 camera zfar 必须大于 znear" }
+        }
+    }
+
+    data class Orthographic(
+        override val id: String,
+        override val name: String?,
+        val xmag: Float,
+        val ymag: Float,
+        val znear: Float,
+        val zfar: Float,
+    ) : CooFxCamera {
+        init {
+            require(id.isNotBlank()) { "CooFX camera id 不能为空" }
+            require(xmag.isFinite() && xmag > 0F && ymag.isFinite() && ymag > 0F) {
+                "正交 camera xmag 和 ymag 必须为正有限数"
+            }
+            require(znear.isFinite() && znear >= 0F) { "正交 camera znear 必须为非负有限数" }
+            require(zfar.isFinite() && zfar > znear) { "正交 camera zfar 必须大于 znear" }
+        }
+    }
+}
 
 data class CooFxMesh(
     val name: String?,
@@ -109,7 +188,22 @@ data class CooFxMaterial(
     val alphaCutoff: Float,
     val doubleSided: Boolean,
     val emissiveFactor: List<Float>,
-)
+    val emissiveTexture: ResourceLocation? = null,
+    val emissiveStrength: Float = 1F,
+) {
+    init {
+        require(baseColorFactor.size == 4 && baseColorFactor.all { it.isFinite() && it in 0F..1F }) {
+            "glTF baseColorFactor 必须是四个 0 到 1 的有限分量"
+        }
+        require(alphaCutoff.isFinite() && alphaCutoff in 0F..1F) { "alphaCutoff 必须在 0 到 1" }
+        require(emissiveFactor.size == 3 && emissiveFactor.all { it.isFinite() && it >= 0F }) {
+            "glTF emissiveFactor 必须是三个非负有限分量"
+        }
+        require(emissiveStrength.isFinite() && emissiveStrength >= 0F) {
+            "glTF emissiveStrength 必须是非负有限值"
+        }
+    }
+}
 
 data class CooFxAnimation(
     val name: String?,
@@ -125,6 +219,29 @@ data class CooFxAnimationChannel(
     val outputComponentCount: Int,
 )
 
+data class CooFxFloat3(
+    val x: Float,
+    val y: Float,
+    val z: Float,
+) {
+    init {
+        require(x.isFinite() && y.isFinite() && z.isFinite()) { "CooFX 三维值必须全部为有限数" }
+    }
+}
+
+data class CooFxFloat3Range(
+    val minimum: CooFxFloat3,
+    val maximum: CooFxFloat3,
+) {
+    init {
+        require(
+            minimum.x <= maximum.x &&
+                minimum.y <= maximum.y &&
+                minimum.z <= maximum.z
+        ) { "CooFX 三维范围的 minimum 不能大于 maximum" }
+    }
+}
+
 data class CooFxEmitter(
     val id: String,
     val node: Int?,
@@ -132,11 +249,34 @@ data class CooFxEmitter(
     val count: Int,
     val delayTicks: Int,
     val lifetimeTicks: Int,
-)
+    val velocity: CooFxFloat3Range = CooFxFloat3Range(
+        CooFxFloat3(0F, 0F, 0F),
+        CooFxFloat3(0F, 0F, 0F),
+    ),
+    val rotationRadians: CooFxFloat3Range = CooFxFloat3Range(
+        CooFxFloat3(0F, 0F, 0F),
+        CooFxFloat3(0F, 0F, 0F),
+    ),
+    val scale: CooFxFloat3Range = CooFxFloat3Range(
+        CooFxFloat3(1F, 1F, 1F),
+        CooFxFloat3(1F, 1F, 1F),
+    ),
+) {
+    init {
+        require(scale.minimum.x > 0F && scale.minimum.y > 0F && scale.minimum.z > 0F) {
+            "CooFX emitter 缩放范围必须为正数"
+        }
+    }
+}
 
 data class CooFxDeformationMetadata(
     val skinCount: Int,
     val morphTargetCount: Int,
     val hasAnimatedWeights: Boolean,
     val vatExtensionIds: Set<ResourceLocation>,
+)
+
+data class CooFxExtensionMetadata(
+    val cooFx: Map<ResourceLocation, String> = emptyMap(),
+    val gltf: Map<String, String?> = emptyMap(),
 )
