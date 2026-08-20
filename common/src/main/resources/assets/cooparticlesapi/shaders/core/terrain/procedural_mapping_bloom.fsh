@@ -7,6 +7,8 @@ uniform sampler2D SceneColor;
 uniform vec4 ColorModulator;
 uniform vec2 ScreenSize;
 uniform vec4 CooMappingRegion;
+uniform vec3 CooMappingRegionSize;
+uniform int CooMappingRegionType;
 uniform float CooMappingProgress;
 uniform int CooMappingDepthAvailable;
 uniform int CooIrisComposite;
@@ -34,6 +36,20 @@ float ringBand(float distanceValue, float width) {
     return 1.0 - smoothstep(width, width * 2.2, abs(distanceValue));
 }
 
+float signedRegionDistance(vec3 delta, float progress) {
+    if (CooMappingRegionType == 1) {
+        vec3 halfExtents = CooMappingRegionSize * progress;
+        vec3 q = abs(delta) - halfExtents;
+        return length(max(q, vec3(0.0))) + min(max(q.x, max(q.y, q.z)), 0.0);
+    }
+    if (CooMappingRegionType == 2) {
+        vec2 q = vec2(length(delta.xz), abs(delta.y)) -
+            vec2(CooMappingRegionSize.x, CooMappingRegionSize.y) * progress;
+        return length(max(q, vec2(0.0))) + min(max(q.x, q.y), 0.0);
+    }
+    return length(delta) - CooMappingRegion.w * progress;
+}
+
 void main() {
     vec4 atlasColor = texture(BaseSampler, baseUv) * vertexColor * ColorModulator;
     if (atlasColor.a < CooAlphaCutoff) {
@@ -41,16 +57,14 @@ void main() {
     }
 
     vec3 delta = worldPosition - CooMappingRegion.xyz;
-    float distanceToCenter = length(delta);
-    float regionMask = CooMappingRegion.w > 0.0
-        ? 1.0 - smoothstep(
-            CooMappingRegion.w,
-            CooMappingRegion.w + max(RingWidth, 0.01),
-            distanceToCenter
-        )
-        : 0.0;
-    float ring = ringBand(distanceToCenter - RingRadius, max(RingWidth, 0.01)) * regionMask;
-    ring *= clamp(CooMappingProgress, 0.0, 1.0) * clamp(RingProgress, 0.0, 1.0);
+    float progress = clamp(CooMappingProgress, 0.0, 1.0);
+    float regionDistance = signedRegionDistance(delta, progress);
+    float regionMask = 1.0 - smoothstep(0.0, max(RingWidth, 0.01), regionDistance);
+    float ringCoordinate = CooMappingRegionType == 0
+        ? length(delta) - RingRadius
+        : -regionDistance - RingRadius;
+    float ring = ringBand(ringCoordinate, max(RingWidth, 0.01)) * regionMask;
+    ring *= progress * clamp(RingProgress, 0.0, 1.0);
 
     // ADDITIVE 合成只保留效果区域，避免覆盖原场景颜色。
     if (CooMappingComposition == 2 && ring <= 0.0) {

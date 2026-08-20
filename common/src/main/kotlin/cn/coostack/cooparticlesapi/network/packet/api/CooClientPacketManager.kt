@@ -8,6 +8,8 @@ import cn.coostack.cooparticlesapi.event.events.packet.CooPacketRequestTimeoutEv
 import cn.coostack.cooparticlesapi.event.events.packet.CooPacketSendEvent
 import cn.coostack.cooparticlesapi.network.packet.api.envelope.CooPacketEnvelopeC2S
 import cn.coostack.cooparticlesapi.network.packet.api.envelope.CooPacketEnvelopeS2C
+import cn.coostack.cooparticlesapi.performance.PerformanceStatusNetworkEndpoint
+import cn.coostack.cooparticlesapi.performance.PerformanceStatusNetworkMetrics
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import net.minecraft.client.Minecraft
 import java.util.concurrent.ConcurrentHashMap
@@ -140,6 +142,10 @@ object CooClientPacketManager {
      */
     @JvmStatic
     fun handleS2C(envelope: CooPacketEnvelopeS2C) {
+        PerformanceStatusNetworkMetrics.recordReceived(
+            PerformanceStatusNetworkEndpoint.CLIENT,
+            envelope.data.size,
+        )
         val client = Minecraft.getInstance()
         client.execute {
             handleS2CInternal(envelope)
@@ -235,6 +241,10 @@ object CooClientPacketManager {
             data = data,
         )
         CooParticlesServices.CLIENT_NETWORK.send(envelope)
+        PerformanceStatusNetworkMetrics.recordSent(
+            PerformanceStatusNetworkEndpoint.CLIENT,
+            data.size,
+        )
         return true
     }
 }

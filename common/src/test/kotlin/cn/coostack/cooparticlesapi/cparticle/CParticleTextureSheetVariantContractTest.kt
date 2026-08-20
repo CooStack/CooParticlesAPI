@@ -1,7 +1,10 @@
 package cn.coostack.cooparticlesapi.cparticle
 
-import java.nio.file.Files
-import java.nio.file.Path
+import java.nio.file.Path as NioPath
+import kotlin.io.path.Path
+import kotlin.io.path.absolute
+import kotlin.io.path.exists
+import kotlin.io.path.readText
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -119,7 +122,9 @@ class CParticleTextureSheetVariantContractTest {
         assertTrue("color.rgb = clamp(color.rgb, 0.0, 1.0) * color.a;" in fragment)
         assertFalse("uPremultiplyRgbByAlpha" in vertex)
         assertTrue("if (system.layer.premultiplyRgbByAlpha) continue" in renderer)
-        assertTrue("drawInstancedSystems(shader, layerSystems, cameraPos, partial)" in renderer)
+        assertTrue("drawInstancedSystems(" in renderer)
+        assertTrue("layerSystems," in renderer)
+        assertTrue("uniformScratch," in renderer)
         assertTrue("withPrimaryColorWriteOnly" in renderer)
         assertTrue("RenderSystem.bindTexture(RenderSystem.getShaderTexture(2))" in renderer)
         assertTrue("CParticleSprites.bindLookup(2)" in renderer)
@@ -186,7 +191,7 @@ class CParticleTextureSheetVariantContractTest {
      * @return 完整文件内容
      */
     private fun readProjectFile(relativePath: String): String =
-        Files.readString(findRepoRoot().resolve(relativePath))
+        findRepoRoot().resolve(relativePath).readText()
 
     /**
      * 从 Gradle 测试工作目录向上定位仓库根目录。
@@ -196,10 +201,10 @@ class CParticleTextureSheetVariantContractTest {
      *
      * @return 最近的仓库根目录
      */
-    private fun findRepoRoot(): Path {
-        var cursor = Path.of(System.getProperty("user.dir")).toAbsolutePath()
+    private fun findRepoRoot(): NioPath {
+        var cursor = Path(System.getProperty("user.dir")).absolute()
         while (cursor.parent != null) {
-            if (Files.exists(cursor.resolve("settings.gradle"))) return cursor
+            if (cursor.resolve("settings.gradle").exists()) return cursor
             cursor = cursor.parent
         }
         error("Could not locate repository root from ${System.getProperty("user.dir")}")

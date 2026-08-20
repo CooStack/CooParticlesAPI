@@ -9,8 +9,12 @@ uniform sampler2D SceneDepthNoHand;
 uniform sampler2D TerrainOpaqueDepth;
 uniform sampler2D TerrainTranslucentDepthBefore;
 uniform sampler2D TerrainTranslucentDepthAfter;
+uniform sampler2D CParticleCoverageMask;
 uniform mat4 cooInverseViewProjection;
 uniform vec4 CooMappingRegion;
+uniform vec3 CooMappingRegionSize;
+uniform int CooMappingRegionType;
+uniform int CooHasCParticleCoverage = 0;
 uniform float CooMappingProgress = 0.0;
 uniform float Blackness = 1.0;
 uniform float Feather = 0.06;
@@ -21,8 +25,30 @@ vec3 reconstructRelativePosition(vec2 uv, float depth) {
     return relative.xyz / max(abs(relative.w), 0.00001);
 }
 
+float mappingSignedDistance(vec3 relativePosition, float progress) {
+    vec3 delta = relativePosition - CooMappingRegion.xyz;
+    if (CooMappingRegionType == 1) {
+        vec3 halfExtents = CooMappingRegionSize * progress;
+        vec3 outside = max(abs(delta) - halfExtents, vec3(0.0));
+        float inside = min(max(abs(delta).x - halfExtents.x, max(abs(delta).y - halfExtents.y, abs(delta).z - halfExtents.z)), 0.0);
+        return length(outside) + inside;
+    }
+    if (CooMappingRegionType == 2) {
+        vec2 radial = vec2(length(delta.xz), abs(delta.y));
+        vec2 halfSize = vec2(CooMappingRegionSize.x, CooMappingRegionSize.y) * progress;
+        vec2 outside = max(radial - halfSize, vec2(0.0));
+        float inside = min(max(radial.x - halfSize.x, radial.y - halfSize.y), 0.0);
+        return length(outside) + inside;
+    }
+    return length(delta) - CooMappingRegion.w * progress;
+}
+
 void main() {
     vec4 scene = texture(SceneColor, screen_uv);
+    if (CooHasCParticleCoverage != 0 && texture(CParticleCoverageMask, screen_uv).r > 0.5) {
+        FragColor = scene;
+        return;
+    }
     float sceneDepth = texture(SceneDepth, screen_uv).r;
     float sceneDepthNoHand = texture(SceneDepthNoHand, screen_uv).r;
     float opaqueDepth = texture(TerrainOpaqueDepth, screen_uv).r;
@@ -44,14 +70,16 @@ void main() {
     float terrainDepth = visibleOpaqueTerrain ? opaqueDepth : translucentAfterDepth;
     vec3 relativePosition = reconstructRelativePosition(screen_uv, terrainDepth);
     float progress = clamp(CooMappingProgress, 0.0, 1.0);
-    float radius = max(CooMappingRegion.w * progress, 0.0001);
-    float featherWidth = max(CooMappingRegion.w * Feather, 0.0001);
-    float distanceToCenter = distance(relativePosition, CooMappingRegion.xyz);
-    float circularMask = 1.0 - smoothstep(
-        max(radius - featherWidth, 0.0),
-        radius,
-        distanceToCenter
-    );
-    float mask = circularMask * clamp(Blackness, 0.0, 1.0);
+    if (progress <= 0.000001) {
+        FragColor = scene;
+        return;
+    }
+    float shapeScale = CooMappingRegionType == 0
+        ? CooMappingRegion.w
+        : max(max(CooMappingRegionSize.x, CooMappingRegionSize.y), CooMappingRegionSize.z);
+    float featherWidth = max(shapeScale * Feather, 0.0001);
+    float signedDistance = mappingSignedDistance(relativePosition, progress);
+    float shapeMask = 1.0 - smoothstep(-featherWidth, 0.0, signedDistance);
+    float mask = shapeMask * clamp(Blackness, 0.0, 1.0);
     FragColor = vec4(mix(scene.rgb, vec3(0.0), mask), scene.a);
 }

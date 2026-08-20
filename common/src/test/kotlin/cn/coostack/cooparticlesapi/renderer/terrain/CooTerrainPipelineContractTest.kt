@@ -8,8 +8,11 @@ import com.mojang.blaze3d.vertex.VertexFormatElement
 import net.minecraft.client.renderer.chunk.SectionCompiler
 import net.minecraft.core.BlockPos
 import net.minecraft.resources.ResourceLocation
-import java.nio.file.Files
-import java.nio.file.Path
+import java.nio.file.Path as NioPath
+import kotlin.io.path.Path
+import kotlin.io.path.absolute
+import kotlin.io.path.exists
+import kotlin.io.path.readText
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -163,22 +166,22 @@ class CooTerrainPipelineContractTest {
         assertTrue("CooTerrainPipelineManager.shouldDeferVanillaTerrainOverlay()" in levelRenderer)
         assertTrue("CooTerrainPipelineManager.shouldPreserveVanillaTerrainGeometry(overlayLayers)" in neoforgeCompiler)
         assertTrue("if (!CooTerrainPipelineManager.isTerrainOverlayEnabled())" in levelRenderer)
-        assertTrue("CooTerrainPipelineManager.collectPostEffects(context, graph)" in clientManager)
-        assertTrue("CooTerrainPipelineManager.collectScenePostEffects(context, terrainGraph)" in clientManager)
+        assertTrue("CooTerrainPipelineManager.collectPostEffects(" in clientManager)
+        assertTrue("CooTerrainPipelineManager.collectScenePostEffects(" in clientManager)
         assertTrue("CooTerrainPipelineManager.shouldDeferShaderPackRenderEntities()" in clientManager)
         assertEquals(
             2,
             "CooTerrainPipelineManager.shouldDeferShaderPackRenderEntities()".toRegex().findAll(clientManager).count()
         )
         assertTrue("fun shouldDeferShaderPackRenderEntities(): Boolean" in terrainManager)
-        assertTrue("screenOnlySceneMappingActiveThisFrame = true" in terrainManager)
-        assertTrue("return screenOnlySceneMappingActiveThisFrame" in terrainManager)
+        assertTrue("scenePostMappingActiveThisFrame = true" in terrainManager)
+        assertTrue("return scenePostMappingActiveThisFrame" in terrainManager)
         assertTrue("mapping.startedAt.toDouble()" in terrainManager)
         assertTrue("coerceIn(0.0, 1.0).toFloat()" in terrainManager)
         assertFalse("mapping.startedAt.toFloat()" in terrainManager)
         val scenePostBody = clientManager.substringAfter("fun runScenePost(context: RenderFrameContext)")
         assertTrue(
-            scenePostBody.indexOf("CooTerrainPipelineManager.collectScenePostEffects(context, terrainGraph)") <
+            scenePostBody.indexOf("CooTerrainPipelineManager.collectScenePostEffects(") <
                 scenePostBody.indexOf(".filter(RenderEntityInstance<RenderEntity>::usesScenePost)")
         )
         assertTrue("CooPipelinePostEffectCompiler.compile(pipeline, subject)" in terrainManager)
@@ -669,12 +672,10 @@ class CooTerrainPipelineContractTest {
         )
 
         assertTrue(
-            !Files.exists(legacyDirectory) || Files.walk(legacyDirectory).use { paths ->
-                paths.noneMatch { path -> Files.isRegularFile(path) }
-            }
+            !legacyDirectory.exists() || legacyDirectory.toFile().walkTopDown().none { file -> file.isFile }
         )
-        assertTrue(Files.exists(apiDirectory.resolve("block_effect.vsh")))
-        assertTrue(Files.exists(apiDirectory.resolve("propagation.fsh")))
+        assertTrue(apiDirectory.resolve("block_effect.vsh").exists())
+        assertTrue(apiDirectory.resolve("propagation.fsh").exists())
         assertTrue("remapTerrainShaderSource" in source(
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/terrain/CooTerrainPipelineManager.kt"
         ))
@@ -790,16 +791,16 @@ class CooTerrainPipelineContractTest {
     }
 
     private fun source(path: String): String {
-        return Files.readString(projectPath(path))
+        return projectPath(path).readText()
     }
 
-    private fun projectPath(path: String): Path {
-        val requested = Path.of(path)
-        if (Files.exists(requested)) return requested
-        var cursor = Path.of(System.getProperty("user.dir")).toAbsolutePath()
+    private fun projectPath(path: String): NioPath {
+        val requested = Path(path)
+        if (requested.exists()) return requested
+        var cursor = Path(System.getProperty("user.dir")).absolute()
         while (cursor.parent != null) {
             val candidate = cursor.resolve(path)
-            if (Files.exists(candidate)) return candidate
+            if (candidate.exists()) return candidate
             cursor = cursor.parent
         }
         return requested

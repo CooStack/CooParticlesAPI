@@ -35,6 +35,7 @@ import cn.coostack.cooparticlesapi.network.packet.server.PacketSoundLoopS2C
 import cn.coostack.cooparticlesapi.network.packet.server.listener.ServerKeyActionHandler
 import cn.coostack.cooparticlesapi.network.particle.composition.manager.ParticleCompositionManager
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersManager
+import cn.coostack.cooparticlesapi.performance.PerformanceStatusServerRequestGate
 import cn.coostack.cooparticlesapi.platform.network.FabricServerContext
 import cn.coostack.cooparticlesapi.particles.CooModParticles
 import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
@@ -135,6 +136,7 @@ object CooParticlesAPIFabric : ModInitializer {
             CooParticlesAPI.onServerStop()
         }
         ServerPlayConnectionEvents.DISCONNECT.register { handler, _ ->
+            PerformanceStatusServerRequestGate.forget(handler.player.uuid)
             TestManager.clearServerFor(handler.player)
             ParticleCompositionManager.clearVisibleFor(handler.player)
             ParticleEmittersManager.clearVisibleFor(handler.player)

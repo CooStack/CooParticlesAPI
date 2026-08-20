@@ -138,10 +138,22 @@ internal interface PostEffectFramePreparationBackend {
      */
     fun prepareFrame(context: RenderFrameContext)
 
+    /** 只使缓存的 SceneColor copy 失效，保留同帧 post chain。 */
+    fun invalidateSceneColorCopy() = Unit
+
     /** 仅刷新场景颜色/深度副本；默认 backend 没有独立刷新语义时复用完整准备流程。 */
     fun refreshSceneFrame(context: RenderFrameContext) {
         prepareFrame(context)
     }
+}
+
+/** 可选接口：backend 可把延迟的透明前景绘制到当前最终合成目标。 */
+internal fun interface PostEffectForegroundReplayBackend {
+    /** 绑定最终 framebuffer 执行一次前景重放，并让后续 SceneColor 从重放结果继续合成。 */
+    fun replayForeground(context: RenderFrameContext, render: () -> Unit): Boolean
+
+    /** backend 是否具备前景重放能力；不代表本帧 external FBO 一定有效。 */
+    fun supportsForegroundReplay(): Boolean = true
 }
 
 /** 可选接口：backend 可在 shader reload、客户端关闭或测试结束时释放 GL 资源。 */
@@ -297,6 +309,22 @@ internal object PostEffectFrameExecutor {
     fun refreshSceneFrame(context: RenderFrameContext) {
         (backend as? PostEffectFramePreparationBackend)?.refreshSceneFrame(context)
     }
+    /** 当前 backend 是否支持在最终合成目标上进行受控前景重放。 */
+    fun supportsForegroundReplay(): Boolean {
+        return (backend as? PostEffectForegroundReplayBackend)?.supportsForegroundReplay() == true
+    }
+
+    /** 只失效缓存 SceneColor，不清除同帧 chain framebuffer。 */
+    fun invalidateSceneColorCopy() {
+        (backend as? PostEffectFramePreparationBackend)?.invalidateSceneColorCopy()
+    }
+
+    /** 在最终合成目标上执行延迟前景；不支持该能力的 backend 返回 `false`。 */
+    fun replayForeground(context: RenderFrameContext, render: () -> Unit): Boolean {
+        val replayBackend = backend as? PostEffectForegroundReplayBackend ?: return false
+        return replayBackend.replayForeground(context, render)
+    }
+
     /** 释放 backend 持有的临时纹理、FBO、shader program 等资源。 */
     fun releaseBackendResources() {
         (backend as? PostEffectResourceBackend)?.release()

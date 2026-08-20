@@ -1,7 +1,10 @@
 package cn.coostack.cooparticlesapi.network
 
-import java.nio.file.Files
-import java.nio.file.Path
+import java.nio.file.Path as NioPath
+import kotlin.io.path.Path
+import kotlin.io.path.absolute
+import kotlin.io.path.exists
+import kotlin.io.path.readText
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -102,6 +105,34 @@ class NetworkSyncRegressionContractTest {
     }
 
     @Test
+    fun `sequenced compositions restore active nodes after create and cache rebuild`() {
+        val source = readProjectFile(
+            "common/src/main/kotlin/cn/coostack/cooparticlesapi/network/particle/composition/SequencedParticleComposition.kt"
+        )
+        val baseSource = readProjectFile(
+            "common/src/main/kotlin/cn/coostack/cooparticlesapi/network/particle/composition/ParticleComposition.kt"
+        )
+
+        val sequencedDisplay = source.substringAfter("protected override fun displayParticles()")
+            .substringBefore("override fun update(other: ParticleComposition)")
+        val baseDisplay = baseSource.substringAfter("protected open fun displayParticles()")
+            .substringBefore("protected fun prepareGpuComposition")
+        assertTrue(sequencedDisplay.indexOf("rotateAsAxis") < sequencedDisplay.indexOf("toggleScale(locations)"))
+        assertTrue(baseDisplay.indexOf("rotateAsAxis") < baseDisplay.indexOf("toggleScale(locations)"))
+
+        val flushBody = source.substringAfter("override fun flush()")
+            .substringBefore("override fun clear(cancel: Boolean)")
+        assertTrue(flushBody.indexOf("displayParticles()") < flushBody.indexOf("restoreDisplayedParticles()"))
+
+        val updateBody = source.substringAfter("override fun update(other: ParticleComposition)")
+            .substringBefore("private fun applyIndexDiff")
+        assertTrue(updateBody.indexOf("flush()") < updateBody.indexOf("restoreDisplayedParticles()"))
+        assertTrue("indexToUuid.fill(null)" in source)
+        assertTrue("if (isParticleDisplayed(i)) createWithIndex(i)" in source)
+        assertTrue("if (particles.containsKey(data.uuid))" in source)
+    }
+
+    @Test
     fun `client create packets use envelope identity and report missing codecs`() {
         val composition = readProjectFile(
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/network/packet/client/listener/ClientParticleCompositionHandler.kt"
@@ -175,12 +206,12 @@ class NetworkSyncRegressionContractTest {
         }
     }
 
-    private fun readProjectFile(relativePath: String): String = Files.readString(findRepoRoot().resolve(relativePath))
+    private fun readProjectFile(relativePath: String): String = findRepoRoot().resolve(relativePath).readText()
 
-    private fun findRepoRoot(): Path {
-        var cursor = Path.of(System.getProperty("user.dir")).toAbsolutePath()
+    private fun findRepoRoot(): NioPath {
+        var cursor = Path(System.getProperty("user.dir")).absolute()
         while (cursor.parent != null) {
-            if (Files.exists(cursor.resolve("settings.gradle"))) return cursor
+            if (cursor.resolve("settings.gradle").exists()) return cursor
             cursor = cursor.parent
         }
         error("Could not locate repository root from ${System.getProperty("user.dir")}")

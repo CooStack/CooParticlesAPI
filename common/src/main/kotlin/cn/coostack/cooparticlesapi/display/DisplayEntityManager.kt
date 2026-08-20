@@ -32,6 +32,12 @@ object DisplayEntityManager {
 
     val registeredTypes = ConcurrentHashMap<String, StreamCodec<in RegistryFriendlyByteBuf, DisplayEntity>>()
 
+    /** 返回客户端当前 DisplayEntity 实例数。 */
+    fun clientEntityCount(): Int = clientView.size
+
+    /** 返回服务端当前 DisplayEntity 实例数。 */
+    fun serverEntityCount(): Int = serverView.size
+
     fun addClient(entity: DisplayEntity) {
         entity.prevPos = entity.pos
         entity.prevYaw = entity.yaw

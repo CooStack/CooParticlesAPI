@@ -170,7 +170,7 @@ data class CooTerrainMapping(
 | --- | --- |
 | `id` | 网络和运行时使用的稳定 Mapping ID |
 | `pipeline` | terrain 域 Pipeline，类型必须是 `CooRenderPipeline<BlockState>` |
-| `regionType` | 允许的 Region 类型；当前内置 `SPHERE` |
+| `regionType` | 允许的 Region 类型；当前内置 `SPHERE`、`BOX`、`CYLINDER` |
 | `defaults` | 创建实例时复制的默认 uniforms、优先级、合成方式、持续时间 |
 
 模板可以跨世界复用。位置、时间、暂停状态都属于实例，不要把运行时状态塞进模板对象。
@@ -209,32 +209,46 @@ val instanceId = ResourceLocation.fromNamespaceAndPath(
 
 ### 4.3 `CooTerrainMappingRegion`：区域 tagged union
 
-当前版本支持：
+当前版本内置三种区域：
 
 ```kotlin
 CooTerrainMappingRegion.Sphere(
     center = Vec3(x, y, z),
     radius = 32.0
 )
+
+CooTerrainMappingRegion.Box(
+    center = Vec3(x, y, z),
+    halfExtents = Vec3(16.0, 8.0, 16.0)
+)
+
+CooTerrainMappingRegion.Cylinder(
+    center = Vec3(x, y, z),
+    radius = 16.0,
+    height = 32.0
+)
 ```
 
 约束：
 
-- `center` 的三个分量必须是有限数。
-- `radius` 必须是有限且大于零的数。
+- 所有中心分量必须是有限数。
+- `Sphere.radius`、`Cylinder.radius` 和 `Cylinder.height` 必须是有限且大于零的数。
+- `Box.halfExtents` 的三个分量必须是有限且大于零的数；正方体使用三个相等的半轴长度。
 - 中心使用绝对世界坐标，不是相对于玩家或相机的坐标。
-- 球体成员测试使用三维欧氏距离。
+- `Sphere` 使用三维欧氏距离；`Box` 是轴对齐长方体；`Cylinder` 沿 Y 轴，`height` 是完整高度。
 - Region 更新会同步整个 tagged union，不发送 BlockPos 列表。
 
-判定公式等价于：
+成员测试公式分别等价于：
 
 ```text
-(dx * dx + dy * dy + dz * dz) <= radius * radius
+Sphere:    dx * dx + dy * dy + dz * dz <= radius * radius
+Box:       abs(dx) <= halfExtents.x && abs(dy) <= halfExtents.y && abs(dz) <= halfExtents.z
+Cylinder:  dx * dx + dz * dz <= radius * radius && abs(dy) <= height * 0.5
 ```
 
-球体也提供用于 section 筛选的包围盒和精确 Sphere-vs-AABB 相交测试。包围盒只是候选范围，最终 shader 仍以世界坐标进行判断。
+三种区域都提供用于 section 筛选的包围盒；`Sphere` 和 `Cylinder` 还提供精确的曲面区域与 AABB 相交测试。包围盒只是候选范围，最终 shader 仍以世界坐标进行判断。
 
-当前版本还没有公开的圆柱、AABB 或自定义 Region 注册入口。若要扩展新的 wire 类型，需要同时修改编码、解码、类型表和客户端渲染判断，不能只在消费方新增一个 Kotlin 子类。
+网络版本 `2` 保留旧 `SPHERE` 字段顺序，并增加 `BOX` 和 `CYLINDER`。新客户端仍可解码版本 `1` 的 Sphere；版本 `1` 不接受新增形状。服务端和客户端应使用同一 API 版本，因为旧客户端会明确拒绝版本 `2`。当前没有自定义 Region 注册入口，不能只在消费方新增 Kotlin 子类。
 
 ### 4.4 `CooTerrainMappingDefaults`：模板默认值
 
@@ -840,7 +854,7 @@ class ScanSpell(
 - `elapsed` 是业务动画自己计算的 tick 数。
 - `CooMappingProgress` 是渲染器根据 `startedAt / expiresAt` 自动计算的生命周期进度，范围为 `0..1`。
 
-如果实例是持久实例（`duration = null`），自动的 `CooMappingProgress` 会是 `0`。这时需要使用自定义的 `RingProgress` 或其他 uniform 驱动动画。
+如果实例是持久实例（`duration = null`），自动的 `CooMappingProgress` 固定为 `1`，表示完整区域立即生效。需要循环、脉冲或其他持续动画时，使用自定义的 `RingProgress` 或其他 uniform 驱动。
 
 ---
 
@@ -890,7 +904,9 @@ in vec3 worldNormal;
 | `CooEffectUvMode` | `int` | Effect UV 模式 |
 | `CooGameTime` | `float` | 当前游戏时间，取模 65536 |
 | `CooAlphaCutoff` | `float` | 原始 terrain layer 的 alpha 丢弃阈值 |
-| `CooMappingRegion` | `vec4` | Sphere 的 xyz 中心和 w 半径 |
+| `CooMappingRegion` | `vec4` | 区域中心的 xyz；Sphere 使用 w 表示半径，Box/Cylinder 的 w 为 `0` |
+| `CooMappingRegionSize` | `vec3` | Box 为三个半轴；Cylinder 的 x 为半径、y 为半高、z 为 `0`；Sphere 为 `0` |
+| `CooMappingRegionType` | `int` | `SPHERE=0`、`BOX=1`、`CYLINDER=2` |
 | `CooMappingProgress` | `float` | 根据实例生命周期计算的 `0..1` 进度 |
 | `CooMappingComposition` | `int` | `REPLACE=0`、`ALPHA_OVER=1`、`ADDITIVE=2` |
 | `CooIrisComposite` | `int` | Iris 场景颜色合成输入是否可用，`0/1` |
@@ -900,6 +916,8 @@ in vec3 worldNormal;
 | `ColorModulator` | `vec4` | 原版颜色调制 |
 
 未声明的 uniform 不会强制报错；但 shader 需要的自定义 uniform 必须在 Pipeline 节点声明默认值，实例才能覆盖它。
+
+区域形状的 shader 分支应读取 `CooMappingRegionType`。`CooMappingProgress` 作用于 Sphere 半径、Box 三个半轴以及 Cylinder 的半径和半高；边缘柔化应使用与形状匹配的 signed distance 或等价距离函数。`screenOnly()` 的内置示例 `procedural_mapping_screen.fsh` 已包含三种形状的实现。
 
 ### 9.3 正确的 cutout 处理顺序
 
@@ -1174,14 +1192,20 @@ val pipeline = CooPipelines.block(id("terrain/domain_screen")) {
         inputTerrainOpaqueDepth("TerrainOpaqueDepth")
         inputTerrainTranslucentDepthBefore("TerrainTranslucentDepthBefore")
         inputTerrainTranslucentDepthAfter("TerrainTranslucentDepthAfter")
-        uniform("CooMappingRegion", CooUniformValue.Vec4Value(0F, 0F, 0F, 0F))
+        inputFramebuffer(
+            CooTerrainMappingShaderAbi.CPARTICLE_COVERAGE_MASK,
+            RenderSceneTargets.CPARTICLE_COVERAGE_MASK,
+            optional = true
+        )
+        uniform(CooTerrainMappingShaderAbi.REGION, CooUniformValue.Vec4Value(0F, 0F, 0F, 0F))
+        uniform(CooTerrainMappingShaderAbi.HAS_CPARTICLE_COVERAGE, CooUniformValue.IntValue(0))
         uniform("TerrainDiffusionProgress", CooUniformValue.FloatValue(0F))
     }
     line(composite.color(), screenTarget())
 }
 ```
 
-`screenOnly()` 适合整体压暗、染色、径向扩散和屏幕空间遮罩；需要真实 block atlas、面法线、cutout alpha 或只对指定 terrain quad 输出的图案，仍使用普通 world terrain Mapping。screen post 没有 block atlas 的 alpha 信息。Iris 下 `SceneDepth` 是最终场景深度，`SceneDepthNoHand` 是手部绘制前的深度，三个 terrain snapshot 则分别描述 opaque terrain 和 translucent terrain 的绘制边界。shader 应同时检查 terrain snapshot 与最终深度，且要求最终深度未在 hand 阶段改变，借此排除前景实体、Coo RenderEntity 和第一人称手。`postInScene()` 的 scene-post 执行顺序是 Terrain Mapping 先合成、RenderEntity scene-post 后合成；RenderEntity 因此不会被 Terrain Mapping 覆盖。深度纹理不可用时，required 输入会跳过该 pass，不能重新引入共面 terrain overlay。
+`screenOnly()` 适合整体压暗、染色、径向扩散和屏幕空间遮罩；需要真实 block atlas、面法线、cutout alpha 或只对指定 terrain quad 输出的图案，仍使用普通 world terrain Mapping。screen post 没有 block atlas 的 alpha 信息。Iris 下 `SceneDepth` 是 shader pack final 的场景深度，`SceneDepthNoHand` 是手部绘制前的深度，三个 terrain snapshot 则分别描述 opaque terrain 和 translucent terrain 的绘制边界。shader 应同时检查 terrain snapshot 与最终深度，且要求最终深度未在 hand 阶段改变，借此排除原版实体和第一人称手。screen Terrain Mapping 活跃时，API 会跳过原粒子引擎中的 CParticle 提交，先让 Mapping 处理不含 CParticle 的 shader-pack final 背景，再把全部 CParticle 按原 layer、混合、排序和 deferred-depth 语义重放到 Mapping 输出，最后执行对应阶段的 RenderEntity 后处理。因此半透明、加法和 Screen Blend CParticle 不会被 Mapping 覆盖，也不会通过二值 mask 把 Mapping 前的地形颜色带回来。`CParticleCoverageMask` 与 `CooHasCParticleCoverage` 仍是未进入延迟调度时的兼容保护 ABI；所有写入最终屏幕的 Mapping 节点必须继续声明并连接它们，但透明前景的正常路径不能依赖 coverage 命中后直接保留旧 `SceneColor`。`postInScene()` 的顺序是 Terrain Mapping、CParticle foreground replay、RenderEntity scene-post。直接 world draw 每次都会只失效 SceneColor 副本并保留 chain framebuffer，后续 fullscreen pass 因而从最新前景结果继续合成。深度纹理不可用时，required 输入会跳过该 pass，不能重新引入共面 terrain overlay。
 
 Iris 兼容性必须用实际安装的 shader pack 进行客户端验证；Kotlin 编译通过不能证明 shader pack 下的视觉结果正确。
 
@@ -1403,10 +1427,10 @@ Mapping 使用专用 `PacketTerrainMappingS2C`：
 - `UPDATE_UNIFORMS`：替换完整 uniform 集合。
 - `REMOVE`：删除实例并携带 revision tombstone。
 
-Region 使用版本化 tagged union：
+Region 使用版本化带类型标签的联合体：
 
 ```text
-wire version
+network version
 region type id
 region-specific fields
 ```

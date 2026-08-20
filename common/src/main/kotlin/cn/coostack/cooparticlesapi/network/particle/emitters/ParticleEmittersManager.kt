@@ -40,6 +40,12 @@ object ParticleEmittersManager {
      */
     val clientEmitters = ConcurrentHashMap<UUID, ParticleEmitters>()
 
+    /** 返回客户端当前可见 Emitter 数。 */
+    fun clientEmitterCount(): Int = clientEmitters.size
+
+    /** 返回服务端当前 Emitter 数。 */
+    fun serverEmitterCount(): Int = serverEmitters.size
+
     fun getCodecFromID(id: String): StreamCodec<RegistryFriendlyByteBuf, ParticleEmitters>? {
         return emittersCodec[id]
     }

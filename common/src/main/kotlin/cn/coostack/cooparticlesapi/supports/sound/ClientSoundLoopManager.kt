@@ -6,6 +6,9 @@ import net.minecraft.client.Minecraft
 object ClientSoundLoopManager {
     private val playing = HashMap<String, ServerControlledLoopSound>()
 
+    /** 返回客户端当前仍由服务端控制的循环声音数。 */
+    fun activeLoopCount(): Int = playing.size
+
     @JvmStatic
     fun isTracking(key: String): Boolean {
         return isPlaying(key)

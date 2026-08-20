@@ -28,7 +28,7 @@ class PostEffectSyncContractTest {
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/client/ClientRenderEntityManager.kt"
         )
 
-        assertTrue("CooPostEffects.client.collectFramePost(context, graph)" in source)
+        assertTrue("CooPostEffects.client.collectFramePost(refreshedContext, graph)" in source)
         assertTrue("CooPostEffects.client.tick()" in source)
     }
 

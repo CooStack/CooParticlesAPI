@@ -13,6 +13,22 @@ object ClientSoundManager {
     private val ducks = HashMap<String, DuckingSoundEffect>()
     private var volumeRefreshRequested = false
 
+    /** SoundEngine 当前实际持有声道的 SoundInstance 数。 */
+    private var vanillaSoundInstanceCount = 0
+
+    /** 返回 Coo 管理器当前持有的声音实例数。 */
+    fun activeSoundCount(): Int = sounds.size
+
+    /** 返回原版 SoundEngine 当前实际持有的声音声道数。 */
+    @JvmStatic
+    fun vanillaSoundInstanceCount(): Int = vanillaSoundInstanceCount
+
+    /** 由 SoundEngine mixin 在非暂停声音 tick 末尾发布实际声道数。 */
+    @JvmStatic
+    fun updateVanillaSoundInstanceCount(count: Int) {
+        vanillaSoundInstanceCount = count.coerceAtLeast(0)
+    }
+
     @JvmStatic
     fun get(key: String): ManagedSoundInstance? {
         return sounds[key]

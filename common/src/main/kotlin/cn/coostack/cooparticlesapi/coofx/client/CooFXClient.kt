@@ -37,6 +37,15 @@ object CooFXClient {
         if (runtime == null) runtime = CooFxClientRuntime()
     }
 
+    /** 返回客户端当前 CooFX scene 数。 */
+    fun activeSceneCount(): Int = CooFxSceneClientRegistry.activeSceneCount()
+
+    /** 返回客户端当前 CooFX mesh particle 数。 */
+    fun activeParticleCount(): Int = runtime?.activeParticleCount() ?: 0
+
+    /** 返回客户端当前 CooFX model instance 数。 */
+    fun activeModelCount(): Int = runtime?.activeModelCount() ?: 0
+
     @JvmStatic
     fun play(request: CooFxPlayRequest): CooFxPlayResult {
         init()

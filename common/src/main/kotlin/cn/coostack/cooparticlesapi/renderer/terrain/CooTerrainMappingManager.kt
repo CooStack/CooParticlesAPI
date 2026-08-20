@@ -247,6 +247,9 @@ object CooTerrainMappingManager {
     }
 
 
+    /** 返回服务端当前有效的程序化 Terrain mapping 实例数。 */
+    fun serverInstanceCount(): Int = instances.size
+
     /** 清空服务端运行态，保留模板注册。 */
     internal fun clearServerInstances() {
         synchronized(lock) { instances.clear() }

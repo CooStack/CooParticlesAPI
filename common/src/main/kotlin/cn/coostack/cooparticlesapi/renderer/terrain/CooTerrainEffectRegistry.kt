@@ -404,6 +404,9 @@ internal object CooTerrainEffectRegistry {
         return result
     }
 
+    /** 返回客户端已解析并参与查询的 Terrain effect group 数量。 */
+    fun activeGroupCount(): Int = groups.size
+
     /**
      * 获取客户端效果索引的本地版本号。
      *

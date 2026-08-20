@@ -143,8 +143,11 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
 
     val status = CompositionStatusHelper()
 
-    /** 当粒子组合初始化时, 存储1倍缩放粒子组与原点的距离 */
+    /** 当粒子组合初始化时，存储一倍缩放粒子组与原点的距离。 */
     val particleDefaultLength = ConcurrentHashMap<UUID, Double>()
+
+    /** 保留一倍缩放时的相对向量，使零缩放后的粒子能够恢复方向。 */
+    private val particleDefaultLocations = ConcurrentHashMap<UUID, RelativeLocation>()
 
     // 防止频繁的toList造成的性能浪费
 
@@ -336,8 +339,8 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
     /**
      * 对当前 composition 创建的所有 CParticle systems 播放同一段 GPU 视觉过渡。
      *
-     * Example: `playCParticleVisualTransition(20f, scaleCurve = curve)` 会统一缩放当前 systems。
-     * Forbidden: 不要用它修改粒子生成时的基础尺寸。
+     * 示例：`playCParticleVisualTransition(20F, scaleCurve = curve)` 会统一缩放当前 systems。
+     * 禁止：不要用它修改粒子生成时的基础尺寸。
      *
      * @param durationTicks 过渡时长，单位 tick
      * @param alphaCurve 不透明度倍率曲线
@@ -370,8 +373,8 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
     /**
      * 播放 composition 级 GPU 视觉过渡，并允许强制重新开始相同配置。
      *
-     * Example: `playCParticleVisualTransition(20f, true, scaleCurve = curve)` 会重置进度。
-     * Forbidden: 不要用它修改粒子生成时的基础尺寸。
+     * 示例：`playCParticleVisualTransition(20F, true, scaleCurve = curve)` 会重置进度。
+     * 禁止：不要用它修改粒子生成时的基础尺寸。
      *
      * @param durationTicks 过渡时长，单位 tick
      * @param restart 是否强制从头播放
@@ -406,8 +409,8 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
     /**
      * 把同一组过渡参数分发给当前 composition 管理的 systems。
      *
-     * Example: 公开重载通过本方法统一传递 [restart]。
-     * Forbidden: 不要在这里缓存已经释放的 system。
+     * 示例：公开重载通过本方法统一传递 [restart]。
+     * 禁止：不要在这里缓存已经释放的 system。
      *
      * @param durationTicks 过渡时长，单位 tick
      * @param alphaCurve 不透明度倍率曲线
@@ -562,11 +565,7 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
             return
         }
         for (it in particleLocations) {
-            val uuid = it.key.controlUUID()
-            val len = particleDefaultLength[uuid]!!
-            val value = it.value
-            if (len in -1e-3..1e-3) continue
-            value.multiply(len * scale / value.length())
+            applyScale(it.key.controlUUID(), it.value)
         }
         toggleRelative()
     }
@@ -581,6 +580,9 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
         this.canceled = other.canceled
 
         this.controlUUID = other.controlUUID
+        if (this.scale != other.scale) {
+            scale(other.scale)
+        }
         if (!client || !displayed) {
             this.axis.copyFrom(newAxis)
         }
@@ -618,6 +620,7 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
         particleLocations.clear()
         particleRotatedLocations.clear()
         particleDefaultLength.clear()
+        particleDefaultLocations.clear()
         this.canceled = cancel
         if (cancel) {
             displayed = false
@@ -672,21 +675,23 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
         if (canceled) {
             return
         }
-        if (particleDefaultLength.isEmpty()) {
-            locations.forEach {
-                val uuid = it.key.uuid
-                particleDefaultLength[uuid] = it.value.length()
-            }
+        locations.forEach { (data, location) ->
+            particleDefaultLength.putIfAbsent(data.uuid, location.length())
+            particleDefaultLocations.putIfAbsent(data.uuid, location.clone())
         }
-        locations.forEach {
-            val uuid = it.key.uuid
-            val len = particleDefaultLength[uuid] ?: return@forEach
-            if (len <= 0.0) {
-                return@forEach
-            }
-            val value = it.value
-            value.multiply(len * scale / value.length())
+        locations.forEach { (data, location) ->
+            applyScale(data.uuid, location)
         }
+    }
+
+    /** 按一倍缩放缓存恢复方向后应用当前缩放，避免从零缩放恢复时产生 NaN。 */
+    protected fun applyScale(uuid: UUID, location: RelativeLocation) {
+        val defaultLength = particleDefaultLength[uuid] ?: return
+        if (defaultLength <= 0.0) return
+        if (location.length() <= 0.000000000001) {
+            location.copyFrom(particleDefaultLocations[uuid] ?: return)
+        }
+        location.multiply(defaultLength * scale / location.length())
     }
 
     open fun flush() {
@@ -739,6 +744,7 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
         particleLocations.remove(control)
         particles.remove(control.controlUUID())
         particleDefaultLength.remove(control.controlUUID())
+        particleDefaultLocations.remove(control.controlUUID())
         particleRotatedLocations.clear()
         particleLocations.values.forEach { particleRotatedLocations.add(it) }
     }
@@ -948,9 +954,9 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
         val locations = getParticles()
         prepareGpuComposition(locations.size)
         beforeDisplay(locations)
-        toggleScale(locations)
         Math3DUtil.rotatePointsToPoint(locations.values.toList(), axis, RelativeLocation.yAxis())
         Math3DUtil.rotateAsAxis(locations.values.toList(), axis, roll)
+        toggleScale(locations)
         locations.forEach {
             displayEntry(it.key, it.value)
         }
@@ -959,8 +965,8 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
 
     protected fun prepareGpuComposition(particleCount: Int) {
         cParticleCapacityHint = particleCount.coerceAtLeast(1)
-        cParticleAppliedScale = if (scale > 1e-7) scale else 1.0
-        cParticleScaleCollapsed = scale <= 1e-7
+        cParticleAppliedScale = if (scale > 0.0000001) scale else 1.0
+        cParticleScaleCollapsed = scale <= 0.0000001
     }
 
     protected open fun trackDisplayedParticleLocation(pos: RelativeLocation) {
@@ -1094,7 +1100,7 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
     }
 
     private fun applyGpuScale(newScale: Double) {
-        if (newScale <= 1e-7) {
+        if (newScale <= 0.0000001) {
             cParticleScaleCollapsed = true
             syncGpuTransform()
             return
@@ -1122,9 +1128,9 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
     private fun syncGpuTransform() {
         val linear = if (cParticleScaleCollapsed) {
             cParticleRenderTransform.set(cParticleLinearTransform)
-                .m00(0f).m01(0f).m02(0f)
-                .m10(0f).m11(0f).m12(0f)
-                .m20(0f).m21(0f).m22(0f)
+                .m00(0F).m01(0F).m02(0F)
+                .m10(0F).m11(0F).m12(0F)
+                .m20(0F).m21(0F).m22(0F)
         } else {
             cParticleLinearTransform
         }
@@ -1153,7 +1159,7 @@ abstract class ParticleComposition : ServerControler<ParticleComposition>,
 
     private fun normalizedAxis(value: RelativeLocation): Vector3f {
         val result = Vector3f(value.x.toFloat(), value.y.toFloat(), value.z.toFloat())
-        return if (result.lengthSquared() > 1e-12f) result.normalize() else result.set(0f, 1f, 0f)
+        return if (result.lengthSquared() > 0.000000000001F) result.normalize() else result.set(0F, 1F, 0F)
     }
 
     open fun clone(): ParticleComposition {

@@ -17,6 +17,7 @@ uniform float uFogStart;
 uniform float uFogEnd;
 uniform vec4 uFogColor;
 uniform int uDepthOnly;
+uniform int uCoverageMask;
 uniform int uPremultiplyRgbByAlpha;
 
 out vec4 fragColor;
@@ -32,6 +33,10 @@ void main() {
     // 与本项目覆盖的 particle.fsh 一致: 极低 alpha 才丢弃
     if (tex.a * vColor.a < 0.001) {
         discard;
+    }
+    if (uCoverageMask != 0) {
+        fragColor = vec4(1.0);
+        return;
     }
     if (uDepthOnly != 0) {
         fragColor = vec4(0.0);

@@ -27,6 +27,14 @@ class APIConfig {
         get() = max(field, 1)
 
     /**
+     * Status GUI 活跃时请求服务端快照的客户端 tick 间隔。
+     *
+     * 默认 `20` tick，约一秒；异常配置会限制在 5 至 1200 tick。
+     */
+    var statusServerRefreshIntervalTicks = 20
+        get() = field.coerceIn(5, 1_200)
+
+    /**
      * Math3DUtil的 threadPool最大线程数
      */
     var calculateThreadCount = 16

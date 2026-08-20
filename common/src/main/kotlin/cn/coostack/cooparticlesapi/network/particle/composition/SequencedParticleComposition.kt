@@ -1,7 +1,6 @@
 package cn.coostack.cooparticlesapi.network.particle.composition
 
 import cn.coostack.cooparticlesapi.api.controler.Tickable
-import cn.coostack.cooparticlesapi.network.particle.composition.AutoParticleComposition
 import cn.coostack.cooparticlesapi.network.particle.composition.manager.ParticleCompositionManager
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
@@ -87,16 +86,18 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
     }
 
     override fun flush() {
-        if (particles.isNotEmpty()) {
+        if (particles.isNotEmpty() || indexToUuid.any { it != null }) {
             clear(false)
         }
         displayParticles()
+        restoreDisplayedParticles()
     }
 
     override fun clear(cancel: Boolean) {
         super.clear(cancel)
         sequencedParticlesData.clear()
         particleRotatedLocations.clear()
+        indexToUuid.fill(null)
     }
 
     /**
@@ -110,7 +111,7 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
             return
         }
         displayed = true
-        // 修复disable后不自动remove的问题
+        // 修复禁用后不自动移除的问题
         status.loadControler(this)
         status.initHelper()
         this.client = world!!.isClientSide
@@ -120,7 +121,7 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
         // 在服务器需要用来更新粒子个数 所以需要参与一次计算
         flush()
         if (!client) {
-            // 服务器只负责数据同步 不负责粒子生成
+            // 服务器只负责数据同步，不负责粒子生成。
             onDisplay()
             return
         }
@@ -141,7 +142,7 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
         val newCount = locations.size
         prepareGpuComposition(newCount)
 
-        // 更新 count 并保证 bitset capacity（保留旧状态）
+        // 更新粒子总数并扩容位集，同时保留已有状态。
         ensureIndexCapacity(newCount)
 
         count = newCount
@@ -152,15 +153,15 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
         }
 
         beforeDisplaySequenced(locations)
-        toggleScale(locations)
         Math3DUtil.rotatePointsToPoint(locations.values.toList(), axis, RelativeLocation.yAxis())
         Math3DUtil.rotateAsAxis(locations.values.toList(), axis, roll)
+        toggleScale(locations)
 
         sequencedParticlesData.clear()
         sequencedParticlesData.addAll(locations.toList())
         particleRotatedLocations.clear()
         particleRotatedLocations.addAll(locations.values)
-        // client：准备 index->uuid 数组
+        // 客户端：准备索引到 UUID 的映射数组。
         if (indexToUuid.size != count) {
             indexToUuid = arrayOfNulls(count)
         }
@@ -180,14 +181,22 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
 
         if (!client) return
 
-        // 如果 count 变化，保证本地缓存容量；且需要重新 flush 计算 sequencedParticlesData（因为位置可能也变了）
-        // 所以当 count 或其他参数改变导致粒子序列改变时，客户端需要重算序列数据
+        // 粒子总数或缓存结构变化时，客户端需要重新计算序列数据。
         if (oldCount != this.count || sequencedParticlesData.size != this.count) {
-            // 重新计算 sequencedParticlesData（仍然不生成粒子）
+            // 缓存重建会移除旧节点，flush 会按新的完整位集恢复已显示状态。
             flush()
+            return
         }
 
         applyIndexDiff(oldIndex, this.index.get())
+        restoreDisplayedParticles()
+    }
+
+    private fun restoreDisplayedParticles() {
+        if (!client || sequencedParticlesData.size != count) return
+        for (i in 0 until count) {
+            if (isParticleDisplayed(i)) createWithIndex(i)
+        }
     }
 
     private fun applyIndexDiff(oldBits: LongArray, newBits: LongArray) {
@@ -206,56 +215,58 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
             var diff = oldSafe[page] xor newSafe[page]
             if (diff == 0L) continue
 
-            val base = page shl 6 // page*64
+            val base = page shl 6 // 当前页的首个槽位
             while (diff != 0L) {
-                val bit = java.lang.Long.numberOfTrailingZeros(diff) // 0..63
+                val bit = diff.countTrailingZeroBits() // 0..63
                 val i = base + bit
                 if (i >= n) break
 
                 val newGen = ((newSafe[page] ushr bit) and 1L) != 0L
                 if (newGen) createWithIndex(i) else removeWithIndex(i)
 
-                diff = diff and (diff - 1) // clear lowest set bit
+                diff = diff and (diff - 1) // 清除最低位的 1
             }
         }
     }
 
 
     /**
-     * 服务端：生成下一个粒子（只改 bitset 和计数，不生成粒子对象）
+     * 服务端：生成下一个粒子（只改 位集 和计数，不生成粒子对象）
      *
-     * waring 如果你的style不是client only （也就是要在服务器里面调用生成的，在调用此方法前
-     * 一定要在非client作用域执行
+     * 警告：如果你的样式不是仅客户端（也就是要在服务器里调用生成），在调用此方法前
+     * 一定要在非客户端作用域执行
      * ```kotlin
      * if (!client){
      *  addSingle()
      * }
      * ```
-     * 如果你使用的是单纯的客户端 比如 SequencedParticleShapeComposition 则无需此判断
+     * 如果你使用的是单纯的客户端 比如 SequencedParticleShapeComposition 则无需此判断。
+     * 方法从当前指针向后寻找第一个未显示槽位，必要时回绕；成功后会标记完整网络状态。
+     * 服务端调用必须位于 Composition 生命周期更新所在的逻辑线程。
      */
     fun addSingle() {
         if (count <= 0) return
-        if (serverCurrentIndex !in 0 until count) return
+        val start = serverCurrentIndex.coerceIn(0, count - 1)
+        val idx = (start until count).firstOrNull { !isParticleDisplayed(it) }
+            ?: (0 until start).firstOrNull { !isParticleDisplayed(it) }
+            ?: return
 
-        val idx = serverCurrentIndex
-        if (!isParticleDisplayed(idx)) {
-            setParticleStatus(idx, true)
-            displayedParticleCount++
+        setBit(index.get(), idx, true)
+        displayedParticleCount++
 
-            // client: 立即生成该 index 对应的粒子
-            if (client) {
-                createWithIndex(idx)
-            }
+        // 客户端：立即生成该索引对应的粒子。
+        if (client) {
+            createWithIndex(idx)
         }
-
         serverCurrentIndex = min(idx + 1, max(count - 1, 0))
+        markDirty()
     }
 
     /**
-     * 服务端：生成多个粒子（只改 bitset 和计数，不生成粒子对象）
+     * 服务端：生成多个粒子（只改 位集 和计数，不生成粒子对象）
      *
-     * waring 如果你的style不是client only （也就是要在服务器里面调用生成的，在调用此方法前
-     * 一定要在非client作用域执行
+     * 警告：如果你的样式不是仅客户端（也就是要在服务器里调用生成），在调用此方法前
+     * 一定要在非客户端作用域执行
      * ```kotlin
      * if (!client){
      *  addMultiple(amount)
@@ -263,7 +274,7 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
      * ```
      * 如果你使用的是单纯的客户端 比如 SequencedParticleShapeComposition 则无需此判断
      *
-     * @param amount 生成数量（<=0 会直接 return）
+     * @param amount 生成数量（小于等于 0 时直接返回）
      */
     fun addMultiple(amount: Int) {
         if (amount <= 0) return
@@ -271,10 +282,10 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
     }
 
     /**
-     * 服务端：移除上一个粒子（只改 bitset 和计数，不删除粒子对象）
+     * 服务端：移除上一个粒子（只改 位集 和计数，不删除粒子对象）
      *
-     * waring 如果你的style不是client only （也就是要在服务器里面调用生成的，在调用此方法前
-     * 一定要在非client作用域执行
+     * 警告：如果你的样式不是仅客户端（也就是要在服务器里调用生成），在调用此方法前
+     * 一定要在非客户端作用域执行
      * ```kotlin
      * if (!client){
      *  removeSingle()
@@ -283,33 +294,33 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
      * 如果你使用的是单纯的客户端 比如 SequencedParticleShapeComposition 则无需此判断
      *
      * 说明：
-     * - 使用 serverCurrentIndex 作为删除指针
-     * - 若对应 index 已显示，则置为 false 并减少 displayedParticleCount
-     * - client 场景下会立即 removeWithIndex(idx) 以本地预览/嵌套使用
+     * - 从 `serverCurrentIndex` 向前寻找最近的已显示槽位，必要时回绕
+     * - 成功后清除位、更新计数和指针，并标记完整网络状态
+     * - 客户端场景会立即调用 `removeWithIndex`，服务端调用必须位于 Composition 生命周期更新线程
      */
     fun removeSingle() {
         if (count <= 0) return
-        val idx = min(serverCurrentIndex, count - 1)
-        if (idx !in 0 until count) return
+        val start = serverCurrentIndex.coerceIn(0, count - 1)
+        val idx = (start downTo 0).firstOrNull(::isParticleDisplayed)
+            ?: (count - 1 downTo start + 1).firstOrNull(::isParticleDisplayed)
+            ?: return
 
-        if (isParticleDisplayed(idx)) {
-            setParticleStatus(idx, false)
-            displayedParticleCount--
+        setBit(index.get(), idx, false)
+        displayedParticleCount--
 
-            // client: 立即删除该 index 对应的粒子
-            if (client) {
-                removeWithIndex(idx)
-            }
+        // 客户端：立即删除该索引对应的粒子。
+        if (client) {
+            removeWithIndex(idx)
         }
-
         serverCurrentIndex = max(idx - 1, 0)
+        markDirty()
     }
 
     /**
-     * 服务端：移除多个粒子（只改 bitset 和计数，不删除粒子对象）
+     * 服务端：移除多个粒子（只改 位集 和计数，不删除粒子对象）
      *
-     * waring 如果你的style不是client only （也就是要在服务器里面调用生成的，在调用此方法前
-     * 一定要在非client作用域执行
+     * 警告：如果你的样式不是仅客户端（也就是要在服务器里调用生成），在调用此方法前
+     * 一定要在非客户端作用域执行
      * ```kotlin
      * if (!client){
      *  removeMultiple(amount)
@@ -317,7 +328,7 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
      * ```
      * 如果你使用的是单纯的客户端 比如 SequencedParticleShapeComposition 则无需此判断
      *
-     * @param amount 移除数量（<=0 会直接 return）
+     * @param amount 移除数量（小于等于 0 时直接返回）
      */
     fun removeMultiple(amount: Int) {
         if (amount <= 0) return
@@ -325,10 +336,10 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
     }
 
     /**
-     * 重置所有粒子状态（清空 bitset、计数器、指针）
+     * 重置所有粒子状态（清空 位集、计数器、指针）
      *
-     * waring 如果你的style不是client only （也就是要在服务器里面调用生成的，在调用此方法前
-     * 一定要在非client作用域执行
+     * 警告：如果你的样式不是仅客户端（也就是要在服务器里调用生成），在调用此方法前
+     * 一定要在非客户端作用域执行
      * ```kotlin
      * if (!client){
      *  resetAll()
@@ -337,15 +348,15 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
      * 如果你使用的是单纯的客户端 比如 SequencedParticleShapeComposition 则无需此判断
      *
      * 说明：
-     * - server：只清 bitset/计数/指针，等待同步到客户端由 diff 处理
-     * - client：会先遍历 bitset，把已生成的粒子对象全部 removeWithIndex(i)，再清 bitset
+     * - 服务端：只清位集、计数和指针，等待同步到客户端后按差异处理
+     * - 客户端：先遍历位集，把已生成的粒子对象全部通过 `removeWithIndex(i)` 移除，再清空位集
      *
      * 注意：
      * - resetAll() 会把 serverCurrentIndex 重置为 0
      * - displayedParticleCount 会重置为 0
      */
     fun resetAll() {
-        // client: 先删掉所有已经生成的粒子对象
+        // 客户端：先删除所有已经生成的粒子对象。
         if (client && count > 0) {
             val pages = pagesFor(count)
             val bits = index.get()
@@ -354,7 +365,7 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
                 if (v == 0L) continue
                 val base = page shl 6
                 while (v != 0L) {
-                    val bit = java.lang.Long.numberOfTrailingZeros(v)
+                    val bit = v.countTrailingZeroBits()
                     val i = base + bit
                     if (i >= count) break
                     removeWithIndex(i)
@@ -363,12 +374,14 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
             }
         }
 
-        // 清 bitset
+        // 清空位集。
         val arr = index.get()
+        val changed = displayedParticleCount != 0 || serverCurrentIndex != 0 || arr.any { it != 0L }
         for (i in arr.indices) arr[i] = 0L
 
         displayedParticleCount = 0
         serverCurrentIndex = 0
+        if (changed) markDirty()
     }
 
     override fun rotateToPoint(to: RelativeLocation) {
@@ -383,13 +396,27 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
         super.rotateAsAxis(radian)
     }
 
+    /**
+     * 直接设置一个序列槽位的显示状态。
+     *
+     * 服务端真实变更后会标记完整网络状态，客户端真实变更后会立即创建或移除对应节点。
+     * 越界或状态未变化时不会修改计数、节点和网络脏状态。
+     *
+     * @param index 目标槽位索引，有效范围为 `0 until count`
+     * @param generated `true` 表示显示，`false` 表示移除
+     */
     fun setParticleStatus(index: Int, generated: Boolean) {
-        if (index !in 0 until count) return
+        if (index !in 0 until count || isParticleDisplayed(index) == generated) return
         setBit(this.index.get(), index, generated)
+        displayedParticleCount += if (generated) 1 else -1
+        if (client) {
+            if (generated) createWithIndex(index) else removeWithIndex(index)
+        }
+        markDirty()
     }
 
     fun isParticleDisplayed(index: Int): Boolean {
-        if (index !in 0..count) return false
+        if (index !in 0 until count) return false
         return getBit(this.index.get(), index)
     }
 
@@ -398,16 +425,14 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
             return
         }
         sequencedParticlesData.forEach { (data, location) ->
-            val defaultLength = particleDefaultLength[data.uuid] ?: return@forEach
-            if (defaultLength in -1e-3..1e-3) return@forEach
-            location.multiply(defaultLength * scale / location.length())
+            applyScale(data.uuid, location)
         }
         toggleRelative()
     }
 
     /**
-     * 客户端映射：index -> uuid（用于按 index 删除）
-     * 只在 client 使用；server 不会用到
+     * 客户端使用的索引到 UUID 映射，用于按索引删除。
+     * 服务器不会读取该映射。
      */
     private var indexToUuid: Array<UUID?> = emptyArray()
     private fun createWithIndex(i: Int) {
@@ -420,7 +445,9 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
 
         val (data, rl) = sequencedParticlesData[i]
         displayEntry(data, rl)
-        indexToUuid[i] = data.uuid
+        if (particles.containsKey(data.uuid)) {
+            indexToUuid[i] = data.uuid
+        }
     }
 
     override fun displayEntry(data: CompositionData, pos: RelativeLocation) {
@@ -460,7 +487,7 @@ abstract class SequencedParticleComposition(position: Vec3, world: Level? = null
         if (current.size == pages) return
 
         val resized = LongArray(pages)
-        // copy old pages into new
+        // 把旧页复制到新数组
         val len = min(current.size, resized.size)
         for (i in 0 until len) resized[i] = current[i]
         index.setMemoValue(resized)

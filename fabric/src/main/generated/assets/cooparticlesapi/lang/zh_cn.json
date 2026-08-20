@@ -6,5 +6,8 @@
   "item.cooparticlesapi.single_testing": "新API单项测试",
   "item.cooparticlesapi.test_block_binder": "粒子测试方块绑定器",
   "item.cooparticlesapi.test_style": "§a粒子样式测试工具-C-S共用",
-  "item.cooparticlesapi.test_tick": "§aTick 粒子测试工具"
+  "item.cooparticlesapi.test_tick": "§aTick 粒子测试工具",
+  "key.categories.cooparticlesapi": "CooParticlesAPI",
+  "key.cooparticlesapi.status_modifier": "Status 修饰键",
+  "key.cooparticlesapi.status_open": "打开 Status 面板"
 }

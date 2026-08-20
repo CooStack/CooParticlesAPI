@@ -12,6 +12,9 @@ object ServerRenderEntityManager {
 
     val playerViewable = HashMap<UUID, HashSet<RenderEntity>>()
 
+    /** 返回服务端当前 RenderEntity 实例数。 */
+    fun loadedEntityCount(): Int = entities.size
+
 
     /**
      * 执行 `ServerRenderEntityManager` 定义的 `spawn` 操作；输入和返回值用于该组件当前的渲染职责。

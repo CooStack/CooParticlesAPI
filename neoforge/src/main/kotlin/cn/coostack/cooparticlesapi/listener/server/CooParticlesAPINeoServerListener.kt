@@ -8,6 +8,7 @@ import cn.coostack.cooparticlesapi.event.events.server.ServerPostTickEvent
 import cn.coostack.cooparticlesapi.event.events.server.ServerPreTickEvent
 import cn.coostack.cooparticlesapi.network.particle.composition.manager.ParticleCompositionManager
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersManager
+import cn.coostack.cooparticlesapi.performance.PerformanceStatusServerRequestGate
 import cn.coostack.cooparticlesapi.test.TestManager
 import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.fml.common.EventBusSubscriber
@@ -35,6 +36,7 @@ object CooParticlesAPINeoServerListener {
     @SubscribeEvent
     fun onPlayerLogout(event: PlayerEvent.PlayerLoggedOutEvent) {
         if (!event.entity.level().isClientSide) {
+            PerformanceStatusServerRequestGate.forget(event.entity.uuid)
             TestManager.clearServerFor(event.entity)
             ParticleCompositionManager.clearVisibleFor(event.entity)
             ParticleEmittersManager.clearVisibleFor(event.entity)

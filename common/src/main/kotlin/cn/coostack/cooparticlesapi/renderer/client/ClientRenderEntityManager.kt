@@ -1,11 +1,14 @@
 package cn.coostack.cooparticlesapi.renderer.client
 
+import cn.coostack.cooparticlesapi.CooParticlesConstants
+import cn.coostack.cooparticlesapi.cparticle.CParticleSystemManager
 import cn.coostack.cooparticlesapi.renderer.RenderEntity
 import cn.coostack.cooparticlesapi.renderer.backend.RenderBackendCapability
 import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameContext
 import cn.coostack.cooparticlesapi.renderer.effects.RenderEffectGraph
 import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainPipelineManager
 import cn.coostack.cooparticlesapi.renderer.post.CooPostEffects
+import cn.coostack.cooparticlesapi.renderer.post.PostEffectFrameExecutor
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityInstance
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityPipelineRuntimeCache
 import cn.coostack.cooparticlesapi.renderer.state.CooGLSLStateManager
@@ -25,6 +28,7 @@ object ClientRenderEntityManager {
     private val cachedViewMatrix = Matrix4f()
     private val cachedProjMatrix = Matrix4f()
     private val renderStateGuard = RenderStateGuard()
+    private var warnedForegroundReplayFailure = false
     /**
      * 从 `ClientRenderEntityManager` 当前维护的状态中读取 `getFrom` 结果，不创建新的渲染资源。
      *
@@ -60,6 +64,7 @@ object ClientRenderEntityManager {
         cachedTickDelta = 0F
         cachedViewMatrix.identity()
         cachedProjMatrix.identity()
+        warnedForegroundReplayFailure = false
         CooPostEffects.client.clear()
     }
 
@@ -230,14 +235,26 @@ object ClientRenderEntityManager {
         if (!context.backend.supports(RenderBackendCapability.FINAL_FRAME_POST)) {
             return
         }
-        val graph = RenderEffectGraph(context.backend.capabilities, context)
+        val includeTerrainMappings = prepareTerrainCoverage(context, scenePost = false)
+        val refreshedContext = context.copy(
+            sceneResources = ClientRenderSceneResourcesResolver.resolveCurrentResources(),
+        )
+        val terrainGraph = RenderEffectGraph(refreshedContext.backend.capabilities, refreshedContext)
+        CooTerrainPipelineManager.collectPostEffects(
+            refreshedContext,
+            terrainGraph,
+            includeMappings = includeTerrainMappings,
+        )
+        terrainGraph.execute()
+        replayDeferredCParticleForeground(refreshedContext, scenePost = false)
+
+        val graph = RenderEffectGraph(refreshedContext.backend.capabilities, refreshedContext)
         entities.values.asSequence()
             .filterNot(RenderEntityInstance<RenderEntity>::usesScenePost)
             .forEach { instance ->
-                instance.collectEffects(context, graph)
+                instance.collectEffects(refreshedContext, graph)
             }
-        CooTerrainPipelineManager.collectPostEffects(context, graph)
-        CooPostEffects.client.collectFramePost(context, graph)
+        CooPostEffects.client.collectFramePost(refreshedContext, graph)
         graph.execute()
     }
 
@@ -247,15 +264,69 @@ object ClientRenderEntityManager {
             return
         }
         // Terrain Mapping 先提交，避免大范围映射覆盖 RenderEntity 的场景后处理结果。
-        val terrainGraph = RenderEffectGraph(context.backend.capabilities, context)
-        CooTerrainPipelineManager.collectScenePostEffects(context, terrainGraph)
+        val includeTerrainMappings = prepareTerrainCoverage(context, scenePost = true)
+        val terrainContext = context.copy(
+            sceneResources = ClientRenderSceneResourcesResolver.resolveCurrentResources(),
+        )
+        val terrainGraph = RenderEffectGraph(terrainContext.backend.capabilities, terrainContext)
+        CooTerrainPipelineManager.collectScenePostEffects(
+            terrainContext,
+            terrainGraph,
+            includeMappings = includeTerrainMappings,
+        )
         terrainGraph.execute()
+        replayDeferredCParticleForeground(terrainContext, scenePost = true)
 
         val graph = RenderEffectGraph(context.backend.capabilities, context)
         entities.values.asSequence()
             .filter(RenderEntityInstance<RenderEntity>::usesScenePost)
             .forEach { instance -> instance.collectEffects(context, graph) }
         graph.execute()
+    }
+
+    /** 生成当前阶段的 CParticle 保护蒙版；延迟前景路径不再使用二值 SceneColor 保护。 */
+    private fun prepareTerrainCoverage(context: RenderFrameContext, scenePost: Boolean): Boolean {
+        if (!CooTerrainPipelineManager.requiresCParticleCoverageMask(scenePost)) return true
+        if (CParticleSystemManager.hasDeferredTerrainForeground()) return true
+        val ready = try {
+            CParticleSystemManager.renderTerrainCoverageMask(
+                context.viewMatrix,
+                context.projMatrix,
+                context.tickDelta,
+            )
+        } catch (exception: RuntimeException) {
+            CooTerrainPipelineManager.reportCParticleCoverageFailure(exception)
+            false
+        }
+        if (!ready) CooTerrainPipelineManager.reportCParticleCoverageFailure()
+        return ready
+    }
+
+    /** 把从原粒子 pass 延迟的 CParticle 直接重放到 Mapping 输出，并更新后续 SceneColor 链。 */
+    private fun replayDeferredCParticleForeground(context: RenderFrameContext, scenePost: Boolean) {
+        if (!CParticleSystemManager.hasDeferredTerrainForeground(scenePost)) return
+        val replayed = PostEffectFrameExecutor.replayForeground(context) {
+            CParticleSystemManager.renderDeferredTerrainForeground(
+                context.viewMatrix,
+                context.projMatrix,
+                context.tickDelta,
+                scenePost,
+            )
+        }
+        if (replayed) return
+        if (!warnedForegroundReplayFailure) {
+            warnedForegroundReplayFailure = true
+            CooParticlesConstants.logger.error(
+                "Deferred CParticle foreground replay target is unavailable; drawing into the restored framebuffer"
+            )
+        }
+        CParticleSystemManager.renderDeferredTerrainForeground(
+            context.viewMatrix,
+            context.projMatrix,
+            context.tickDelta,
+            scenePost,
+        )
+        PostEffectFrameExecutor.invalidateSceneColorCopy()
     }
 
     /** 在 Iris final pass 前只捕获场景后处理 Pipeline 的 world attachment。 */

@@ -52,6 +52,8 @@ import cn.coostack.cooparticlesapi.network.packet.server.PacketSoundLoopS2C
 import cn.coostack.cooparticlesapi.particles.ControlableParticleEffect
 import cn.coostack.cooparticlesapi.particles.CooModParticles
 import cn.coostack.cooparticlesapi.particles.impl.particles.*
+import cn.coostack.cooparticlesapi.performance.client.PerformanceStatusClientController
+import cn.coostack.cooparticlesapi.performance.client.PerformanceStatusKeyBindings
 import cn.coostack.cooparticlesapi.platform.registry.CommonDeferredRegistry
 import cn.coostack.cooparticlesapi.platform.network.FabricClientContext
 import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
@@ -71,6 +73,9 @@ import net.minecraft.core.particles.ParticleType
 object CooParticlesAPIFabricClient : ClientModInitializer {
     override fun onInitializeClient() {
         CooKeyBindingManager.setRegistrar { KeyBindingHelper.registerKeyBinding(it) }
+        PerformanceStatusKeyBindings.mappings().forEach { mapping ->
+            KeyBindingHelper.registerKeyBinding(mapping)
+        }
         CooShaderReloadListenerFabric.register()
         registerParticleFabric()
         registerNetworkFabric()
@@ -135,6 +140,8 @@ object CooParticlesAPIFabricClient : ClientModInitializer {
         ClientTickEvents.END_CLIENT_TICK.register {
             val event = ClientPostTickEvent(it)
             CooEventBus.call(event)
+            PerformanceStatusKeyBindings.tick(it)
+            PerformanceStatusClientController.onClientTick(it)
         }
 
         ClientWorldEvents.AFTER_CLIENT_WORLD_CHANGE.register { _, world ->

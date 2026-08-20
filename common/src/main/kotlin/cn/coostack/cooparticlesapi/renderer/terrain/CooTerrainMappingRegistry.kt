@@ -102,6 +102,9 @@ internal object CooTerrainMappingRegistry {
             .thenByDescending { it.sequence }
             .thenBy { it.instanceId.toString() }
 
+    /** 返回客户端当前持有的程序化 Terrain mapping 实例数。 */
+    fun activeMappingCount(): Int = mappings.size
+
     /** 返回包含区域和 uniform 更新的状态版本，供运行时快照观察。 */
     fun revision(): Long = changed.get()
 
@@ -130,7 +133,8 @@ internal object CooTerrainMappingRegistry {
         instance.priority,
         instance.composition,
         instance.sequence,
-        instance.isPaused()
+        instance.isPaused(),
+        instance.region,
     )
 
     private fun requiresTerrainGeometry(instance: CooTerrainMappingInstance): Boolean {
@@ -144,7 +148,8 @@ internal object CooTerrainMappingRegistry {
         val priority: Int,
         val composition: CooTerrainEffectComposition,
         val sequence: Long,
-        val paused: Boolean
+        val paused: Boolean,
+        val region: CooTerrainMappingRegion,
     )
 
     private fun acceptRevision(key: MappingKey, revision: Long): Boolean {

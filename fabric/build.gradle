@@ -47,6 +47,10 @@ tasks.withType(Test).configureEach {
     useJUnitPlatform()
 }
 
+tasks.named('processResources', ProcessResources) {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
 tasks.register("sourceWithCommon", Jar) {
     def current = tasks.named("sourcesJar").get()
     dependsOn(current)

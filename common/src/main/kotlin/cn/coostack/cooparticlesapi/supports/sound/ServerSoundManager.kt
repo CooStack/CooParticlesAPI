@@ -71,6 +71,9 @@ object ServerSoundManager {
         return duckingEffects[key]
     }
 
+    /** 返回服务端当前管理的声音实例数，不创建集合副本。 */
+    fun activeSoundCount(): Int = sounds.size
+
     @JvmStatic
     fun activeSounds(): List<ServerManagedSoundInstance> {
         return sounds.values.toList()

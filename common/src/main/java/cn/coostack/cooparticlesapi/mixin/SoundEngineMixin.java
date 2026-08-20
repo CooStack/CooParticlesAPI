@@ -16,6 +16,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.Map;
 
+/**
+ * 把 Coo ducking 应用到原版 SoundEngine，并发布当前实际声音声道数。
+ */
 @Mixin(SoundEngine.class)
 public abstract class SoundEngineMixin {
     @Shadow
@@ -49,8 +52,12 @@ public abstract class SoundEngineMixin {
         cir.setReturnValue(cir.getReturnValueF() * ClientSoundManager.duckVolumeMultiplier(soundInstance));
     }
 
+    /**
+     * 在声音 tick 末尾发布活动声道数，并在需要时刷新 ducking 后的声道音量。
+     */
     @Inject(method = "tickNonPaused", at = @At("TAIL"))
     private void cooparticlesapi$refreshDuckedVolumes(CallbackInfo ci) {
+        ClientSoundManager.updateVanillaSoundInstanceCount(this.instanceToChannel.size());
         if (!ClientSoundManager.shouldRefreshSoundVolumes()) {
             return;
         }

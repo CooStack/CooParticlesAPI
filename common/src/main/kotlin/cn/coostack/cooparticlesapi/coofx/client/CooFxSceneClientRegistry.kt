@@ -22,6 +22,9 @@ import java.util.UUID
 internal object CooFxSceneClientRegistry {
     private val scenes = LinkedHashMap<UUID, ClientSceneState>()
 
+    /** 返回客户端当前跟踪的 CooFX scene 数。 */
+    fun activeSceneCount(): Int = scenes.size
+
     fun onCreated(entity: CooFxSceneRenderEntity) {
         scenes.remove(entity.uuid)?.stop()
         scenes[entity.uuid] = ClientSceneState(entity)

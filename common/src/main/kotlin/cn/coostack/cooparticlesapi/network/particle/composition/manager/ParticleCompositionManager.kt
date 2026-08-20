@@ -72,6 +72,9 @@ object ParticleCompositionManager {
     @JvmStatic
     fun loadedClientCount(): Int = loadedClientCompositions.size()
 
+    /** 返回服务端当前活动 Composition 实例数。 */
+    fun loadedServerCount(): Int = serverView.size
+
     fun addClient(composition: ParticleComposition) {
         clientView[composition.controlUUID] = composition
         composition.display()

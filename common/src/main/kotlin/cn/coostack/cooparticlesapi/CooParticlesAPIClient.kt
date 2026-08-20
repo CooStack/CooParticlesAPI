@@ -18,6 +18,8 @@ import cn.coostack.cooparticlesapi.particles.CooModParticles
 import cn.coostack.cooparticlesapi.particles.CooParticleTextureSheet
 import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
 import cn.coostack.cooparticlesapi.particles.control.group.ClientParticleGroupManager
+import cn.coostack.cooparticlesapi.performance.PerformanceStatusClientBridge
+import cn.coostack.cooparticlesapi.performance.client.PerformanceStatusClientController
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import cn.coostack.cooparticlesapi.renderer.backend.IrisSafeRenderBackend
 import cn.coostack.cooparticlesapi.renderer.backend.RenderBackend
@@ -85,6 +87,7 @@ object CooParticlesAPIClient {
         initParticleType()
         initRender()
         CooFXClient.init()
+        PerformanceStatusClientBridge.install(PerformanceStatusClientController::handleControl)
     }
 
     @JvmStatic
@@ -214,6 +217,7 @@ object CooParticlesAPIClient {
     }
 
     private fun onDisconnectInternal() {
+        PerformanceStatusClientController.onDisconnect()
         clearTransientClientState()
     }
 
@@ -224,6 +228,7 @@ object CooParticlesAPIClient {
     }
 
     private fun afterClientWorldChangeInternal() {
+        PerformanceStatusClientController.onWorldChanged()
         clearTransientClientState()
     }
 
@@ -283,6 +288,8 @@ object CooParticlesAPIClient {
                 ParticleCompositionManager.tickClient()
                 CParticleSystemManager.tick()
                 CooFXClient.tickClient()
+                ClientSoundManager.tick()
+                ClientSoundLoopManager.tick()
                 TestManager.doTickClient()
                 AnimateManager.tickClient()
                 CooClientPacketManager.tick()

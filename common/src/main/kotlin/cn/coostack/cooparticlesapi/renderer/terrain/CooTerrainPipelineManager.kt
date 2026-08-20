@@ -19,6 +19,7 @@ import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelineCompiler
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelineNodeKind
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelinePostEffectCompiler
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelineOutputPort
+import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelineTarget
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelineInputPort
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelineTextureSource
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelines
@@ -114,13 +115,16 @@ internal object CooTerrainPipelineManager {
     private var terrainColorHeight = 1
     private var irisDepthAttachmentRestore: IrisDepthAttachmentRestore? = null
     private val warnedRequiredSamplerFallbacks = linkedSetOf<String>()
+    private val warnedUnprotectedMappingPipelines = linkedSetOf<ResourceLocation>()
     private var warnedTargetResolutionFallback = false
     private var warnedPostCaptureFailure = false
+    private var warnedCParticleCoverageFailure = false
     /** 避免 Iris 目标过渡期间逐帧重复记录同一条警告。 */
     private var warnedIrisTerrainUnavailable = false
     private var deferredFrameFinish: DeferredFrameFinish? = null
     private var framePartialTick = 0F
-    private var screenOnlySceneMappingActiveThisFrame = false
+    private var scenePostMappingActiveThisFrame = false
+    private var framePostMappingActiveThisFrame = false
     private var terrainDepthSnapshotsRequiredThisFrame = false
     /** 当前是否正在重放地形几何以捕获 Pipeline WORLD 节点 attachment。 */
     private var terrainAttachmentCaptureActive = false
@@ -184,7 +188,8 @@ internal object CooTerrainPipelineManager {
     fun beginRenderFrame(partialTick: Float) {
         OpenGlPostEffectExecutionBackend.beginTerrainDepthFrame()
         irisTerrainUnavailableThisFrame = false
-        screenOnlySceneMappingActiveThisFrame = false
+        scenePostMappingActiveThisFrame = false
+        framePostMappingActiveThisFrame = false
         terrainDepthSnapshotsRequiredThisFrame = false
         flushPendingFullSectionRebuild()
         framePartialTick = partialTick.coerceIn(0F, 1F)
@@ -207,9 +212,15 @@ internal object CooTerrainPipelineManager {
             }
             CooTerrainMappingRegistry.activeRenderPlan(dimension, level.gameTime).forEach { mapping ->
                 val pipeline = CooTerrainMappingManager.pipeline(mapping.mappingId) ?: return@forEach
-                if (pipeline.nodes.any { node -> node.kind == CooPipelineNodeKind.WORLD }) return@forEach
+                if (pipeline.nodes.none { node -> node.kind != CooPipelineNodeKind.WORLD }) return@forEach
+                if (!hasMandatoryCParticleCoverage(pipeline)) {
+                    warnUnprotectedMappingPipeline(pipeline)
+                    return@forEach
+                }
                 if (pipeline.postInScene) {
-                    screenOnlySceneMappingActiveThisFrame = true
+                    scenePostMappingActiveThisFrame = true
+                } else {
+                    framePostMappingActiveThisFrame = true
                 }
                 if (pipeline.lines.any { line -> line.output.isTerrainDepthSnapshot() }) {
                     terrainDepthSnapshotsRequiredThisFrame = true
@@ -247,10 +258,76 @@ internal object CooTerrainPipelineManager {
     }
 
     /**
-     * @return 当前是否存在必须先于 RenderEntity 合成的 screen-only scene Mapping
+     * @return 当前是否存在必须先于 RenderEntity 合成的 scene Mapping 全屏节点
      */
     fun shouldDeferShaderPackRenderEntities(): Boolean {
-        return screenOnlySceneMappingActiveThisFrame
+        return scenePostMappingActiveThisFrame
+    }
+
+    /**
+     * 返回 CParticle 应在 Mapping 后重放的最终阶段；`true` 为 scene-post，`false` 为 frame-post。
+     * 同帧同时存在两类 Mapping 时选择更晚的 frame-post，避免前景被第二次 Mapping 覆盖。
+     */
+    internal fun cParticleForegroundReplayScenePost(): Boolean? {
+        return when {
+            framePostMappingActiveThisFrame -> false
+            scenePostMappingActiveThisFrame -> true
+            else -> null
+        }
+    }
+
+    /** @return 指定后处理阶段是否需要生成独立 CParticle 覆盖蒙版 */
+    internal fun requiresCParticleCoverageMask(scenePost: Boolean): Boolean {
+        return if (scenePost) {
+            scenePostMappingActiveThisFrame
+        } else {
+            framePostMappingActiveThisFrame
+        }
+    }
+
+    /** 覆盖蒙版失败时记录一次诊断；调用方必须跳过本帧 Terrain Mapping。 */
+    internal fun reportCParticleCoverageFailure(cause: RuntimeException? = null) {
+        if (warnedCParticleCoverageFailure) return
+        warnedCParticleCoverageFailure = true
+        if (cause == null) {
+            CooParticlesConstants.logger.warn(
+                "Skipping Terrain Mapping because the CParticle coverage mask could not be generated"
+            )
+        } else {
+            CooParticlesConstants.logger.warn(
+                "Skipping Terrain Mapping because CParticle coverage generation failed",
+                cause,
+            )
+        }
+    }
+
+    /** 所有写回最终屏幕的 Mapping 节点都必须声明并连接 CParticle 保护 ABI。 */
+    private fun hasMandatoryCParticleCoverage(pipeline: CooRenderPipeline<*>): Boolean {
+        val finalOutputs = pipeline.lines.asSequence()
+            .filter { line -> line.input == CooPipelineTarget.FinalScreen }
+            .mapNotNull { line -> line.output as? CooPipelineOutputPort }
+            .toList()
+        if (finalOutputs.isEmpty()) return false
+        return finalOutputs.all { output ->
+            val node = pipeline.nodes.firstOrNull { candidate -> candidate.name == output.node } ?: return@all false
+            val coverageInput = node.inputs.firstOrNull { input ->
+                input.sampler == CooTerrainMappingShaderAbi.CPARTICLE_COVERAGE_MASK
+            } ?: return@all false
+            if (CooTerrainMappingShaderAbi.HAS_CPARTICLE_COVERAGE !in node.uniforms) return@all false
+            pipeline.lines.any { line ->
+                line.input == coverageInput &&
+                    (line.output as? CooPipelineTextureSource.FramebufferColor)?.target ==
+                    RenderSceneTargets.CPARTICLE_COVERAGE_MASK
+            }
+        }
+    }
+
+    private fun warnUnprotectedMappingPipeline(pipeline: CooRenderPipeline<*>) {
+        if (!warnedUnprotectedMappingPipelines.add(pipeline.id)) return
+        CooParticlesConstants.logger.warn(
+            "Skipping Terrain Mapping pipeline '{}' because its final screen node does not declare CParticle coverage",
+            pipeline.id,
+        )
     }
 
     private fun CooPipelineTextureSource.isTerrainDepthSnapshot(): Boolean {
@@ -266,18 +343,42 @@ internal object CooTerrainPipelineManager {
      * @param collector 接收编译后地形效果实例的收集器
      */
     fun collectPostEffects(context: RenderFrameContext, collector: RenderEffectCollector) {
-        collectPostEffects(context, collector, scenePost = false)
+        collectPostEffects(context, collector, includeMappings = true)
     }
 
-    /** 把声明为 scene post 的 Terrain Mapping 放在 RenderEntity 场景后处理之前执行。 */
+    /** 按覆盖可用性决定是否收集 Mapping，普通 TerrainEffect 始终保留。 */
+    internal fun collectPostEffects(
+        context: RenderFrameContext,
+        collector: RenderEffectCollector,
+        includeMappings: Boolean,
+    ) {
+        collectPostEffects(context, collector, scenePost = false, includeMappings)
+    }
+
+    /**
+     * 把声明为 scene post 的 Terrain Mapping 放在 RenderEntity 场景后处理之前执行。
+     *
+     * @param context 当前帧场景后处理上下文
+     * @param collector 接收编译后效果实例的收集器
+     */
     fun collectScenePostEffects(context: RenderFrameContext, collector: RenderEffectCollector) {
-        collectPostEffects(context, collector, scenePost = true)
+        collectScenePostEffects(context, collector, includeMappings = true)
+    }
+
+    /** 按覆盖可用性决定是否收集 scene post Mapping，其他地形后处理始终保留。 */
+    internal fun collectScenePostEffects(
+        context: RenderFrameContext,
+        collector: RenderEffectCollector,
+        includeMappings: Boolean,
+    ) {
+        collectPostEffects(context, collector, scenePost = true, includeMappings)
     }
 
     private fun collectPostEffects(
         context: RenderFrameContext,
         collector: RenderEffectCollector,
-        scenePost: Boolean
+        scenePost: Boolean,
+        includeMappings: Boolean,
     ) {
         val draws = synchronized(pendingPostDraws) {
             val selected = pendingPostDraws.toList().filter { (renderType, _) ->
@@ -289,7 +390,7 @@ internal object CooTerrainPipelineManager {
             selected
         }
         if (draws.isEmpty()) {
-            collectScreenOnlyMappingPostEffects(context, collector, scenePost)
+            if (includeMappings) collectScreenOnlyMappingPostEffects(context, collector, scenePost)
             return
         }
         val grouped = draws.groupBy { (renderType, _) ->
@@ -299,6 +400,11 @@ internal object CooTerrainPipelineManager {
         }
         grouped.forEach { (groupKey, entries) ->
             val pipeline = groupKey.first ?: return@forEach
+            if (groupKey.second != null && !includeMappings) return@forEach
+            if (groupKey.second != null && !hasMandatoryCParticleCoverage(pipeline)) {
+                warnUnprotectedMappingPipeline(pipeline)
+                return@forEach
+            }
             val subject = synchronized(terrainLayers) {
                 entries.firstNotNullOfOrNull { (renderType, _) -> terrainSubjects[renderType] }
             } ?: Blocks.AIR.defaultBlockState()
@@ -342,7 +448,7 @@ internal object CooTerrainPipelineManager {
             )
             collector.submit(post.type.toDescriptor(instance))
         }
-        collectScreenOnlyMappingPostEffects(context, collector, scenePost)
+        if (includeMappings) collectScreenOnlyMappingPostEffects(context, collector, scenePost)
     }
 
     /** 为不含 WORLD 节点的 Mapping 直接提交屏幕后处理，避免重放会被 Iris 改写的 terrain 顶点。 */
@@ -359,6 +465,10 @@ internal object CooTerrainPipelineManager {
         mappings.forEach { mapping ->
             val pipeline = CooTerrainMappingManager.pipeline(mapping.mappingId) ?: return@forEach
             if (pipeline.postInScene != scenePost) return@forEach
+            if (!hasMandatoryCParticleCoverage(pipeline)) {
+                warnUnprotectedMappingPipeline(pipeline)
+                return@forEach
+            }
             val compiled = CooPipelineCompiler.compile(pipeline)
             if (compiled.nodes.any { it.kind == CooPipelineNodeKind.WORLD }) return@forEach
             val post = CooPipelinePostEffectCompiler.compile(pipeline) ?: return@forEach
@@ -384,27 +494,76 @@ internal object CooTerrainPipelineManager {
         mapping.uniforms.forEach { (name, value) ->
             params = params.plus(name, value.toPostEffectParamValue())
         }
-        val region = mapping.region as? CooTerrainMappingRegion.Sphere
-        if (region != null) {
-            val camera = Minecraft.getInstance().gameRenderer.mainCamera.position
-            params = params.plus(
-                "CooMappingRegion",
-                PostEffectParamValue.ColorValue(
-                    (region.center.x - camera.x).toFloat(),
-                    (region.center.y - camera.y).toFloat(),
-                    (region.center.z - camera.z).toFloat(),
-                    region.radius.toFloat()
+        val camera = Minecraft.getInstance().gameRenderer.mainCamera.position
+        when (val region = mapping.region) {
+            is CooTerrainMappingRegion.Sphere -> {
+                params = params.plus(
+                    CooTerrainMappingShaderAbi.REGION,
+                    PostEffectParamValue.ColorValue(
+                        (region.center.x - camera.x).toFloat(),
+                        (region.center.y - camera.y).toFloat(),
+                        (region.center.z - camera.z).toFloat(),
+                        region.radius.toFloat()
+                    )
                 )
-            )
+                params = params.plus(
+                    CooTerrainMappingShaderAbi.REGION_SIZE,
+                    PostEffectParamValue.Vec3Value(0.0, 0.0, 0.0)
+                )
+            }
+            is CooTerrainMappingRegion.Box -> {
+                params = params.plus(
+                    CooTerrainMappingShaderAbi.REGION,
+                    PostEffectParamValue.ColorValue(
+                        (region.center.x - camera.x).toFloat(),
+                        (region.center.y - camera.y).toFloat(),
+                        (region.center.z - camera.z).toFloat(),
+                        0F
+                    )
+                )
+                params = params.plus(
+                    CooTerrainMappingShaderAbi.REGION_SIZE,
+                    PostEffectParamValue.Vec3Value(
+                        region.halfExtents.x,
+                        region.halfExtents.y,
+                        region.halfExtents.z
+                    )
+                )
+            }
+            is CooTerrainMappingRegion.Cylinder -> {
+                params = params.plus(
+                    CooTerrainMappingShaderAbi.REGION,
+                    PostEffectParamValue.ColorValue(
+                        (region.center.x - camera.x).toFloat(),
+                        (region.center.y - camera.y).toFloat(),
+                        (region.center.z - camera.z).toFloat(),
+                        0F
+                    )
+                )
+                params = params.plus(
+                    CooTerrainMappingShaderAbi.REGION_SIZE,
+                    PostEffectParamValue.Vec3Value(region.radius, region.height * 0.5, 0.0)
+                )
+            }
         }
+        params = params.plus(
+            CooTerrainMappingShaderAbi.REGION_TYPE,
+            PostEffectParamValue.IntValue(mapping.region.type.shaderValue)
+        )
         val now = currentGameTime().toDouble() + partialTick.toDouble()
         val duration = mapping.expiresAt?.minus(mapping.startedAt)?.toDouble()
-        val progress = if (duration == null || duration <= 0.0) {
-            0F
-        } else {
-            ((now - mapping.startedAt.toDouble()) / duration).coerceIn(0.0, 1.0).toFloat()
+        val progress = when {
+            duration == null -> 1F
+            duration <= 0.0 -> 1F
+            else -> ((now - mapping.startedAt.toDouble()) / duration).coerceIn(0.0, 1.0).toFloat()
         }
-        return params.plus("CooMappingProgress", PostEffectParamValue.FloatValue(progress))
+        params = params.plus(
+            CooTerrainMappingShaderAbi.HAS_CPARTICLE_COVERAGE,
+            PostEffectParamValue.IntValue(
+                if (OpenGlPostEffectExecutionBackend.cParticleCoverageTexture() == null) 0 else 1
+            )
+        )
+        return params.plus(CooTerrainMappingShaderAbi.PROGRESS, PostEffectParamValue.FloatValue(progress))
     }
 
     /**
@@ -1140,8 +1299,10 @@ internal object CooTerrainPipelineManager {
             put("FogColor", floatUniform("FogColor", 4))
             put("FogShape", intUniform("FogShape"))
             put("ScreenSize", floatUniform("ScreenSize", 2))
-            put("CooMappingRegion", floatUniform("CooMappingRegion", 4))
-            put("CooMappingProgress", floatUniform("CooMappingProgress"))
+            put(CooTerrainMappingShaderAbi.REGION, floatUniform(CooTerrainMappingShaderAbi.REGION, 4))
+            put(CooTerrainMappingShaderAbi.REGION_SIZE, floatUniform(CooTerrainMappingShaderAbi.REGION_SIZE, 3))
+            put(CooTerrainMappingShaderAbi.REGION_TYPE, intUniform(CooTerrainMappingShaderAbi.REGION_TYPE))
+            put(CooTerrainMappingShaderAbi.PROGRESS, floatUniform(CooTerrainMappingShaderAbi.PROGRESS))
             put("CooMappingDepthAvailable", intUniform("CooMappingDepthAvailable"))
             put("CooIrisComposite", intUniform("CooIrisComposite"))
             put("CooMappingComposition", intUniform("CooMappingComposition"))
@@ -1267,24 +1428,59 @@ internal object CooTerrainPipelineManager {
         }
         shader.getUniform("ScreenSize")?.set(terrainColorWidth.toFloat(), terrainColorHeight.toFloat())
         val mappingRegion = mapping?.region
-        if (mappingRegion is CooTerrainMappingRegion.Sphere) {
-            shader.getUniform("CooMappingRegion")?.set(
-                mappingRegion.center.x.toFloat(),
-                mappingRegion.center.y.toFloat(),
-                mappingRegion.center.z.toFloat(),
-                mappingRegion.radius.toFloat()
-            )
-        } else {
-            shader.getUniform("CooMappingRegion")?.set(0F, 0F, 0F, 0F)
+        when (mappingRegion) {
+            is CooTerrainMappingRegion.Sphere -> {
+                shader.getUniform(CooTerrainMappingShaderAbi.REGION)?.set(
+                    mappingRegion.center.x.toFloat(),
+                    mappingRegion.center.y.toFloat(),
+                    mappingRegion.center.z.toFloat(),
+                    mappingRegion.radius.toFloat()
+                )
+                shader.getUniform(CooTerrainMappingShaderAbi.REGION_SIZE)?.set(0F, 0F, 0F)
+            }
+            is CooTerrainMappingRegion.Box -> {
+                shader.getUniform(CooTerrainMappingShaderAbi.REGION)?.set(
+                    mappingRegion.center.x.toFloat(),
+                    mappingRegion.center.y.toFloat(),
+                    mappingRegion.center.z.toFloat(),
+                    0F
+                )
+                shader.getUniform(CooTerrainMappingShaderAbi.REGION_SIZE)?.set(
+                    mappingRegion.halfExtents.x.toFloat(),
+                    mappingRegion.halfExtents.y.toFloat(),
+                    mappingRegion.halfExtents.z.toFloat()
+                )
+            }
+            is CooTerrainMappingRegion.Cylinder -> {
+                shader.getUniform(CooTerrainMappingShaderAbi.REGION)?.set(
+                    mappingRegion.center.x.toFloat(),
+                    mappingRegion.center.y.toFloat(),
+                    mappingRegion.center.z.toFloat(),
+                    0F
+                )
+                shader.getUniform(CooTerrainMappingShaderAbi.REGION_SIZE)?.set(
+                    mappingRegion.radius.toFloat(),
+                    (mappingRegion.height * 0.5).toFloat(),
+                    0F
+                )
+            }
+            null -> {
+                shader.getUniform(CooTerrainMappingShaderAbi.REGION)?.set(0F, 0F, 0F, 0F)
+                shader.getUniform(CooTerrainMappingShaderAbi.REGION_SIZE)?.set(0F, 0F, 0F)
+            }
         }
+        shader.getUniform(CooTerrainMappingShaderAbi.REGION_TYPE)?.set(mappingRegion?.type?.shaderValue ?: 0)
         val duration = mapping?.expiresAt?.minus(mapping.startedAt)?.toDouble()
-        val progress = if (mapping == null || duration == null || duration <= 0.0) {
-            0F
-        } else {
-            val mappingTime = currentGameTime().toDouble() + framePartialTick.toDouble()
-            ((mappingTime - mapping.startedAt.toDouble()) / duration).coerceIn(0.0, 1.0).toFloat()
+        val progress = when {
+            mapping == null -> 0F
+            duration == null -> 1F
+            duration <= 0.0 -> 1F
+            else -> {
+                val mappingTime = currentGameTime().toDouble() + framePartialTick.toDouble()
+                ((mappingTime - mapping.startedAt.toDouble()) / duration).coerceIn(0.0, 1.0).toFloat()
+            }
         }
-        shader.getUniform("CooMappingProgress")?.set(progress)
+        shader.getUniform(CooTerrainMappingShaderAbi.PROGRESS)?.set(progress)
         shader.getUniform("CooMappingDepthAvailable")?.set(if (terrainDepthTextureId != null) 1 else 0)
         shader.getUniform("CooMappingComposition")?.set(mapping?.composition?.ordinal ?: 0)
     }
@@ -1624,14 +1820,17 @@ internal object CooTerrainPipelineManager {
         terrainDepthTextureId = null
         terrainSceneResources = RenderSceneResources.empty()
         warnedRequiredSamplerFallbacks.clear()
+        warnedUnprotectedMappingPipelines.clear()
         warnedTargetResolutionFallback = false
         warnedPostCaptureFailure = false
+        warnedCParticleCoverageFailure = false
         warnedIrisTerrainUnavailable = false
         terrainOverlayDisabled = false
         irisTerrainUnavailableThisFrame = false
         deferredFrameFinish = null
         framePartialTick = 0F
-        screenOnlySceneMappingActiveThisFrame = false
+        scenePostMappingActiveThisFrame = false
+        framePostMappingActiveThisFrame = false
         terrainDepthSnapshotsRequiredThisFrame = false
         terrainAttachmentCaptureActive = false
         finalCompositeTerrainOverlayActive = false

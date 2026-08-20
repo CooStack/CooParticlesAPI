@@ -142,6 +142,12 @@ internal class CooFxClientRuntime(
         require(maxPendingRequests > 0) { "Pending request limit must be positive" }
     }
 
+    /** 返回当前存活的 CooFX mesh particle 数。 */
+    fun activeParticleCount(): Int = synchronized(lock) { particleManager.particleCount }
+
+    /** 返回当前存活的 CooFX model instance 数。 */
+    fun activeModelCount(): Int = synchronized(lock) { modelManager.instanceCount }
+
     override fun play(request: CooFxPlayRequest): CooFxPlayResult {
         val prepared = snapshot.assets[request.resourceId]
             ?: return failed(request.resourceId, "asset", "CooFX 资源尚未加载：${request.resourceId}")

@@ -422,6 +422,9 @@ object CooTerrainEffectManager {
         }
     }
 
+    /** 返回服务端当前有效的 Terrain effect group 数量。 */
+    fun serverGroupCount(): Int = serverGroups.size
+
     /**
      * 清空服务端效果组和玩家维度缓存。
      *

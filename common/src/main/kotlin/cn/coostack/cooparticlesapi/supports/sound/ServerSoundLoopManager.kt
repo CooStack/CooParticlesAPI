@@ -151,6 +151,11 @@ object ServerSoundLoopManager {
         CooParticlesServices.SERVER_NETWORK.send(PacketSoundLoopS2C.stop(key, interrupt), player)
     }
 
+    /** 返回服务端当前跟踪的循环声音数。 */
+    fun activeLoopCount(): Int {
+        return synchronized(trackingKeys) { trackingKeys.size }
+    }
+
     @JvmStatic
     fun clear() {
         synchronized(trackingKeys) {

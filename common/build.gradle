@@ -8,7 +8,7 @@ plugins {
 }
 neoForge {
     neoFormVersion = neo_form_version
-    // Automatically enable AccessTransformers if the file exists
+    // 文件存在时自动启用 AccessTransformer。
     def at = file('src/main/resources/META-INF/accesstransformer.cfg')
     if (at.exists()) {
         accessTransformers.from(at.absolutePath)
@@ -21,7 +21,7 @@ neoForge {
 }
 
 tasks.javadoc {
-    // fuck javadoc encode error
+    // 当前 Javadoc 配置存在编码问题，构建时不执行该任务。
     enabled = false
 }
 dependencies {
@@ -29,7 +29,7 @@ dependencies {
     compileOnly "org.ow2.asm:asm:9.7"
     // ASM tree API（包含 ClassNode 等）
     compileOnly "org.ow2.asm:asm-tree:9.7"
-    // fabric and neoforge both bundle mixinextras, so it is safe to use it in common
+    // Fabric 和 NeoForge 都内置 MixinExtras，因此 common 可以安全引用。
     compileOnly group: 'io.github.llamalad7', name: 'mixinextras-common', version: '0.3.5'
     compileOnly "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2"
     compileOnly "maven.modrinth:sodium:mc1.21.1-0.6.13-neoforge"
@@ -42,6 +42,7 @@ dependencies {
     testImplementation 'org.jetbrains.kotlin:kotlin-test'
     testImplementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2"
     testImplementation 'org.joml:joml:1.10.8'
+    testImplementation 'io.netty:netty-buffer:4.1.97.Final'
     testRuntimeOnly files(configurations.runtimeClasspath)
     testCompileOnly files(fileTree("$buildDir/moddev/artifacts") {
         include "vanilla-${minecraft_version}-*.jar"

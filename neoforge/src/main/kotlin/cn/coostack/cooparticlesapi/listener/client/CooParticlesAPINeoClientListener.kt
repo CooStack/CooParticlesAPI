@@ -8,6 +8,8 @@ import cn.coostack.cooparticlesapi.event.events.client.ClientPostTickEvent
 import cn.coostack.cooparticlesapi.event.events.client.ClientPreTickEvent
 import cn.coostack.cooparticlesapi.event.events.client.ClientStartEvent
 import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldChangeEvent
+import cn.coostack.cooparticlesapi.performance.client.PerformanceStatusClientController
+import cn.coostack.cooparticlesapi.performance.client.PerformanceStatusKeyBindings
 import net.minecraft.client.Minecraft
 import net.minecraft.client.multiplayer.ClientLevel
 import net.neoforged.api.distmarker.Dist
@@ -48,8 +50,11 @@ object CooParticlesAPINeoClientListener {
 
     @SubscribeEvent
     fun tickClientPost(event: ClientTickEvent.Post) {
-        val e = ClientPostTickEvent(Minecraft.getInstance())
+        val client = Minecraft.getInstance()
+        val e = ClientPostTickEvent(client)
         CooEventBus.call(e)
+        PerformanceStatusKeyBindings.tick(client)
+        PerformanceStatusClientController.onClientTick(client)
     }
 
     @SubscribeEvent

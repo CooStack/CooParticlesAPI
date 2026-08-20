@@ -2,6 +2,7 @@ package cn.coostack.cooparticlesapi.renderer.post
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.compat.IrisCompat
+import cn.coostack.cooparticlesapi.cparticle.CParticleIndexedBlendState
 import cn.coostack.cooparticlesapi.compat.IrisTerrainDepthTexture
 import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameContext
 import cn.coostack.cooparticlesapi.renderer.backend.RenderSceneResource
@@ -36,6 +37,7 @@ import org.lwjgl.opengl.GL33.GL_BLEND_EQUATION_ALPHA
 import org.lwjgl.opengl.GL33.GL_BLEND_EQUATION_RGB
 import org.lwjgl.opengl.GL33.GL_BLEND_SRC_ALPHA
 import org.lwjgl.opengl.GL33.GL_BLEND_SRC_RGB
+import org.lwjgl.opengl.GL33.GL_COLOR
 import org.lwjgl.opengl.GL33.GL_COLOR_BUFFER_BIT
 import org.lwjgl.opengl.GL33.GL_COLOR_WRITEMASK
 import org.lwjgl.opengl.GL33.GL_COLOR_ATTACHMENT0
@@ -97,6 +99,7 @@ import org.lwjgl.opengl.GL33.GL_TEXTURE0
 import org.lwjgl.opengl.GL33.GL_TEXTURE
 import org.lwjgl.opengl.GL33.GL_TEXTURE_2D
 import org.lwjgl.opengl.GL33.GL_TEXTURE_BASE_LEVEL
+import org.lwjgl.opengl.GL33.GL_UNSIGNED_BYTE
 import org.lwjgl.opengl.GL33.GL_UNSIGNED_INT
 import org.lwjgl.opengl.GL33.GL_UNSIGNED_INT_24_8
 import org.lwjgl.opengl.GL33.GL_UNSIGNED_SHORT
@@ -121,6 +124,11 @@ import org.lwjgl.opengl.GL33.glBlendEquationSeparate
 import org.lwjgl.opengl.GL33.glBlendFuncSeparate
 import org.lwjgl.opengl.GL33.glBlitFramebuffer
 import org.lwjgl.opengl.GL33.glCheckFramebufferStatus
+import org.lwjgl.opengl.GL33.glClearBufferfv
+import org.lwjgl.opengl.GL30.glColorMaski
+import org.lwjgl.opengl.GL30.glDisablei
+import org.lwjgl.opengl.GL30.glEnablei
+import org.lwjgl.opengl.GL30.glIsEnabledi
 import org.lwjgl.opengl.GL33.glDepthMask
 import org.lwjgl.opengl.GL33.glDeleteFramebuffers
 import org.lwjgl.opengl.GL33.glDeleteTextures
@@ -140,6 +148,7 @@ import org.lwjgl.opengl.GL11.glGetFloat
 import org.lwjgl.opengl.GL33.glGetError
 import org.lwjgl.opengl.GL33.glGetFramebufferAttachmentParameteri
 import org.lwjgl.opengl.GL33.glGetInteger
+import org.lwjgl.opengl.GL33.glGetIntegeri_v
 import org.lwjgl.opengl.GL33.glGetIntegerv
 import org.lwjgl.opengl.GL33.glGetRenderbufferParameteri
 import org.lwjgl.opengl.GL33.glGetTexLevelParameteri
@@ -149,6 +158,7 @@ import org.lwjgl.opengl.GL33.glIsEnabled
 import org.lwjgl.opengl.GL33.glIsVertexArray
 import org.lwjgl.opengl.GL11.glPolygonOffset
 import org.lwjgl.opengl.GL33.glReadBuffer
+import org.lwjgl.opengl.GL33.glScissor
 import org.lwjgl.opengl.GL33.glUseProgram
 import org.lwjgl.opengl.GL33.glViewport
 import kotlin.math.max
@@ -172,6 +182,7 @@ import kotlin.math.max
  */
 internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
     PostEffectFramePreparationBackend,
+    PostEffectForegroundReplayBackend,
     PostEffectResourceBackend,
     PostEffectAttachmentPreparationBackend {
     private val screenVertexId: ResourceLocation =
@@ -191,12 +202,15 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
     private var terrainOpaqueDepthCapture: DepthCapture? = null
     private var terrainTranslucentBeforeDepthCapture: DepthCapture? = null
     private var terrainTranslucentAfterDepthCapture: DepthCapture? = null
+    private var cParticleCoverageDepthCapture: DepthCapture? = null
+    private var cParticleCoverageColorCapture: ColorCapture? = null
     private var terrainDepthIrisSourceResolved = false
     private var terrainDepthIrisSource: IrisTerrainDepthTexture? = null
     private var terrainDepthSourceCache: DepthSourceCache? = null
     private var terrainOpaqueDepthValid = false
     private var terrainTranslucentBeforeDepthValid = false
     private var terrainTranslucentAfterDepthValid = false
+    private var cParticleCoverageValid = false
     private var sceneCopy: ManagedTarget? = null
     private var preparedSceneFrame: FrameKey? = null
     private var preparedSceneCopySpec: PostEffectAttachmentSpec? = null
@@ -229,6 +243,49 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         chainedSceneFramebufferId = null
     }
 
+    /** 只使颜色副本失效；直接前景绘制后的 chain framebuffer 仍是后续 SceneColor 来源。 */
+    private fun invalidatePreparedSceneCopy() {
+        preparedSceneFrame = null
+        preparedSceneCopySpec = null
+    }
+
+    override fun invalidateSceneColorCopy() {
+        invalidatePreparedSceneCopy()
+    }
+
+    /** 把延迟前景绘制到 Mapping 已写入的最终目标，并继续维护 SceneColor 合成链。 */
+    override fun replayForeground(context: RenderFrameContext, render: () -> Unit): Boolean {
+        RenderSystem.assertOnRenderThread()
+        val target = context.finalCompositeTarget ?: Minecraft.getInstance().mainRenderTarget
+        val framebuffer = context.finalCompositeFramebufferId?.takeIf { it > 0 } ?: target.frameBufferId
+        if (framebuffer <= 0) return false
+        val width = max(1, context.targetWidth ?: target.width)
+        val height = max(1, context.targetHeight ?: target.height)
+        val previousReadFramebuffer = glGetInteger(GL_READ_FRAMEBUFFER_BINDING)
+        val previousDrawFramebuffer = glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING)
+        val previousViewport = IntArray(4)
+        glGetIntegerv(GL_VIEWPORT, previousViewport)
+        try {
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, framebuffer)
+            glViewport(0, 0, width, height)
+            if (glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) return false
+            val depthAttachmentType = glGetFramebufferAttachmentParameteri(
+                GL_DRAW_FRAMEBUFFER,
+                GL_DEPTH_ATTACHMENT,
+                GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE,
+            )
+            if (depthAttachmentType == GL_NONE) return false
+            render()
+        } finally {
+            glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3])
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, previousReadFramebuffer)
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, previousDrawFramebuffer)
+        }
+        chainedSceneFramebufferId = framebuffer
+        invalidatePreparedSceneCopy()
+        return true
+    }
+
 
     internal fun beginTerrainDepthFrame() {
         terrainDepthIrisSourceResolved = false
@@ -237,6 +294,7 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         terrainOpaqueDepthValid = false
         terrainTranslucentBeforeDepthValid = false
         terrainTranslucentAfterDepthValid = false
+        cParticleCoverageValid = false
     }
 
     /** 在实体绘制前捕获当前 opaque terrain 深度。 */
@@ -270,18 +328,152 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         return terrainOpaqueDepthCapture?.textureId?.takeIf { terrainOpaqueDepthValid && it > 0 }
     }
 
-    /** 返回本帧半透明 terrain 绘制前的深度快照纹理。 */
+    /**
+     * 返回半透明 terrain 绘制前的深度；未执行半透明 pass 时，opaque 深度就是等价的 before 快照。
+     */
     internal fun terrainTranslucentDepthBeforeTexture(): Int? {
-        return terrainTranslucentBeforeDepthCapture?.textureId
-            ?.takeIf { terrainTranslucentBeforeDepthValid && it > 0 }
+        return selectTranslucentDepthSnapshot(
+            primary = null,
+            before = terrainTranslucentBeforeDepthCapture?.textureId
+                ?.takeIf { terrainTranslucentBeforeDepthValid },
+            opaque = terrainOpaqueDepthCapture?.textureId?.takeIf { terrainOpaqueDepthValid },
+        )
     }
 
-    /** 返回半透明 terrain 绘制后的深度；after 缺失时复用 before，使 opaque 分类仍可执行。 */
+    /**
+     * 返回半透明 terrain 绘制后的深度；after 缺失时依次复用 before、opaque，保持无半透明地形帧可执行。
+     */
     internal fun terrainTranslucentDepthAfterTexture(): Int? {
-        return terrainTranslucentAfterDepthCapture?.textureId
-            ?.takeIf { terrainTranslucentAfterDepthValid && it > 0 }
-            ?: terrainTranslucentBeforeDepthCapture?.textureId
-                ?.takeIf { terrainTranslucentBeforeDepthValid && it > 0 }
+        return selectTranslucentDepthSnapshot(
+            primary = terrainTranslucentAfterDepthCapture?.textureId
+                ?.takeIf { terrainTranslucentAfterDepthValid },
+            before = terrainTranslucentBeforeDepthCapture?.textureId
+                ?.takeIf { terrainTranslucentBeforeDepthValid },
+            opaque = terrainOpaqueDepthCapture?.textureId?.takeIf { terrainOpaqueDepthValid },
+        )
+    }
+
+    /** 按 after、before、opaque 顺序选择第一个有效深度纹理。 */
+    internal fun selectTranslucentDepthSnapshot(primary: Int?, before: Int?, opaque: Int?): Int? {
+        return primary?.takeIf { it > 0 }
+            ?: before?.takeIf { it > 0 }
+            ?: opaque?.takeIf { it > 0 }
+    }
+
+    /** 返回本帧全部可见 CParticle 实际通过隔离深度测试后的覆盖蒙版。 */
+    internal fun cParticleCoverageTexture(): Int? {
+        return cParticleCoverageColorCapture?.textureId?.takeIf { cParticleCoverageValid && it > 0 }
+    }
+
+    /**
+     * 复制当前场景深度并在隔离 framebuffer 中绘制 CParticle 覆盖蒙版。
+     *
+     * 回调只能执行 CParticle 的覆盖绘制；该 framebuffer 不会写回 Iris 或原版场景深度。
+     */
+    internal fun captureCParticleCoverage(render: () -> Unit): Boolean {
+        RenderSystem.assertOnRenderThread()
+        val previousDepthCapture = cParticleCoverageDepthCapture
+        if (!captureCurrentDepth(cParticleCoverageDepthCapture) { capture ->
+                cParticleCoverageDepthCapture = capture
+            }
+        ) return false
+        val depthCapture = cParticleCoverageDepthCapture ?: return false
+        val previousColorCapture = cParticleCoverageColorCapture
+        val colorCapture = ensureCParticleCoverageColor(depthCapture)
+        val clearMask = !cParticleCoverageValid ||
+            depthCapture !== previousDepthCapture || colorCapture !== previousColorCapture
+        val previousDrawFramebuffer = glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING)
+        val previousViewport = IntArray(4)
+        glGetIntegerv(GL_VIEWPORT, previousViewport)
+        val previousDepthMask = glGetBoolean(GL_DEPTH_WRITEMASK)
+        val previousColorMask = IntArray(4)
+        glGetIntegeri_v(GL_COLOR_WRITEMASK, 0, previousColorMask)
+        val previousScissorEnabled = glIsEnabled(GL_SCISSOR_TEST)
+        val previousScissorBox = IntArray(4)
+        glGetIntegerv(GL_SCISSOR_BOX, previousScissorBox)
+        var rendered = false
+        clearPendingGlErrors()
+        try {
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, depthCapture.framebufferId)
+            glFramebufferTexture2D(
+                GL_DRAW_FRAMEBUFFER,
+                GL_COLOR_ATTACHMENT0,
+                GL_TEXTURE_2D,
+                colorCapture.textureId,
+                0
+            )
+            glDrawBuffer(GL_COLOR_ATTACHMENT0)
+            if (glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) return false
+            glViewport(0, 0, depthCapture.width, depthCapture.height)
+            glColorMaski(0, true, true, true, true)
+            glDepthMask(false)
+            glDisable(GL_SCISSOR_TEST)
+            if (clearMask) {
+                glClearBufferfv(GL_COLOR, 0, floatArrayOf(0F, 0F, 0F, 0F))
+            }
+            render()
+            rendered = operationCompletedWithoutGlError()
+        } finally {
+            glDepthMask(previousDepthMask)
+            glColorMaski(
+                0,
+                previousColorMask[0] != 0,
+                previousColorMask[1] != 0,
+                previousColorMask[2] != 0,
+                previousColorMask[3] != 0
+            )
+            if (previousScissorEnabled) glEnable(GL_SCISSOR_TEST) else glDisable(GL_SCISSOR_TEST)
+            glScissor(
+                previousScissorBox[0],
+                previousScissorBox[1],
+                previousScissorBox[2],
+                previousScissorBox[3]
+            )
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, previousDrawFramebuffer)
+            glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3])
+        }
+        if (rendered) cParticleCoverageValid = true
+        return rendered
+    }
+
+    private fun ensureCParticleCoverageColor(depthCapture: DepthCapture): ColorCapture {
+        val current = cParticleCoverageColorCapture
+        if (current != null && current.width == depthCapture.width && current.height == depthCapture.height) {
+            return current
+        }
+        current?.release()
+        cParticleCoverageColorCapture = null
+        val previousActiveTexture = glGetInteger(GL_ACTIVE_TEXTURE)
+        glActiveTexture(GL_TEXTURE0)
+        val previousTexture = glGetInteger(GL_TEXTURE_BINDING_2D)
+        val textureId = glGenTextures()
+        return try {
+            glBindTexture(GL_TEXTURE_2D, textureId)
+            glTexImage2D(
+                GL_TEXTURE_2D,
+                0,
+                GL_RGBA8,
+                depthCapture.width,
+                depthCapture.height,
+                0,
+                GL_RGBA,
+                GL_UNSIGNED_BYTE,
+                null as ByteBuffer?
+            )
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+            ColorCapture(textureId, depthCapture.width, depthCapture.height).also {
+                cParticleCoverageColorCapture = it
+            }
+        } catch (error: RuntimeException) {
+            glDeleteTextures(textureId)
+            throw error
+        } finally {
+            glBindTexture(GL_TEXTURE_2D, previousTexture)
+            glActiveTexture(previousActiveTexture)
+        }
     }
 
     private fun currentDepthSourceFramebuffer(): Int {
@@ -854,6 +1046,9 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         } finally {
             restoreAttachments()
         }
+        // render() 直接改写 world color；后续 fullscreen pass 必须重新复制，但继续沿用当前 chain FBO。
+        chainedSceneFramebufferId = worldFramebuffer
+        invalidatePreparedSceneCopy()
         if (mipCounts.single() > 1) {
             managed.buffer.generateMipmaps()
         }
@@ -1165,6 +1360,11 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         terrainTranslucentBeforeDepthCapture = null
         terrainTranslucentAfterDepthCapture?.release()
         terrainTranslucentAfterDepthCapture = null
+        cParticleCoverageDepthCapture?.release()
+        cParticleCoverageDepthCapture = null
+        cParticleCoverageColorCapture?.release()
+        cParticleCoverageColorCapture = null
+        cParticleCoverageValid = false
         terrainDepthIrisSourceResolved = false
         terrainDepthIrisSource = null
         terrainDepthSourceCache = null
@@ -1994,6 +2194,7 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         val cullEnabled = glIsEnabled(GL_CULL_FACE)
         val scissorEnabled = glIsEnabled(GL_SCISSOR_TEST)
         val blendEnabled = glIsEnabled(GL_BLEND)
+        val indexedBlendStates = captureIndexedBlendStates()
         val depthMask = glGetBoolean(GL_DEPTH_WRITEMASK)
         val depthFunc = glGetInteger(GL_DEPTH_FUNC)
         val polygonOffsetEnabled = glIsEnabled(GL_POLYGON_OFFSET_FILL)
@@ -2075,6 +2276,7 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
             } else {
                 RenderSystem.disableBlend()
             }
+            restoreIndexedBlendStates(indexedBlendStates)
             if (depthEnabled) {
                 RenderSystem.enableDepthTest()
             } else {
@@ -2097,6 +2299,56 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
             }
         }
     }
+
+    /** 保存每个 draw buffer 的独立混合状态，避免全屏 pass 破坏 Iris 辅助附件。 */
+    private fun captureIndexedBlendStates(): List<IndexedBlendState> {
+        if (!CParticleIndexedBlendState.isAvailable()) return emptyList()
+        return List(glGetInteger(GL_MAX_DRAW_BUFFERS)) { drawBuffer ->
+            IndexedBlendState(
+                enabled = glIsEnabledi(GL_BLEND, drawBuffer),
+                sourceRgb = indexedInteger(GL_BLEND_SRC_RGB, drawBuffer),
+                destinationRgb = indexedInteger(GL_BLEND_DST_RGB, drawBuffer),
+                sourceAlpha = indexedInteger(GL_BLEND_SRC_ALPHA, drawBuffer),
+                destinationAlpha = indexedInteger(GL_BLEND_DST_ALPHA, drawBuffer),
+                equationRgb = indexedInteger(GL_BLEND_EQUATION_RGB, drawBuffer),
+                equationAlpha = indexedInteger(GL_BLEND_EQUATION_ALPHA, drawBuffer),
+            )
+        }
+    }
+
+    private fun restoreIndexedBlendStates(states: List<IndexedBlendState>) {
+        states.forEachIndexed { drawBuffer, state ->
+            CParticleIndexedBlendState.setFactors(
+                drawBuffer,
+                state.sourceRgb,
+                state.destinationRgb,
+                state.sourceAlpha,
+                state.destinationAlpha,
+            )
+            CParticleIndexedBlendState.setEquation(drawBuffer, state.equationRgb, state.equationAlpha)
+            if (state.enabled) {
+                glEnablei(GL_BLEND, drawBuffer)
+            } else {
+                glDisablei(GL_BLEND, drawBuffer)
+            }
+        }
+    }
+
+    private fun indexedInteger(parameter: Int, drawBuffer: Int): Int {
+        val value = IntArray(1)
+        glGetIntegeri_v(parameter, drawBuffer, value)
+        return value[0]
+    }
+
+    private data class IndexedBlendState(
+        val enabled: Boolean,
+        val sourceRgb: Int,
+        val destinationRgb: Int,
+        val sourceAlpha: Int,
+        val destinationAlpha: Int,
+        val equationRgb: Int,
+        val equationAlpha: Int,
+    )
 
     /** 在完整状态保护内切换到全屏后处理使用的无混合、无深度、无裁剪状态。 */
     private fun withFlatPostState(block: () -> Unit) {
@@ -2195,6 +2447,16 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         val height: Int,
         val format: DepthTextureFormat
     )
+
+    private data class ColorCapture(
+        val textureId: Int,
+        val width: Int,
+        val height: Int
+    ) {
+        fun release() {
+            glDeleteTextures(textureId)
+        }
+    }
 
     private data class DepthCapture(
         val framebufferId: Int,

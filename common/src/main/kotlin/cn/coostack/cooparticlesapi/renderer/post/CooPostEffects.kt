@@ -58,6 +58,9 @@ internal object CooPostEffects {
             instances.clear()
         }
 
+        /** 返回当前活跃实例数，不创建快照集合。 */
+        fun activeCount(): Int = instances.size
+
         /** 返回当前活跃实例快照。 */
         fun activeInstances(): List<PostEffectInstance> = instances.values.toList()
 

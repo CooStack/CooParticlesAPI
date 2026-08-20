@@ -4,6 +4,8 @@ import cn.coostack.cooparticlesapi.cparticle.render.CParticleRenderer
 import cn.coostack.cooparticlesapi.cparticle.simulate.CParticleGpuSimulator
 import cn.coostack.cooparticlesapi.cparticle.collision.CParticleBlockCollisionGridManager
 import cn.coostack.cooparticlesapi.compat.IrisCompat
+import cn.coostack.cooparticlesapi.renderer.post.PostEffectFrameExecutor
+import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainPipelineManager
 import com.mojang.blaze3d.systems.RenderSystem
 import net.minecraft.client.Camera
 import net.minecraft.client.DeltaTracker
@@ -13,8 +15,8 @@ import org.joml.Matrix4f
 /**
  * Manager 内部使用的完整批次键。
  *
- * Example: 相同基础纹理配不同蒙版时会生成两个键。
- * Forbidden: 不要把该内部键暴露为公共 API，旧 [CParticleSystemKey] 需要保持 JVM 兼容。
+ * 示例：相同基础纹理配不同蒙版时会生成两个键。
+ * 禁止：不要把该内部键暴露为公共 API，旧 [CParticleSystemKey] 需要保持 JVM 兼容。
  *
  * @property name 调用方使用的逻辑系统名
  * @property mode 系统更新模式
@@ -58,8 +60,8 @@ object CParticleSystemManager {
     /**
      * 所有 CParticle system 合计允许的存活粒子数。
      *
-     * Example: 客户端启动时用 `APIConfig.cparticleCountLimit` 配置该值。
-     * Forbidden: 不要把单个 system 的槽位容量当成全局上限。
+     * 示例：客户端启动时用 `APIConfig.cparticleCountLimit` 配置该值。
+     * 禁止：不要把单个 system 的槽位容量当成全局上限。
      */
     @get:JvmStatic
     var particleCountLimit = 3_000_000
@@ -72,19 +74,18 @@ object CParticleSystemManager {
     /**
      * 当前所有 CParticle system 中的存活槽位数。
      *
-     * Example: 新粒子占用槽位后该值增加，死亡或清空后减少。
-     * Forbidden: 不能从 manager 的 system map 重新求和，否则会漏掉未注册 system。
+     * 示例：新粒子占用槽位后该值增加，死亡或清空后减少。
+     * 禁止：不能从 manager 的 system map 重新求和，否则会漏掉未注册 system。
      */
     private var globalAliveCount = 0
 
     private var currentTick = 0
     private var fabricParticlePassIndex = 0
     private var renderFrameId = 0L
+    private var deferredTerrainForegroundFrame = -1L
+    private var deferredTerrainForegroundScenePost = false
     internal val currentRenderFrameId: Long
         get() = renderFrameId
-
-    /** 空系统自动回收阈值 (tick) */
-    private const val AUTO_RELEASE_IDLE_TICKS = 200
 
     private val lastNonEmptyTick = HashMap<ManagedCParticleSystemKey, Int>()
     private val autoRelease = HashSet<ManagedCParticleSystemKey>()
@@ -95,8 +96,8 @@ object CParticleSystemManager {
     /**
      * 更新所有 GPU 粒子系统共享的存活数量上限。
      *
-     * Example: `configureParticleCountLimit(config.cparticleCountLimit)`。
-     * Forbidden: 小于 `1` 的值不会关闭系统，而是按 `1` 处理。
+     * 示例：`configureParticleCountLimit(config.cparticleCountLimit)`。
+     * 禁止：小于 `1` 的值不会关闭系统，而是按 `1` 处理。
      *
      * @param limit 新的全局存活粒子数上限
      */
@@ -108,8 +109,8 @@ object CParticleSystemManager {
     /**
      * 检查所有 CParticle system 的当前存活总数是否仍低于全局上限。
      *
-     * Example: 新粒子写入槽位前调用本方法。
-     * Forbidden: 该结果只在客户端渲染线程当前调用链内有效，不能跨线程缓存。
+     * 示例：新粒子写入槽位前调用本方法。
+     * 禁止：该结果只在客户端渲染线程当前调用链内有效，不能跨线程缓存。
      *
      * @return 仍可接收至少一个新 GPU 粒子时返回 `true`
      */
@@ -120,8 +121,8 @@ object CParticleSystemManager {
     /**
      * 为一个新 GPU 粒子申请全局槽位。
      *
-     * Example: Store 确认本地仍有空槽后调用本方法。
-     * Forbidden: 仅检查 [hasAvailableParticleCapacity] 不能占用额度。
+     * 示例：Store 确认本地仍有空槽后调用本方法。
+     * 禁止：仅检查 [hasAvailableParticleCapacity] 不能占用额度。
      *
      * @return 申请成功时返回 `true`；达到配置上限时返回 `false`
      */
@@ -134,8 +135,8 @@ object CParticleSystemManager {
     /**
      * 归还已经释放的全局 GPU 粒子槽位。
      *
-     * Example: Store 清空三个存活粒子后调用 `releaseParticleSlots(3)`。
-     * Forbidden: 不能重复归还同一槽位，也不能传入负数。
+     * 示例：Store 清空三个存活粒子后调用 `releaseParticleSlots(3)`。
+     * 禁止：不能重复归还同一槽位，也不能传入负数。
      *
      * @param count 本次释放的存活槽位数
      */
@@ -149,7 +150,7 @@ object CParticleSystemManager {
     /**
      * 获取或创建一个粒子系统.
      *
-     * @param autoReleaseWhenEmpty true 时系统空置 [AUTO_RELEASE_IDLE_TICKS] tick 后自动销毁
+     * @param autoReleaseWhenEmpty true 时系统空置 200 tick 后自动销毁
      *   (emitter 绑定的系统用)
      */
     @JvmStatic
@@ -172,8 +173,8 @@ object CParticleSystemManager {
     /**
      * 获取或创建一个绑定到指定基础纹理的 system。
      *
-     * Example: end rod 基础纹理可以按方块图集蒙版复用一个 system。
-     * Forbidden: 任一纹理 binding 不同的 system 都不能共享实例槽位。
+     * 示例：end rod 基础纹理可以按方块图集蒙版复用一个 system。
+     * 禁止：任一纹理 binding 不同的 system 都不能共享实例槽位。
      *
      * @param name 逻辑系统名
      * @param capacity 最大槽位数
@@ -204,8 +205,8 @@ object CParticleSystemManager {
     /**
      * 获取或创建同时匹配基础纹理和蒙版纹理的 system。
      *
-     * Example: `maskTextureBindingKey = BLOCK_ATLAS` 会与无蒙版批次分开。
-     * Forbidden: 不能省略 [maskTextureBindingKey] 后期待匹配已有蒙版批次。
+     * 示例：`maskTextureBindingKey = BLOCK_ATLAS` 会与无蒙版批次分开。
+     * 禁止：不能省略 [maskTextureBindingKey] 后期待匹配已有蒙版批次。
      *
      * @param name 逻辑系统名
      * @param capacity 最大槽位数
@@ -245,8 +246,8 @@ object CParticleSystemManager {
     /**
      * 按完整系统键查询，不会误取同名的其他 binding 变体。
      *
-     * Example: composition 绑定模板纹理后用此方法检查容量。
-     * Forbidden: 旧的模糊名称查询不适合决定某个精确批次是否存在。
+     * 示例：composition 绑定模板纹理后用此方法检查容量。
+     * 禁止：旧的模糊名称查询不适合决定某个精确批次是否存在。
      *
      * @return 完整键匹配的系统，未创建时返回 `null`
      */
@@ -261,8 +262,8 @@ object CParticleSystemManager {
     /**
      * 按基础纹理和蒙版纹理的完整批次键查询系统。
      *
-     * Example: `maskTextureBindingKey = null` 只查询无蒙版批次。
-     * Forbidden: 不要用另一张蒙版图集的 binding 查询当前批次。
+     * 示例：`maskTextureBindingKey = null` 只查询无蒙版批次。
+     * 禁止：不要用另一张蒙版图集的 binding 查询当前批次。
      *
      * @param name 逻辑系统名
      * @param mode 更新模式
@@ -292,8 +293,8 @@ object CParticleSystemManager {
     /**
      * 返回指定渲染层、基础纹理绑定和可选蒙版绑定的共享 SIMULATED 系统。
      *
-     * Example: 所有方块图集散粒子共用一个默认系统。
-     * Forbidden: 不要把独立纹理传入方块图集系统。
+     * 示例：所有方块图集散粒子共用一个默认系统。
+     * 禁止：不要把独立纹理传入方块图集系统。
      *
      * @param layer 混合与深度状态
      * @param textureBindingKey 基础纹理绑定
@@ -308,8 +309,8 @@ object CParticleSystemManager {
     /**
      * 返回指定基础纹理和蒙版纹理 binding 的共享 SIMULATED 系统。
      *
-     * Example: 粒子图集基础纹理和方块图集蒙版共用一个匹配批次。
-     * Forbidden: 不同蒙版 binding 不能返回同一个系统。
+     * 示例：粒子图集基础纹理和方块图集蒙版共用一个匹配批次。
+     * 禁止：不同蒙版 binding 不能返回同一个系统。
      *
      * @param layer 混合与深度状态
      * @param textureBindingKey 基础纹理 binding
@@ -366,8 +367,8 @@ object CParticleSystemManager {
     /**
      * 删除一个基础纹理和蒙版纹理都匹配的系统。
      *
-     * Example: 删除方块蒙版批次不会影响同名的无蒙版批次。
-     * Forbidden: 不要用模糊名称删除只应移除的单个批次。
+     * 示例：删除方块蒙版批次不会影响同名的无蒙版批次。
+     * 禁止：不要用模糊名称删除只应移除的单个批次。
      *
      * @param name 逻辑系统名
      * @param mode 更新模式
@@ -416,8 +417,8 @@ object CParticleSystemManager {
     /**
      * 更新名称前缀匹配的全部 system 的方块碰撞范围。
      *
-     * Example: emitter 新建 segment 后，同步更新该 emitter 仍存活的旧 segment。
-     * Forbidden: [namePrefix] 不能为空，避免误改所有 system。
+     * 示例：emitter 新建 segment 后，同步更新该 emitter 仍存活的旧 segment。
+     * 禁止：[namePrefix] 不能为空，避免误改所有 system。
      */
     internal fun updateBlockCollisionRange(namePrefix: String, range: Int) {
         require(namePrefix.isNotEmpty())
@@ -434,14 +435,15 @@ object CParticleSystemManager {
      * terminal system 不再等待空闲阈值，但任何仍有粒子的 system 都不能提前销毁。
      */
     internal fun shouldReleaseAutoSystem(aliveCount: Int, terminal: Boolean, idleTicks: Int): Boolean {
-        return aliveCount == 0 && (terminal || idleTicks > AUTO_RELEASE_IDLE_TICKS)
+        val autoReleaseIdleTicks = 200
+        return aliveCount == 0 && (terminal || idleTicks > autoReleaseIdleTicks)
     }
 
     /**
      * 返回所有 CParticle system 的总存活粒子数。
      *
-     * Example: 调试界面可用 `totalAlive()` 显示当前全局占用。
-     * Forbidden: 不能只把它理解为 manager 内部 map 的存活数。
+     * 示例：调试界面可用 `totalAlive()` 显示当前全局占用。
+     * 禁止：不能只把它理解为 manager 内部 map 的存活数。
      *
      * @return 当前占用全局额度的粒子数
      */
@@ -494,6 +496,12 @@ object CParticleSystemManager {
     @JvmStatic
     fun renderParticlePass(camera: Camera, partial: Float, pass: CParticleRenderPass) {
         if (!ready() || systems.isEmpty() || pass == CParticleRenderPass.NONE) return
+        val replayScenePost = CooTerrainPipelineManager.cParticleForegroundReplayScenePost()
+        if (replayScenePost != null && PostEffectFrameExecutor.supportsForegroundReplay()) {
+            deferredTerrainForegroundFrame = renderFrameId
+            deferredTerrainForegroundScenePost = replayScenePost
+            return
+        }
         CParticleRenderer.render(
             systems.values,
             RenderSystem.getModelViewMatrix(),
@@ -501,6 +509,48 @@ object CParticleSystemManager {
             camera,
             partial,
             pass
+        )
+    }
+
+    /** 当前帧是否已把 CParticle 从原粒子 pass 延迟到任一 Mapping 后处理阶段。 */
+    internal fun hasDeferredTerrainForeground(): Boolean {
+        return deferredTerrainForegroundFrame == renderFrameId
+    }
+
+    /** 当前帧是否已把 CParticle 从原粒子 pass 延迟到指定 Mapping 后处理阶段。 */
+    internal fun hasDeferredTerrainForeground(scenePost: Boolean): Boolean {
+        return hasDeferredTerrainForeground() && deferredTerrainForegroundScenePost == scenePost
+    }
+
+    /** 在 Mapping 后按原 layer、混合和 deferred-depth 语义重放当前帧全部 CParticle。 */
+    internal fun renderDeferredTerrainForeground(
+        view: Matrix4f,
+        proj: Matrix4f,
+        partial: Float,
+        scenePost: Boolean,
+    ) {
+        check(hasDeferredTerrainForeground(scenePost)) {
+            "No deferred CParticle foreground is scheduled for this post stage"
+        }
+        CParticleRenderer.renderTerrainForeground(
+            systems.values,
+            view,
+            proj,
+            Minecraft.getInstance().gameRenderer.mainCamera,
+            partial,
+        )
+        deferredTerrainForegroundFrame = -1L
+    }
+
+    /** 在 Terrain Mapping 合成前按当前帧矩阵生成全部可见 CParticle 的隔离覆盖蒙版。 */
+    internal fun renderTerrainCoverageMask(view: Matrix4f, proj: Matrix4f, partial: Float): Boolean {
+        if (!ready() || systems.isEmpty()) return true
+        return CParticleRenderer.renderTerrainCoverageMask(
+            systems.values,
+            view,
+            proj,
+            Minecraft.getInstance().gameRenderer.mainCamera,
+            partial,
         )
     }
 

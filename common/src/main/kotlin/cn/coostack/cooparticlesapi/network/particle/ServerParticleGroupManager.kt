@@ -49,6 +49,9 @@ object ServerParticleGroupManager {
         return Collections.unmodifiableMap(serverGroups)
     }
 
+    /** 返回服务端当前旧 ParticleGroup 实例数。 */
+    fun groupCount(): Int = serverGroups.size
+
     fun clearServer() {
         serverGroups.onEach { it.value.canceled = true }.clear()
         visible.clear()

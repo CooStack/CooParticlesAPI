@@ -1,7 +1,9 @@
 package cn.coostack.cooparticlesapi.renderer.terrain
 
-import java.nio.file.Files
-import java.nio.file.Path
+import kotlin.io.path.Path
+import kotlin.io.path.absolute
+import kotlin.io.path.exists
+import kotlin.io.path.readText
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -46,14 +48,26 @@ class CooTerrainMappingContractTest {
     @Test
     fun `terrain pipeline exposes stable mapping inputs`() {
         val pipeline = source("common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/terrain/CooTerrainPipelineManager.kt")
-        assertTrue("CooMappingRegion" in pipeline)
-        assertTrue("CooMappingProgress" in pipeline)
+        assertTrue("CooTerrainMappingShaderAbi.REGION" in pipeline)
+        assertTrue("CooTerrainMappingShaderAbi.REGION_SIZE" in pipeline)
+        assertTrue("CooTerrainMappingShaderAbi.REGION_TYPE" in pipeline)
+        assertTrue("CooTerrainMappingShaderAbi.PROGRESS" in pipeline)
         assertTrue("CooMappingDepthAvailable" in pipeline)
         assertTrue("fun resolveOverlayRenderTypes(state: BlockState, original: RenderType, pos: BlockPos): List<RenderType>" in pipeline)
         assertTrue("CooTerrainMappingRegistry.activeRenderPlan" in pipeline)
         assertTrue("CooTerrainMappingBatchKey" in pipeline)
         assertTrue("CooTerrainMappingRegistry::current" in pipeline)
         assertFalse("CooTerrainMappingRegistry.active(level.dimension().location(), level.gameTime).firstOrNull()" in pipeline)
+    }
+
+    @Test
+    fun `persistent mappings use full region progress`() {
+        val pipeline = source(
+            "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/terrain/CooTerrainPipelineManager.kt"
+        )
+
+        assertTrue("duration == null -> 1F" in pipeline)
+        assertTrue("mapping == null -> 0F" in pipeline)
     }
 
     @Test
@@ -72,6 +86,20 @@ class CooTerrainMappingContractTest {
     }
 
     @Test
+    fun `screen mapping shader supports sphere box and cylinder signed distance`() {
+        val shader = source(
+            "common/src/main/resources/assets/cooparticlesapi/shaders/post/procedural_mapping_screen.fsh"
+        )
+
+        assertTrue("uniform vec3 CooMappingRegionSize" in shader)
+        assertTrue("uniform int CooMappingRegionType" in shader)
+        assertTrue("if (CooMappingRegionType == 1)" in shader)
+        assertTrue("if (CooMappingRegionType == 2)" in shader)
+        assertTrue("mappingSignedDistance" in shader)
+        assertTrue("smoothstep(-featherWidth, 0.0, signedDistance)" in shader)
+    }
+
+    @Test
     fun `platform providers expose composition transparency states`() {
         listOf(
             source("fabric/src/main/kotlin/cn/coostack/cooparticlesapi/platform/FabricRenderTypesProvider.kt"),
@@ -85,7 +113,7 @@ class CooTerrainMappingContractTest {
     }
 
     @Test
-    fun `region and uniform updates do not request section geometry rebuilds`() {
+    fun `region changes rebuild affected sections while uniform updates reuse geometry`() {
         val registry = source(
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/terrain/CooTerrainMappingRegistry.kt"
         )
@@ -94,6 +122,7 @@ class CooTerrainMappingContractTest {
         )
         assertTrue("fun topologyRevision(): Long" in registry)
         assertTrue("topologyChanged.incrementAndGet()" in registry)
+        assertTrue("instance.region," in registry)
         assertTrue("CooTerrainMappingRegistry.topologyRevision()" in pipeline)
         assertTrue("fun drainTopologyRegions(dimension: ResourceLocation)" in registry)
         assertTrue("requestMappingSectionRebuild(CooTerrainMappingRegistry.drainTopologyRegions(dimension))" in pipeline)
@@ -169,14 +198,14 @@ class CooTerrainMappingContractTest {
     }
 
     private fun source(path: String): String {
-        val requested = Path.of(path)
-        if (Files.exists(requested)) return Files.readString(requested)
-        var cursor = Path.of(System.getProperty("user.dir")).toAbsolutePath()
+        val requested = Path(path)
+        if (requested.exists()) return requested.readText()
+        var cursor = Path(System.getProperty("user.dir")).absolute()
         while (cursor.parent != null) {
             val candidate = cursor.resolve(path)
-            if (Files.exists(candidate)) return Files.readString(candidate)
+            if (candidate.exists()) return candidate.readText()
             cursor = cursor.parent
         }
-        return Files.readString(requested)
+        return requested.readText()
     }
 }

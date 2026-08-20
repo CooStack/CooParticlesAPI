@@ -80,6 +80,11 @@ object ClientRenderSceneResourcesResolver {
                 id = RenderSceneTargets.TERRAIN_TRANSLUCENT_DEPTH_AFTER,
                 label = "${resolvedTargets.targetLabel}:terrain-translucent-after",
                 depthTextureId = OpenGlPostEffectExecutionBackend.terrainTranslucentDepthAfterTexture()
+            ),
+            RenderSceneResource(
+                id = RenderSceneTargets.CPARTICLE_COVERAGE_MASK,
+                label = "${resolvedTargets.targetLabel}:cparticle-coverage",
+                colorTextureId = OpenGlPostEffectExecutionBackend.cParticleCoverageTexture()
             )
         )
 

@@ -113,7 +113,12 @@ internal object CooPipelineRuntimeEffect {
                     true
                 } else {
                     if (context.stage == RenderFrameStage.SCENE_POST) {
-                        requests.forEach { request -> request.renderWorld() }
+                        requests.forEach { request ->
+                            if (!PostEffectFrameExecutor.replayForeground(context, request.renderWorld)) {
+                                request.renderWorld()
+                                PostEffectFrameExecutor.invalidateSceneColorCopy()
+                            }
+                        }
                     }
                     captureOffscreen()
                 }

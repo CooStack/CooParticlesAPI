@@ -28,6 +28,8 @@ object RenderSceneTargets {
     val TERRAIN_TRANSLUCENT_DEPTH_BEFORE: ResourceLocation = id("terrain_translucent_depth_before")
     /** 半透明 terrain 绘制后的深度快照，用于识别液体等半透明地形。 */
     val TERRAIN_TRANSLUCENT_DEPTH_AFTER: ResourceLocation = id("terrain_translucent_depth_after")
+    /** 全部可见 CParticle 在隔离深度测试后生成的像素覆盖蒙版。 */
+    val CPARTICLE_COVERAGE_MASK: ResourceLocation = id("cparticle_coverage_mask")
     /** bloom 相关的中间目标。 */
     val BLOOM: ResourceLocation = id("bloom")
     /** mask 相关的中间目标。 */

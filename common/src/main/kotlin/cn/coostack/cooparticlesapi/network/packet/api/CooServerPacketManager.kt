@@ -9,6 +9,8 @@ import cn.coostack.cooparticlesapi.event.events.packet.CooPacketRequestTimeoutEv
 import cn.coostack.cooparticlesapi.event.events.packet.CooPacketSendEvent
 import cn.coostack.cooparticlesapi.network.packet.api.envelope.CooPacketEnvelopeC2S
 import cn.coostack.cooparticlesapi.network.packet.api.envelope.CooPacketEnvelopeS2C
+import cn.coostack.cooparticlesapi.performance.PerformanceStatusNetworkEndpoint
+import cn.coostack.cooparticlesapi.performance.PerformanceStatusNetworkMetrics
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload
 import net.minecraft.server.level.ServerLevel
@@ -235,6 +237,10 @@ object CooServerPacketManager {
      */
     @JvmStatic
     fun handleC2S(envelope: CooPacketEnvelopeC2S, sender: ServerPlayer) {
+        PerformanceStatusNetworkMetrics.recordReceived(
+            PerformanceStatusNetworkEndpoint.SERVER,
+            envelope.data.size,
+        )
         val server = sender.server
         server.execute {
             handleC2SInternal(envelope, sender)
@@ -334,6 +340,10 @@ object CooServerPacketManager {
             data = data,
         )
         CooParticlesServices.SERVER_NETWORK.send(envelope, player)
+        PerformanceStatusNetworkMetrics.recordSent(
+            PerformanceStatusNetworkEndpoint.SERVER,
+            data.size,
+        )
         return true
     }
 }

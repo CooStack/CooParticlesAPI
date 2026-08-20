@@ -17,6 +17,7 @@ import cn.coostack.cooparticlesapi.network.particle.emitters.event.ParticleEvent
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleStyleManager
 import cn.coostack.cooparticlesapi.network.packet.server.PacketClearClientStateS2C
 import cn.coostack.cooparticlesapi.coofx.server.CooFxSceneManager
+import cn.coostack.cooparticlesapi.performance.PerformanceStatusServerRequestGate
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
 import cn.coostack.cooparticlesapi.renderer.server.ServerRenderEntityManager
@@ -112,6 +113,7 @@ object CooParticlesAPI {
 
     fun onServerStop() {
         clearServerState()
+        PerformanceStatusServerRequestGate.clear()
         activeServer = null
         activeRegistryAccess = null
     }
