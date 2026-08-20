@@ -204,6 +204,8 @@ class PostEffectFrameExecutorBehaviorTest {
         assertTrue("(0 until input.minimumMipLevels).all" in source)
         assertTrue("textureMipLevelCount()" in source)
         assertTrue("IrisCompat.currentTerrainDepthTexture()" in source)
+        assertTrue("IrisCompat.currentSceneDepthTexture()" in source)
+        assertTrue("resolveTerrainDepthTexture(step, input) != null" in source)
         assertTrue("irisDepthReadFramebuffer" in source)
         assertTrue("glGetUniformLocation(program.program, mipLevelsUniform) >= 0" in source)
         assertTrue(
@@ -225,6 +227,10 @@ class PostEffectFrameExecutorBehaviorTest {
         assertTrue("chainedSceneFramebufferId = framebuffer" in source)
         assertTrue("chainedSceneFramebufferId ?: context.sceneColorFramebufferId" in source)
         assertTrue("preparedSceneFrame = null" in source)
+        assertTrue("val previousReadFramebuffer = glGetInteger(GL_READ_FRAMEBUFFER_BINDING)" in source)
+        assertTrue("val previousDrawFramebuffer = glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING)" in source)
+        assertTrue("glBindFramebuffer(GL_READ_FRAMEBUFFER, previousReadFramebuffer)" in source)
+        assertTrue("glBindFramebuffer(GL_DRAW_FRAMEBUFFER, previousDrawFramebuffer)" in source)
     }
 
     @Test

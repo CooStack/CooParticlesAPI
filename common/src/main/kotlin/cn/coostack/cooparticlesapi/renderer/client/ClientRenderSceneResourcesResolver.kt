@@ -5,6 +5,7 @@ import cn.coostack.cooparticlesapi.accessor.LevelRendererAccessor
 import cn.coostack.cooparticlesapi.renderer.backend.RenderSceneResource
 import cn.coostack.cooparticlesapi.renderer.backend.RenderSceneResources
 import cn.coostack.cooparticlesapi.renderer.backend.RenderSceneTargets
+import cn.coostack.cooparticlesapi.renderer.post.OpenGlPostEffectExecutionBackend
 import net.minecraft.client.Minecraft
 
 object ClientRenderSceneResourcesResolver {
@@ -19,6 +20,10 @@ object ClientRenderSceneResourcesResolver {
         val minecraft = Minecraft.getInstance()
         val resolvedTargets = ClientRenderTargetResolver.resolveCurrentTargets()
         val accessor = minecraft.levelRenderer as? LevelRendererAccessor
+        val irisSceneDepthTextureId = IrisCompat.currentSceneDepthTexture()?.textureId
+        val sceneDepthTextureId = irisSceneDepthTextureId ?: resolvedTargets.sceneDepthTextureId
+        val sceneDepthNoHandTextureId = IrisCompat.currentSceneDepthNoHandTexture()?.textureId
+            ?: sceneDepthTextureId
         val resources = mutableListOf(
             RenderSceneResource(
                 id = RenderSceneTargets.MAIN,
@@ -30,7 +35,7 @@ object ClientRenderSceneResourcesResolver {
                 label = resolvedTargets.targetLabel,
                 target = resolvedTargets.finalCompositeTarget,
                 colorTextureId = resolvedTargets.sceneColorTextureId,
-                depthTextureId = resolvedTargets.sceneDepthTextureId
+                depthTextureId = sceneDepthTextureId
             ),
             RenderSceneResource(
                 id = RenderSceneTargets.SCENE_COLOR,
@@ -44,7 +49,14 @@ object ClientRenderSceneResourcesResolver {
                 label = "${resolvedTargets.targetLabel}:depth",
                 target = resolvedTargets.sceneDepthTarget,
                 colorTextureId = resolvedTargets.sceneDepthTarget.colorTextureId.takeIf { !resolvedTargets.externalFramebuffer },
-                depthTextureId = resolvedTargets.sceneDepthTextureId
+                depthTextureId = sceneDepthTextureId
+            ),
+            RenderSceneResource(
+                id = RenderSceneTargets.SCENE_DEPTH_NO_HAND,
+                label = "${resolvedTargets.targetLabel}:depth-no-hand",
+                target = resolvedTargets.sceneDepthTarget,
+                colorTextureId = null,
+                depthTextureId = sceneDepthNoHandTextureId
             ),
             RenderSceneResource(
                 id = RenderSceneTargets.TERRAIN_DEPTH,
@@ -52,7 +64,22 @@ object ClientRenderSceneResourcesResolver {
                 target = resolvedTargets.sceneDepthTarget,
                 colorTextureId = null,
                 depthTextureId = IrisCompat.currentTerrainDepthTexture()?.textureId
-                    ?: resolvedTargets.sceneDepthTextureId
+                    ?: sceneDepthTextureId
+            ),
+            RenderSceneResource(
+                id = RenderSceneTargets.TERRAIN_OPAQUE_DEPTH,
+                label = "${resolvedTargets.targetLabel}:terrain-opaque-depth",
+                depthTextureId = OpenGlPostEffectExecutionBackend.terrainOpaqueDepthTexture()
+            ),
+            RenderSceneResource(
+                id = RenderSceneTargets.TERRAIN_TRANSLUCENT_DEPTH_BEFORE,
+                label = "${resolvedTargets.targetLabel}:terrain-translucent-before",
+                depthTextureId = OpenGlPostEffectExecutionBackend.terrainTranslucentDepthBeforeTexture()
+            ),
+            RenderSceneResource(
+                id = RenderSceneTargets.TERRAIN_TRANSLUCENT_DEPTH_AFTER,
+                label = "${resolvedTargets.targetLabel}:terrain-translucent-after",
+                depthTextureId = OpenGlPostEffectExecutionBackend.terrainTranslucentDepthAfterTexture()
             )
         )
 

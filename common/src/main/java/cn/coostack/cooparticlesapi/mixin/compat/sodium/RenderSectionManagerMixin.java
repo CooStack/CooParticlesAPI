@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi.mixin.compat.sodium;
 
+import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainPipelineManager;
 import cn.coostack.cooparticlesapi.renderer.terrain.sodium.CooSodiumTerrainOverlay;
 import net.caffeinemc.mods.sodium.client.render.chunk.ChunkRenderMatrices;
 import net.caffeinemc.mods.sodium.client.render.chunk.RenderSectionManager;
@@ -16,6 +17,18 @@ public class RenderSectionManagerMixin {
     @Shadow(remap = false)
     private SortedRenderLists renderLists;
 
+    @Inject(method = "renderLayer", at = @At("HEAD"))
+    private void cooParticlesAPI$captureTranslucentTerrainDepthBefore(ChunkRenderMatrices matrices,
+                                                                       TerrainRenderPass pass,
+                                                                       double cameraX,
+                                                                       double cameraY,
+                                                                       double cameraZ,
+                                                                       CallbackInfo info) {
+        if (pass.isTranslucent()) {
+            CooTerrainPipelineManager.captureTranslucentTerrainDepthBefore();
+        }
+    }
+
     @Inject(method = "renderLayer", at = @At("TAIL"))
     private void cooParticlesAPI$renderTerrainOverlays(ChunkRenderMatrices matrices,
                                                         TerrainRenderPass pass,
@@ -23,6 +36,9 @@ public class RenderSectionManagerMixin {
                                                         double cameraY,
                                                         double cameraZ,
                                                         CallbackInfo info) {
+        if (pass.isTranslucent()) {
+            CooTerrainPipelineManager.captureTranslucentTerrainDepthAfter();
+        }
         CooSodiumTerrainOverlay.renderOrDefer(renderLists, matrices, pass, cameraX, cameraY, cameraZ);
     }
 

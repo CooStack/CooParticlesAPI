@@ -29,7 +29,10 @@ import cn.coostack.cooparticlesapi.renderer.pipeline.setUniform
 import cn.coostack.cooparticlesapi.renderer.post.OpenGlPostEffectExecutionBackend
 import cn.coostack.cooparticlesapi.renderer.post.PostEffectAttachmentSpec
 import cn.coostack.cooparticlesapi.renderer.post.PostEffectFrameExecutor
+import cn.coostack.cooparticlesapi.renderer.post.PostEffectParamValue
+import cn.coostack.cooparticlesapi.renderer.post.PostEffectParams
 import cn.coostack.cooparticlesapi.renderer.post.PostEffectRuntimeRegistry
+import cn.coostack.cooparticlesapi.renderer.post.toPostEffectParamValue
 import cn.coostack.cooparticlesapi.renderer.shader.ShaderReloadBus
 import cn.coostack.cooparticlesapi.renderer.shader.ShaderReloadSignal
 import cn.coostack.cooparticlesapi.renderer.shader.CooShaderSourceLoader
@@ -117,6 +120,8 @@ internal object CooTerrainPipelineManager {
     private var warnedIrisTerrainUnavailable = false
     private var deferredFrameFinish: DeferredFrameFinish? = null
     private var framePartialTick = 0F
+    private var screenOnlySceneMappingActiveThisFrame = false
+    private var terrainDepthSnapshotsRequiredThisFrame = false
     /** 当前是否正在重放地形几何以捕获 Pipeline WORLD 节点 attachment。 */
     private var terrainAttachmentCaptureActive = false
 
@@ -177,7 +182,10 @@ internal object CooTerrainPipelineManager {
      */
     @JvmStatic
     fun beginRenderFrame(partialTick: Float) {
+        OpenGlPostEffectExecutionBackend.beginTerrainDepthFrame()
         irisTerrainUnavailableThisFrame = false
+        screenOnlySceneMappingActiveThisFrame = false
+        terrainDepthSnapshotsRequiredThisFrame = false
         flushPendingFullSectionRebuild()
         framePartialTick = partialTick.coerceIn(0F, 1F)
         val level = Minecraft.getInstance().level
@@ -196,6 +204,16 @@ internal object CooTerrainPipelineManager {
             if (currentMappingTopologyRevision != terrainMappingTopologyRevision) {
                 terrainMappingTopologyRevision = currentMappingTopologyRevision
                 requestMappingSectionRebuild(CooTerrainMappingRegistry.drainTopologyRegions(dimension))
+            }
+            CooTerrainMappingRegistry.activeRenderPlan(dimension, level.gameTime).forEach { mapping ->
+                val pipeline = CooTerrainMappingManager.pipeline(mapping.mappingId) ?: return@forEach
+                if (pipeline.nodes.any { node -> node.kind == CooPipelineNodeKind.WORLD }) return@forEach
+                if (pipeline.postInScene) {
+                    screenOnlySceneMappingActiveThisFrame = true
+                }
+                if (pipeline.lines.any { line -> line.output.isTerrainDepthSnapshot() }) {
+                    terrainDepthSnapshotsRequiredThisFrame = true
+                }
             }
         }
         synchronized(pendingPostDraws) {
@@ -229,16 +247,51 @@ internal object CooTerrainPipelineManager {
     }
 
     /**
+     * @return 当前是否存在必须先于 RenderEntity 合成的 screen-only scene Mapping
+     */
+    fun shouldDeferShaderPackRenderEntities(): Boolean {
+        return screenOnlySceneMappingActiveThisFrame
+    }
+
+    private fun CooPipelineTextureSource.isTerrainDepthSnapshot(): Boolean {
+        return this == CooPipelineTextureSource.TerrainOpaqueDepth ||
+            this == CooPipelineTextureSource.TerrainTranslucentDepthBefore ||
+            this == CooPipelineTextureSource.TerrainTranslucentDepthAfter
+    }
+
+    /**
      * 把本帧记录的地形后处理图编译为统一的渲染效果描述。
      *
      * @param context 当前帧可用的场景纹理、目标尺寸和相机数据
      * @param collector 接收编译后地形效果实例的收集器
      */
     fun collectPostEffects(context: RenderFrameContext, collector: RenderEffectCollector) {
+        collectPostEffects(context, collector, scenePost = false)
+    }
+
+    /** 把声明为 scene post 的 Terrain Mapping 放在 RenderEntity 场景后处理之前执行。 */
+    fun collectScenePostEffects(context: RenderFrameContext, collector: RenderEffectCollector) {
+        collectPostEffects(context, collector, scenePost = true)
+    }
+
+    private fun collectPostEffects(
+        context: RenderFrameContext,
+        collector: RenderEffectCollector,
+        scenePost: Boolean
+    ) {
         val draws = synchronized(pendingPostDraws) {
-            pendingPostDraws.toList().also { pendingPostDraws.clear() }
+            val selected = pendingPostDraws.toList().filter { (renderType, _) ->
+                synchronized(terrainLayers) {
+                    terrainPipelines[renderType]?.postInScene == scenePost
+                }
+            }
+            selected.forEach { (renderType, _) -> pendingPostDraws.remove(renderType) }
+            selected
         }
-        if (draws.isEmpty()) return
+        if (draws.isEmpty()) {
+            collectScreenOnlyMappingPostEffects(context, collector, scenePost)
+            return
+        }
         val grouped = draws.groupBy { (renderType, _) ->
             val pipeline = synchronized(terrainLayers) { terrainPipelines[renderType] }
             val batchKey = synchronized(terrainLayers) { terrainMappingBatchKeys[renderType] }
@@ -289,6 +342,69 @@ internal object CooTerrainPipelineManager {
             )
             collector.submit(post.type.toDescriptor(instance))
         }
+        collectScreenOnlyMappingPostEffects(context, collector, scenePost)
+    }
+
+    /** 为不含 WORLD 节点的 Mapping 直接提交屏幕后处理，避免重放会被 Iris 改写的 terrain 顶点。 */
+    private fun collectScreenOnlyMappingPostEffects(
+        context: RenderFrameContext,
+        collector: RenderEffectCollector,
+        scenePost: Boolean
+    ) {
+        val level = Minecraft.getInstance().level ?: return
+        val mappings = CooTerrainMappingRegistry.activeRenderPlan(
+            level.dimension().location(),
+            level.gameTime
+        )
+        mappings.forEach { mapping ->
+            val pipeline = CooTerrainMappingManager.pipeline(mapping.mappingId) ?: return@forEach
+            if (pipeline.postInScene != scenePost) return@forEach
+            val compiled = CooPipelineCompiler.compile(pipeline)
+            if (compiled.nodes.any { it.kind == CooPipelineNodeKind.WORLD }) return@forEach
+            val post = CooPipelinePostEffectCompiler.compile(pipeline) ?: return@forEach
+            PostEffectRuntimeRegistry.registerType(post.type)
+            val params = mappingPostParams(post.defaultParams, mapping, context.tickDelta)
+            val owner = "terrain:mapping:${mapping.instanceId}"
+            val instance = post.type.create(
+                instanceId = "$owner:pipeline",
+                params = params,
+                sourceId = owner,
+                priority = mapping.priority
+            )
+            collector.submit(post.type.toDescriptor(instance))
+        }
+    }
+
+    private fun mappingPostParams(
+        defaults: PostEffectParams,
+        mapping: CooTerrainMappingInstance,
+        partialTick: Float
+    ): PostEffectParams {
+        var params = defaults
+        mapping.uniforms.forEach { (name, value) ->
+            params = params.plus(name, value.toPostEffectParamValue())
+        }
+        val region = mapping.region as? CooTerrainMappingRegion.Sphere
+        if (region != null) {
+            val camera = Minecraft.getInstance().gameRenderer.mainCamera.position
+            params = params.plus(
+                "CooMappingRegion",
+                PostEffectParamValue.ColorValue(
+                    (region.center.x - camera.x).toFloat(),
+                    (region.center.y - camera.y).toFloat(),
+                    (region.center.z - camera.z).toFloat(),
+                    region.radius.toFloat()
+                )
+            )
+        }
+        val now = currentGameTime().toDouble() + partialTick.toDouble()
+        val duration = mapping.expiresAt?.minus(mapping.startedAt)?.toDouble()
+        val progress = if (duration == null || duration <= 0.0) {
+            0F
+        } else {
+            ((now - mapping.startedAt.toDouble()) / duration).coerceIn(0.0, 1.0).toFloat()
+        }
+        return params.plus("CooMappingProgress", PostEffectParamValue.FloatValue(progress))
     }
 
     /**
@@ -489,12 +605,27 @@ internal object CooTerrainPipelineManager {
     @JvmStatic
     fun isMappingDepthAvailable(): Boolean = terrainDepthTextureId != null
 
-    /**
-     * 查询地形 RenderType 对应的 Pipeline。
-     *
-     * @param renderType 已登记的地形 RenderType
-     * @return 对应 Pipeline；未登记时返回 `null`
-     */
+    /** 在实体绘制前保存 terrain-only opaque depth，供 screen-only Mapping 分类像素。 */
+    @JvmStatic
+    fun captureOpaqueTerrainDepth() {
+        if (!terrainDepthSnapshotsRequiredThisFrame) return
+        OpenGlPostEffectExecutionBackend.captureTerrainOpaqueDepth()
+    }
+
+    /** 在半透明 terrain 绘制前保存深度快照。 */
+    @JvmStatic
+    fun captureTranslucentTerrainDepthBefore() {
+        if (!terrainDepthSnapshotsRequiredThisFrame) return
+        OpenGlPostEffectExecutionBackend.captureTerrainTranslucentDepthBefore()
+    }
+
+    /** 在半透明 terrain 绘制后保存深度快照。 */
+    @JvmStatic
+    fun captureTranslucentTerrainDepthAfter() {
+        if (!terrainDepthSnapshotsRequiredThisFrame) return
+        OpenGlPostEffectExecutionBackend.captureTerrainTranslucentDepthAfter()
+    }
+    /** 查询地形 RenderType 对应的 Pipeline。 */
     @JvmStatic
     fun pipelineFor(renderType: RenderType): CooRenderPipeline<BlockState>? {
         return synchronized(terrainLayers) { terrainPipelines[renderType] }
@@ -676,7 +807,7 @@ internal object CooTerrainPipelineManager {
     }
 
     /**
-     * 为一批地形覆盖绘制解析场景纹理，并在需要时临时接入 Iris 地形深度。
+     * 为一批地形覆盖绘制解析场景纹理，并在需要时临时接入 Iris 完整场景深度。
      *
      * 返回 `true` 时必须与 [endOverlayBatch] 成对调用。Iris 目标仍在切换时返回 `false`，
      * 调用方只跳过当前批次，下一帧会重新解析。
@@ -713,7 +844,12 @@ internal object CooTerrainPipelineManager {
             val sourceFramebuffer = glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING)
             terrainColorWidth = targets.width.coerceAtLeast(1)
             terrainColorHeight = targets.height.coerceAtLeast(1)
-            if (sources.any { it === CooPipelineTextureSource.SceneColor || it === CooPipelineTextureSource.SceneDepth }) {
+            if (sources.any {
+                    it === CooPipelineTextureSource.SceneColor ||
+                        it === CooPipelineTextureSource.SceneDepth ||
+                        it === CooPipelineTextureSource.SceneDepthNoHand
+                }
+            ) {
                 val captured = OpenGlPostEffectExecutionBackend.captureTerrainScene(
                     sourceFramebuffer,
                     terrainColorWidth,
@@ -727,13 +863,13 @@ internal object CooTerrainPipelineManager {
                 terrainDepthTextureId = resources[RenderSceneTargets.TERRAIN_DEPTH]?.depthTextureId
             }
             if (irisShaderPackActive) {
-                val irisDepth = IrisCompat.currentTerrainDepthTexture()
-                terrainDepthTextureId = irisDepth?.textureId
-                if (irisDepth == null || !attachIrisTerrainDepth(sourceFramebuffer, irisDepth)) {
+                val irisSceneDepth = IrisCompat.currentSceneDepthTexture()
+                terrainDepthTextureId = IrisCompat.currentTerrainDepthTexture()?.textureId
+                if (irisSceneDepth == null || !attachIrisSceneDepth(sourceFramebuffer, irisSceneDepth)) {
                     markIrisTerrainUnavailable(
-                        "Iris terrain depth attachment",
+                        "Iris scene depth attachment",
                         renderTypes.firstOrNull(),
-                        IllegalStateException("Iris terrain depth texture is unavailable or incompatible")
+                        IllegalStateException("Iris scene depth texture is unavailable or incompatible")
                     )
                     endOverlayBatch()
                     return false
@@ -1064,11 +1200,23 @@ internal object CooTerrainPipelineManager {
                 is CooPipelineTextureSource.Texture -> minecraft.textureManager.getTexture(source.texture).id
                 CooPipelineTextureSource.SceneColor -> terrainColorTextureId
                 CooPipelineTextureSource.SceneDepth -> sceneDepthTextureId
+                CooPipelineTextureSource.SceneDepthNoHand -> terrainSceneResources[
+                    RenderSceneTargets.SCENE_DEPTH_NO_HAND
+                ]?.depthTextureId ?: sceneDepthTextureId
                 is CooPipelineTextureSource.FramebufferColor -> resolveNamedColorTexture(
                     source.target,
                     source.attachment
                 )
                 CooPipelineTextureSource.TerrainDepth -> terrainDepthTextureId
+                CooPipelineTextureSource.TerrainOpaqueDepth -> terrainSceneResources[
+                    RenderSceneTargets.TERRAIN_OPAQUE_DEPTH
+                ]?.depthTextureId
+                CooPipelineTextureSource.TerrainTranslucentDepthBefore -> terrainSceneResources[
+                    RenderSceneTargets.TERRAIN_TRANSLUCENT_DEPTH_BEFORE
+                ]?.depthTextureId
+                CooPipelineTextureSource.TerrainTranslucentDepthAfter -> terrainSceneResources[
+                    RenderSceneTargets.TERRAIN_TRANSLUCENT_DEPTH_AFTER
+                ]?.depthTextureId
                 CooPipelineTextureSource.Mask -> resolveNamedColorTexture(RenderSceneTargets.MASK, 0)
                 CooPipelineTextureSource.Temporary -> resolveNamedColorTexture(RenderSceneTargets.TEMPORARY, 0)
                 CooPipelineTextureSource.Bloom -> resolveNamedColorTexture(RenderSceneTargets.BLOOM, 0)
@@ -1129,11 +1277,12 @@ internal object CooTerrainPipelineManager {
         } else {
             shader.getUniform("CooMappingRegion")?.set(0F, 0F, 0F, 0F)
         }
-        val duration = mapping?.expiresAt?.minus(mapping.startedAt)?.toFloat()
-        val progress = if (mapping == null || duration == null || duration <= 0F) {
+        val duration = mapping?.expiresAt?.minus(mapping.startedAt)?.toDouble()
+        val progress = if (mapping == null || duration == null || duration <= 0.0) {
             0F
         } else {
-            ((gameTime - mapping.startedAt.toFloat()) / duration).coerceIn(0F, 1F)
+            val mappingTime = currentGameTime().toDouble() + framePartialTick.toDouble()
+            ((mappingTime - mapping.startedAt.toDouble()) / duration).coerceIn(0.0, 1.0).toFloat()
         }
         shader.getUniform("CooMappingProgress")?.set(progress)
         shader.getUniform("CooMappingDepthAvailable")?.set(if (terrainDepthTextureId != null) 1 else 0)
@@ -1227,7 +1376,7 @@ internal object CooTerrainPipelineManager {
             ?: OpenGlPostEffectExecutionBackend.resolveNamedColorTexture(target, attachment)
     }
 
-    private fun attachIrisTerrainDepth(framebuffer: Int, depth: IrisTerrainDepthTexture): Boolean {
+    private fun attachIrisSceneDepth(framebuffer: Int, depth: IrisTerrainDepthTexture): Boolean {
         if (framebuffer <= 0 || depth.width != terrainColorWidth || depth.height != terrainColorHeight) return false
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, framebuffer)
         val depthAttachment = readFramebufferAttachment(GL_DEPTH_ATTACHMENT)
@@ -1482,6 +1631,8 @@ internal object CooTerrainPipelineManager {
         irisTerrainUnavailableThisFrame = false
         deferredFrameFinish = null
         framePartialTick = 0F
+        screenOnlySceneMappingActiveThisFrame = false
+        terrainDepthSnapshotsRequiredThisFrame = false
         terrainAttachmentCaptureActive = false
         finalCompositeTerrainOverlayActive = false
         terrainEffectRevision = -1L

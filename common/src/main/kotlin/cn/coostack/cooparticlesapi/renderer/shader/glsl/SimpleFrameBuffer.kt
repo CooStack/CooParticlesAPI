@@ -9,6 +9,14 @@ import org.lwjgl.opengl.GL33.*
 import java.nio.ByteBuffer
 import java.util.function.Supplier
 
+/** 描述 framebuffer 深度纹理的 OpenGL allocation 与 attachment 形式。 */
+internal data class GlDepthTextureFormat(
+    val internalFormat: Int,
+    val pixelFormat: Int,
+    val dataType: Int,
+    val attachment: Int,
+)
+
 open class SimpleFrameBuffer(
     val colorChannelCount: Int,
     override var depthSupplier: Supplier<Int>,
@@ -54,6 +62,7 @@ open class SimpleFrameBuffer(
     private var useMipmap = mipLevels > 1
     private var requestedMipLevels = mipLevels.coerceAtLeast(1)
     private var depthAttachment = -1
+    private var depthTextureFormat: GlDepthTextureFormat? = null
     private var fbo = 0
     private var previousReadFramebuffer = 0
     private var previousDrawFramebuffer = 0
@@ -116,6 +125,12 @@ open class SimpleFrameBuffer(
      */
     override fun getCurrentDepthAttachment(): Int {
         return depthAttachment
+    }
+
+    /** 在初始化前指定自有深度纹理的精确 OpenGL 格式。 */
+    internal fun setDepthTextureFormat(format: GlDepthTextureFormat?) {
+        check(!initialized) { "Depth texture format must be configured before framebuffer init" }
+        depthTextureFormat = format
     }
 
     /**
@@ -421,10 +436,23 @@ open class SimpleFrameBuffer(
             depthAttachment = get
         }
         bindTextureTo(depthAttachment) {
+            val format = depthTextureFormat ?: GlDepthTextureFormat(
+                GL_DEPTH_COMPONENT,
+                GL_DEPTH_COMPONENT,
+                GL_FLOAT,
+                GL_DEPTH_ATTACHMENT
+            )
             if (new) {
                 glTexImage2D(
-                    GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT,
-                    width(), height(), 0, GL_DEPTH_COMPONENT, GL_FLOAT, null as ByteBuffer?
+                    GL_TEXTURE_2D,
+                    0,
+                    format.internalFormat,
+                    width(),
+                    height(),
+                    0,
+                    format.pixelFormat,
+                    format.dataType,
+                    null as ByteBuffer?
                 )
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
@@ -432,8 +460,11 @@ open class SimpleFrameBuffer(
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
             }
             glFramebufferTexture2D(
-                GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
-                GL_TEXTURE_2D, depthAttachment, 0
+                GL_FRAMEBUFFER,
+                if (new) format.attachment else GL_DEPTH_ATTACHMENT,
+                GL_TEXTURE_2D,
+                depthAttachment,
+                0
             )
         }
     }

@@ -4,6 +4,7 @@ object VanillaSafeRenderBackend : RenderBackend {
     override val capabilities: Set<RenderBackendCapability> = setOf(
         RenderBackendCapability.SCENE_COLOR_COPY,
         RenderBackendCapability.SCENE_DEPTH_READ,
+        RenderBackendCapability.TERRAIN_DEPTH_READ,
         RenderBackendCapability.SAFE_WORLD_COMPOSITE,
         RenderBackendCapability.FINAL_FRAME_POST
     )

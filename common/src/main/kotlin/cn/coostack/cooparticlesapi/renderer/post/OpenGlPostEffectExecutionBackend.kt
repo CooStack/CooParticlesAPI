@@ -2,6 +2,7 @@ package cn.coostack.cooparticlesapi.renderer.post
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.compat.IrisCompat
+import cn.coostack.cooparticlesapi.compat.IrisTerrainDepthTexture
 import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameContext
 import cn.coostack.cooparticlesapi.renderer.backend.RenderSceneResource
 import cn.coostack.cooparticlesapi.renderer.backend.RenderSceneResources
@@ -12,6 +13,7 @@ import cn.coostack.cooparticlesapi.renderer.shader.AdvancedShaderProgramBuilder
 import cn.coostack.cooparticlesapi.renderer.shader.api.CooShaderProgram
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.CooTextureFormat
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlShaderType
+import cn.coostack.cooparticlesapi.renderer.shader.glsl.GlDepthTextureFormat
 import cn.coostack.cooparticlesapi.renderer.shader.glsl.IdentifierShader
 import cn.coostack.cooparticlesapi.renderer.shader.glsl.SimpleFrameBuffer
 import cn.coostack.cooparticlesapi.renderer.shader.texture.IdentifierTexture
@@ -25,6 +27,7 @@ import org.joml.Matrix4f
 import org.joml.Vector2f
 import org.joml.Vector3f
 import org.joml.Vector4f
+import java.nio.ByteBuffer
 import org.lwjgl.opengl.GL33.GL_ACTIVE_TEXTURE
 import org.lwjgl.opengl.GL33.GL_BLEND
 import org.lwjgl.opengl.GL33.GL_BLEND_DST_ALPHA
@@ -41,13 +44,28 @@ import org.lwjgl.opengl.GL33.GL_CURRENT_PROGRAM
 import org.lwjgl.opengl.GL33.GL_DEPTH_BUFFER_BIT
 import org.lwjgl.opengl.GL33.GL_DEPTH_FUNC
 import org.lwjgl.opengl.GL33.GL_DEPTH_ATTACHMENT
+import org.lwjgl.opengl.GL33.GL_DEPTH_COMPONENT
+import org.lwjgl.opengl.GL33.GL_DEPTH_COMPONENT16
+import org.lwjgl.opengl.GL33.GL_DEPTH_COMPONENT24
+import org.lwjgl.opengl.GL33.GL_DEPTH_COMPONENT32
+import org.lwjgl.opengl.GL33.GL_DEPTH_COMPONENT32F
+import org.lwjgl.opengl.GL33.GL_DEPTH24_STENCIL8
+import org.lwjgl.opengl.GL33.GL_DEPTH32F_STENCIL8
+import org.lwjgl.opengl.GL33.GL_DEPTH_STENCIL
+import org.lwjgl.opengl.GL33.GL_DEPTH_STENCIL_ATTACHMENT
+import org.lwjgl.opengl.GL33.GL_FLOAT
+import org.lwjgl.opengl.GL33.GL_FLOAT_32_UNSIGNED_INT_24_8_REV
+import org.lwjgl.opengl.GL33.GL_CLAMP_TO_EDGE
+import org.lwjgl.opengl.GL33.GL_TEXTURE_MAG_FILTER
+import org.lwjgl.opengl.GL33.GL_TEXTURE_MIN_FILTER
+import org.lwjgl.opengl.GL33.GL_TEXTURE_WRAP_S
+import org.lwjgl.opengl.GL33.GL_TEXTURE_WRAP_T
 import org.lwjgl.opengl.GL33.GL_DEPTH_TEST
 import org.lwjgl.opengl.GL33.GL_DEPTH_WRITEMASK
 import org.lwjgl.opengl.GL33.GL_DRAW_FRAMEBUFFER
 import org.lwjgl.opengl.GL33.GL_DRAW_FRAMEBUFFER_BINDING
 import org.lwjgl.opengl.GL33.GL_DRAW_BUFFER0
 import org.lwjgl.opengl.GL33.GL_FRAMEBUFFER
-import org.lwjgl.opengl.GL33.GL_FRAMEBUFFER_BINDING
 import org.lwjgl.opengl.GL33.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE
 import org.lwjgl.opengl.GL33.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME
 import org.lwjgl.opengl.GL33.GL_FRAMEBUFFER_COMPLETE
@@ -56,10 +74,17 @@ import org.lwjgl.opengl.GL33.GL_LINEAR_MIPMAP_LINEAR
 import org.lwjgl.opengl.GL33.GL_MAX_DRAW_BUFFERS
 import org.lwjgl.opengl.GL33.GL_NEAREST
 import org.lwjgl.opengl.GL33.GL_NONE
+import org.lwjgl.opengl.GL33.GL_NO_ERROR
 import org.lwjgl.opengl.GL33.GL_READ_FRAMEBUFFER
 import org.lwjgl.opengl.GL33.GL_READ_FRAMEBUFFER_BINDING
 import org.lwjgl.opengl.GL33.GL_READ_BUFFER
 import org.lwjgl.opengl.GL33.GL_RENDERBUFFER
+import org.lwjgl.opengl.GL33.GL_RENDERBUFFER_BINDING
+import org.lwjgl.opengl.GL33.GL_RENDERBUFFER_INTERNAL_FORMAT
+import org.lwjgl.opengl.GL33.GL_RENDERBUFFER_DEPTH_SIZE
+import org.lwjgl.opengl.GL33.GL_RENDERBUFFER_STENCIL_SIZE
+import org.lwjgl.opengl.GL33.GL_RENDERBUFFER_WIDTH
+import org.lwjgl.opengl.GL33.GL_RENDERBUFFER_HEIGHT
 import org.lwjgl.opengl.GL33.GL_RGBA
 import org.lwjgl.opengl.GL33.GL_RGBA8
 import org.lwjgl.opengl.GL33.GL_RGBA16F
@@ -67,14 +92,21 @@ import org.lwjgl.opengl.GL33.GL_RGBA32F
 import org.lwjgl.opengl.GL33.GL_SCISSOR_BOX
 import org.lwjgl.opengl.GL33.GL_SCISSOR_TEST
 import org.lwjgl.opengl.GL33.GL_SRGB8_ALPHA8
+import org.lwjgl.opengl.GL33.GL_STENCIL_ATTACHMENT
 import org.lwjgl.opengl.GL33.GL_TEXTURE0
 import org.lwjgl.opengl.GL33.GL_TEXTURE
 import org.lwjgl.opengl.GL33.GL_TEXTURE_2D
 import org.lwjgl.opengl.GL33.GL_TEXTURE_BASE_LEVEL
+import org.lwjgl.opengl.GL33.GL_UNSIGNED_INT
+import org.lwjgl.opengl.GL33.GL_UNSIGNED_INT_24_8
+import org.lwjgl.opengl.GL33.GL_UNSIGNED_SHORT
 import org.lwjgl.opengl.GL33.GL_TEXTURE_BINDING_2D
 import org.lwjgl.opengl.GL33.GL_TEXTURE_INTERNAL_FORMAT
+import org.lwjgl.opengl.GL33.GL_TEXTURE_DEPTH_SIZE
+import org.lwjgl.opengl.GL33.GL_TEXTURE_STENCIL_SIZE
 import org.lwjgl.opengl.GL33.GL_TEXTURE_MAX_LEVEL
 import org.lwjgl.opengl.GL33.GL_TEXTURE_WIDTH
+import org.lwjgl.opengl.GL33.GL_TEXTURE_HEIGHT
 import org.lwjgl.opengl.GL33.GL_VIEWPORT
 import org.lwjgl.opengl.GL33.GL_VERTEX_ARRAY_BINDING
 import org.lwjgl.opengl.GL11.GL_POLYGON_OFFSET_FACTOR
@@ -82,6 +114,7 @@ import org.lwjgl.opengl.GL11.GL_POLYGON_OFFSET_FILL
 import org.lwjgl.opengl.GL11.GL_POLYGON_OFFSET_UNITS
 import org.lwjgl.opengl.GL33.glActiveTexture
 import org.lwjgl.opengl.GL33.glBindFramebuffer
+import org.lwjgl.opengl.GL33.glBindRenderbuffer
 import org.lwjgl.opengl.GL33.glBindTexture
 import org.lwjgl.opengl.GL33.glBindVertexArray
 import org.lwjgl.opengl.GL33.glBlendEquationSeparate
@@ -90,6 +123,7 @@ import org.lwjgl.opengl.GL33.glBlitFramebuffer
 import org.lwjgl.opengl.GL33.glCheckFramebufferStatus
 import org.lwjgl.opengl.GL33.glDepthMask
 import org.lwjgl.opengl.GL33.glDeleteFramebuffers
+import org.lwjgl.opengl.GL33.glDeleteTextures
 import org.lwjgl.opengl.GL33.glDepthFunc
 import org.lwjgl.opengl.GL33.glDisable
 import org.lwjgl.opengl.GL33.glEnable
@@ -97,12 +131,17 @@ import org.lwjgl.opengl.GL33.glDrawBuffer
 import org.lwjgl.opengl.GL33.glDrawBuffers
 import org.lwjgl.opengl.GL33.glFramebufferTexture2D
 import org.lwjgl.opengl.GL33.glFramebufferRenderbuffer
+import org.lwjgl.opengl.GL33.glTexImage2D
+import org.lwjgl.opengl.GL33.glTexParameteri
 import org.lwjgl.opengl.GL33.glGenFramebuffers
+import org.lwjgl.opengl.GL33.glGenTextures
 import org.lwjgl.opengl.GL33.glGetBoolean
 import org.lwjgl.opengl.GL11.glGetFloat
+import org.lwjgl.opengl.GL33.glGetError
 import org.lwjgl.opengl.GL33.glGetFramebufferAttachmentParameteri
 import org.lwjgl.opengl.GL33.glGetInteger
 import org.lwjgl.opengl.GL33.glGetIntegerv
+import org.lwjgl.opengl.GL33.glGetRenderbufferParameteri
 import org.lwjgl.opengl.GL33.glGetTexLevelParameteri
 import org.lwjgl.opengl.GL33.glGetTexParameteri
 import org.lwjgl.opengl.GL33.glGetUniformLocation
@@ -149,6 +188,15 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
     private var frameCounter: Long = 0
     private var screenBuffer: SimpleVertexBuffer? = null
     private var irisDepthReadFramebuffer = 0
+    private var terrainOpaqueDepthCapture: DepthCapture? = null
+    private var terrainTranslucentBeforeDepthCapture: DepthCapture? = null
+    private var terrainTranslucentAfterDepthCapture: DepthCapture? = null
+    private var terrainDepthIrisSourceResolved = false
+    private var terrainDepthIrisSource: IrisTerrainDepthTexture? = null
+    private var terrainDepthSourceCache: DepthSourceCache? = null
+    private var terrainOpaqueDepthValid = false
+    private var terrainTranslucentBeforeDepthValid = false
+    private var terrainTranslucentAfterDepthValid = false
     private var sceneCopy: ManagedTarget? = null
     private var preparedSceneFrame: FrameKey? = null
     private var preparedSceneCopySpec: PostEffectAttachmentSpec? = null
@@ -172,6 +220,498 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         namedTargetTextures.clear()
         frameCounter++
         evictStaleTargets()
+    }
+
+    /** Iris final pass 后只刷新 scene copy 的帧标记，保留已捕获 attachment 和 pass 状态。 */
+    override fun refreshSceneFrame(context: RenderFrameContext) {
+        preparedSceneFrame = null
+        preparedSceneCopySpec = null
+        chainedSceneFramebufferId = null
+    }
+
+
+    internal fun beginTerrainDepthFrame() {
+        terrainDepthIrisSourceResolved = false
+        terrainDepthIrisSource = null
+        terrainDepthSourceCache = null
+        terrainOpaqueDepthValid = false
+        terrainTranslucentBeforeDepthValid = false
+        terrainTranslucentAfterDepthValid = false
+    }
+
+    /** 在实体绘制前捕获当前 opaque terrain 深度。 */
+    internal fun captureTerrainOpaqueDepth() {
+        terrainOpaqueDepthValid = captureCurrentDepth(terrainOpaqueDepthCapture) { capture ->
+            terrainOpaqueDepthCapture = capture
+        }
+    }
+
+    /** 在半透明 terrain 绘制前捕获深度；同一帧只保留第一次快照。 */
+    internal fun captureTerrainTranslucentDepthBefore() {
+        if (terrainTranslucentBeforeDepthValid) return
+        if (captureCurrentDepth(terrainTranslucentBeforeDepthCapture) { capture ->
+                terrainTranslucentBeforeDepthCapture = capture
+            }
+        ) {
+            terrainTranslucentBeforeDepthValid = true
+        }
+    }
+
+    /** 在半透明 terrain 绘制后捕获深度，供 shader 识别实际改变深度的液体像素。 */
+    internal fun captureTerrainTranslucentDepthAfter() {
+        if (!terrainTranslucentBeforeDepthValid || terrainTranslucentAfterDepthValid) return
+        terrainTranslucentAfterDepthValid = captureCurrentDepth(terrainTranslucentAfterDepthCapture) { capture ->
+            terrainTranslucentAfterDepthCapture = capture
+        }
+    }
+
+    /** 返回本帧实际 opaque terrain 深度快照纹理。 */
+    internal fun terrainOpaqueDepthTexture(): Int? {
+        return terrainOpaqueDepthCapture?.textureId?.takeIf { terrainOpaqueDepthValid && it > 0 }
+    }
+
+    /** 返回本帧半透明 terrain 绘制前的深度快照纹理。 */
+    internal fun terrainTranslucentDepthBeforeTexture(): Int? {
+        return terrainTranslucentBeforeDepthCapture?.textureId
+            ?.takeIf { terrainTranslucentBeforeDepthValid && it > 0 }
+    }
+
+    /** 返回半透明 terrain 绘制后的深度；after 缺失时复用 before，使 opaque 分类仍可执行。 */
+    internal fun terrainTranslucentDepthAfterTexture(): Int? {
+        return terrainTranslucentAfterDepthCapture?.textureId
+            ?.takeIf { terrainTranslucentAfterDepthValid && it > 0 }
+            ?: terrainTranslucentBeforeDepthCapture?.textureId
+                ?.takeIf { terrainTranslucentBeforeDepthValid && it > 0 }
+    }
+
+    private fun currentDepthSourceFramebuffer(): Int {
+        return glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING).takeIf { it > 0 }
+            ?: Minecraft.getInstance().mainRenderTarget.frameBufferId
+    }
+
+    private fun captureCurrentDepth(
+        existing: DepthCapture?,
+        accept: (DepthCapture) -> Unit
+    ): Boolean {
+        val irisDepth = if (!terrainDepthIrisSourceResolved) {
+            terrainDepthIrisSourceResolved = true
+            terrainDepthIrisSource = IrisCompat.currentSceneDepthTexture()
+            terrainDepthIrisSource
+        } else {
+            terrainDepthIrisSource
+        }
+        val fallbackSourceFramebuffer = currentDepthSourceFramebuffer()
+        if (irisDepth == null && fallbackSourceFramebuffer <= 0) return false
+        val cachedSource = terrainDepthSourceCache?.takeIf {
+            it.irisTextureId == (irisDepth?.textureId ?: 0) &&
+                it.framebufferId == (if (irisDepth == null) fallbackSourceFramebuffer else 0)
+        }
+        val source = cachedSource ?: run {
+            val sourceFormat = if (irisDepth != null) {
+                resolveDepthTextureFormat(irisDepth.textureId)
+            } else {
+                resolveDepthFramebufferFormat(fallbackSourceFramebuffer)
+            } ?: return false
+            val fallbackSourceSize = if (irisDepth == null) {
+                resolveDepthFramebufferSize(fallbackSourceFramebuffer)
+            } else {
+                null
+            }
+            DepthSourceCache(
+                irisTextureId = irisDepth?.textureId ?: 0,
+                framebufferId = if (irisDepth == null) fallbackSourceFramebuffer else 0,
+                width = (irisDepth?.width ?: fallbackSourceSize?.first
+                    ?: Minecraft.getInstance().mainRenderTarget.width).coerceAtLeast(1),
+                height = (irisDepth?.height ?: fallbackSourceSize?.second
+                    ?: Minecraft.getInstance().mainRenderTarget.height).coerceAtLeast(1),
+                format = sourceFormat,
+            )
+        }.also { terrainDepthSourceCache = it }
+        val sourceFormat = source.format
+        val sourceWidth = source.width
+        val sourceHeight = source.height
+        val capture = if (
+            existing != null &&
+            existing.width == sourceWidth &&
+            existing.height == sourceHeight &&
+            existing.format == sourceFormat
+        ) {
+            existing
+        } else {
+            createDepthCapture(sourceWidth, sourceHeight, sourceFormat)
+        }
+        val previousReadFramebuffer = glGetInteger(GL_READ_FRAMEBUFFER_BINDING)
+        val previousDrawFramebuffer = glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING)
+        var sourceFramebuffer = fallbackSourceFramebuffer
+        var previousReadBuffer = GL_NONE
+        var previousDrawBuffer = GL_NONE
+        var copied = false
+        clearPendingGlErrors()
+        try {
+            if (irisDepth != null) {
+                if (irisDepthReadFramebuffer <= 0) {
+                    irisDepthReadFramebuffer = glGenFramebuffers()
+                }
+                sourceFramebuffer = irisDepthReadFramebuffer
+                glBindFramebuffer(GL_READ_FRAMEBUFFER, sourceFramebuffer)
+                glFramebufferTexture2D(
+                    GL_READ_FRAMEBUFFER,
+                    GL_DEPTH_ATTACHMENT,
+                    GL_TEXTURE_2D,
+                    0,
+                    0
+                )
+                glFramebufferTexture2D(
+                    GL_READ_FRAMEBUFFER,
+                    GL_STENCIL_ATTACHMENT,
+                    GL_TEXTURE_2D,
+                    0,
+                    0
+                )
+                glFramebufferTexture2D(
+                    GL_READ_FRAMEBUFFER,
+                    sourceFormat.attachment,
+                    GL_TEXTURE_2D,
+                    irisDepth.textureId,
+                    0
+                )
+                glReadBuffer(GL_NONE)
+                if (glCheckFramebufferStatus(GL_READ_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) return false
+            } else {
+                glBindFramebuffer(GL_READ_FRAMEBUFFER, sourceFramebuffer)
+                previousReadBuffer = glGetInteger(GL_READ_BUFFER)
+                val depthType = glGetFramebufferAttachmentParameteri(
+                    GL_READ_FRAMEBUFFER,
+                    GL_DEPTH_ATTACHMENT,
+                    GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE
+                )
+                if (depthType == GL_NONE) return false
+                glReadBuffer(GL_NONE)
+            }
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, capture.framebufferId)
+            previousDrawBuffer = glGetInteger(GL_DRAW_BUFFER0)
+            glDrawBuffer(GL_NONE)
+            if (!operationCompletedWithoutGlError()) return false
+            clearPendingGlErrors()
+            glBlitFramebuffer(
+                0,
+                0,
+                sourceWidth,
+                sourceHeight,
+                0,
+                0,
+                capture.width,
+                capture.height,
+                GL_DEPTH_BUFFER_BIT,
+                GL_NEAREST
+            )
+            copied = operationCompletedWithoutGlError()
+        } finally {
+            if (irisDepth == null && sourceFramebuffer > 0) {
+                glBindFramebuffer(GL_READ_FRAMEBUFFER, sourceFramebuffer)
+                glReadBuffer(previousReadBuffer)
+            }
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, capture.framebufferId)
+            glDrawBuffer(previousDrawBuffer)
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, previousReadFramebuffer)
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, previousDrawFramebuffer)
+            if (!copied && capture !== existing) {
+                capture.release()
+            }
+        }
+        if (copied) {
+            if (capture !== existing) {
+                existing?.release()
+            }
+            accept(capture)
+        }
+        return copied
+    }
+
+    private fun clearPendingGlErrors() {
+        while (glGetError() != GL_NO_ERROR) {
+            // 清空操作前遗留的错误，避免把旧错误归因到本次 blit。
+        }
+    }
+
+    private fun operationCompletedWithoutGlError(): Boolean {
+        var error = glGetError()
+        if (error == GL_NO_ERROR) return true
+        while (error != GL_NO_ERROR) {
+            error = glGetError()
+        }
+        return false
+    }
+
+    private fun resolveDepthTextureFormat(textureId: Int): DepthTextureFormat? {
+        if (textureId <= 0) return null
+        val previousActiveTexture = glGetInteger(GL_ACTIVE_TEXTURE)
+        glActiveTexture(GL_TEXTURE0)
+        val previousTexture = glGetInteger(GL_TEXTURE_BINDING_2D)
+        return try {
+            glBindTexture(GL_TEXTURE_2D, textureId)
+            val width = glGetTexLevelParameteri(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH)
+            if (width <= 0) {
+                null
+            } else {
+                val internalFormat = glGetTexLevelParameteri(GL_TEXTURE_2D, 0, GL_TEXTURE_INTERNAL_FORMAT)
+                val depthBits = glGetTexLevelParameteri(GL_TEXTURE_2D, 0, GL_TEXTURE_DEPTH_SIZE)
+                val stencilBits = if (internalFormat == GL_DEPTH_STENCIL ||
+                    internalFormat == GL_DEPTH24_STENCIL8 ||
+                    internalFormat == GL_DEPTH32F_STENCIL8
+                ) {
+                    glGetTexLevelParameteri(GL_TEXTURE_2D, 0, GL_TEXTURE_STENCIL_SIZE)
+                } else {
+                    0
+                }
+                depthTextureFormat(internalFormat, depthBits, stencilBits)
+            }
+        } finally {
+            glBindTexture(GL_TEXTURE_2D, previousTexture)
+            glActiveTexture(previousActiveTexture)
+        }
+    }
+
+    private fun resolveDepthFramebufferFormat(framebufferId: Int): DepthTextureFormat? {
+        if (framebufferId <= 0) return null
+        val previousReadFramebuffer = glGetInteger(GL_READ_FRAMEBUFFER_BINDING)
+        val previousRenderbuffer = glGetInteger(GL_RENDERBUFFER_BINDING)
+        return try {
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, framebufferId)
+            val depthType = glGetFramebufferAttachmentParameteri(
+                GL_READ_FRAMEBUFFER,
+                GL_DEPTH_ATTACHMENT,
+                GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE
+            )
+            val depthName = if (depthType == GL_NONE) {
+                0
+            } else {
+                glGetFramebufferAttachmentParameteri(
+                    GL_READ_FRAMEBUFFER,
+                    GL_DEPTH_ATTACHMENT,
+                    GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME
+                )
+            }
+            when (depthType) {
+                GL_TEXTURE -> resolveDepthTextureFormat(depthName)
+                GL_RENDERBUFFER -> {
+                    if (depthName <= 0) {
+                        null
+                    } else {
+                        glBindRenderbuffer(GL_RENDERBUFFER, depthName)
+                        depthTextureFormat(
+                            glGetRenderbufferParameteri(GL_RENDERBUFFER, GL_RENDERBUFFER_INTERNAL_FORMAT),
+                            glGetRenderbufferParameteri(GL_RENDERBUFFER, GL_RENDERBUFFER_DEPTH_SIZE),
+                            glGetRenderbufferParameteri(GL_RENDERBUFFER, GL_RENDERBUFFER_STENCIL_SIZE)
+                        )
+                    }
+                }
+                else -> null
+            }
+        } finally {
+            glBindRenderbuffer(GL_RENDERBUFFER, previousRenderbuffer)
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, previousReadFramebuffer)
+        }
+    }
+
+    private fun resolveTextureSize(textureId: Int): Pair<Int, Int>? {
+        if (textureId <= 0) return null
+        val previousActiveTexture = glGetInteger(GL_ACTIVE_TEXTURE)
+        glActiveTexture(GL_TEXTURE0)
+        val previousTexture = glGetInteger(GL_TEXTURE_BINDING_2D)
+        return try {
+            glBindTexture(GL_TEXTURE_2D, textureId)
+            val width = glGetTexLevelParameteri(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH)
+            val height = glGetTexLevelParameteri(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT)
+            (width to height).takeIf { width > 0 && height > 0 }
+        } finally {
+            glBindTexture(GL_TEXTURE_2D, previousTexture)
+            glActiveTexture(previousActiveTexture)
+        }
+    }
+
+    private fun resolveDepthFramebufferSize(framebufferId: Int): Pair<Int, Int>? {
+        if (framebufferId <= 0) return null
+        val previousReadFramebuffer = glGetInteger(GL_READ_FRAMEBUFFER_BINDING)
+        val previousRenderbuffer = glGetInteger(GL_RENDERBUFFER_BINDING)
+        return try {
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, framebufferId)
+            val depthType = glGetFramebufferAttachmentParameteri(
+                GL_READ_FRAMEBUFFER,
+                GL_DEPTH_ATTACHMENT,
+                GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE
+            )
+            val size = when (depthType) {
+                GL_TEXTURE -> {
+                    val texture = glGetFramebufferAttachmentParameteri(
+                        GL_READ_FRAMEBUFFER,
+                        GL_DEPTH_ATTACHMENT,
+                        GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME
+                    )
+                    resolveTextureSize(texture)
+                }
+                GL_RENDERBUFFER -> {
+                    val renderbuffer = glGetFramebufferAttachmentParameteri(
+                        GL_READ_FRAMEBUFFER,
+                        GL_DEPTH_ATTACHMENT,
+                        GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME
+                    )
+                    if (renderbuffer <= 0) {
+                        null
+                    } else {
+                        glBindRenderbuffer(GL_RENDERBUFFER, renderbuffer)
+                        glGetRenderbufferParameteri(GL_RENDERBUFFER, GL_RENDERBUFFER_WIDTH) to
+                            glGetRenderbufferParameteri(GL_RENDERBUFFER, GL_RENDERBUFFER_HEIGHT)
+                    }
+                }
+                else -> null
+            }
+            size?.takeIf { it.first > 0 && it.second > 0 }
+        } finally {
+            glBindRenderbuffer(GL_RENDERBUFFER, previousRenderbuffer)
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, previousReadFramebuffer)
+        }
+    }
+
+    private fun depthTextureFormat(
+        internalFormat: Int,
+        reportedDepthBits: Int,
+        reportedStencilBits: Int
+    ): DepthTextureFormat? {
+        val depthBits = when {
+            reportedDepthBits > 0 -> reportedDepthBits
+            internalFormat == GL_DEPTH_COMPONENT16 -> 16
+            internalFormat == GL_DEPTH_COMPONENT24 -> 24
+            internalFormat == GL_DEPTH_COMPONENT32 || internalFormat == GL_DEPTH_COMPONENT32F -> 32
+            internalFormat == GL_DEPTH24_STENCIL8 -> 24
+            internalFormat == GL_DEPTH32F_STENCIL8 -> 32
+            else -> 0
+        }
+        val stencilBits = when {
+            reportedStencilBits > 0 -> reportedStencilBits
+            internalFormat == GL_DEPTH24_STENCIL8 -> 8
+            internalFormat == GL_DEPTH32F_STENCIL8 -> 8
+            else -> 0
+        }
+        return when {
+            internalFormat == GL_DEPTH_COMPONENT16 ||
+                (internalFormat == GL_DEPTH_COMPONENT && depthBits in 1..16) -> DepthTextureFormat(
+                GL_DEPTH_COMPONENT16,
+                GL_DEPTH_COMPONENT,
+                GL_UNSIGNED_SHORT,
+                GL_DEPTH_ATTACHMENT,
+                DepthBlitClass(16, 0)
+            )
+            internalFormat == GL_DEPTH_COMPONENT24 ||
+                (internalFormat == GL_DEPTH_COMPONENT && depthBits in 17..24) -> DepthTextureFormat(
+                GL_DEPTH_COMPONENT24,
+                GL_DEPTH_COMPONENT,
+                GL_UNSIGNED_INT,
+                GL_DEPTH_ATTACHMENT,
+                DepthBlitClass(24, 0)
+            )
+            internalFormat == GL_DEPTH_COMPONENT32 -> DepthTextureFormat(
+                GL_DEPTH_COMPONENT32,
+                GL_DEPTH_COMPONENT,
+                GL_UNSIGNED_INT,
+                GL_DEPTH_ATTACHMENT,
+                DepthBlitClass(32, 0)
+            )
+            internalFormat == GL_DEPTH_COMPONENT32F -> DepthTextureFormat(
+                GL_DEPTH_COMPONENT32F,
+                GL_DEPTH_COMPONENT,
+                GL_FLOAT,
+                GL_DEPTH_ATTACHMENT,
+                DepthBlitClass(32, 0, floatingPoint = true)
+            )
+            internalFormat == GL_DEPTH_STENCIL && depthBits in 1..24 -> DepthTextureFormat(
+                GL_DEPTH24_STENCIL8,
+                GL_DEPTH_STENCIL,
+                GL_UNSIGNED_INT_24_8,
+                GL_DEPTH_STENCIL_ATTACHMENT,
+                DepthBlitClass(24, maxOf(8, stencilBits))
+            )
+            internalFormat == GL_DEPTH24_STENCIL8 -> DepthTextureFormat(
+                GL_DEPTH24_STENCIL8,
+                GL_DEPTH_STENCIL,
+                GL_UNSIGNED_INT_24_8,
+                GL_DEPTH_STENCIL_ATTACHMENT,
+                DepthBlitClass(24, 8)
+            )
+            internalFormat == GL_DEPTH32F_STENCIL8 ||
+                (internalFormat == GL_DEPTH_STENCIL && depthBits >= 25) -> DepthTextureFormat(
+                GL_DEPTH32F_STENCIL8,
+                GL_DEPTH_STENCIL,
+                GL_FLOAT_32_UNSIGNED_INT_24_8_REV,
+                GL_DEPTH_STENCIL_ATTACHMENT,
+                DepthBlitClass(32, maxOf(8, stencilBits), floatingPoint = true)
+            )
+            internalFormat == GL_DEPTH_COMPONENT && depthBits >= 25 -> DepthTextureFormat(
+                GL_DEPTH_COMPONENT32,
+                GL_DEPTH_COMPONENT,
+                GL_UNSIGNED_INT,
+                GL_DEPTH_ATTACHMENT,
+                DepthBlitClass(32, 0)
+            )
+            // 未定型 depth 格式不能证明实际位深或浮点编码；拒绝它，避免执行未经证明兼容的 depth-only blit。
+            internalFormat == GL_DEPTH_STENCIL || internalFormat == GL_DEPTH_COMPONENT -> null
+            else -> null
+        }
+    }
+
+    private fun createDepthCapture(
+        width: Int,
+        height: Int,
+        format: DepthTextureFormat
+    ): DepthCapture {
+        val previousReadFramebuffer = glGetInteger(GL_READ_FRAMEBUFFER_BINDING)
+        val previousDrawFramebuffer = glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING)
+        val previousActiveTexture = glGetInteger(GL_ACTIVE_TEXTURE)
+        glActiveTexture(GL_TEXTURE0)
+        val previousTexture = glGetInteger(GL_TEXTURE_BINDING_2D)
+        val textureId = glGenTextures()
+        val framebufferId = glGenFramebuffers()
+        try {
+            glBindTexture(GL_TEXTURE_2D, textureId)
+            glTexImage2D(
+                GL_TEXTURE_2D,
+                0,
+                format.internalFormat,
+                width,
+                height,
+                0,
+                format.pixelFormat,
+                format.dataType,
+                null as ByteBuffer?
+            )
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+            glBindFramebuffer(GL_FRAMEBUFFER, framebufferId)
+            glFramebufferTexture2D(
+                GL_FRAMEBUFFER,
+                format.attachment,
+                GL_TEXTURE_2D,
+                textureId,
+                0
+            )
+            glDrawBuffer(GL_NONE)
+            glReadBuffer(GL_NONE)
+            check(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE) {
+                "Terrain depth capture framebuffer is incomplete"
+            }
+            return DepthCapture(framebufferId, textureId, width, height, format)
+        } catch (error: RuntimeException) {
+            glDeleteFramebuffers(framebufferId)
+            glDeleteTextures(textureId)
+            throw error
+        } finally {
+            glBindTexture(GL_TEXTURE_2D, previousTexture)
+            glActiveTexture(previousActiveTexture)
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, previousReadFramebuffer)
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, previousDrawFramebuffer)
+        }
     }
 
     /**
@@ -402,13 +942,19 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
             key = "$owner:pipeline:$target",
             colorAttachmentCount = attachments.size,
             format = formats.single(),
-            mipLevels = mipCounts.single()
+            mipLevels = mipCounts.single(),
+            depthFormat = resolveSceneDepthFormat(context)
         )
+        val sceneDepthAvailable = hasSceneDepthSource(context)
+        var depthReady = !sceneDepthAvailable
         instanceLastSeenFrame[owner] = frameCounter
         managed.buffer.writeFrameBufferWith {
-            copySceneDepth(context, managed)
-            render()
+            depthReady = copySceneDepth(context, managed)
+            if (depthReady || !sceneDepthAvailable) {
+                render()
+            }
         }
+        if (!depthReady && sceneDepthAvailable) return false
         managed.buffer.colorAttachments.forEachIndexed { attachment, texture ->
             namedTargetTextures[NamedAttachment(target, attachment)] = texture
         }
@@ -471,8 +1017,7 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
      * 示例：`release()`。
      */
     override fun release() {
-        sceneCopy?.buffer?.release()
-        sceneCopy = null
+        releaseTerrainColorCapture()
         targets.values.forEach { it.buffer.release() }
         targets.clear()
         namedTargetTextures.clear()
@@ -535,7 +1080,12 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
             targetHeight = height.coerceAtLeast(1)
         )
         val target = try {
-            ensureManagedTarget(sceneCopy, "scene_copy", context).also { sceneCopy = it }
+            ensureManagedTarget(
+                current = sceneCopy,
+                key = "scene_copy",
+                context = context,
+                depthFormat = resolveSceneDepthFormat(context)
+            ).also { sceneCopy = it }
         } catch (error: RuntimeException) {
             warnTerrainSceneCopyFailure(error.message ?: error.javaClass.simpleName)
             return null
@@ -609,6 +1159,18 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
     internal fun releaseTerrainColorCapture() {
         sceneCopy?.buffer?.release()
         sceneCopy = null
+        terrainOpaqueDepthCapture?.release()
+        terrainOpaqueDepthCapture = null
+        terrainTranslucentBeforeDepthCapture?.release()
+        terrainTranslucentBeforeDepthCapture = null
+        terrainTranslucentAfterDepthCapture?.release()
+        terrainTranslucentAfterDepthCapture = null
+        terrainDepthIrisSourceResolved = false
+        terrainDepthIrisSource = null
+        terrainDepthSourceCache = null
+        terrainOpaqueDepthValid = false
+        terrainTranslucentBeforeDepthValid = false
+        terrainTranslucentAfterDepthValid = false
         preparedSceneFrame = null
         preparedSceneCopySpec = null
         warnedTerrainSceneCopyFailure = false
@@ -675,7 +1237,8 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
             "scene_copy",
             context,
             format = spec.format,
-            mipLevels = spec.mipLevels
+            mipLevels = spec.mipLevels,
+            depthFormat = resolveSceneDepthFormat(context)
         ).also { sceneCopy = it }
         return try {
             val sourceWidth = max(1, context.targetWidth ?: source.width)
@@ -698,16 +1261,18 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         val framebuffer = step.context.finalCompositeFramebufferId?.takeIf { it > 0 } ?: target.frameBufferId
         val width = max(1, step.context.targetWidth ?: target.width)
         val height = max(1, step.context.targetHeight ?: target.height)
-        val previousFramebuffer = glGetInteger(GL_FRAMEBUFFER_BINDING)
+        val previousReadFramebuffer = glGetInteger(GL_READ_FRAMEBUFFER_BINDING)
+        val previousDrawFramebuffer = glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING)
         val previousViewport = IntArray(4)
         glGetIntegerv(GL_VIEWPORT, previousViewport)
-        glBindFramebuffer(GL_FRAMEBUFFER, framebuffer)
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, framebuffer)
         glViewport(0, 0, width, height)
         try {
             drawStep(step, state)
         } finally {
             glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3])
-            glBindFramebuffer(GL_FRAMEBUFFER, previousFramebuffer)
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, previousReadFramebuffer)
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, previousDrawFramebuffer)
         }
         chainedSceneFramebufferId = framebuffer
         preparedSceneFrame = null
@@ -816,8 +1381,12 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
                 ?.buffer
                 ?.colorAttachments
                 ?.firstOrNull()
-            PostEffectInputSource.SCENE_DEPTH -> resolveSceneDepthTexture(step, input)
+            PostEffectInputSource.SCENE_DEPTH -> resolveSceneDepthTexture(input)
+            PostEffectInputSource.SCENE_DEPTH_NO_HAND -> input.textureId
             PostEffectInputSource.TERRAIN_DEPTH -> resolveTerrainDepthTexture(step, input)
+            PostEffectInputSource.TERRAIN_OPAQUE_DEPTH,
+            PostEffectInputSource.TERRAIN_TRANSLUCENT_DEPTH_BEFORE,
+            PostEffectInputSource.TERRAIN_TRANSLUCENT_DEPTH_AFTER -> input.textureId
             PostEffectInputSource.MASK -> state.lastOutputTextures[PostEffectOutput.MASK]
                 ?: ensureBindingMask(step, state)
             PostEffectInputSource.BRIGHT_COLOR -> state.lastOutputTextures[PostEffectOutput.BLOOM]
@@ -846,13 +1415,10 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
             ?: step.context.sceneResources[RenderSceneTargets.TERRAIN_DEPTH]?.depthTextureId
     }
 
-    /** Iris 外部 framebuffer 激活时只接受 Iris 当前地形深度；不存在时由 optional 输入降级。 */
-    private fun resolveSceneDepthTexture(
-        step: PostEffectExecutionStep,
-        input: PostEffectResolvedInput
-    ): Int? {
-        if (step.context.externalFramebuffer) {
-            return IrisCompat.currentTerrainDepthTexture()?.textureId?.takeIf { textureId -> textureId > 0 }
+    /** Iris shader pack 激活时始终优先使用其当前场景深度，避免主目标绑定状态误导资源选择。 */
+    private fun resolveSceneDepthTexture(input: PostEffectResolvedInput): Int? {
+        IrisCompat.currentSceneDepthTexture()?.textureId?.takeIf { textureId -> textureId > 0 }?.let {
+            return it
         }
         return input.textureId?.takeIf { textureId -> textureId > 0 }
     }
@@ -963,8 +1529,12 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         val sourceDepth = resolveBindingDepth(step.context, step.instance.binding) ?: 1F
         val hasDepth = step.inputs.any { input ->
             when {
-                input.source == PostEffectInputSource.SCENE_DEPTH -> resolveSceneDepthTexture(step, input) != null
-                input.source == PostEffectInputSource.SCENE_RESOURCE &&
+                input.source == PostEffectInputSource.SCENE_DEPTH -> resolveSceneDepthTexture(input) != null
+                input.source == PostEffectInputSource.SCENE_DEPTH_NO_HAND -> input.textureId != null
+                input.source == PostEffectInputSource.TERRAIN_DEPTH ||
+                    input.source == PostEffectInputSource.TERRAIN_OPAQUE_DEPTH ||
+                    input.source == PostEffectInputSource.TERRAIN_TRANSLUCENT_DEPTH_BEFORE ||
+                    input.source == PostEffectInputSource.TERRAIN_TRANSLUCENT_DEPTH_AFTER -> input.textureId != null
                     input.sourceResourceChannel == PostEffectResourceChannel.DEPTH -> input.available
                 else -> false
             }
@@ -976,6 +1546,21 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         program.setFloat2("center", center)
         program.setFloat("sourceDepth", sourceDepth)
         program.setBoolean("hasDepth", hasDepth)
+        val hasTerrainDepth = step.inputs.any { input ->
+            input.source == PostEffectInputSource.TERRAIN_DEPTH ||
+                input.source == PostEffectInputSource.TERRAIN_OPAQUE_DEPTH ||
+                input.source == PostEffectInputSource.TERRAIN_TRANSLUCENT_DEPTH_BEFORE ||
+                input.source == PostEffectInputSource.TERRAIN_TRANSLUCENT_DEPTH_AFTER
+        } && step.inputs.any { input ->
+            when (input.source) {
+                PostEffectInputSource.TERRAIN_DEPTH -> resolveTerrainDepthTexture(step, input) != null
+                PostEffectInputSource.TERRAIN_OPAQUE_DEPTH,
+                PostEffectInputSource.TERRAIN_TRANSLUCENT_DEPTH_BEFORE,
+                PostEffectInputSource.TERRAIN_TRANSLUCENT_DEPTH_AFTER -> input.textureId != null
+                else -> false
+            }
+        }
+        program.setBoolean("hasTerrainDepth", hasTerrainDepth)
         program.setFloat2("screenSize", Vector2f(width.toFloat(), height.toFloat()))
         program.setFloat2("texelSize", Vector2f(1F / width.toFloat(), 1F / height.toFloat()))
         program.setMatrix4("cooViewProjection", viewProjection)
@@ -1118,6 +1703,25 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         )
     }
 
+    /** 解析当前场景深度的真实格式；无法识别时返回 `null`。 */
+    private fun resolveSceneDepthFormat(context: RenderFrameContext): DepthTextureFormat? {
+        IrisCompat.currentSceneDepthTexture()?.let { depth ->
+            return resolveDepthTextureFormat(depth.textureId)
+        }
+        val framebuffer = context.sceneDepthFramebufferId
+            ?: context.sceneResources[RenderSceneTargets.SCENE_DEPTH]?.target?.frameBufferId
+        return framebuffer?.let(::resolveDepthFramebufferFormat)
+    }
+
+    /** 判断当前帧是否存在需要保留的场景深度来源。 */
+    private fun hasSceneDepthSource(context: RenderFrameContext): Boolean {
+        if (IrisCompat.currentSceneDepthTexture()?.textureId?.let { it > 0 } == true) return true
+        if (context.sceneDepthTextureId?.let { it > 0 } == true) return true
+        if (context.sceneDepthFramebufferId?.let { it > 0 } == true) return true
+        return context.sceneResources[RenderSceneTargets.SCENE_DEPTH]?.target?.frameBufferId
+            ?.let { it > 0 } == true
+    }
+
     private fun targetFor(step: PostEffectExecutionStep): ManagedTarget {
         val key = if (step.pass.reuseOutputTarget) {
             "${step.instance.instanceId}:${step.output.targetKey}"
@@ -1140,7 +1744,8 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         scaleDivisor: Int = 1,
         colorAttachmentCount: Int = 1,
         format: CooTextureFormat = CooTextureFormat.RGBA8,
-        mipLevels: Int = 1
+        mipLevels: Int = 1,
+        depthFormat: DepthTextureFormat? = null
     ): ManagedTarget {
         val current = targets[key]
         val target = ensureManagedTarget(
@@ -1150,7 +1755,8 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
             scaleDivisor,
             colorAttachmentCount,
             format,
-            mipLevels
+            mipLevels,
+            depthFormat
         )
         targets[key] = target
         return target
@@ -1163,7 +1769,8 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         scaleDivisor: Int = 1,
         colorAttachmentCount: Int = 1,
         format: CooTextureFormat = CooTextureFormat.RGBA8,
-        mipLevels: Int = 1
+        mipLevels: Int = 1,
+        depthFormat: DepthTextureFormat? = null
     ): ManagedTarget {
         val divisor = scaleDivisor.coerceAtLeast(1)
         val attachmentCount = colorAttachmentCount.coerceAtLeast(1)
@@ -1174,7 +1781,8 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
             current == null ||
             current.colorAttachmentCount != attachmentCount ||
             current.format != format ||
-            current.mipLevels != requestedMipLevels
+            current.mipLevels != requestedMipLevels ||
+            current.depthFormat != depthFormat
         ) {
             current?.buffer?.release()
             val buffer = SimpleFrameBuffer(
@@ -1185,10 +1793,20 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
                 width,
                 height
             ).also {
+                it.setDepthTextureFormat(depthFormat?.toGlDepthTextureFormat())
                 it.setTextureFilterMod(if (requestedMipLevels > 1) GL_LINEAR_MIPMAP_LINEAR else GL_LINEAR)
                 it.init()
             }
-            return ManagedTarget(key, buffer, width, height, attachmentCount, format, requestedMipLevels)
+            return ManagedTarget(
+                key,
+                buffer,
+                width,
+                height,
+                attachmentCount,
+                format,
+                requestedMipLevels,
+                depthFormat
+            )
         }
         if (current.width != width || current.height != height) {
             current.buffer.resize(width, height)
@@ -1227,11 +1845,16 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         val previousRead = glGetInteger(GL_READ_FRAMEBUFFER_BINDING)
         val previousDraw = glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING)
         var previousReadBuffer = GL_COLOR_ATTACHMENT0
+        clearPendingGlErrors()
         try {
             glBindFramebuffer(GL_READ_FRAMEBUFFER, sourceFramebufferId)
             previousReadBuffer = glGetInteger(GL_READ_BUFFER)
             glReadBuffer(GL_COLOR_ATTACHMENT0)
             glBindFramebuffer(GL_DRAW_FRAMEBUFFER, target.buffer.fbo())
+            check(operationCompletedWithoutGlError()) {
+                "Scene color framebuffer setup failed before blit"
+            }
+            clearPendingGlErrors()
             glBlitFramebuffer(
                 0,
                 0,
@@ -1244,6 +1867,9 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
                 GL_COLOR_BUFFER_BIT,
                 GL_NEAREST
             )
+            check(operationCompletedWithoutGlError()) {
+                "Scene color blit failed"
+            }
         } finally {
             glBindFramebuffer(GL_READ_FRAMEBUFFER, sourceFramebufferId)
             glReadBuffer(previousReadBuffer)
@@ -1253,20 +1879,37 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
     }
 
     private fun copySceneDepth(context: RenderFrameContext, target: ManagedTarget): Boolean {
-        val irisDepth = IrisCompat.currentTerrainDepthTexture()
+        val irisDepth = IrisCompat.currentSceneDepthTexture()
         val fallbackSource = context.sceneDepthFramebufferId
             ?: context.sceneResources[RenderSceneTargets.SCENE_DEPTH]?.target?.frameBufferId
         if (irisDepth == null && fallbackSource == null) return false
+        val sourceFormat = if (irisDepth != null) {
+            resolveDepthTextureFormat(irisDepth.textureId)
+        } else {
+            resolveDepthFramebufferFormat(requireNotNull(fallbackSource))
+        } ?: return false
+        val targetFormat = resolveDepthTextureFormat(target.buffer.getCurrentDepthAttachment()) ?: return false
+        if (sourceFormat.blitClass.depthBits != targetFormat.blitClass.depthBits ||
+            sourceFormat.blitClass.floatingPoint != targetFormat.blitClass.floatingPoint
+        ) return false
+        val fallbackSourceSize = if (irisDepth == null) {
+            resolveDepthFramebufferSize(requireNotNull(fallbackSource))
+        } else {
+            null
+        }
         val sourceWidth = max(
             1,
-            irisDepth?.width ?: context.targetWidth ?: ClientRenderPipelineManager.currentRenderWidth()
+            irisDepth?.width ?: fallbackSourceSize?.first
+                ?: context.targetWidth ?: ClientRenderPipelineManager.currentRenderWidth()
         )
         val sourceHeight = max(
             1,
-            irisDepth?.height ?: context.targetHeight ?: ClientRenderPipelineManager.currentRenderHeight()
+            irisDepth?.height ?: fallbackSourceSize?.second
+                ?: context.targetHeight ?: ClientRenderPipelineManager.currentRenderHeight()
         )
         val previousRead = glGetInteger(GL_READ_FRAMEBUFFER_BINDING)
         val previousDraw = glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING)
+        clearPendingGlErrors()
         try {
             val source = if (irisDepth != null) {
                 if (irisDepthReadFramebuffer <= 0) {
@@ -1276,6 +1919,20 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
                 glFramebufferTexture2D(
                     GL_FRAMEBUFFER,
                     GL_DEPTH_ATTACHMENT,
+                    GL_TEXTURE_2D,
+                    0,
+                    0
+                )
+                glFramebufferTexture2D(
+                    GL_FRAMEBUFFER,
+                    GL_STENCIL_ATTACHMENT,
+                    GL_TEXTURE_2D,
+                    0,
+                    0
+                )
+                glFramebufferTexture2D(
+                    GL_FRAMEBUFFER,
+                    sourceFormat.attachment,
                     GL_TEXTURE_2D,
                     irisDepth.textureId,
                     0
@@ -1297,6 +1954,11 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
                 return false
             }
             glBindFramebuffer(GL_DRAW_FRAMEBUFFER, target.buffer.fbo())
+            if (glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+                return false
+            }
+            if (!operationCompletedWithoutGlError()) return false
+            clearPendingGlErrors()
             glBlitFramebuffer(
                 0,
                 0,
@@ -1309,7 +1971,7 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
                 GL_DEPTH_BUFFER_BIT,
                 GL_NEAREST
             )
-            return true
+            return operationCompletedWithoutGlError()
         } finally {
             glBindFramebuffer(GL_READ_FRAMEBUFFER, previousRead)
             glBindFramebuffer(GL_DRAW_FRAMEBUFFER, previousDraw)
@@ -1507,6 +2169,45 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         }
     }
 
+    private data class DepthTextureFormat(
+        val internalFormat: Int,
+        val pixelFormat: Int,
+        val dataType: Int,
+        val attachment: Int,
+        val blitClass: DepthBlitClass
+    ) {
+        fun toGlDepthTextureFormat(): GlDepthTextureFormat {
+            return GlDepthTextureFormat(internalFormat, pixelFormat, dataType, attachment)
+        }
+    }
+
+    /** depth-only glBlitFramebuffer 需要 depth 位深与浮点编码兼容；stencil 不参与本次复制。 */
+    private data class DepthBlitClass(
+        val depthBits: Int,
+        val stencilBits: Int,
+        val floatingPoint: Boolean = false
+    )
+
+    private data class DepthSourceCache(
+        val irisTextureId: Int,
+        val framebufferId: Int,
+        val width: Int,
+        val height: Int,
+        val format: DepthTextureFormat
+    )
+
+    private data class DepthCapture(
+        val framebufferId: Int,
+        val textureId: Int,
+        val width: Int,
+        val height: Int,
+        val format: DepthTextureFormat
+    ) {
+        fun release() {
+            glDeleteFramebuffers(framebufferId)
+            glDeleteTextures(textureId)
+        }
+    }
     private data class ManagedTarget(
         val key: String,
         val buffer: SimpleFrameBuffer,
@@ -1514,8 +2215,11 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         var height: Int,
         val colorAttachmentCount: Int,
         val format: CooTextureFormat,
-        val mipLevels: Int
+        val mipLevels: Int,
+        val depthFormat: DepthTextureFormat?
     )
+
+
 
     private data class BoundInput(
         val samplerName: String,

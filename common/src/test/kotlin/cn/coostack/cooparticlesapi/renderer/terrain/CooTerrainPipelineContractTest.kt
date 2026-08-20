@@ -98,6 +98,9 @@ class CooTerrainPipelineContractTest {
         val clientManager = source(
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/client/ClientRenderEntityManager.kt"
         )
+        val clientPipelineManager = source(
+            "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/client/ClientRenderPipelineManager.kt"
+        )
         val terrainManager = source(
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/terrain/CooTerrainPipelineManager.kt"
         )
@@ -161,6 +164,23 @@ class CooTerrainPipelineContractTest {
         assertTrue("CooTerrainPipelineManager.shouldPreserveVanillaTerrainGeometry(overlayLayers)" in neoforgeCompiler)
         assertTrue("if (!CooTerrainPipelineManager.isTerrainOverlayEnabled())" in levelRenderer)
         assertTrue("CooTerrainPipelineManager.collectPostEffects(context, graph)" in clientManager)
+        assertTrue("CooTerrainPipelineManager.collectScenePostEffects(context, terrainGraph)" in clientManager)
+        assertTrue("CooTerrainPipelineManager.shouldDeferShaderPackRenderEntities()" in clientManager)
+        assertEquals(
+            2,
+            "CooTerrainPipelineManager.shouldDeferShaderPackRenderEntities()".toRegex().findAll(clientManager).count()
+        )
+        assertTrue("fun shouldDeferShaderPackRenderEntities(): Boolean" in terrainManager)
+        assertTrue("screenOnlySceneMappingActiveThisFrame = true" in terrainManager)
+        assertTrue("return screenOnlySceneMappingActiveThisFrame" in terrainManager)
+        assertTrue("mapping.startedAt.toDouble()" in terrainManager)
+        assertTrue("coerceIn(0.0, 1.0).toFloat()" in terrainManager)
+        assertFalse("mapping.startedAt.toFloat()" in terrainManager)
+        val scenePostBody = clientManager.substringAfter("fun runScenePost(context: RenderFrameContext)")
+        assertTrue(
+            scenePostBody.indexOf("CooTerrainPipelineManager.collectScenePostEffects(context, terrainGraph)") <
+                scenePostBody.indexOf(".filter(RenderEntityInstance<RenderEntity>::usesScenePost)")
+        )
         assertTrue("CooPipelinePostEffectCompiler.compile(pipeline, subject)" in terrainManager)
         assertTrue("PostEffectFrameExecutor.captureAttachments(" in terrainManager)
         assertTrue("PostEffectAttachmentSpec" in terrainManager)
@@ -169,6 +189,19 @@ class CooTerrainPipelineContractTest {
         assertTrue("RenderType.chunkBufferLayers().any" in terrainManager)
         assertTrue("flushDeferredVanillaTerrainOverlays" in gameRendererFinish)
         assertTrue("finishDeferredFrame" in gameRendererFinish)
+        assertFalse("renderIrisScenePostFallbackAfterFinalPass" in clientPipelineManager)
+        assertFalse("renderIrisScenePostFallbackBeforeHand" in levelRenderer)
+        assertFalse("fun renderIrisScenePostFallbackBeforeHand()" in clientPipelineManager)
+        assertTrue("skipping the unsafe fallback after first-person hand rendering" in clientPipelineManager)
+        assertTrue("private var irisShaderPackFrameActive = false" in clientPipelineManager)
+        assertTrue("irisShaderPackFrameActive = CooParticlesAPIClient.checkIrisShaderPackUsed()" in clientPipelineManager)
+        val irisFinishFallback = clientPipelineManager.substringAfter("fun finishLevelRender(")
+        assertTrue("if (irisShaderPackFrameActive)" in irisFinishFallback)
+        assertFalse(
+            "CooParticlesAPIClient.checkIrisShaderPackUsed()" in
+                irisFinishFallback.substringBefore("private fun runStages")
+        )
+        assertTrue("deferFrameFinish" in levelRenderer)
     }
 
     @Test
@@ -511,7 +544,17 @@ class CooTerrainPipelineContractTest {
         assertTrue("copySceneDepth(context, target)" in backend)
         assertTrue("explicit terrain scene inputs use their configured fallback" in backend)
         assertTrue("currentTerrainDepthTexture()" in iris)
-        assertTrue("attachIrisTerrainDepth(sourceFramebuffer, irisDepth)" in manager)
+        assertTrue("currentSceneDepthTexture()" in iris)
+        assertTrue("currentSceneDepthNoHandTexture()" in iris)
+        assertTrue("renderTargetsClass.getMethod(\"getDepthTexture\")" in iris)
+        assertTrue("renderTargetsClass.getMethod(\"getDepthTextureNoHand\")" in iris)
+        assertTrue("Class.forName(\"net.irisshaders.iris.pipeline.IrisRenderingPipeline\")" in iris)
+        val depthMethodResolution = iris
+            .substringAfter("private fun resolveTerrainDepthMethods()")
+            .substringBefore("private data class ParticleRenderingMethods")
+        assertFalse("getPipeline.invoke" in depthMethodResolution)
+        assertTrue("IrisCompat.currentSceneDepthTexture()" in backend)
+        assertTrue("attachIrisSceneDepth(sourceFramebuffer, irisSceneDepth)" in manager)
         assertTrue("terrainAttachmentCaptureActive = true" in manager)
         val outputState = source(
             "common/src/main/java/cn/coostack/cooparticlesapi/renderer/terrain/CooTerrainRenderStateShard.java"
@@ -540,6 +583,72 @@ class CooTerrainPipelineContractTest {
         assertTrue("effectTint" in shader)
         assertTrue("effectStrength" in shader)
         assertTrue("BaseSamplerScreenCopy" !in shader)
+    }
+
+    @Test
+    fun `screen mapping uses terrain-only depth snapshots across vanilla sodium and iris`() {
+        val builders = source(
+            "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/pipeline/CooPipelineBuilders.kt"
+        )
+        val backend = source(
+            "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/post/OpenGlPostEffectExecutionBackend.kt"
+        )
+        val resolver = source(
+            "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/client/ClientRenderSceneResourcesResolver.kt"
+        )
+        val levelRenderer = source(
+            "common/src/main/java/cn/coostack/cooparticlesapi/mixin/LevelRendererMixin.java"
+        )
+        val manager = source(
+            "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/client/ClientRenderPipelineManager.kt"
+        )
+        val terrainManager = source(
+            "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/terrain/CooTerrainPipelineManager.kt"
+        )
+        val sodium = source(
+            "common/src/main/java/cn/coostack/cooparticlesapi/mixin/compat/sodium/RenderSectionManagerMixin.java"
+        )
+
+        assertTrue("fun inputTerrainOpaqueDepth(" in builders)
+        assertTrue("fun inputSceneDepthNoHand(" in builders)
+        assertTrue("fun inputTerrainTranslucentDepthBefore(" in builders)
+        assertTrue("fun inputTerrainTranslucentDepthAfter(" in builders)
+        assertTrue("val irisDepth = IrisCompat.currentSceneDepthTexture()" in backend)
+        assertTrue("irisDepth.textureId" in backend)
+        assertTrue("sourceFormat.blitClass.depthBits != targetFormat.blitClass.depthBits" in backend)
+        assertTrue("sourceFormat.blitClass.floatingPoint != targetFormat.blitClass.floatingPoint" in backend)
+        assertTrue("internalFormat == GL_DEPTH_STENCIL || internalFormat == GL_DEPTH_COMPONENT -> null" in backend)
+        assertFalse("DepthBlitClass(0, 0)" in backend)
+        assertTrue("resolveSceneDepthFormat(context)" in backend)
+        assertTrue("setDepthTextureFormat" in backend)
+        assertTrue("current.depthFormat != depthFormat" in backend)
+        assertTrue("if (!depthReady && sceneDepthAvailable) return false" in backend)
+        assertTrue("resolveDepthFramebufferSize" in backend)
+        assertTrue("terrainDepthSourceCache" in backend)
+        assertTrue("clearPendingGlErrors()" in backend)
+        assertTrue("Scene color blit failed" in backend)
+        val sceneDepthResolver = backend
+            .substringAfter("private fun resolveSceneDepthTexture")
+            .substringBefore("private fun")
+        assertTrue(
+            sceneDepthResolver.indexOf("IrisCompat.currentSceneDepthTexture()") <
+                sceneDepthResolver.indexOf("return input.textureId")
+        )
+        assertTrue("RenderSceneTargets.TERRAIN_OPAQUE_DEPTH" in resolver)
+        assertTrue("RenderSceneTargets.SCENE_DEPTH_NO_HAND" in resolver)
+        assertTrue("IrisCompat.currentSceneDepthNoHandTexture()" in resolver)
+        assertTrue("val sceneDepthTextureId = irisSceneDepthTextureId ?: resolvedTargets.sceneDepthTextureId" in resolver)
+        assertTrue("depthTextureId = sceneDepthNoHandTextureId" in resolver)
+        assertTrue("RenderSceneTargets.TERRAIN_TRANSLUCENT_DEPTH_BEFORE" in resolver)
+        assertTrue("RenderSceneTargets.TERRAIN_TRANSLUCENT_DEPTH_AFTER" in resolver)
+        assertTrue("CooTerrainPipelineManager.captureOpaqueTerrainDepth();" in levelRenderer)
+        assertTrue("CooTerrainPipelineManager.captureTranslucentTerrainDepthBefore();" in sodium)
+        assertTrue("CooTerrainPipelineManager.captureTranslucentTerrainDepthAfter();" in sodium)
+        assertTrue("override fun refreshSceneFrame(context: RenderFrameContext)" in backend)
+        assertTrue("PostEffectFrameExecutor.refreshSceneFrame(context)" in manager)
+        assertTrue("if (!terrainDepthSnapshotsRequiredThisFrame) return" in terrainManager)
+        assertTrue("line.output.isTerrainDepthSnapshot()" in terrainManager)
+        assertTrue("Iris final pass 前" in manager)
     }
 
     @Test
@@ -633,16 +742,17 @@ class CooTerrainPipelineContractTest {
     }
 
     @Test
-    fun `iris terrain depth sampler uses the copied attachment`() {
+    fun `iris scene and terrain depth keep separate sources`() {
         val manager = source(
             "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/terrain/CooTerrainPipelineManager.kt"
         )
 
         assertTrue("sceneDepthTextureId = captured?.get(RenderSceneTargets.SCENE_DEPTH)?.depthTextureId" in manager)
-        assertTrue("terrainDepthTextureId = resources[RenderSceneTargets.TERRAIN_DEPTH]?.depthTextureId" in manager)
+        assertTrue("terrainDepthTextureId = IrisCompat.currentTerrainDepthTexture()?.textureId" in manager)
+        assertTrue("val irisSceneDepth = IrisCompat.currentSceneDepthTexture()" in manager)
         assertTrue("CooPipelineTextureSource.SceneDepth -> sceneDepthTextureId" in manager)
         assertTrue("CooPipelineTextureSource.TerrainDepth -> terrainDepthTextureId" in manager)
-        assertTrue(manager.indexOf("captureTerrainScene(") < manager.indexOf("attachIrisTerrainDepth("))
+        assertTrue(manager.indexOf("captureTerrainScene(") < manager.indexOf("attachIrisSceneDepth("))
     }
 
     @Test

@@ -234,7 +234,11 @@ object OpenGlRenderEntityModelExecutor : RenderEntityModelExecutor {
             } else {
                 null
             }
-            CooPipelineTextureSource.TerrainDepth -> null
+            CooPipelineTextureSource.SceneDepthNoHand,
+            CooPipelineTextureSource.TerrainDepth,
+             CooPipelineTextureSource.TerrainOpaqueDepth,
+             CooPipelineTextureSource.TerrainTranslucentDepthBefore,
+             CooPipelineTextureSource.TerrainTranslucentDepthAfter -> null
             is CooPipelineTextureSource.FramebufferColor -> ClientRenderPipelineManager.currentSceneResourceTextureId(
                 source.target,
                 source.attachment

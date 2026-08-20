@@ -633,7 +633,7 @@ RenderEntity 默认不交给 shader pack 处理。Iris final pass 完成后，Pi
 
 Fabric/Sodium 未启用 shader pack 时，区块编译会把命中绑定的几何从原 batch 移到对应 Pipeline batch。原几何不会重复提交，因此没有两层共面 draw。每个 section 仍按 Pipeline 批量绘制，不会退化为逐方块 draw call。
 
-启用 Iris shader pack 时，绑定方块的原几何先进入 Iris terrain/gbuffer。Iris 完成最终合成后，框架读取最终 scene color 和 terrain depth，再批量覆盖这些方块的可见像素。深度测试直接使用 terrain depth 和 `LEQUAL`，不再使用 polygon offset 或全局 depth range 偏移，避免覆盖层穿过前景。`BaseSampler` 仍是原方块 atlas；声明 `inputSceneColor` 的 shader 收到 Iris 处理后的画面。
+启用 Iris shader pack 时，绑定方块的原几何先进入 Iris terrain/gbuffer。Iris 完成最终合成后，框架读取最终 scene color 和 terrain depth，再批量覆盖这些方块的可见像素。深度测试使用 terrain depth 和 `LEQUAL`，并对所有 Coo terrain overlay 启用共面 polygon offset，避免普通 world 覆盖层与原版 terrain 在帧间竞争深度。`BaseSampler` 仍是原方块 atlas；声明 `inputSceneColor` 的 shader 收到 Iris 处理后的画面。
 
 这个覆盖 pass 不是 Iris gbuffer program，不写 shader pack 的 PBR、normal、material、shadow MRT。shader pack 若修改 terrain 顶点位置，覆盖几何可能无法完全贴合。透明 Pipeline 会随相机重新排序自己的 quad，但无法与其他 terrain 材质做跨 batch 的逐 quad 交错。这两项是当前限制。
 

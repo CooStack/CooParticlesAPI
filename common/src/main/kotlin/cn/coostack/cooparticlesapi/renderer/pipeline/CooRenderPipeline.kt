@@ -189,8 +189,20 @@ sealed interface CooPipelineTextureSource {
     /** 当前帧场景深度纹理；可用性受 backend capability 影响。 */
     data object SceneDepth : CooPipelineTextureSource
 
+    /** Iris hand 绘制前的场景深度；无 Iris 时回退 [SceneDepth]。 */
+    data object SceneDepthNoHand : CooPipelineTextureSource
+
     /** terrain opaque depth；不含 translucent 深度，不能与通用 SceneDepth 混用。 */
     data object TerrainDepth : CooPipelineTextureSource
+
+    /** 当前帧实际 opaque terrain 绘制后的深度快照，不包含实体和手。 */
+    data object TerrainOpaqueDepth : CooPipelineTextureSource
+
+    /** 半透明 terrain 绘制前的深度快照。 */
+    data object TerrainTranslucentDepthBefore : CooPipelineTextureSource
+
+    /** 半透明 terrain 绘制后的深度快照。 */
+    data object TerrainTranslucentDepthAfter : CooPipelineTextureSource
 
     /**
      * 指定 framebuffer 的颜色 attachment。

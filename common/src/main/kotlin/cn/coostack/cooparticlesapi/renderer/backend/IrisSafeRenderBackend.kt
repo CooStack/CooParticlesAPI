@@ -1,10 +1,11 @@
 package cn.coostack.cooparticlesapi.renderer.backend
 
 object IrisSafeRenderBackend : RenderBackend {
-    // Iris final pass 前捕获带世界深度的 attachment，final pass 后只执行 fullscreen 合成。
+    // 在 Iris final pass 前捕获带世界深度的 attachment，final pass 后只执行全屏合成。
     override val capabilities: Set<RenderBackendCapability> = setOf(
         RenderBackendCapability.SCENE_COLOR_COPY,
         RenderBackendCapability.SCENE_DEPTH_READ,
+        RenderBackendCapability.TERRAIN_DEPTH_READ,
         RenderBackendCapability.SAFE_WORLD_COMPOSITE,
         RenderBackendCapability.FINAL_FRAME_POST
     )

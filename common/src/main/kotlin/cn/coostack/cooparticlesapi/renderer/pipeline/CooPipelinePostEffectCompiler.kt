@@ -153,8 +153,12 @@ internal object CooPipelinePostEffectCompiler {
         val input = this.input as CooPipelineInputPort
         return when (val source = output) {
             CooPipelineTextureSource.SceneDepth -> input.input(PostEffectInputSource.SCENE_DEPTH)
+            CooPipelineTextureSource.SceneDepthNoHand -> input.input(PostEffectInputSource.SCENE_DEPTH_NO_HAND)
             CooPipelineTextureSource.SceneColor -> input.input(PostEffectInputSource.SCENE_COLOR)
             CooPipelineTextureSource.TerrainDepth -> input.input(PostEffectInputSource.TERRAIN_DEPTH)
+            CooPipelineTextureSource.TerrainOpaqueDepth -> input.input(PostEffectInputSource.TERRAIN_OPAQUE_DEPTH)
+            CooPipelineTextureSource.TerrainTranslucentDepthBefore -> input.input(PostEffectInputSource.TERRAIN_TRANSLUCENT_DEPTH_BEFORE)
+            CooPipelineTextureSource.TerrainTranslucentDepthAfter -> input.input(PostEffectInputSource.TERRAIN_TRANSLUCENT_DEPTH_AFTER)
             CooPipelineTextureSource.Mask -> input.input(PostEffectInputSource.MASK)
             CooPipelineTextureSource.Bloom -> input.input(PostEffectInputSource.BRIGHT_COLOR)
             CooPipelineTextureSource.Temporary -> input.inputSceneResource(

@@ -35,6 +35,11 @@ float ringBand(float distanceValue, float width) {
 }
 
 void main() {
+    vec4 atlasColor = texture(BaseSampler, baseUv) * vertexColor * ColorModulator;
+    if (atlasColor.a < CooAlphaCutoff) {
+        discard;
+    }
+
     vec3 delta = worldPosition - CooMappingRegion.xyz;
     float distanceToCenter = length(delta);
     float regionMask = CooMappingRegion.w > 0.0
@@ -46,17 +51,14 @@ void main() {
         : 0.0;
     float ring = ringBand(distanceToCenter - RingRadius, max(RingWidth, 0.01)) * regionMask;
     ring *= clamp(CooMappingProgress, 0.0, 1.0) * clamp(RingProgress, 0.0, 1.0);
+
+    // ADDITIVE 合成只保留效果区域，避免覆盖原场景颜色。
     if (CooMappingComposition == 2 && ring <= 0.0) {
         discard;
     }
 
-    vec4 atlasColor = texture(BaseSampler, baseUv) * vertexColor * ColorModulator;
-    if (atlasColor.a < CooAlphaCutoff) {
-        discard;
-    }
-
     vec3 baseColor = atlasColor.rgb;
-    if (CooMappingComposition != 2 && CooIrisComposite != 0) {
+    if (CooIrisComposite != 0) {
         baseColor = texture(SceneColor, gl_FragCoord.xy / max(ScreenSize, vec2(1.0))).rgb;
     }
 

@@ -143,8 +143,24 @@ internal object CooPipelineCompiler {
                 targets += RenderSceneTargets.SCENE_DEPTH
                 capability(RenderBackendCapability.SCENE_DEPTH_READ)
             }
+            CooPipelineTextureSource.SceneDepthNoHand -> {
+                targets += RenderSceneTargets.SCENE_DEPTH_NO_HAND
+                capability(RenderBackendCapability.SCENE_DEPTH_READ)
+            }
             CooPipelineTextureSource.TerrainDepth -> {
                 targets += RenderSceneTargets.TERRAIN_DEPTH
+                capability(RenderBackendCapability.TERRAIN_DEPTH_READ)
+            }
+            CooPipelineTextureSource.TerrainOpaqueDepth -> {
+                targets += RenderSceneTargets.TERRAIN_OPAQUE_DEPTH
+                capability(RenderBackendCapability.TERRAIN_DEPTH_READ)
+            }
+            CooPipelineTextureSource.TerrainTranslucentDepthBefore -> {
+                targets += RenderSceneTargets.TERRAIN_TRANSLUCENT_DEPTH_BEFORE
+                capability(RenderBackendCapability.TERRAIN_DEPTH_READ)
+            }
+            CooPipelineTextureSource.TerrainTranslucentDepthAfter -> {
+                targets += RenderSceneTargets.TERRAIN_TRANSLUCENT_DEPTH_AFTER
                 capability(RenderBackendCapability.TERRAIN_DEPTH_READ)
             }
             is CooPipelineTextureSource.FramebufferColor -> targets += source.target

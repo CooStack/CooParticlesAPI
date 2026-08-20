@@ -2,7 +2,6 @@ package cn.coostack.cooparticlesapi.compat
 
 import cn.coostack.cooparticlesapi.CooParticlesAPIClient
 import cn.coostack.cooparticlesapi.cparticle.CParticleRenderPass
-import com.mojang.blaze3d.systems.RenderSystem
 import com.mojang.blaze3d.vertex.VertexFormat
 import net.minecraft.client.Minecraft
 import net.minecraft.client.renderer.GameRenderer
@@ -10,10 +9,6 @@ import net.minecraft.client.renderer.RenderStateShard
 import net.minecraft.client.renderer.RenderType
 import net.minecraft.client.renderer.ShaderInstance
 import org.joml.Matrix4f
-import org.lwjgl.opengl.GL11
-import org.lwjgl.opengl.GL13
-import org.lwjgl.opengl.GL20
-import org.lwjgl.opengl.GL30
 import org.slf4j.LoggerFactory
 import java.lang.invoke.MethodHandle
 import java.lang.invoke.MethodHandles
@@ -77,9 +72,6 @@ internal enum class IrisEntityShaderKind {
  */
 object IrisCompat {
     private val LOGGER = LoggerFactory.getLogger("CooParticlesAPI/IrisCompat")
-
-    @Volatile
-    private var particleShaderStateLogged = false
 
     /** 反射缓存：ShaderInstance.setShouldSkip(MethodHandle) → 由 IRIS mixin 注入。 */
     @Volatile
@@ -237,6 +229,51 @@ object IrisCompat {
         }
     }
 
+    /** 返回 Iris 当前场景使用的深度纹理，供 final pass 后的屏幕合成读取。 */
+    internal fun currentSceneDepthTexture(): IrisTerrainDepthTexture? {
+        if (!CooParticlesAPIClient.checkIrisShaderPackUsed()) return null
+        val methods = resolveTerrainDepthMethods() ?: return null
+        return try {
+            val manager = methods.getPipelineManager.invoke(null)
+            val pipeline = (methods.getPipeline.invoke(manager) as Optional<*>).orElse(null) ?: return null
+            val renderTargets = methods.renderTargetsField.get(pipeline)
+            val textureId = methods.getDepthTexture.invoke(renderTargets) as Int
+            if (textureId <= 0) return null
+            IrisTerrainDepthTexture(
+                textureId,
+                methods.getCurrentWidth.invoke(renderTargets) as Int,
+                methods.getCurrentHeight.invoke(renderTargets) as Int,
+            )
+        } catch (t: Throwable) {
+            LOGGER.error("Failed to resolve Iris scene depth texture", t)
+            null
+        }
+    }
+
+    /** 返回 Iris 在 hand 绘制前保存的深度纹理，用于排除手部改变的屏幕像素。 */
+    internal fun currentSceneDepthNoHandTexture(): IrisTerrainDepthTexture? {
+        if (!CooParticlesAPIClient.checkIrisShaderPackUsed()) return null
+        val methods = resolveTerrainDepthMethods() ?: return null
+        return try {
+            val manager = methods.getPipelineManager.invoke(null)
+            val pipeline = (methods.getPipeline.invoke(manager) as Optional<*>).orElse(null) ?: return null
+            val renderTargets = methods.renderTargetsField.get(pipeline)
+            val getDepthTextureNoHand = methods.getDepthTextureNoHand ?: return null
+            val depthTexture = getDepthTextureNoHand.invoke(renderTargets) ?: return null
+            val textureId = methods.getDepthTextureId.invoke(depthTexture) as Int
+            if (textureId <= 0) return null
+            IrisTerrainDepthTexture(
+                textureId,
+                methods.getCurrentWidth.invoke(renderTargets) as Int,
+                methods.getCurrentHeight.invoke(renderTargets) as Int,
+            )
+        } catch (t: Throwable) {
+            LOGGER.error("Failed to resolve Iris no-hand depth texture", t)
+            null
+        }
+    }
+
+
     /**
      * 使用 Iris 当前粒子 program 绘制已经展开为原版 PARTICLE 格式的 GPU 顶点。
      *
@@ -269,86 +306,11 @@ object IrisCompat {
             Minecraft.getInstance().window,
         )
         particleShader.apply()
-        logParticleShaderStateOnce(pass, particleShader)
         try {
             draw()
         } finally {
             particleShader.clear()
         }
-    }
-
-    private fun logParticleShaderStateOnce(pass: CParticleRenderPass, shader: ShaderInstance) {
-        if (particleShaderStateLogged) return
-        synchronized(this) {
-            if (particleShaderStateLogged) return
-            particleShaderStateLogged = true
-
-            val program = GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM)
-            val framebuffer = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING)
-            val framebufferStatus = GL30.glCheckFramebufferStatus(GL30.GL_DRAW_FRAMEBUFFER)
-            val drawBuffers = (0 until GL11.glGetInteger(GL20.GL_MAX_DRAW_BUFFERS).coerceAtMost(8))
-                .joinToString(prefix = "[", postfix = "]") { index ->
-                    "0x${GL11.glGetInteger(GL30.GL_DRAW_BUFFER0 + index).toString(16)}"
-                }
-            val colorMask = IntArray(4).also {
-                GL30.glGetIntegeri_v(GL11.GL_COLOR_WRITEMASK, 0, it)
-            }.joinToString(prefix = "[", postfix = "]")
-            val attributes = listOf(
-                "iris_Position",
-                "iris_UV0",
-                "iris_Color",
-                "iris_UV2",
-                "Position",
-                "UV0",
-                "Color",
-                "UV2",
-            )
-                .joinToString(prefix = "[", postfix = "]") { name ->
-                    "$name=${GL20.glGetAttribLocation(program, name)}"
-                }
-            val samplers = listOf("Sampler0", "Sampler1", "Sampler2", "texture", "gtexture", "lightmap", "tex")
-                .mapNotNull { name -> samplerState(program, name) }
-                .joinToString(prefix = "[", postfix = "]")
-
-            LOGGER.info(
-                "[DEBUG-cparticle-iris] pass={}, shader={} ({}) packActive={}, program={}, framebuffer={} status=0x{}, " +
-                    "drawBuffers={}, colorMask0={}, depthTest={} depthMask={} depthFunc=0x{}, blend0={} cull={} " +
-                    "shaderTextures=[{},{},{}], attributes={}, samplers={}",
-                pass,
-                shader.name,
-                shader.javaClass.name,
-                CooParticlesAPIClient.checkIrisShaderPackUsed(),
-                program,
-                framebuffer,
-                framebufferStatus.toString(16),
-                drawBuffers,
-                colorMask,
-                GL11.glIsEnabled(GL11.GL_DEPTH_TEST),
-                GL11.glGetBoolean(GL11.GL_DEPTH_WRITEMASK),
-                GL11.glGetInteger(GL11.GL_DEPTH_FUNC).toString(16),
-                GL30.glIsEnabledi(GL11.GL_BLEND, 0),
-                GL11.glIsEnabled(GL11.GL_CULL_FACE),
-                RenderSystem.getShaderTexture(0),
-                RenderSystem.getShaderTexture(1),
-                RenderSystem.getShaderTexture(2),
-                attributes,
-                samplers,
-            )
-        }
-    }
-
-    private fun samplerState(program: Int, name: String): String? {
-        val location = GL20.glGetUniformLocation(program, name)
-        if (location < 0) return null
-        val unit = GL20.glGetUniformi(program, location)
-        val maxUnits = GL11.glGetInteger(GL20.GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS)
-        if (unit !in 0 until maxUnits) return "$name(loc=$location,unit=$unit,invalid)"
-
-        val previousActiveTexture = GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE)
-        GL13.glActiveTexture(GL13.GL_TEXTURE0 + unit)
-        val texture2d = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D)
-        GL13.glActiveTexture(previousActiveTexture)
-        return "$name(loc=$location,unit=$unit,tex2D=$texture2d)"
     }
 
     /** 在 Iris 的半透明 entity framebuffer 中执行 RenderEntity world pass。 */
@@ -533,21 +495,33 @@ object IrisCompat {
             if (terrainDepthMethodsResolved) return terrainDepthMethods
             terrainDepthMethodsResolved = true
             terrainDepthMethods = try {
-                val irisClass = Class.forName("net.irisshaders.iris.Iris")
-                val pipelineManagerClass = Class.forName("net.irisshaders.iris.pipeline.PipelineManager")
-                val pipelineClass = Class.forName("net.irisshaders.iris.pipeline.IrisRenderingPipeline")
-                val renderTargetsClass = Class.forName("net.irisshaders.iris.targets.RenderTargets")
-                val renderTargetsField = pipelineClass.getDeclaredField("renderTargets")
-                check(renderTargetsField.trySetAccessible()) { "Iris renderTargets field is not accessible" }
-                TerrainDepthMethods(
-                    irisClass.getMethod("getPipelineManager"),
-                    pipelineManagerClass.getMethod("getPipeline"),
-                    renderTargetsField,
-                    renderTargetsClass.getMethod("getDepthTextureNoTranslucents"),
-                    Class.forName("net.irisshaders.iris.targets.DepthTexture").getMethod("getTextureId"),
-                    renderTargetsClass.getMethod("getCurrentWidth"),
-                    renderTargetsClass.getMethod("getCurrentHeight"),
-                )
+                val particleMethods = resolveParticleRenderingMethods()
+                if (particleMethods == null) {
+                    null
+                } else {
+                    val pipelineClass = Class.forName("net.irisshaders.iris.pipeline.IrisRenderingPipeline")
+                    val renderTargetsField = pipelineClass.getDeclaredField("renderTargets")
+                    check(renderTargetsField.trySetAccessible()) { "Iris renderTargets field is not accessible" }
+                    val renderTargetsClass = Class.forName("net.irisshaders.iris.targets.RenderTargets")
+                    val getDepthTexture = renderTargetsClass.getMethod("getDepthTexture")
+                    val getDepthTextureNoTranslucents = renderTargetsClass.getMethod("getDepthTextureNoTranslucents")
+                    val getDepthTextureNoHand = try {
+                        renderTargetsClass.getMethod("getDepthTextureNoHand")
+                    } catch (_: NoSuchMethodException) {
+                        null
+                    }
+                    TerrainDepthMethods(
+                        particleMethods.getPipelineManager,
+                        particleMethods.getPipeline,
+                        renderTargetsField,
+                        getDepthTexture,
+                        getDepthTextureNoTranslucents,
+                        getDepthTextureNoHand,
+                        getDepthTextureNoTranslucents.returnType.getMethod("getTextureId"),
+                        renderTargetsClass.getMethod("getCurrentWidth"),
+                        renderTargetsClass.getMethod("getCurrentHeight"),
+                    )
+                }
             } catch (_: ClassNotFoundException) {
                 null
             } catch (_: NoSuchFieldException) {
@@ -572,7 +546,9 @@ object IrisCompat {
         val getPipelineManager: Method,
         val getPipeline: Method,
         val renderTargetsField: Field,
+        val getDepthTexture: Method,
         val getDepthTextureNoTranslucents: Method,
+        val getDepthTextureNoHand: Method?,
         val getDepthTextureId: Method,
         val getCurrentWidth: Method,
         val getCurrentHeight: Method,

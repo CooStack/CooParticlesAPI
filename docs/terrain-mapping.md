@@ -508,7 +508,12 @@ line(composite.color(), screenTarget())
 | `fragment(id)` | fullscreen 节点使用 fragment shader |
 | `inputBlockAtlas("BaseSampler")` | 绑定 Minecraft block atlas |
 | `inputSceneColor("SceneColor")` | 声明场景颜色输入 |
-| `inputTerrainDepth("TerrainDepth")` | 声明 terrain depth，默认可选 |
+| `inputSceneDepth("SceneDepth")` | 声明最终场景深度输入 |
+| `inputSceneDepthNoHand("SceneDepthNoHand")` | 声明 Iris hand 绘制前的场景深度，非 Iris 回退最终场景深度 |
+| `inputTerrainDepth("TerrainDepth")` | 声明兼容用 terrain depth，默认可选 |
+| `inputTerrainOpaqueDepth("TerrainOpaqueDepth")` | 声明不含实体的 opaque terrain 深度快照 |
+| `inputTerrainTranslucentDepthBefore("TerrainTranslucentDepthBefore")` | 声明 translucent terrain 绘制前快照 |
+| `inputTerrainTranslucentDepthAfter("TerrainTranslucentDepthAfter")` | 声明 translucent terrain 绘制后快照 |
 | `maskOutput()` | world 节点增加独立 mask attachment |
 | `outputFormat(format)` | 设置节点 attachment 格式 |
 | `mipLevels(levels)` | 设置节点输出 mip 层数 |
@@ -887,7 +892,6 @@ in vec3 worldNormal;
 | `CooAlphaCutoff` | `float` | 原始 terrain layer 的 alpha 丢弃阈值 |
 | `CooMappingRegion` | `vec4` | Sphere 的 xyz 中心和 w 半径 |
 | `CooMappingProgress` | `float` | 根据实例生命周期计算的 `0..1` 进度 |
-| `CooMappingDepthAvailable` | `int` | terrain depth 是否可读取，`0/1` |
 | `CooMappingComposition` | `int` | `REPLACE=0`、`ALPHA_OVER=1`、`ADDITIVE=2` |
 | `CooIrisComposite` | `int` | Iris 场景颜色合成输入是否可用，`0/1` |
 | `ScreenSize` | `vec2` | 当前 terrain scene attachment 尺寸 |
@@ -1027,7 +1031,7 @@ void main() {
 - `ALPHA_OVER`：通常保留 base color，并将效果 alpha 乘上 ring mask。
 - `ADDITIVE`：可以在 ring 外 `discard`，只把 emissive RGB 和 mask 写入 capture attachment；原版 terrain 由 vanilla draw 保留。
 
-无论哪种方式，都不能因为 `CooMappingDepthAvailable == 0` 就把整个 shader 输出设为零。深度不可用只应该关闭依赖 depth 的分支。
+深度输入由 Pipeline sampler 的可用性决定。required 的 terrain snapshot 缺失时，post pass 会被跳过；不要把未绑定的 sampler 当作有效深度，也不要重新引入共面 terrain overlay。
 
 ---
 
@@ -1129,20 +1133,25 @@ if (CooIrisComposite != 0) {
 inputSceneColor("SceneColor", optional = true)
 ```
 
-需要 terrain depth 时：
+需要 terrain-only 深度快照时，Pipeline 应声明实际 opaque/translucent 输入；不要再把最终场景深度当作 terrain 深度：
+
+```kotlin
+inputSceneDepth("SceneDepth")
+inputSceneDepthNoHand("SceneDepthNoHand")
+inputTerrainOpaqueDepth("TerrainOpaqueDepth")
+inputTerrainTranslucentDepthBefore("TerrainTranslucentDepthBefore")
+inputTerrainTranslucentDepthAfter("TerrainTranslucentDepthAfter")
+```
+
+`TerrainOpaqueDepth` 在实体和 RenderEntity world pass 前捕获，`TerrainTranslucentDepthBefore/After` 包围半透明 terrain 层。`SceneDepthNoHand` 在 Iris 下来自 `getDepthTextureNoHand()`，非 Iris 回退 `SceneDepth`；shader 只有在最终深度与手前深度一致时才修改像素，可排除通常写入深度的第三人称实体、Coo RenderEntity 和第一人称手。标准 Iris hand path 会在 `beginHand()` 前保存 no-hand depth；若自定义 hand 材质改变颜色但完全不写深度，Iris 公开的 depth 输入无法单独生成像素级 hand mask，该材质还需提供独立 mask。
+
+对于旧的通用 terrain depth 输入，可以继续声明：
 
 ```kotlin
 inputTerrainDepth("TerrainDepth", optional = true)
 ```
 
-并按以下方式分支：
-
-```glsl
-if (CooMappingDepthAvailable != 0) {
-    float terrainDepth = texture(TerrainDepth, screenUv).r;
-    // 只有这里使用 terrain depth。
-}
-```
+但它只代表 backend 能提供的通用 terrain depth，不足以区分实体、半透明 terrain 和 hand。需要精确分类时使用上面的三个 terrain 快照。
 
 不要：
 
@@ -1150,6 +1159,29 @@ if (CooMappingDepthAvailable != 0) {
 - 因为 depth 不可用而将整个效果设为透明。
 - 在 terrain overlay 中写入 terrain depth。
 - 同时直接 world 绘制和 post capture 同一份效果。
+
+对于 shader pack 可能改写 terrain 顶点的效果（例如 Iris/BSL 移动草、改变植被摆动位置），不要使用会重放 vanilla/Sodium terrain 顶点的 world overlay。应使用只含 fullscreen 节点的 `screenOnly()` Mapping：API 会直接把活动 Mapping 提交到 post graph，使用最终 SceneColor 和深度重建世界坐标。这样效果跟随 shader pack 最终画面中的草，而不是跟随未经光影改写的原始 section 顶点，也不会参与共面 depth test。
+
+```kotlin
+val pipeline = CooPipelines.block(id("terrain/domain_screen")) {
+    postInScene()
+    screenOnly()
+    val composite = pass("domain_screen") {
+        fragment(id("post/domain_screen.fsh"))
+        inputSceneColor("SceneColor")
+        inputSceneDepth("SceneDepth")
+        inputSceneDepthNoHand("SceneDepthNoHand")
+        inputTerrainOpaqueDepth("TerrainOpaqueDepth")
+        inputTerrainTranslucentDepthBefore("TerrainTranslucentDepthBefore")
+        inputTerrainTranslucentDepthAfter("TerrainTranslucentDepthAfter")
+        uniform("CooMappingRegion", CooUniformValue.Vec4Value(0F, 0F, 0F, 0F))
+        uniform("TerrainDiffusionProgress", CooUniformValue.FloatValue(0F))
+    }
+    line(composite.color(), screenTarget())
+}
+```
+
+`screenOnly()` 适合整体压暗、染色、径向扩散和屏幕空间遮罩；需要真实 block atlas、面法线、cutout alpha 或只对指定 terrain quad 输出的图案，仍使用普通 world terrain Mapping。screen post 没有 block atlas 的 alpha 信息。Iris 下 `SceneDepth` 是最终场景深度，`SceneDepthNoHand` 是手部绘制前的深度，三个 terrain snapshot 则分别描述 opaque terrain 和 translucent terrain 的绘制边界。shader 应同时检查 terrain snapshot 与最终深度，且要求最终深度未在 hand 阶段改变，借此排除前景实体、Coo RenderEntity 和第一人称手。`postInScene()` 的 scene-post 执行顺序是 Terrain Mapping 先合成、RenderEntity scene-post 后合成；RenderEntity 因此不会被 Terrain Mapping 覆盖。深度纹理不可用时，required 输入会跳过该 pass，不能重新引入共面 terrain overlay。
 
 Iris 兼容性必须用实际安装的 shader pack 进行客户端验证；Kotlin 编译通过不能证明 shader pack 下的视觉结果正确。
 
@@ -1180,6 +1212,7 @@ Terrain Mapping 的成本主要来自：
 - 对于只显示给一个玩家的效果使用 `createTo`，避免不必要的网络同步和其他客户端 draw。
 - 结束实例后及时 `remove`，不要长期保留强度为零的实例。
 - 多个 Mapping 需要相同 shader 时，优先用 uniform 控制，而不是复制 Pipeline。
+- opaque/translucent terrain depth 快照只会在当前帧存在声明这些输入的 screen-only Mapping 时捕获；普通 block/world Pipeline 不会承担三次全屏 depth blit。
 
 ### 12.3 不要用这些方式“优化”
 
@@ -1463,8 +1496,8 @@ git diff --check
 ```text
 common/src/main/kotlin/cn/coostack/cooparticlesapi/test/block/ProceduralTerrainMappingTerrain.kt
 common/src/main/kotlin/cn/coostack/cooparticlesapi/test/block/ProceduralTerrainMappingBlockTestOption.kt
-common/src/main/resources/assets/cooparticlesapi/shaders/core/terrain/procedural_mapping_bloom.fsh
-common/src/main/resources/assets/cooparticlesapi/shaders/post/procedural_mapping_bloom_composite.fsh
+common/src/main/resources/assets/cooparticlesapi/shaders/pipeline/vertexes/procedural_mapping_screen.vsh
+common/src/main/resources/assets/cooparticlesapi/shaders/post/procedural_mapping_screen.fsh
 ```
 
 核心运行时：
@@ -1491,6 +1524,7 @@ common/src/test/kotlin/cn/coostack/cooparticlesapi/renderer/terrain/CooTerrainMa
 common/src/test/kotlin/cn/coostack/cooparticlesapi/renderer/terrain/CooTerrainMappingRegionTest.kt
 common/src/test/kotlin/cn/coostack/cooparticlesapi/renderer/terrain/CooTerrainPipelineContractTest.kt
 common/src/test/kotlin/cn/coostack/cooparticlesapi/test/block/ProceduralTerrainMappingBlockTestOptionContractTest.kt
+fabric/src/test/kotlin/cn/coostack/cooparticlesapi/renderer/terrain/ProceduralTerrainMappingShaderCompileTest.kt
 ```
 
 ---
@@ -1574,7 +1608,7 @@ CooTerrainLayer.TRANSLUCENT
 - [ ] post pipeline 的 `EffectColor`、mask、SceneColor 和 Bloom 输入均已连线。
 - [ ] additive post pipeline 没有重复连接 `worldTarget()`。
 - [ ] Bloom mip allocation 与采样级数一致。
-- [ ] Iris 下对 SceneColor 和 TerrainDepth 做可用性判断。
+- [ ] Iris 下声明并正确使用 SceneColor、SceneDepth、SceneDepthNoHand 和 terrain-only depth snapshots。
 - [ ] 创建、更新、暂停、恢复、删除均在服务端执行。
 - [ ] vanilla、Sodium、Iris/BSL、solid、cutout、translucent 都完成实际客户端验证。
 - [ ] 没有用全局 `allChanged()` 处理普通 Mapping topology 变化。

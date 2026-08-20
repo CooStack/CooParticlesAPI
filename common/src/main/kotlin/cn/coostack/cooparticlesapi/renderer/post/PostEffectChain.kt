@@ -169,8 +169,16 @@ internal enum class PostEffectInputSource {
     SCENE_COLOR,
     /** 当前场景深度纹理，常用于遮挡、边缘或深度衰减。 */
     SCENE_DEPTH,
-    /** terrain opaque depth，缺失时不可绑定颜色纹理。 */
+    /** Iris hand 绘制前的场景深度；无 Iris 时由资源解析器回退当前场景深度。 */
+    SCENE_DEPTH_NO_HAND,
+    /** terrain opaque depth，保留给需要 Iris 原生 opaque depth 的 world pipeline。 */
     TERRAIN_DEPTH,
+    /** 当前帧实际 opaque terrain 绘制后的深度快照，不包含实体和手。 */
+    TERRAIN_OPAQUE_DEPTH,
+    /** 半透明 terrain 绘制前的深度快照。 */
+    TERRAIN_TRANSLUCENT_DEPTH_BEFORE,
+    /** 半透明 terrain 绘制后的深度快照。 */
+    TERRAIN_TRANSLUCENT_DEPTH_AFTER,
     /** 当前效果生成的 mask 纹理。 */
     MASK,
     /** bloom 流程中的亮部颜色纹理。 */

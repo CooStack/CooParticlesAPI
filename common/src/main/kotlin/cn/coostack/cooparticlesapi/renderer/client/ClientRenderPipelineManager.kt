@@ -25,6 +25,7 @@ object ClientRenderPipelineManager {
         private set
     private var currentFrameContext: RenderFrameContext? = null
     private var frameActive = false
+    private var irisShaderPackFrameActive = false
     private var scenePostCaptured = false
     private var scenePostExecuted = false
     private var irisScenePostFallbackLogged = false
@@ -54,7 +55,7 @@ object ClientRenderPipelineManager {
          */
         override fun renderWorldPass(context: RenderFrameContext) {
             ClientRenderEntityManager.renderWorldPass(context.tickDelta, context.viewMatrix, context.projMatrix)
-            if (!CooParticlesAPIClient.checkIrisShaderPackUsed()) {
+            if (!irisShaderPackFrameActive) {
                 cooFxWorldPassDelegate?.invoke(context)
             }
         }
@@ -73,6 +74,9 @@ object ClientRenderPipelineManager {
             if (!scenePostCaptured) {
                 ClientRenderEntityManager.preparePostProcess(context.tickDelta, context.viewMatrix, context.projMatrix)
                 PostEffectFrameExecutor.prepareFrame(context)
+            } else if (irisShaderPackFrameActive) {
+                // SCENE_CAPTURE 建立的副本来自 Iris final pass 前；这里必须改为读取 shader 后画面。
+                PostEffectFrameExecutor.refreshSceneFrame(context)
             }
             ClientRenderEntityManager.runScenePost(context)
         }
@@ -132,6 +136,7 @@ object ClientRenderPipelineManager {
         frameActive = false
         scenePostCaptured = false
         scenePostExecuted = false
+        irisShaderPackFrameActive = false
         cooFxWorldPassDelegate = null
     }
 
@@ -159,6 +164,7 @@ object ClientRenderPipelineManager {
      */
     fun beginFrame(tickDelta: Float, viewMatrix: Matrix4f, projMatrix: Matrix4f) {
         frameActive = true
+        irisShaderPackFrameActive = CooParticlesAPIClient.checkIrisShaderPackUsed()
         scenePostCaptured = false
         scenePostExecuted = false
         CooPipelineRuntimeEffect.beginFrame()
@@ -175,13 +181,13 @@ object ClientRenderPipelineManager {
 
     /** Iris 在 shader pack final pass 前调用，此时世界深度 attachment 仍然有效。 */
     fun captureIrisScenePost() {
-        if (!frameActive || !CooParticlesAPIClient.checkIrisShaderPackUsed()) return
+        if (!frameActive || !irisShaderPackFrameActive) return
         runStages(listOf(RenderFrameStage.SCENE_CAPTURE), frameTickDelta, frameViewMatrix, frameProjectionMatrix)
     }
 
     /** Iris entity G-buffer 仍有效时提交 CooFX 世界批次。 */
     fun renderIrisCooFxWorldPass() {
-        if (!frameActive || !CooParticlesAPIClient.checkIrisShaderPackUsed()) return
+        if (!frameActive || !irisShaderPackFrameActive) return
         val context = buildFrameContext(
             frameTickDelta,
             frameViewMatrix,
@@ -194,7 +200,7 @@ object ClientRenderPipelineManager {
 
     /** Iris 在 shader pack final pass 完成后调用。 */
     fun renderIrisScenePost() {
-        if (!frameActive || !CooParticlesAPIClient.checkIrisShaderPackUsed()) return
+        if (!frameActive || !irisShaderPackFrameActive) return
         runScenePost(frameTickDelta, frameViewMatrix, frameProjectionMatrix)
     }
 
@@ -218,13 +224,16 @@ object ClientRenderPipelineManager {
     fun finishLevelRender(tickDelta: Float, viewMatrix: Matrix4f, projMatrix: Matrix4f) {
         try {
             if (frameActive && !scenePostExecuted) {
-                if (CooParticlesAPIClient.checkIrisShaderPackUsed() && !irisScenePostFallbackLogged) {
-                    CooParticlesConstants.logger.warn(
-                        "Iris scene-post hook did not run; executing the fallback at the end of level rendering"
-                    )
-                    irisScenePostFallbackLogged = true
+                if (irisShaderPackFrameActive) {
+                    if (!irisScenePostFallbackLogged) {
+                        CooParticlesConstants.logger.warn(
+                            "Iris scene-post hooks did not run; skipping the unsafe fallback after first-person hand rendering"
+                        )
+                        irisScenePostFallbackLogged = true
+                    }
+                } else {
+                    runScenePost(tickDelta, viewMatrix, projMatrix)
                 }
-                runScenePost(tickDelta, viewMatrix, projMatrix)
             }
             runStages(
                 listOf(
@@ -240,6 +249,7 @@ object ClientRenderPipelineManager {
         } finally {
             currentFrameContext = null
             frameActive = false
+            irisShaderPackFrameActive = false
         }
     }
 
@@ -251,6 +261,7 @@ object ClientRenderPipelineManager {
     fun endFrame() {
         currentFrameContext = null
         frameActive = false
+        irisShaderPackFrameActive = false
     }
 
     private fun runStages(

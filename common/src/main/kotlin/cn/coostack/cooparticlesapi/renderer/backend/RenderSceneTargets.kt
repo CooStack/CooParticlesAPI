@@ -18,8 +18,16 @@ object RenderSceneTargets {
     val SCENE_COLOR: ResourceLocation = id("scene_color")
     /** 场景深度副本。 */
     val SCENE_DEPTH: ResourceLocation = id("scene_depth")
+    /** Iris hand 绘制前的场景深度快照；无 Iris 时回退当前场景深度。 */
+    val SCENE_DEPTH_NO_HAND: ResourceLocation = id("scene_depth_no_hand")
     /** terrain opaque depth 的逻辑资源。 */
     val TERRAIN_DEPTH: ResourceLocation = id("terrain_depth")
+    /** 当前帧实际 opaque terrain 绘制后的深度快照，不包含实体。 */
+    val TERRAIN_OPAQUE_DEPTH: ResourceLocation = id("terrain_opaque_depth")
+    /** 半透明 terrain 绘制前的深度快照，用于识别液体等半透明地形。 */
+    val TERRAIN_TRANSLUCENT_DEPTH_BEFORE: ResourceLocation = id("terrain_translucent_depth_before")
+    /** 半透明 terrain 绘制后的深度快照，用于识别液体等半透明地形。 */
+    val TERRAIN_TRANSLUCENT_DEPTH_AFTER: ResourceLocation = id("terrain_translucent_depth_after")
     /** bloom 相关的中间目标。 */
     val BLOOM: ResourceLocation = id("bloom")
     /** mask 相关的中间目标。 */

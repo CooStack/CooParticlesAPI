@@ -56,7 +56,8 @@ class RenderEntityIrisPipelineContractTest {
         assertTrue(
             levelMixin.indexOf("renderIrisWorldPass") < levelMixin.indexOf("renderIrisCooFxWorldPass")
         )
-        assertTrue("if (!CooParticlesAPIClient.checkIrisShaderPackUsed())" in pipelineManager)
+        assertTrue("irisShaderPackFrameActive = CooParticlesAPIClient.checkIrisShaderPackUsed()" in pipelineManager)
+        assertTrue("if (!irisShaderPackFrameActive)" in pipelineManager)
         assertTrue("cooFxWorldPassDelegate?.invoke(context)" in pipelineManager)
         assertTrue("GameRenderer.getRendertypeEntitySolidShader()" in irisCompat)
         assertTrue("GameRenderer.getRendertypeEntityCutoutNoCullShader()" in irisCompat)

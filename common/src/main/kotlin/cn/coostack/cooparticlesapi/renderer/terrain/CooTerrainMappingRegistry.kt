@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi.renderer.terrain
 
+import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelineNodeKind
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooUniformValue
 import net.minecraft.resources.ResourceLocation
 import java.util.concurrent.ConcurrentHashMap
@@ -25,8 +26,14 @@ internal object CooTerrainMappingRegistry {
         val previous = mappings.put(key, instance)
         changed.incrementAndGet()
         if (previous == null || topologySignature(previous) != topologySignature(instance)) {
-            previous?.let { topologyRegions += TopologyRegion(it.dimension, it.region) }
-            topologyRegions += TopologyRegion(instance.dimension, instance.region)
+            previous?.let { previousInstance ->
+                if (requiresTerrainGeometry(previousInstance)) {
+                    topologyRegions += TopologyRegion(previousInstance.dimension, previousInstance.region)
+                }
+            }
+            if (requiresTerrainGeometry(instance)) {
+                topologyRegions += TopologyRegion(instance.dimension, instance.region)
+            }
             topologyChanged.incrementAndGet()
         }
     }
@@ -53,7 +60,9 @@ internal object CooTerrainMappingRegistry {
         if (!acceptRevision(key, revision)) return
         val removed = mappings.remove(key)
         if (removed != null) {
-            topologyRegions += TopologyRegion(removed.dimension, removed.region)
+            if (requiresTerrainGeometry(removed)) {
+                topologyRegions += TopologyRegion(removed.dimension, removed.region)
+            }
             topologyChanged.incrementAndGet()
         }
         changed.incrementAndGet()
@@ -123,6 +132,12 @@ internal object CooTerrainMappingRegistry {
         instance.sequence,
         instance.isPaused()
     )
+
+    private fun requiresTerrainGeometry(instance: CooTerrainMappingInstance): Boolean {
+        return CooTerrainMappingManager.pipeline(instance.mappingId)?.nodes?.any {
+            it.kind == CooPipelineNodeKind.WORLD
+        } == true
+    }
 
     private data class TopologySignature(
         val mappingId: ResourceLocation,

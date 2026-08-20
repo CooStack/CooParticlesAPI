@@ -167,11 +167,13 @@ class CooPipelineNodeBuilder<T : Any> internal constructor(
      *
      * @param textureSlot 数量或从零开始的索引值，具体上限由当前资源配置决定
      */
-    fun inputSceneDepth(
-        sampler: String = "SceneDepth",
+    fun inputSceneDepth(sampler: String = "SceneDepth", optional: Boolean = false, textureSlot: Int = inputs.size) = input(sampler, CooPipelineTextureSource.SceneDepth, optional, textureSlot)
+    /** 声明 Iris hand 绘制前的场景深度输入；无 Iris 时资源解析器回退当前场景深度。 */
+    fun inputSceneDepthNoHand(
+        sampler: String = "SceneDepthNoHand",
         optional: Boolean = false,
         textureSlot: Int = inputs.size
-    ) = input(sampler, CooPipelineTextureSource.SceneDepth, optional, textureSlot)
+    ) = input(sampler, CooPipelineTextureSource.SceneDepthNoHand, optional, textureSlot)
 
     /** 声明 terrain opaque depth 输入；默认 optional，缺失时绑定纹理 0 并由 shader 处理不可用状态。 */
     fun inputTerrainDepth(
@@ -179,6 +181,27 @@ class CooPipelineNodeBuilder<T : Any> internal constructor(
         optional: Boolean = true,
         textureSlot: Int = inputs.size
     ) = input(sampler, CooPipelineTextureSource.TerrainDepth, optional, textureSlot)
+
+    /** 声明 terrain opaque depth 快照输入；缺失时 required pass 会被跳过。 */
+    fun inputTerrainOpaqueDepth(
+        sampler: String = "TerrainOpaqueDepth",
+        optional: Boolean = false,
+        textureSlot: Int = inputs.size
+    ) = input(sampler, CooPipelineTextureSource.TerrainOpaqueDepth, optional, textureSlot)
+
+    /** 声明半透明 terrain 绘制前的深度快照输入。 */
+    fun inputTerrainTranslucentDepthBefore(
+        sampler: String = "TerrainTranslucentDepthBefore",
+        optional: Boolean = false,
+        textureSlot: Int = inputs.size
+    ) = input(sampler, CooPipelineTextureSource.TerrainTranslucentDepthBefore, optional, textureSlot)
+
+    /** 声明半透明 terrain 绘制后的深度快照输入。 */
+    fun inputTerrainTranslucentDepthAfter(
+        sampler: String = "TerrainTranslucentDepthAfter",
+        optional: Boolean = false,
+        textureSlot: Int = inputs.size
+    ) = input(sampler, CooPipelineTextureSource.TerrainTranslucentDepthAfter, optional, textureSlot)
 
     /**
      * 在 `CooPipelineNodeBuilder` 中配置 `inputFramebuffer`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
@@ -631,6 +654,7 @@ class CooRenderPipelineBuilder<T : Any> internal constructor(
     private var terrainLayer = CooTerrainLayer.INHERIT
     private var effectUvMode = CooEffectUvMode.BASE_UV
     private var postInScene = false
+    private var screenOnly = false
     private val nodes = ArrayList<CooPipelineNode>()
     private val lines = ArrayList<CooPipelineLine>()
     private val parameters = LinkedHashMap<String, MutableList<CooPipelineParameterBinding>>()
@@ -656,7 +680,10 @@ class CooRenderPipelineBuilder<T : Any> internal constructor(
     fun effectUv(mode: CooEffectUvMode) = apply { effectUvMode = mode }
 
     /** 把 fullscreen 节点安排到最终场景颜色准备完成后的专用阶段。 */
-    internal fun postInScene() = apply { postInScene = true }
+    fun postInScene() = apply { postInScene = true }
+
+    /** 只执行屏幕后处理，不为 BLOCK 域隐式创建 terrain world 节点。 */
+    fun screenOnly() = apply { screenOnly = true }
 
     /**
      * 在 `CooRenderPipelineBuilder` 中配置 `shader`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
@@ -732,10 +759,50 @@ class CooRenderPipelineBuilder<T : Any> internal constructor(
         implicitWorld.inputSceneDepth(sampler, optional, textureSlot)
     }
 
+    /** 声明 Iris hand 绘制前的场景深度输入；无 Iris 时资源解析器回退当前场景深度。 */
+    fun inputSceneDepthNoHand(
+        sampler: String = "SceneDepthNoHand",
+        optional: Boolean = false,
+        textureSlot: Int = 2
+    ) = apply {
+        implicitWorldUsed = true
+        implicitWorld.inputSceneDepthNoHand(sampler, optional, textureSlot)
+    }
+
     /** 声明 terrain opaque depth 输入；默认 optional，缺失时绑定纹理 0。 */
     fun inputTerrainDepth(sampler: String = "TerrainDepth", optional: Boolean = true, textureSlot: Int = 1) = apply {
         implicitWorldUsed = true
         implicitWorld.inputTerrainDepth(sampler, optional, textureSlot)
+    }
+
+    /** 声明 terrain opaque depth 快照输入；缺失时 required pass 会被跳过。 */
+    fun inputTerrainOpaqueDepth(
+        sampler: String = "TerrainOpaqueDepth",
+        optional: Boolean = false,
+        textureSlot: Int = 3
+    ) = apply {
+        implicitWorldUsed = true
+        implicitWorld.inputTerrainOpaqueDepth(sampler, optional, textureSlot)
+    }
+
+    /** 声明半透明 terrain 绘制前的深度快照输入。 */
+    fun inputTerrainTranslucentDepthBefore(
+        sampler: String = "TerrainTranslucentDepthBefore",
+        optional: Boolean = false,
+        textureSlot: Int = 4
+    ) = apply {
+        implicitWorldUsed = true
+        implicitWorld.inputTerrainTranslucentDepthBefore(sampler, optional, textureSlot)
+    }
+
+    /** 声明半透明 terrain 绘制后的深度快照输入。 */
+    fun inputTerrainTranslucentDepthAfter(
+        sampler: String = "TerrainTranslucentDepthAfter",
+        optional: Boolean = false,
+        textureSlot: Int = 5
+    ) = apply {
+        implicitWorldUsed = true
+        implicitWorld.inputTerrainTranslucentDepthAfter(sampler, optional, textureSlot)
     }
 
     /**
@@ -922,6 +989,9 @@ class CooRenderPipelineBuilder<T : Any> internal constructor(
      * @return 当前构建器或由其配置生成的结果
      */
     fun sceneDepth(): CooPipelineTextureSource = CooPipelineTextureSource.SceneDepth
+
+    /** 返回 Iris hand 绘制前的场景深度输入来源。 */
+    fun sceneDepthNoHand(): CooPipelineTextureSource = CooPipelineTextureSource.SceneDepthNoHand
     /**
      * 在 `CooRenderPipelineBuilder` 中配置 `framebuffer`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
      *
@@ -1029,9 +1099,9 @@ class CooRenderPipelineBuilder<T : Any> internal constructor(
      * @return 当前构建器或由其配置生成的结果
      */
     internal fun build(): CooRenderPipeline<T> {
-        val needsImplicitWorld = implicitWorldUsed ||
+        val needsImplicitWorld = !screenOnly && (implicitWorldUsed ||
             (domain == CooPipelineDomain.ENTITY || domain == CooPipelineDomain.BLOCK) &&
-            nodes.none { it.kind == CooPipelineNodeKind.WORLD }
+            nodes.none { it.kind == CooPipelineNodeKind.WORLD })
         if (needsImplicitWorld) {
             if (domain == CooPipelineDomain.BLOCK) {
                 implicitWorld.ensureInput("BaseSampler", CooPipelineTextureSource.BlockAtlas)

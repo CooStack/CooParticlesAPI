@@ -156,7 +156,8 @@ object ClientRenderEntityManager {
         projMatrix: Matrix4f,
         irisShaderPackInUse: Boolean
     ) {
-        if (!irisShaderPackInUse) {
+        // screen-only Terrain Mapping 需要先合成最终光影画面；此时 RenderEntity 延后到 API world/scene pass。
+        if (!irisShaderPackInUse || CooTerrainPipelineManager.shouldDeferShaderPackRenderEntities()) {
             return
         }
         val stack = Matrix4fStack(16)
@@ -245,6 +246,11 @@ object ClientRenderEntityManager {
         if (!context.backend.supports(RenderBackendCapability.FINAL_FRAME_POST)) {
             return
         }
+        // Terrain Mapping 先提交，避免大范围映射覆盖 RenderEntity 的场景后处理结果。
+        val terrainGraph = RenderEffectGraph(context.backend.capabilities, context)
+        CooTerrainPipelineManager.collectScenePostEffects(context, terrainGraph)
+        terrainGraph.execute()
+
         val graph = RenderEffectGraph(context.backend.capabilities, context)
         entities.values.asSequence()
             .filter(RenderEntityInstance<RenderEntity>::usesScenePost)
@@ -254,7 +260,9 @@ object ClientRenderEntityManager {
 
     /** 在 Iris final pass 前只捕获场景后处理 Pipeline 的 world attachment。 */
     fun captureScenePost(context: RenderFrameContext) {
-        if (!context.backend.supports(RenderBackendCapability.FINAL_FRAME_POST)) {
+        if (!context.backend.supports(RenderBackendCapability.FINAL_FRAME_POST) ||
+            CooTerrainPipelineManager.shouldDeferShaderPackRenderEntities()
+        ) {
             return
         }
         val graph = RenderEffectGraph(context.backend.capabilities, context)

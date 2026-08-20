@@ -125,6 +125,49 @@ class CooTerrainMappingContractTest {
         assertTrue("mapping?.uniforms?.forEach { (name, value) -> put(name, value) }" in pipeline)
     }
 
+    @Test
+    fun `screen only mappings bypass section geometry and use post collection`() {
+        val registry = source(
+            "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/terrain/CooTerrainMappingRegistry.kt"
+        )
+        val builders = source(
+            "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/pipeline/CooPipelineBuilders.kt"
+        )
+        val pipeline = source(
+            "common/src/main/kotlin/cn/coostack/cooparticlesapi/renderer/terrain/CooTerrainPipelineManager.kt"
+        )
+
+        assertTrue("fun screenOnly()" in builders)
+        assertTrue("private fun requiresTerrainGeometry" in registry)
+        assertTrue("collectScreenOnlyMappingPostEffects" in pipeline)
+        assertTrue("if (draws.isEmpty())" in pipeline)
+        assertTrue("CooPipelineNodeKind.WORLD" in registry)
+    }
+
+    @Test
+    fun `screen only mapping documentation uses an exact fragment resource path`() {
+        val documentation = source("docs/terrain-mapping.md")
+
+        assertTrue("fragment(id(\"post/domain_screen.fsh\"))" in documentation)
+        assertFalse("fragment(id(\"post/domain_screen\"))" in documentation)
+    }
+
+    @Test
+    fun `coplanar attachment and final overlays enable polygon offset`() {
+        val outputState = source(
+            "common/src/main/java/cn/coostack/cooparticlesapi/renderer/terrain/CooTerrainRenderStateShard.java"
+        )
+        val offsetStage = outputState.substringAfter("private static boolean isOffsetStageActive()")
+        assertTrue("private static boolean isOffsetStageActive()" in outputState)
+        assertTrue("CooTerrainPipelineManager.isTerrainAttachmentCaptureActive()" in offsetStage)
+        assertTrue("CooTerrainPipelineManager.isFinalCompositeTerrainOverlayActive()" in offsetStage)
+        assertTrue("glIsEnabled(GL_POLYGON_OFFSET_FILL)" in outputState)
+        assertTrue("glGetFloat(GL_POLYGON_OFFSET_FACTOR)" in outputState)
+        assertTrue("glPolygonOffset(previousFactor[0], previousUnits[0])" in outputState)
+        assertTrue("if (previousEnabled[0])" in outputState)
+        assertFalse("return true;" in offsetStage.substringBefore("}"))
+    }
+
     private fun source(path: String): String {
         val requested = Path.of(path)
         if (Files.exists(requested)) return Files.readString(requested)

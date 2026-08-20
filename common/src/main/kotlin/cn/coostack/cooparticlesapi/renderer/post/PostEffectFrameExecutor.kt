@@ -137,6 +137,11 @@ internal interface PostEffectFramePreparationBackend {
      * @param context 当前操作需要的输入值；其语义由方法名和所属组件共同限定
      */
     fun prepareFrame(context: RenderFrameContext)
+
+    /** 仅刷新场景颜色/深度副本；默认 backend 没有独立刷新语义时复用完整准备流程。 */
+    fun refreshSceneFrame(context: RenderFrameContext) {
+        prepareFrame(context)
+    }
 }
 
 /** 可选接口：backend 可在 shader reload、客户端关闭或测试结束时释放 GL 资源。 */
@@ -288,6 +293,10 @@ internal object PostEffectFrameExecutor {
         (backend as? PostEffectFramePreparationBackend)?.prepareFrame(context)
     }
 
+    /** 在同一帧 final pass 后仅使 scene color/depth copy 失效，不清空已生成的 pass 状态。 */
+    fun refreshSceneFrame(context: RenderFrameContext) {
+        (backend as? PostEffectFramePreparationBackend)?.refreshSceneFrame(context)
+    }
     /** 释放 backend 持有的临时纹理、FBO、shader program 等资源。 */
     fun releaseBackendResources() {
         (backend as? PostEffectResourceBackend)?.release()
@@ -486,6 +495,20 @@ internal object PostEffectFrameExecutor {
                     textureSlot = input.textureSlot
                 )
             }
+            PostEffectInputSource.SCENE_DEPTH_NO_HAND -> {
+                val resource = context.sceneResources[RenderSceneTargets.SCENE_DEPTH_NO_HAND]
+                val textureId = resource?.depthTextureId
+                val capabilityAvailable = RenderBackendCapability.SCENE_DEPTH_READ in context.backend.capabilities
+                PostEffectResolvedInput(
+                    samplerName = input.samplerName,
+                    source = input.source,
+                    optional = input.optional,
+                    available = capabilityAvailable && textureId != null,
+                    textureId = textureId,
+                    resource = resource,
+                    textureSlot = input.textureSlot
+                )
+            }
             PostEffectInputSource.TERRAIN_DEPTH -> {
                 val resource = context.sceneResources[RenderSceneTargets.TERRAIN_DEPTH]
                 val textureId = resource?.depthTextureId
@@ -500,6 +523,21 @@ internal object PostEffectFrameExecutor {
                     textureSlot = input.textureSlot
                 )
             }
+            PostEffectInputSource.TERRAIN_OPAQUE_DEPTH -> resolveTerrainSnapshotInput(
+                context,
+                input,
+                RenderSceneTargets.TERRAIN_OPAQUE_DEPTH
+            )
+            PostEffectInputSource.TERRAIN_TRANSLUCENT_DEPTH_BEFORE -> resolveTerrainSnapshotInput(
+                context,
+                input,
+                RenderSceneTargets.TERRAIN_TRANSLUCENT_DEPTH_BEFORE
+            )
+            PostEffectInputSource.TERRAIN_TRANSLUCENT_DEPTH_AFTER -> resolveTerrainSnapshotInput(
+                context,
+                input,
+                RenderSceneTargets.TERRAIN_TRANSLUCENT_DEPTH_AFTER
+            )
             PostEffectInputSource.MASK -> resolveProducedInput(context, input, PostEffectOutput.MASK, producedOutputs)
             PostEffectInputSource.BRIGHT_COLOR -> resolveProducedInput(context, input, PostEffectOutput.BLOOM, producedOutputs)
             PostEffectInputSource.CUSTOM_TEXTURE -> {
@@ -555,6 +593,24 @@ internal object PostEffectFrameExecutor {
         )
     }
 
+    private fun resolveTerrainSnapshotInput(
+        context: RenderFrameContext,
+        input: PostEffectInput,
+        target: ResourceLocation
+    ): PostEffectResolvedInput {
+        val resource = context.sceneResources[target]
+        val textureId = resource?.depthTextureId
+        val capabilityAvailable = RenderBackendCapability.TERRAIN_DEPTH_READ in context.backend.capabilities
+        return PostEffectResolvedInput(
+            samplerName = input.samplerName,
+            source = input.source,
+            optional = input.optional,
+            available = capabilityAvailable && textureId != null,
+            textureId = textureId,
+            resource = resource,
+            textureSlot = input.textureSlot
+        )
+    }
     private fun hasCapturedAttachment(target: ResourceLocation, attachment: Int): Boolean {
         val attachmentBackend = backend as? PostEffectAttachmentPreparationBackend ?: return false
         return attachmentBackend.hasAttachment(target, attachment)

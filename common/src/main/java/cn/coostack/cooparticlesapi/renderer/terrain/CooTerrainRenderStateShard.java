@@ -1,12 +1,15 @@
 package cn.coostack.cooparticlesapi.renderer.terrain;
 
-import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.renderer.RenderStateShard;
 import net.minecraft.client.renderer.RenderType;
 
+import static org.lwjgl.opengl.GL11.GL_POLYGON_OFFSET_FACTOR;
 import static org.lwjgl.opengl.GL11.GL_POLYGON_OFFSET_FILL;
+import static org.lwjgl.opengl.GL11.GL_POLYGON_OFFSET_UNITS;
 import static org.lwjgl.opengl.GL11.glDisable;
 import static org.lwjgl.opengl.GL11.glEnable;
+import static org.lwjgl.opengl.GL11.glGetFloat;
+import static org.lwjgl.opengl.GL11.glIsEnabled;
 import static org.lwjgl.opengl.GL11.glPolygonOffset;
 
 /**
@@ -67,23 +70,36 @@ public final class CooTerrainRenderStateShard extends RenderStateShard {
      * 创建在 attachment 捕获和 Iris 最终合成覆盖阶段启用的共面深度偏移。
      *
      * <p>覆盖几何与原版 terrain 共面；捕获 bloom mask 时同样需要偏移，否则 Iris terrain depth
-     * 会让片元在帧间交替通过 LEQUAL，产生发光闪烁。离开对应阶段时恢复为无偏移。
+     * 会让片元在帧间交替通过 LEQUAL，产生发光闪烁。离开对应阶段时恢复调用方原有的 enable、factor 和 units。
      *
      * @return attachment 捕获和 Iris 最终覆盖阶段使用的共面深度偏移
      */
     public static LayeringStateShard terrainLayering() {
+        final boolean[] applied = {false};
+        final boolean[] previousEnabled = {false};
+        final float[] previousFactor = {0F};
+        final float[] previousUnits = {0F};
         return new LayeringStateShard(
                 "coo_terrain_overlay_layering",
                 () -> {
                     if (isOffsetStageActive()) {
+                        applied[0] = true;
+                        previousEnabled[0] = glIsEnabled(GL_POLYGON_OFFSET_FILL);
+                        previousFactor[0] = glGetFloat(GL_POLYGON_OFFSET_FACTOR);
+                        previousUnits[0] = glGetFloat(GL_POLYGON_OFFSET_UNITS);
                         glEnable(GL_POLYGON_OFFSET_FILL);
                         glPolygonOffset(-1F, -10F);
                     }
                 },
                 () -> {
-                    if (isOffsetStageActive()) {
-                        glPolygonOffset(0F, 0F);
-                        glDisable(GL_POLYGON_OFFSET_FILL);
+                    if (applied[0]) {
+                        glPolygonOffset(previousFactor[0], previousUnits[0]);
+                        if (previousEnabled[0]) {
+                            glEnable(GL_POLYGON_OFFSET_FILL);
+                        } else {
+                            glDisable(GL_POLYGON_OFFSET_FILL);
+                        }
+                        applied[0] = false;
                     }
                 }
         );
