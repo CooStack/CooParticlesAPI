@@ -5,7 +5,7 @@ import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
 import cn.coostack.cooparticlesapi.annotations.CodecField
 import cn.coostack.cooparticlesapi.annotations.display.handle.DisplayEntityRegistryHelper
 import cn.coostack.cooparticlesapi.display.DisplayEntity
-import cn.coostack.cooparticlesapi.platform.CooParticlesServices
+import cn.coostack.cooparticlesapi.platform.CooClientServices
 import com.mojang.blaze3d.systems.RenderSystem
 import com.mojang.blaze3d.vertex.PoseStack
 import com.mojang.blaze3d.vertex.VertexConsumer
@@ -54,7 +54,7 @@ class TestShapeDisplayEntity(pos: Vec3, world: Level?) : DisplayEntity(pos, worl
         camera: Camera
     ) {
         modelMatrixStack.pushPose()
-        val provider = CooParticlesServices.PLATFORM.getRenderTypesProvider()
+        val provider = CooClientServices.RENDER_TYPES_PROVIDER
         val layeredConsumer = provider.layered(LAYERED_GLOW_ID)?.consumer(buffer)
         val consumer = layeredConsumer ?: buffer.getBuffer(provider.glow())
         renderCylinder(

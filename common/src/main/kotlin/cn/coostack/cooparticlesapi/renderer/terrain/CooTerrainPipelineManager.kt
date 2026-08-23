@@ -5,6 +5,7 @@ import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.compat.IrisCompat
 import cn.coostack.cooparticlesapi.compat.IrisTerrainDepthTexture
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
+import cn.coostack.cooparticlesapi.platform.CooClientServices
 import cn.coostack.cooparticlesapi.renderer.backend.RenderSceneResources
 import cn.coostack.cooparticlesapi.renderer.backend.RenderSceneTargets
 import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameContext
@@ -626,7 +627,7 @@ internal object CooTerrainPipelineManager {
             )
             return emptyList()
         }
-        val renderType = CooParticlesServices.PLATFORM.getRenderTypesProvider().terrain(
+        val renderType = CooClientServices.RENDER_TYPES_PROVIDER.terrain(
             pipeline,
             baseLayer,
             batchKey
@@ -1806,7 +1807,7 @@ internal object CooTerrainPipelineManager {
             terrainMappings.clear()
             terrainMappingBatchKeys.clear()
         }
-        CooParticlesServices.PLATFORM.getRenderTypesProvider().clearTerrainCache()
+        CooClientServices.RENDER_TYPES_PROVIDER.clearTerrainCache()
         synchronized(shaders) {
             shaders.values.forEach(ShaderInstance::close)
             shaders.clear()

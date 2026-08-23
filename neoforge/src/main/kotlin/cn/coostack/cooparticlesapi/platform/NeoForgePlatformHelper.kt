@@ -1,6 +1,5 @@
 package cn.coostack.cooparticlesapi.platform
 
-import cn.coostack.cooparticlesapi.display.CooRenderTypesProvider
 import cn.coostack.cooparticlesapi.enums.DistType
 import cn.coostack.cooparticlesapi.platform.services.IPlatformHelper
 import net.neoforged.api.distmarker.Dist
@@ -25,9 +24,5 @@ class NeoForgePlatformHelper : IPlatformHelper {
             Dist.CLIENT -> DistType.CLIENT
             Dist.DEDICATED_SERVER -> DistType.SERVER
         }
-    }
-
-    override fun getRenderTypesProvider(): CooRenderTypesProvider {
-        return NeoRenderTypesProvider
     }
 }
