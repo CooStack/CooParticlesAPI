@@ -18,7 +18,7 @@ class PointsBuilderShapeTest {
 
     @Test
     fun `ball solid stays inside radius`() {
-        val points = PointsBuilder().addBallSoid(2.0, 41).create()
+        val points = PointsBuilder().addBallSolid(2.0, 41).create()
 
         assertEquals(41, points.size)
         assertTrue(points.all { it.x * it.x + it.y * it.y + it.z * it.z <= 4.0 + 1.0e-9 })
@@ -27,7 +27,7 @@ class PointsBuilderShapeTest {
     @Test
     fun `cube surface and volume respect dimensions`() {
         val surface = PointsBuilder().addCubeSurface(4.0, 2.0, 6.0, 60).create()
-        val volume = PointsBuilder().addCubeSoid(4.0, 2.0, 6.0, 60).create()
+        val volume = PointsBuilder().addCubeSolid(4.0, 2.0, 6.0, 60).create()
 
         assertEquals(60, surface.size)
         assertEquals(60, volume.size)

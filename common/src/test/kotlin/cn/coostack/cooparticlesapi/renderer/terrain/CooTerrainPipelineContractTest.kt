@@ -145,9 +145,16 @@ class CooTerrainPipelineContractTest {
         assertEquals(2, "poseStack.popPose()".toRegex().findAll(compiler).count())
         assertTrue("CooTerrainPipelineManager.requiresTerrainSorting(renderType)" in compiler)
         assertTrue("meshData.sortQuads(sectionBufferBuilderPack.buffer(renderType), vertexSorting)" in compiler)
-        assertTrue("Ljava/util/List;)Lnet/minecraft/client/renderer/chunk/SectionCompiler\$Results;" in neoforgeCompiler)
+        // 描述符在源码里按行拼接，先还原字符串连接再断言，避免断言耦合换行位置。
+        val neoforgeCompilerDescriptors = neoforgeCompiler.replace(Regex("\"\\s*\\+\\s*\""), "")
+        assertTrue(
+            "Ljava/util/List;)Lnet/minecraft/client/renderer/chunk/SectionCompiler\$Results;"
+                in neoforgeCompilerDescriptors
+        )
         assertTrue("ModelData modelData" in neoforgeCompiler)
-        assertTrue("renderBatched(Lnet/minecraft/world/level/block/state/BlockState;" in neoforgeCompiler)
+        assertTrue(
+            "renderBatched(Lnet/minecraft/world/level/block/state/BlockState;" in neoforgeCompilerDescriptors
+        )
         assertTrue("SectionCompilerNeoForgeMixin" in neoforgeMixins)
         assertTrue("SectionCompilerMixin\".equals(mixinClassName)" in mixinPlugin)
         assertTrue("net/neoforged/neoforge/common/NeoForge.class" in mixinPlugin)

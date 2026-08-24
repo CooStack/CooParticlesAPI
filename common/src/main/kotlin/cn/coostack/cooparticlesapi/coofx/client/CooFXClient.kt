@@ -8,6 +8,7 @@ import cn.coostack.cooparticlesapi.coofx.adapter.CooFxPlaybackHandle
 import cn.coostack.cooparticlesapi.coofx.adapter.CooFxPlayRequest
 import cn.coostack.cooparticlesapi.coofx.adapter.CooFxPlayResult
 import cn.coostack.cooparticlesapi.coofx.adapter.CooFxWorldTransform
+import cn.coostack.cooparticlesapi.coofx.runtime.model.CooFxModelDebugInstance
 import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameContext
 import cn.coostack.cooparticlesapi.renderer.client.ClientRenderPipelineManager
 import com.mojang.blaze3d.systems.RenderSystem
@@ -45,6 +46,10 @@ object CooFXClient {
 
     /** 返回客户端当前 CooFX model instance 数。 */
     fun activeModelCount(): Int = runtime?.activeModelCount() ?: 0
+
+    /** 返回客户端 GPU 侧模型实例快照，供 F3+B 调试线框读取。 */
+    internal fun debugModelInstances(): List<CooFxModelDebugInstance> =
+        runtime?.debugModelInstances() ?: emptyList()
 
     @JvmStatic
     fun play(request: CooFxPlayRequest): CooFxPlayResult {

@@ -27,6 +27,29 @@ internal data class CooFxResolvedModelAsset(
 }
 
 /**
+ * 调试渲染读取的模型实例快照。
+ *
+ * 只包含定位和播放进度，不引用 compiled package，保证读取方不会延长 GPU 资源生命周期。
+ *
+ * @property instanceId 逻辑模型实例 ID
+ * @property resourceId 模型资源 ID
+ * @property transform 当前世界变换
+ * @property clipIndex 当前播放的 clip 下标
+ * @property playbackSpeed 播放速度
+ * @property ageTicks 已播放的客户端 tick 数
+ * @property drawCount 该实例展开出的 draw instance 数
+ */
+internal data class CooFxModelDebugInstance(
+    val instanceId: Long,
+    val resourceId: ResourceLocation,
+    val transform: CooFxWorldTransform,
+    val clipIndex: Int,
+    val playbackSpeed: Float,
+    val ageTicks: Long,
+    val drawCount: Int,
+)
+
+/**
  * 管理不依赖 emitter 的持久模型实例。
  *
  * 一个逻辑模型实例会按 compiled scene 中的 primitive-node 绑定展开为多个 draw instance；模型只在显式
@@ -41,6 +64,19 @@ internal class CooFxModelInstanceManager {
         get() = instances.size
 
     fun isActive(instanceId: Long): Boolean = instanceId in instances
+
+    /** 返回模型实例快照，供调试渲染读取，不修改任何播放状态。 */
+    fun debugInstances(): List<CooFxModelDebugInstance> = instances.map { (instanceId, state) ->
+        CooFxModelDebugInstance(
+            instanceId = instanceId,
+            resourceId = state.resourceId,
+            transform = state.transform,
+            clipIndex = state.clipIndex,
+            playbackSpeed = state.playbackSpeed,
+            ageTicks = state.ageTicks,
+            drawCount = state.stableDrawIds.size,
+        )
+    }
 
     fun start(request: CooFxModelPlayRequest, compiled: CooFxCompiledRenderPackage, clipIndex: Int): Long {
         val normalizedClipIndex = normalizeClipIndex(clipIndex, compiled)

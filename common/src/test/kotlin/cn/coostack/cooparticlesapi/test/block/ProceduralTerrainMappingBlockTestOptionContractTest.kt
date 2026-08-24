@@ -62,6 +62,8 @@ class ProceduralTerrainMappingBlockTestOptionContractTest {
         assertTrue("visibleOpaqueTerrain" in shader)
         assertTrue("visibleTranslucentTerrain" in shader)
         assertTrue("handDepthChanged" in shader)
+        assertTrue("float depthTolerance = max(0.000001, sceneDepth * 0.000001);" in shader)
+        assertFalse("float depthTolerance = max(0.0001, sceneDepth * 0.00005);" in shader)
         assertTrue("uniform mat4 cooInverseViewProjection" in shader)
         assertTrue("mappingSignedDistance(relativePosition, progress)" in shader)
         assertTrue("shapeMask * clamp(Blackness" in shader)

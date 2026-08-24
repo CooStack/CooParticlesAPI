@@ -1303,40 +1303,33 @@ object Math3DUtil {
         return res
     }
 
-    /** 生成三次贝塞尔曲线（兼容旧的原点起笔二维曲线，Z 固定为 0） */
+    /**
+     * 生成三次贝塞尔曲线，并按曲线弧长等距采样。
+     *
+     * 该重载保留旧的“原点起笔二维曲线”参数语义，Z 坐标固定为 0。
+     *
+     * @param target 终点
+     * @param startHandle 起点控制柄相对偏移
+     * @param endHandle 终点控制柄相对偏移
+     * @param count 返回点数量，至少为 1
+     * @return Z 坐标固定为 0 的曲线点集
+     */
     fun generateBezierCurve(
         target: RelativeLocation,
         /** 起点的曲柄向量 */
         startHandle: RelativeLocation,
-        /** 终点的曲柄向量 (以 target为原点) 在Pr ae的速度,值曲线的下一个关键帧曲柄中 方向和startHandle相反 因此这里也要相反 */
+        /** 终点控制柄相对偏移；方向按曲线末端切线约定传入。 */
         endHandle: RelativeLocation,
         count: Int
     ): List<RelativeLocation> {
         require(count >= 1) { "Number of points must be at least 1" }
-        val end = target + endHandle
-        return List(count) { i ->
-            val t = when (count) {
-                1 -> 1.0
-                else -> i.toDouble() / (count - 1)
-            }
-
-            val u = 1 - t
-            val u2 = u * u
-            val t2 = t * t
-
-            // 三次贝塞尔曲线公式
-            val x = (u2 * u * 0.0) +          // P0 (0,0)
-                    (3 * u2 * t * startHandle.x) +  // P1 control point
-                    (3 * u * t2 * end.x) +    // P2 control point
-                    (t2 * t * target.x)           // P3 (end point)
-
-            val y = (u2 * u * 0.0) +
-                    (3 * u2 * t * startHandle.y) +
-                    (3 * u * t2 * end.y) +
-                    (t2 * t * target.y)
-
-            RelativeLocation(x, y, 0.0)
-        }
+        return generateEquidistantBezierCurve(
+            RelativeLocation(),
+            RelativeLocation(target.x, target.y, 0.0),
+            RelativeLocation(startHandle.x, startHandle.y, 0.0),
+            RelativeLocation(endHandle.x, endHandle.y, 0.0),
+            count
+        )
     }
 
     /**
@@ -1356,6 +1349,55 @@ object Math3DUtil {
         count: Int
     ): List<RelativeLocation> {
         require(count >= 1) { "Number of points must be at least 1" }
+        return generateEquidistantBezierCurve(start, end, startHandle, endHandle, count)
+    }
+
+    /**
+     * 生成三次贝塞尔曲线，并按参数 t 均匀采样。
+     *
+     * 这是旧版 [generateBezierCurve] 的采样方式。它适合需要保持参数进度一致的场景，
+     * 但曲率变化较大的空间曲线会出现相邻点间距不一致。
+     *
+     * @param target 终点
+     * @param startHandle 起点控制柄相对偏移
+     * @param endHandle 终点控制柄相对偏移
+     * @param count 返回点数量，至少为 1
+     * @return Z 坐标固定为 0 的曲线点集
+     */
+    fun generateSmoothBezierCurve(
+        target: RelativeLocation,
+        startHandle: RelativeLocation,
+        endHandle: RelativeLocation,
+        count: Int
+    ): List<RelativeLocation> {
+        require(count >= 1) { "Number of points must be at least 1" }
+        return generateSmoothBezierCurve(
+            RelativeLocation(),
+            RelativeLocation(target.x, target.y, 0.0),
+            RelativeLocation(startHandle.x, startHandle.y, 0.0),
+            RelativeLocation(endHandle.x, endHandle.y, 0.0),
+            count
+        )
+    }
+
+    /**
+     * 按参数 t 均匀采样一条空间三次贝塞尔曲线。
+     *
+     * @param start 起点
+     * @param end 终点
+     * @param startHandle 起点控制柄相对偏移
+     * @param endHandle 终点控制柄相对偏移
+     * @param count 返回点数量，至少为 1
+     * @return 按参数进度排列的曲线点集
+     */
+    fun generateSmoothBezierCurve(
+        start: RelativeLocation,
+        end: RelativeLocation,
+        startHandle: RelativeLocation,
+        endHandle: RelativeLocation,
+        count: Int
+    ): List<RelativeLocation> {
+        require(count >= 1) { "Number of points must be at least 1" }
         val startControlPoint = start + startHandle
         val endControlPoint = end + endHandle
         return List(count) { i ->
@@ -1364,6 +1406,240 @@ object Math3DUtil {
                 else -> i.toDouble() / (count - 1)
             }
             cubicBezierPoint(t, start, startControlPoint, endControlPoint, end)
+        }
+    }
+
+    /**
+     * 按参数 t 均匀采样由多个控制点组成的空间贝塞尔曲线。
+     *
+     * 节点按输入顺序连接为多段三次贝塞尔曲线；空集合返回空集合，单个节点会复制为
+     * [count] 个结果。
+     *
+     * @param controlNodes 按曲线顺序排列的节点，每个节点包含两个控制柄
+     * @param count 返回点数量，至少为 1
+     * @return 按参数进度排列的曲线点集
+     */
+    fun generateSmoothBezierCurve(
+        controlNodes: Collection<BezierNode>,
+        count: Int
+    ): List<RelativeLocation> {
+        require(count >= 1) { "Number of points must be at least 1" }
+        val nodes = controlNodes.map {
+            BezierNode(it.point.clone(), it.startHandle.clone(), it.endHandle.clone())
+        }
+        if (nodes.isEmpty()) {
+            return emptyList()
+        }
+        return List(count) { index ->
+            val t = when (count) {
+                1 -> 1.0
+                else -> index.toDouble() / (count - 1)
+            }
+            evaluateBezierNodePath(nodes, t)
+        }
+    }
+
+    /**
+     * 生成按曲线弧长等距采样的三次贝塞尔曲线。
+     *
+     * @param start 起点
+     * @param end 终点
+     * @param startHandle 起点控制柄相对偏移
+     * @param endHandle 终点控制柄相对偏移
+     * @param count 返回点数量，至少为 1
+     * @return 按空间弧长排列的曲线点集
+     */
+    fun generateEquidistantBezierCurve(
+        start: RelativeLocation,
+        end: RelativeLocation,
+        startHandle: RelativeLocation,
+        endHandle: RelativeLocation,
+        count: Int
+    ): List<RelativeLocation> {
+        require(count >= 1) { "Number of points must be at least 1" }
+        if (count == 1) {
+            return listOf(end.clone())
+        }
+
+        // 先把曲线按参数均匀切成高密度折线，再用累计弧长重采样。
+        val subdivisionCount = bezierSubdivisionCount(count)
+        val sampled = generateSmoothBezierCurve(
+            start,
+            end,
+            startHandle,
+            endHandle,
+            subdivisionCount
+        )
+        val result = sampleByDistance(sampled, count).toMutableList()
+        result[0] = start.clone()
+        result[result.lastIndex] = end.clone()
+        return result
+    }
+
+    /**
+     * 按曲线弧长等距采样一条原点起笔的二维三次贝塞尔曲线。
+     *
+     * @param target 终点
+     * @param startHandle 起点控制柄相对偏移
+     * @param endHandle 终点控制柄相对偏移
+     * @param count 返回点数量，至少为 1
+     * @return Z 坐标固定为 0 的曲线点集
+     */
+    fun generateEquidistantBezierCurve(
+        target: RelativeLocation,
+        startHandle: RelativeLocation,
+        endHandle: RelativeLocation,
+        count: Int
+    ): List<RelativeLocation> = generateEquidistantBezierCurve(
+        RelativeLocation(),
+        RelativeLocation(target.x, target.y, 0.0),
+        RelativeLocation(startHandle.x, startHandle.y, 0.0),
+        RelativeLocation(endHandle.x, endHandle.y, 0.0),
+        count
+    )
+
+    /**
+     * 生成由多个控制点组成、按曲线弧长等距采样的空间贝塞尔曲线。
+     *
+     * @param controlNodes 按曲线顺序排列的节点，每个节点包含两个控制柄
+     * @param count 返回点数量，至少为 1
+     * @return 按空间弧长排列的曲线点集
+     */
+    fun generateEquidistantBezierCurve(
+        controlNodes: Collection<BezierNode>,
+        count: Int
+    ): List<RelativeLocation> {
+        require(count >= 1) { "Number of points must be at least 1" }
+        val nodes = controlNodes.map {
+            BezierNode(it.point.clone(), it.startHandle.clone(), it.endHandle.clone())
+        }
+        if (nodes.isEmpty()) {
+            return emptyList()
+        }
+        if (nodes.size == 1) {
+            return List(count) { nodes[0].point.clone() }
+        }
+        if (count == 1) {
+            return listOf(nodes.last().point.clone())
+        }
+
+        // 先用高密度参数采样近似曲线弧长，再沿累计长度取等距点。
+        val subdivisionCount = bezierSubdivisionCount(count)
+        val sampled = generateSmoothBezierCurve(nodes, subdivisionCount)
+        val result = sampleByDistance(sampled, count).toMutableList()
+        result[0] = nodes.first().point.clone()
+        result[result.lastIndex] = nodes.last().point.clone()
+        return result
+    }
+
+    /**
+     * 生成由多个控制点组成、按曲线弧长等距采样的空间贝塞尔曲线。
+     *
+     * @param controlNodes 按曲线顺序排列的节点，每个节点包含两个控制柄
+     * @param count 返回点数量，至少为 1
+     * @return 按空间弧长排列的曲线点集
+     */
+    fun generateBezierCurve(
+        controlNodes: Collection<BezierNode>,
+        count: Int
+    ): List<RelativeLocation> = generateEquidistantBezierCurve(controlNodes, count)
+
+    private fun evaluateBezierNodePath(
+        nodes: List<BezierNode>,
+        t: Double
+    ): RelativeLocation {
+        if (nodes.size == 1) {
+            return nodes.first().point.clone()
+        }
+
+        // 将全局进度映射到相邻节点组成的分段，所有分段共享同一套弧长重采样逻辑。
+        val segmentCount = nodes.lastIndex
+        val scaled = t.coerceIn(0.0, 1.0) * segmentCount
+        val segmentIndex = minOf(scaled.toInt(), segmentCount - 1)
+        val localT = if (segmentIndex == segmentCount - 1 && t >= 1.0) {
+            1.0
+        } else {
+            scaled - segmentIndex
+        }
+        val start = nodes[segmentIndex]
+        val end = nodes[segmentIndex + 1]
+        return cubicBezierPoint(
+            localT,
+            start.point,
+            start.point + start.startHandle,
+            end.point + end.endHandle,
+            end.point
+        )
+    }
+
+    /** 根据目标点数生成有限的高密度预采样数量。 */
+    private fun bezierSubdivisionCount(count: Int): Int {
+        return (count.toLong() * 256L).coerceIn(256L, 16384L).toInt()
+    }
+
+    /**
+     * 按折线累计弧长从点集中取 [count] 个等距点。
+     *
+     * 该方法用于把高密度曲线采样结果重新映射为空间距离均匀的点集。
+     *
+     * @param polyline 按路径顺序排列的折线点
+     * @param count 返回点数量，至少为 1
+     * @return 按累计弧长排列的等距点集
+     */
+    fun sampleByDistance(
+        polyline: List<RelativeLocation>,
+        count: Int
+    ): List<RelativeLocation> {
+        require(count >= 1) { "Number of points must be at least 1" }
+        if (polyline.isEmpty()) {
+            return emptyList()
+        }
+        if (count == 1) {
+            return listOf(polyline.last().clone())
+        }
+        if (polyline.size == 1) {
+            return List(count) { polyline[0].clone() }
+        }
+
+        // 先计算每个折线顶点到路径起点的累计长度，后续可用二分查找定位目标距离。
+        val cumulativeLengths = DoubleArray(polyline.size)
+        for (index in 1 until polyline.size) {
+            cumulativeLengths[index] = cumulativeLengths[index - 1] +
+                    polyline[index - 1].distance(polyline[index])
+        }
+
+        val totalLength = cumulativeLengths.last()
+        if (totalLength == 0.0) {
+            return List(count) { polyline.first().clone() }
+        }
+
+        return List(count) { index ->
+            // 将归一化索引换算为累计长度，再在线性折线段内插值。
+            val targetLength = totalLength * index / (count - 1)
+            var high = cumulativeLengths.binarySearch(targetLength)
+            if (high < 0) {
+                high = -high - 1
+            }
+            if (high <= 0) {
+                return@List polyline.first().clone()
+            }
+            if (high >= cumulativeLengths.size) {
+                return@List polyline.last().clone()
+            }
+
+            val low = high - 1
+            val segmentLength = cumulativeLengths[high] - cumulativeLengths[low]
+            if (segmentLength == 0.0) {
+                return@List polyline[high].clone()
+            }
+            val ratio = (targetLength - cumulativeLengths[low]) / segmentLength
+            val start = polyline[low]
+            val end = polyline[high]
+            RelativeLocation(
+                start.x + (end.x - start.x) * ratio,
+                start.y + (end.y - start.y) * ratio,
+                start.z + (end.z - start.z) * ratio
+            )
         }
     }
 

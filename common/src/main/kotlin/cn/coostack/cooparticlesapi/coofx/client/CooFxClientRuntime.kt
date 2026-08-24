@@ -32,6 +32,7 @@ import cn.coostack.cooparticlesapi.coofx.render.compiled.CooFxDepthTest
 import cn.coostack.cooparticlesapi.coofx.render.compiled.CooFxLightMode
 import cn.coostack.cooparticlesapi.coofx.render.gpu.CooFxGpuPackageRegistry
 import cn.coostack.cooparticlesapi.coofx.render.gpu.CooFxRenderThreadGuard
+import cn.coostack.cooparticlesapi.coofx.runtime.model.CooFxModelDebugInstance
 import cn.coostack.cooparticlesapi.coofx.runtime.model.CooFxModelInstanceManager
 import cn.coostack.cooparticlesapi.coofx.runtime.model.CooFxResolvedModelAsset
 import cn.coostack.cooparticlesapi.coofx.runtime.mesh.CooFxMeshEmitterFactory
@@ -147,6 +148,9 @@ internal class CooFxClientRuntime(
 
     /** 返回当前存活的 CooFX model instance 数。 */
     fun activeModelCount(): Int = synchronized(lock) { modelManager.instanceCount }
+
+    /** 返回模型实例的只读快照，供调试渲染读取 GPU 侧实际存活的实例。 */
+    fun debugModelInstances(): List<CooFxModelDebugInstance> = synchronized(lock) { modelManager.debugInstances() }
 
     override fun play(request: CooFxPlayRequest): CooFxPlayResult {
         val prepared = snapshot.assets[request.resourceId]

@@ -292,6 +292,27 @@ internal object CooTerrainEffectRegistry {
     }
 
     /**
+     * 返回指定维度当前持有的全部效果组，包含等待 Pipeline 的未解析组。
+     *
+     * 仅供调试渲染读取，不参与任何区块重建判定。
+     *
+     * @param dimension 查询维度 ID
+     * @return 已解析组在前、按组 ID 排序的调试快照
+     */
+    fun debugGroups(dimension: ResourceLocation): List<CooTerrainEffectDebugGroup> {
+        val resolved = groups.entries.asSequence()
+            .filter { (key, _) -> key.dimension == dimension }
+            .map { (_, stored) -> CooTerrainEffectDebugGroup(stored.snapshot, true) }
+        val pending = pendingGroups.entries.asSequence()
+            .filter { (key, _) -> key.dimension == dimension && !groups.containsKey(key) }
+            .map { (_, snapshot) -> CooTerrainEffectDebugGroup(snapshot, false) }
+        return (resolved + pending)
+            .sortedWith(compareByDescending<CooTerrainEffectDebugGroup> { it.resolved }
+                .thenBy { it.snapshot.id.toString() })
+            .toList()
+    }
+
+    /**
      * 查询指定位置优先级最高的已生效效果组。
      *
      * @param position 查询方块坐标

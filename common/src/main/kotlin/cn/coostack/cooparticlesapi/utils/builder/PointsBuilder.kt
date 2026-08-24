@@ -10,6 +10,7 @@ import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.MathPresets
 import cn.coostack.cooparticlesapi.utils.NoiseMode
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
+import cn.coostack.cooparticlesapi.utils.BezierNode
 import net.minecraft.core.BlockPos
 import net.minecraft.world.phys.Vec3
 import cn.coostack.cooparticlesapi.extend.asRelative
@@ -467,6 +468,38 @@ class PointsBuilder {
         endHandle: RelativeLocation,
         count: Int
     ): PointsBuilder = addWith { generateBezierCurve(start, end, startHandle, endHandle, count) }
+
+    /**
+     * 添加由多个控制点组成、按曲线弧长等距采样的空间贝塞尔曲线。
+     *
+     * @param controlNodes 按曲线顺序排列的节点，每个节点带有入射和出射控制柄
+     * @param count 返回点数量，至少为 1
+     * @return 当前 PointsBuilder
+     */
+    fun addBezierCurve(
+        controlNodes: Collection<BezierNode>,
+        count: Int
+    ): PointsBuilder = addWith { generateBezierCurve(controlNodes, count) }
+
+    /**
+     * 按空间贝塞尔曲线等距放置点集。
+     *
+     * @param builder 贝塞尔分布构建器；调用时会使用其点集快照
+     * @return 当前 PointsBuilder
+     *
+     * 曲线分布器没有节点时，以原点作为唯一放置位置；分布器没有点集时不会加入任何点。
+     */
+    fun applyBezierDistribution(builder: BezierDistributionBuilder): PointsBuilder =
+        addPoints(builder.build())
+
+    /**
+     * 使用 DSL 配置空间贝塞尔曲线分布。
+     *
+     * @param handler 分布构建器配置逻辑
+     * @return 当前 PointsBuilder
+     */
+    fun applyBezierDistribution(handler: BezierDistributionBuilder.() -> Unit): PointsBuilder =
+        applyBezierDistribution(BezierDistributionBuilder().apply(handler))
 
     /**
      * 合并另一个 builder 的点集（会复制加入）。
@@ -1383,7 +1416,7 @@ class PointsBuilder {
     fun createAsBlockPos(): Set<BlockPos> =
         points.asSequence().map { ofFloored(it.toVector()) }.toMutableSet()
 
-    /**
+     /**
      * 克隆一个新的 builder（包含当前 axis 与点集副本）。
      */
     fun cloneBuilder(): PointsBuilder = of(axis, create())

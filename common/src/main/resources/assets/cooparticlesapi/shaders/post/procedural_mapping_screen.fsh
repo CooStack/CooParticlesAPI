@@ -54,7 +54,7 @@ void main() {
     float opaqueDepth = texture(TerrainOpaqueDepth, screen_uv).r;
     float translucentBeforeDepth = texture(TerrainTranslucentDepthBefore, screen_uv).r;
     float translucentAfterDepth = texture(TerrainTranslucentDepthAfter, screen_uv).r;
-    float depthTolerance = max(0.0001, sceneDepth * 0.00005);
+    float depthTolerance = max(0.000001, sceneDepth * 0.000001);
     bool handDepthChanged = abs(sceneDepth - sceneDepthNoHand) > depthTolerance;
     bool visibleOpaqueTerrain = !handDepthChanged && opaqueDepth < 0.999999 &&
         abs(sceneDepth - opaqueDepth) <= depthTolerance;

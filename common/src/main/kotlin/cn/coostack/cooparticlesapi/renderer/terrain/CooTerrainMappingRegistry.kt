@@ -105,6 +105,20 @@ internal object CooTerrainMappingRegistry {
     /** 返回客户端当前持有的程序化 Terrain mapping 实例数。 */
     fun activeMappingCount(): Int = mappings.size
 
+    /**
+     * 返回指定维度当前持有的全部 mapping 实例，包含暂停和已过期的实例。
+     *
+     * 仅供调试渲染读取，与 [active] 不同的是不做生命周期过滤，便于观察“为什么没有生效”。
+     *
+     * @param dimension 查询维度 ID
+     * @return 按优先级和序号排序的 mapping 实例
+     */
+    fun debugMappings(dimension: ResourceLocation): List<CooTerrainMappingInstance> = mappings.values
+        .asSequence()
+        .filter { it.dimension == dimension }
+        .sortedWith(mappingComparator())
+        .toList()
+
     /** 返回包含区域和 uniform 更新的状态版本，供运行时快照观察。 */
     fun revision(): Long = changed.get()
 
