@@ -1,0 +1,27 @@
+{
+  "$schema": "cooparticlesapi:coofx/schema/v1",
+  "schemaVersion": 1,
+  "coordinateSystem": "coofx_rh_y_up_z_south",
+  "assetSeed": "0123456789abcdef",
+  "model": "cooparticlesapi:coofx/models/emitter/emitter.gltf",
+  "scene": 0,
+  "clips": [],
+  "materials": [],
+  "emitters": [],
+  "requiredExtensions": [],
+  "extensions": {
+    "cooparticlesapi:blender_export": {
+      "sourceCoordinateSystem": "blender_rh_z_up_minus_y_forward",
+      "targetCoordinateSystem": "coofx_rh_y_up_z_south",
+      "vectorMapping": [
+        "x",
+        "z",
+        "-y"
+      ],
+      "unitScale": 1.0,
+      "handednessChanged": false,
+      "windingChanged": false,
+      "conversionOwner": "blender_official_gltf_exporter_and_coofx_emitter_extractor"
+    }
+  }
+}
