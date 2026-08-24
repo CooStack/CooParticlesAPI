@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi.performance.client
 
+import cn.coostack.cooparticlesapi.key.isPhysicallyDown
 import com.mojang.blaze3d.platform.InputConstants
 import net.minecraft.client.KeyMapping
 import net.minecraft.client.Minecraft
@@ -40,7 +41,7 @@ object PerformanceStatusKeyBindings {
 
     /** 检测组合键上升沿，并只在没有其他界面时打开 Status GUI。 */
     fun tick(client: Minecraft) {
-        val chordDown = modifier.isDown && trigger.isDown
+        val chordDown = modifier.isPhysicallyDown(client) && trigger.isPhysicallyDown(client)
         if (chordDown && !chordWasDown && client.screen == null) {
             PerformanceStatusClientController.openGui()
         }

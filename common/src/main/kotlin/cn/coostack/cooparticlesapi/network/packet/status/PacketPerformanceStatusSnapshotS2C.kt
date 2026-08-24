@@ -6,6 +6,7 @@ import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
 import cn.coostack.cooparticlesapi.network.packet.api.CooPacket
 import cn.coostack.cooparticlesapi.performance.PerformanceStatusNetworkTotals
 import cn.coostack.cooparticlesapi.performance.PerformanceStatusServerSnapshot
+import cn.coostack.cooparticlesapi.performance.PerformanceStatusVanillaPacketTotals
 import net.minecraft.resources.ResourceLocation
 
 /** 服务端返回给单个查看者的固定字段 Status 快照。 */
@@ -31,6 +32,12 @@ class PacketPerformanceStatusSnapshotS2C : CooPacket() {
 
     /** 服务端 Emitter 数。 */
     @CodecField var emitters: Int = 0
+
+    /** 服务端 JVM 累计垃圾收集次数。 */
+    @CodecField var gcCollectionCount: Long = 0L
+
+    /** 服务端 JVM 累计垃圾收集耗时毫秒。 */
+    @CodecField var gcCollectionTimeMs: Long = 0L
 
     /** 服务端最大堆字节数。 */
     @CodecField var heapMaxBytes: Long = 0L
@@ -89,6 +96,12 @@ class PacketPerformanceStatusSnapshotS2C : CooPacket() {
     /** 当前可维持 TPS。 */
     @CodecField var tps: Double = 20.0
 
+    /** 服务端原版 Connection 累计收到的 Packet 数。 */
+    @CodecField var vanillaNetworkReceivedPackets: Long = 0L
+
+    /** 服务端原版 Connection 累计发送的 Packet 数。 */
+    @CodecField var vanillaNetworkSentPackets: Long = 0L
+
     /** 返回该业务包的稳定协议 ID。 */
     override fun id(): ResourceLocation {
         return ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, PACKET_ID)
@@ -111,6 +124,8 @@ class PacketPerformanceStatusSnapshotS2C : CooPacket() {
             displayEntities = displayEntities,
             emitters = emitters,
             compositions = compositions,
+            gcCollectionCount = gcCollectionCount,
+            gcCollectionTimeMs = gcCollectionTimeMs,
             terrainEffectGroups = terrainEffectGroups,
             terrainMappings = terrainMappings,
             soundInstances = soundInstances,
@@ -124,6 +139,10 @@ class PacketPerformanceStatusSnapshotS2C : CooPacket() {
                 sentBytes = networkSentBytes,
                 receivedPackets = networkReceivedPackets,
                 receivedBytes = networkReceivedBytes,
+            ),
+            vanillaPackets = PerformanceStatusVanillaPacketTotals(
+                sentPackets = vanillaNetworkSentPackets,
+                receivedPackets = vanillaNetworkReceivedPackets,
             ),
         )
     }
@@ -143,6 +162,8 @@ class PacketPerformanceStatusSnapshotS2C : CooPacket() {
                 packet.compositions = snapshot.compositions
                 packet.displayEntities = snapshot.displayEntities
                 packet.emitters = snapshot.emitters
+                packet.gcCollectionCount = snapshot.gcCollectionCount
+                packet.gcCollectionTimeMs = snapshot.gcCollectionTimeMs
                 packet.heapMaxBytes = snapshot.heapMaxBytes
                 packet.heapUsedBytes = snapshot.heapUsedBytes
                 packet.maxMspt = snapshot.maxMspt
@@ -162,6 +183,8 @@ class PacketPerformanceStatusSnapshotS2C : CooPacket() {
                 packet.terrainEffectGroups = snapshot.terrainEffectGroups
                 packet.terrainMappings = snapshot.terrainMappings
                 packet.tps = snapshot.tps
+                packet.vanillaNetworkReceivedPackets = snapshot.vanillaPackets.receivedPackets
+                packet.vanillaNetworkSentPackets = snapshot.vanillaPackets.sentPackets
             }
         }
     }

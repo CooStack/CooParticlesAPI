@@ -10,10 +10,12 @@ import cn.coostack.cooparticlesapi.network.packet.status.PacketPerformanceStatus
 import cn.coostack.cooparticlesapi.network.particle.composition.manager.ParticleCompositionManager
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersManager
 import cn.coostack.cooparticlesapi.performance.PerformanceStatusControlAction
+import cn.coostack.cooparticlesapi.performance.PerformanceStatusJvmMetrics
 import cn.coostack.cooparticlesapi.performance.PerformanceStatusNetworkEndpoint
 import cn.coostack.cooparticlesapi.performance.PerformanceStatusNetworkMetrics
 import cn.coostack.cooparticlesapi.performance.PerformanceStatusNetworkTotals
 import cn.coostack.cooparticlesapi.performance.PerformanceStatusServerSnapshot
+import cn.coostack.cooparticlesapi.performance.PerformanceStatusVanillaPacketTotals
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import cn.coostack.cooparticlesapi.renderer.client.ClientRenderEntityManager
 import cn.coostack.cooparticlesapi.renderer.post.CooPostEffects
@@ -31,6 +33,7 @@ import java.nio.file.Path
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.ArrayDeque
+import java.util.ArrayList
 
 /**
  * 客户端 Status 会话、按需服务端请求、实时趋势窗口和流式 CSV 的单一所有者。
@@ -74,14 +77,32 @@ object PerformanceStatusClientController {
     /** 当前会话下一行样本序号。 */
     private var nextSampleIndex = 0L
 
-    /** 上一行客户端 CooPacket 累计值。 */
+    /** 上一次客户端 CooPacket 累计值。 */
     private var previousClientNetworkTotals = PerformanceStatusNetworkTotals(0L, 0L, 0L, 0L)
+
+    /** 上一次客户端原版 Packet 累计值。 */
+    private var previousClientVanillaPacketTotals = PerformanceStatusVanillaPacketTotals(0L, 0L)
 
     /** 上一次收到的服务端 CooPacket 累计值。 */
     private var previousServerNetworkTotals: PerformanceStatusNetworkTotals? = null
 
+    /** 上一次收到的服务端原版 Packet 累计值。 */
+    private var previousServerVanillaPacketTotals: PerformanceStatusVanillaPacketTotals? = null
+
     /** 等待写入下一行的服务端网络增量；没有新快照时为 null。 */
     private var pendingServerNetworkDelta: PerformanceStatusNetworkTotals? = null
+
+    /** 等待纳入当前原版 Packet 聚合窗口的服务端增量。 */
+    private var pendingServerVanillaPacketDelta: PerformanceStatusVanillaPacketTotals? = null
+
+    /** 当前原版 Packet 聚合窗口的客户端累计增量。 */
+    private var clientVanillaPacketBucket = PerformanceStatusVanillaPacketTotals(0L, 0L)
+
+    /** 当前聚合窗口已经采集的客户端 tick 数。 */
+    private var vanillaPacketAggregationTickCount = 0
+
+    /** 当前正在使用的原版 Packet 聚合窗口大小。 */
+    private var vanillaPacketAggregationTicks = 1
 
     /** 最近一次有效服务端快照。 */
     private var latestServerSnapshot: PerformanceStatusServerSnapshot? = null
@@ -92,11 +113,25 @@ object PerformanceStatusClientController {
     /** 最近一行客户端/服务端关联样本。 */
     private var latestSample: PerformanceStatusSample? = null
 
-    /** GUI 使用的有限趋势历史。 */
-    private val history = ArrayDeque<PerformanceStatusSample>()
+    /** GUI 趋势历史最大保留时长，单位为秒；由 Status GUI 输入框调整。 */
+    private var historyDurationSeconds = 60L
 
-    /** 每个客户端 tick 发布一次、供渲染帧重复读取的不可变趋势快照。 */
-    private var publishedHistory: List<PerformanceStatusSample> = emptyList()
+    /** 返回 GUI 趋势历史最大保留时长，单位为秒。 */
+    fun historyDurationSeconds(): Long = historyDurationSeconds
+
+    /** 更新 GUI 趋势历史最大保留时长；最小值为 1 秒。 */
+    fun updateHistoryDurationSeconds(seconds: Long): Boolean {
+        if (seconds < 1L) return false
+        historyDurationSeconds = seconds
+        trimHistory()
+        return true
+    }
+
+    /** GUI 使用的按时长裁剪、可随机访问趋势历史。 */
+    private val history = ArrayList<PerformanceStatusSample>()
+
+    /** 趋势历史中第一个有效样本的位置，避免每 tick 移动整个数组。 */
+    private var historyStartIndex = 0
 
     /** 返回当前是否正在持续记录。 */
     fun isRecording(): Boolean = writer != null
@@ -104,11 +139,49 @@ object PerformanceStatusClientController {
     /** 返回当前是否需要采样和按需请求服务端指标。 */
     private fun isActive(): Boolean = isRecording() || guiOpen
 
+    /** 跨 GUI 打开周期保留的原始指标和比值曲线选择。 */
+    private val selectedChartSelections = linkedSetOf<PerformanceStatusChartSelection>(
+        PerformanceStatusChartSelection.Metric(PerformanceStatusChartMetric.CLIENT_FPS),
+        PerformanceStatusChartSelection.Metric(PerformanceStatusChartMetric.SERVER_TPS),
+        PerformanceStatusChartSelection.Metric(PerformanceStatusChartMetric.CLIENT_CPARTICLES),
+    )
+
+    /** 返回按选择顺序排列的图表曲线副本。 */
+    internal fun selectedChartSelections(): List<PerformanceStatusChartSelection> = selectedChartSelections.toList()
+
+    /** 保存当前 Screen 的原始指标和比值曲线选择，最多保留 12 项。 */
+    internal fun updateSelectedChartSelections(selections: Collection<PerformanceStatusChartSelection>) {
+        selectedChartSelections.clear()
+        selectedChartSelections.addAll(selections.take(PERFORMANCE_STATUS_MAX_SELECTED_SERIES))
+    }
+
+    /** 返回当前仍被选中的原始指标，供兼容性测试和旧调用方读取。 */
+    internal fun selectedChartMetrics(): List<PerformanceStatusChartMetric> {
+        return selectedChartSelections.mapNotNull { selection ->
+            (selection as? PerformanceStatusChartSelection.Metric)?.metric
+        }
+    }
+
+    /** 保存原始指标选择；旧调用方不会清除已存在的比值曲线。 */
+    internal fun updateSelectedChartMetrics(metrics: Collection<PerformanceStatusChartMetric>) {
+        val rawSelections = metrics.map(PerformanceStatusChartSelection::Metric)
+        val ratios = selectedChartSelections.filterIsInstance<PerformanceStatusChartSelection.Ratio>()
+        updateSelectedChartSelections(rawSelections + ratios)
+    }
+
+    /** 返回当前原版 Packet 聚合窗口，单位为客户端 tick。 */
+    fun vanillaPacketAggregationTicks(): Int {
+        return CooParticlesServices.API_CONFIG_MANAGER.getConfig().statusVanillaPacketAggregationTicks
+    }
+
     /** 返回最近一行样本。 */
     fun latestSample(): PerformanceStatusSample? = latestSample
 
-    /** 返回 GUI 可安全重复遍历、且只在客户端 tick 更新的趋势快照。 */
-    fun historySnapshot(): List<PerformanceStatusSample> = publishedHistory
+    /** 返回当前客户端线程内可随机访问的趋势窗口，不复制完整历史。 */
+    fun historySnapshot(): List<PerformanceStatusSample> {
+        if (historyStartIndex >= history.size) return emptyList()
+        return history.subList(historyStartIndex, history.size)
+    }
 
     /** 返回当前或最近一次完成会话的 CSV 路径。 */
     fun outputPath(): Path? = currentOutputPath ?: lastOutputPath
@@ -172,7 +245,9 @@ object PerformanceStatusClientController {
         latestServerSnapshot = null
         latestServerReceivedAtNanos = 0L
         previousServerNetworkTotals = null
+        previousServerVanillaPacketTotals = null
         pendingServerNetworkDelta = null
+        pendingServerVanillaPacketDelta = null
         serverRefreshIntervalTicks = null
         if (closeScreen) {
             val client = Minecraft.getInstance()
@@ -223,7 +298,9 @@ object PerformanceStatusClientController {
         latestServerSnapshot = null
         latestServerReceivedAtNanos = 0L
         previousServerNetworkTotals = null
+        previousServerVanillaPacketTotals = null
         pendingServerNetworkDelta = null
+        pendingServerVanillaPacketDelta = null
         requestDelayTicks = 0
         serverRefreshIntervalTicks = null
     }
@@ -243,13 +320,21 @@ object PerformanceStatusClientController {
         previousClientNetworkTotals = PerformanceStatusNetworkMetrics.snapshot(
             PerformanceStatusNetworkEndpoint.CLIENT
         )
+        previousClientVanillaPacketTotals = PerformanceStatusNetworkMetrics.vanillaSnapshot(
+            PerformanceStatusNetworkEndpoint.CLIENT
+        )
         previousServerNetworkTotals = null
+        previousServerVanillaPacketTotals = null
         pendingServerNetworkDelta = null
+        pendingServerVanillaPacketDelta = null
+        clientVanillaPacketBucket = PerformanceStatusVanillaPacketTotals(0L, 0L)
+        vanillaPacketAggregationTickCount = 0
+        vanillaPacketAggregationTicks = vanillaPacketAggregationTicks()
         latestServerSnapshot = null
         latestServerReceivedAtNanos = 0L
         latestSample = null
         history.clear()
-        publishedHistory = emptyList()
+        historyStartIndex = 0
         requestDelayTicks = 0
         serverRefreshIntervalTicks = null
         cancelPendingRequest()
@@ -291,6 +376,9 @@ object PerformanceStatusClientController {
         val previousNetwork = previousServerNetworkTotals
         pendingServerNetworkDelta = previousNetwork?.let(snapshot.cooPackets::deltaFrom)
         previousServerNetworkTotals = snapshot.cooPackets
+        val previousVanillaPackets = previousServerVanillaPacketTotals
+        pendingServerVanillaPacketDelta = previousVanillaPackets?.let(snapshot.vanillaPackets::deltaFrom)
+        previousServerVanillaPacketTotals = snapshot.vanillaPackets
         latestServerSnapshot = snapshot
         latestServerReceivedAtNanos = System.nanoTime()
         serverRefreshIntervalTicks = snapshot.refreshIntervalTicks
@@ -314,7 +402,26 @@ object PerformanceStatusClientController {
         val clientNetwork = PerformanceStatusNetworkMetrics.snapshot(PerformanceStatusNetworkEndpoint.CLIENT)
         val clientNetworkDelta = clientNetwork.deltaFrom(previousClientNetworkTotals)
         previousClientNetworkTotals = clientNetwork
+        val clientVanillaPackets = PerformanceStatusNetworkMetrics.vanillaSnapshot(
+            PerformanceStatusNetworkEndpoint.CLIENT
+        )
+        clientVanillaPacketBucket += clientVanillaPackets.deltaFrom(previousClientVanillaPacketTotals)
+        previousClientVanillaPacketTotals = clientVanillaPackets
+        val configuredAggregationTicks = vanillaPacketAggregationTicks()
+        if (configuredAggregationTicks != vanillaPacketAggregationTicks) {
+            vanillaPacketAggregationTicks = configuredAggregationTicks
+            vanillaPacketAggregationTickCount = 0
+            clientVanillaPacketBucket = PerformanceStatusVanillaPacketTotals(0L, 0L)
+        }
+        vanillaPacketAggregationTickCount++
+        val aggregationWindowComplete = vanillaPacketAggregationTickCount >= vanillaPacketAggregationTicks
+        val clientVanillaPacketDelta = clientVanillaPacketBucket.takeIf { aggregationWindowComplete }
+        if (aggregationWindowComplete) {
+            vanillaPacketAggregationTickCount = 0
+            clientVanillaPacketBucket = PerformanceStatusVanillaPacketTotals(0L, 0L)
+        }
         val runtime = Runtime.getRuntime()
+        val gc = PerformanceStatusJvmMetrics.snapshot()
         val fps = client.fps
         val clientSnapshot = PerformanceStatusClientSnapshot(
             fps = fps,
@@ -339,9 +446,12 @@ object PerformanceStatusClientController {
             postEffects = CooPostEffects.client.activeCount(),
             graphicsShaders = ShaderProgramRegistry.graphicsCount(),
             computeShaders = ShaderProgramRegistry.computeCount(),
+            gcCollectionCount = gc.collectionCount,
+            gcCollectionTimeMs = gc.collectionTimeMs,
             heapUsedBytes = runtime.totalMemory() - runtime.freeMemory(),
             heapMaxBytes = runtime.maxMemory(),
             cooPackets = clientNetwork,
+            vanillaPackets = clientVanillaPackets,
         )
         val serverSnapshot = latestServerSnapshot
         val sample = PerformanceStatusSample(
@@ -350,18 +460,37 @@ object PerformanceStatusClientController {
             elapsedMillis = (nowNanos - startedAtNanos).coerceAtLeast(0L) / 1_000_000L,
             client = clientSnapshot,
             clientNetworkDelta = clientNetworkDelta,
+            clientVanillaPacketDelta = clientVanillaPacketDelta,
+            vanillaPacketAggregationTicks = vanillaPacketAggregationTicks,
             server = serverSnapshot,
             serverSnapshotAgeMillis = serverSnapshot?.let {
                 (nowNanos - latestServerReceivedAtNanos).coerceAtLeast(0L) / 1_000_000L
             },
             serverNetworkDelta = pendingServerNetworkDelta,
+            serverVanillaPacketDelta = pendingServerVanillaPacketDelta,
         )
         pendingServerNetworkDelta = null
+        pendingServerVanillaPacketDelta = null
         latestSample = sample
-        history.addLast(sample)
-        while (history.size > 240) history.removeFirst()
-        publishedHistory = history.toList()
+        history.add(sample)
+        trimHistory()
         writeSample(sample)
+    }
+
+    /** 按最新样本的 elapsedMillis 移动有效起点，并分批压缩失效前缀。 */
+    private fun trimHistory() {
+        val newestElapsedMillis = history.lastOrNull()?.elapsedMillis ?: return
+        val maximumDurationMillis = historyDurationSeconds.toDouble() * 1_000.0
+        while (historyStartIndex < history.lastIndex) {
+            val oldest = history[historyStartIndex]
+            if ((newestElapsedMillis - oldest.elapsedMillis).toDouble() <= maximumDurationMillis) break
+            historyStartIndex++
+        }
+        val compactThreshold = 2_048
+        if (historyStartIndex >= compactThreshold) {
+            history.subList(0, historyStartIndex).clear()
+            historyStartIndex = 0
+        }
     }
 
     /** 写入一行样本，并按固定小批次刷新缓冲区。 */

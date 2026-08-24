@@ -48,6 +48,8 @@ class PacketUpdateTestControllerC2S() : CooPacket() {
         if (!sender.isCreative) return
         val blockEntity = TestControllerBlockAccess.find(sender.server, dimension, blockPos) ?: return
         val wasRunning = blockEntity.isRunning()
+        // 待人工复核时重启会丢弃尚未给出的复核结果，交由随后的复核包决定测试组去向。
+        val pendingReview = blockEntity.hasPendingReview()
         val offset = Vec3(offsetX, offsetY, offsetZ)
         val forward = Vec3(forwardX, forwardY, forwardZ)
         val changed = blockEntity.updateConfig(
@@ -68,7 +70,7 @@ class PacketUpdateTestControllerC2S() : CooPacket() {
             optionParamIndex = optionParamIndex,
             optionParamValues = TestOptionParamCodec.decodeOptionValues(optionParamValues)
         )
-        if (wasRunning && changed) {
+        if (wasRunning && changed && !pendingReview) {
             blockEntity.startTest()
         }
         if (reopen) {

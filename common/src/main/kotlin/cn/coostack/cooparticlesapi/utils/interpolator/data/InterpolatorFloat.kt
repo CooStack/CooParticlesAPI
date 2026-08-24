@@ -10,14 +10,10 @@ class InterpolatorFloat( value: Float) : AbstractInterpolatorData<Float>(value) 
         @JvmStatic
         val CODEC = StreamCodec.of<FriendlyByteBuf, InterpolatorFloat>(
             { buf, data ->
-                buf.writeFloat(data.last)
                 buf.writeFloat(data.value)
             }, {
-                val last = it.readFloat()
                 val current = it.readFloat()
-                InterpolatorFloat(current).apply {
-                    this.last = last
-                }
+                InterpolatorFloat(current)
             }
         )
     }

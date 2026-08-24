@@ -33,6 +33,7 @@ interface InterpolatorData<T> {
 
     /**
      * 在tick方法内调用
+     *
      * 设计上会修改当前帧 (currentFrame) 作为新 `pos` 然后设置currentFrame = null
      * 当currentFrame不为null时， interpolator会获取到 lastUpload->currentFrame的插值
      *

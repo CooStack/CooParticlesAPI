@@ -9,14 +9,10 @@ class InterpolatorQuaternionf(value: Quaternionf) : AbstractInterpolatorData<Qua
         @JvmStatic
         val CODEC = StreamCodec.of<FriendlyByteBuf, InterpolatorQuaternionf>(
             { buf, data ->
-                buf.writeQuaternion(data.last)
                 buf.writeQuaternion(data.value)
             }, {
-                val last = it.readQuaternion()
                 val current = it.readQuaternion()
-                InterpolatorQuaternionf(current).apply {
-                    this.last = last
-                }
+                InterpolatorQuaternionf(current)
             }
         )
     }

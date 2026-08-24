@@ -127,7 +127,7 @@ object CooKeyBindingManager {
         val client = Minecraft.getInstance()
         val isGuiOpen = client.screen != null
         states.forEach { state ->
-            val down = isPhysicallyDown(state.mapping, client)
+            val down = state.mapping.isPhysicallyDown(client)
             if (!down) {
                 state.blockedUntilRelease = false
             }
@@ -185,21 +185,6 @@ object CooKeyBindingManager {
         }
     }
 
-    private fun isPhysicallyDown(mapping: KeyMapping, client: Minecraft): Boolean {
-        val window = client.window.window
-        for (button in 0..GLFW.GLFW_MOUSE_BUTTON_LAST) {
-            if (mapping.matchesMouse(button)) {
-                return GLFW.glfwGetMouseButton(window, button) == GLFW.GLFW_PRESS
-            }
-        }
-        for (keyCode in 0..GLFW.GLFW_KEY_LAST) {
-            if (mapping.matches(keyCode, 0)) {
-                return InputConstants.isKeyDown(window, keyCode)
-            }
-        }
-        return mapping.isDown
-    }
-
     private fun registerIfPossible(state: KeyState) {
         val registerer = registrar ?: return
         if (registeredIds.add(state.id)) {
@@ -218,4 +203,25 @@ object CooKeyBindingManager {
         )
         CooParticlesServices.CLIENT_NETWORK.send(PacketKeyActionC2S(keyActions))
     }
+}
+
+/**
+ * 读取 KeyMapping 当前绑定键的物理状态。
+ *
+ * Minecraft 会特殊处理 F3 等调试键，导致 KeyMapping.isDown 可能没有反映真实键盘状态；客户端组合键和
+ * 普通 Coo 按键都必须通过此入口保持相同判定。鼠标和键盘重绑均受支持，无法解析时才回退到映射状态。
+ */
+internal fun KeyMapping.isPhysicallyDown(client: Minecraft): Boolean {
+    val window = client.window.window
+    for (button in 0..GLFW.GLFW_MOUSE_BUTTON_LAST) {
+        if (matchesMouse(button)) {
+            return GLFW.glfwGetMouseButton(window, button) == GLFW.GLFW_PRESS
+        }
+    }
+    for (keyCode in 0..GLFW.GLFW_KEY_LAST) {
+        if (matches(keyCode, 0)) {
+            return InputConstants.isKeyDown(window, keyCode)
+        }
+    }
+    return isDown
 }

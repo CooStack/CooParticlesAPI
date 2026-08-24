@@ -72,6 +72,9 @@ object ParticleCompositionManager {
     @JvmStatic
     fun loadedClientCount(): Int = loadedClientCompositions.size()
 
+    /** 返回当前客户端活动的全部 Composition 快照，包含嵌套实例。 */
+    internal fun debugCompositions(): List<ParticleComposition> = loadedClientCompositions.snapshot()
+
     /** 返回服务端当前活动 Composition 实例数。 */
     fun loadedServerCount(): Int = serverView.size
 
@@ -336,6 +339,12 @@ private class WeakIdentitySet<T : Any> {
     fun size(): Int {
         removeCollectedReferences()
         return references.size
+    }
+
+    @Synchronized
+    fun snapshot(): List<T> {
+        removeCollectedReferences()
+        return references.mapNotNull { it.get() }
     }
 
     @Synchronized

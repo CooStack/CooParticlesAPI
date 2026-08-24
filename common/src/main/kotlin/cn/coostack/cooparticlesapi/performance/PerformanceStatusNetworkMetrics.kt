@@ -1,13 +1,49 @@
 package cn.coostack.cooparticlesapi.performance
 
+import java.util.concurrent.atomic.AtomicLong
+
+/**
+ * 某个端点在当前 JVM 内累计的原版 Packet 数量。
+ *
+ * 字节数不在此结构中估算；原版 Packet 对象没有稳定的对象大小语义，避免把 JVM 对象大小
+ * 冒充网络传输字节数。该结构用于按窗口统计实际收发包数量。
+ *
+ * @property sentPackets 已提交到 Connection 的原版包数
+ * @property receivedPackets 已进入 Connection 入站处理的原版包数
+ */
+data class PerformanceStatusVanillaPacketTotals(
+    val sentPackets: Long,
+    val receivedPackets: Long,
+) {
+    /** 计算从较早累计值到当前累计值的非负增量。 */
+    fun deltaFrom(previous: PerformanceStatusVanillaPacketTotals): PerformanceStatusVanillaPacketTotals {
+        return PerformanceStatusVanillaPacketTotals(
+            sentPackets = (sentPackets - previous.sentPackets).coerceAtLeast(0L),
+            receivedPackets = (receivedPackets - previous.receivedPackets).coerceAtLeast(0L),
+        )
+    }
+
+    /** 合并同一聚合窗口内的两个原版 Packet 增量。 */
+    operator fun plus(other: PerformanceStatusVanillaPacketTotals): PerformanceStatusVanillaPacketTotals {
+        return PerformanceStatusVanillaPacketTotals(
+            sentPackets = sentPackets + other.sentPackets,
+            receivedPackets = receivedPackets + other.receivedPackets,
+        )
+    }
+}
+
 /**
  * 标识 CooPacket 指标所属的本地网络端点。
  *
  * 集成服务器会在同一 JVM 内同时存在客户端和服务端端点，因此指标不能只按传输方向聚合。
+ * CLIENT 表示本地客户端连接，SERVER 表示本地服务端连接；两个值也用于原版 Packet 计数。
  */
 enum class PerformanceStatusNetworkEndpoint {
+    /** 客户端连接端点，负责接收服务端包并发送客户端包。 */
     CLIENT,
-    SERVER
+
+    /** 服务端连接端点，负责接收客户端包并发送服务端包。 */
+    SERVER,
 }
 
 /**
@@ -47,6 +83,27 @@ object PerformanceStatusNetworkMetrics {
     /** 服务端端点累计状态。 */
     private val server = EndpointCounters()
 
+    /** 客户端端点累计原版 Packet 状态。 */
+    private val clientVanillaPackets = VanillaEndpointCounters()
+
+    /** 服务端端点累计原版 Packet 状态。 */
+    private val serverVanillaPackets = VanillaEndpointCounters()
+
+    /** 返回指定端点当前累计的原版 Packet 数量。 */
+    fun vanillaSnapshot(endpoint: PerformanceStatusNetworkEndpoint): PerformanceStatusVanillaPacketTotals {
+        return vanillaCounters(endpoint).snapshot()
+    }
+
+    /** 记录一次已经提交到原版 Connection 的发送包。 */
+    fun recordVanillaSent(endpoint: PerformanceStatusNetworkEndpoint) {
+        vanillaCounters(endpoint).recordSent()
+    }
+
+    /** 记录一次进入原版 Connection 入站处理的接收包。 */
+    fun recordVanillaReceived(endpoint: PerformanceStatusNetworkEndpoint) {
+        vanillaCounters(endpoint).recordReceived()
+    }
+
     /** 在业务包成功编码后记录一次发送。 */
     fun recordSent(endpoint: PerformanceStatusNetworkEndpoint, payloadBytes: Int) {
         counters(endpoint).recordSent(payloadBytes)
@@ -67,6 +124,32 @@ object PerformanceStatusNetworkMetrics {
         return when (endpoint) {
             PerformanceStatusNetworkEndpoint.CLIENT -> client
             PerformanceStatusNetworkEndpoint.SERVER -> server
+        }
+    }
+
+    /** 返回端点对应的原版 Packet 计数器。 */
+    private fun vanillaCounters(endpoint: PerformanceStatusNetworkEndpoint): VanillaEndpointCounters {
+        return when (endpoint) {
+            PerformanceStatusNetworkEndpoint.CLIENT -> clientVanillaPackets
+            PerformanceStatusNetworkEndpoint.SERVER -> serverVanillaPackets
+        }
+    }
+
+    /** 保存一个端点的原版 Packet 收发累计值。 */
+    private class VanillaEndpointCounters {
+        private val sentPackets = AtomicLong()
+        private val receivedPackets = AtomicLong()
+
+        fun recordSent() {
+            sentPackets.incrementAndGet()
+        }
+
+        fun recordReceived() {
+            receivedPackets.incrementAndGet()
+        }
+
+        fun snapshot(): PerformanceStatusVanillaPacketTotals {
+            return PerformanceStatusVanillaPacketTotals(sentPackets.get(), receivedPackets.get())
         }
     }
 

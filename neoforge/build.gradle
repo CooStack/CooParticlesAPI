@@ -115,6 +115,7 @@ publishing {
     }
 
     repositories {
+        mavenLocal()
         maven {
             name = "repo"
 

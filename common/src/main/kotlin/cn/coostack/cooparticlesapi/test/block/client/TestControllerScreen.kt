@@ -751,8 +751,22 @@ class TestControllerScreen internal constructor(
         }
     }
 
+    /**
+     * 创建人工复核按钮，点击时先提交当前界面配置再发送复核结果。
+     *
+     * 示例：待复核状态下打开“索引重播”后点击“通过”，重播开关与复核结果都会保存。
+     * 禁止只发送复核包；待复核时保存按钮被复核按钮取代，未提交的修改会随界面关闭丢失。
+     *
+     * @param label 按钮文字
+     * @param action 复核动作标识
+     * @param x 内容坐标系横坐标
+     * @param y 内容坐标系纵坐标
+     * @param width 按钮宽度
+     * @return 已构建的复核按钮
+     */
     private fun reviewButton(label: String, action: String, x: Int, y: Int, width: Int): Button {
         return Button.builder(Component.literal(label)) {
+            CooClientPacketManager.sendTo(updatePacket())
             CooClientPacketManager.sendTo(
                 PacketReviewTestControllerC2S(packet.dimension, packet.blockPos, action)
             )

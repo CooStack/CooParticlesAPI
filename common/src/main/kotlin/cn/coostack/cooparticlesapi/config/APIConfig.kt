@@ -35,6 +35,15 @@ class APIConfig {
         get() = field.coerceIn(5, 1_200)
 
     /**
+     * Status 原版网络包统计的聚合窗口，单位为客户端 tick。
+     *
+     * 默认和最小值都是 `1`，表示每个客户端 tick 发布一个窗口；更大的值会把多个 tick
+     * 内收到和发送的原版网络包合并到一个样本中。
+     */
+    var statusVanillaPacketAggregationTicks = 1
+        get() = field.coerceAtLeast(1)
+
+    /**
      * Math3DUtil的 threadPool最大线程数
      */
     var calculateThreadCount = 16

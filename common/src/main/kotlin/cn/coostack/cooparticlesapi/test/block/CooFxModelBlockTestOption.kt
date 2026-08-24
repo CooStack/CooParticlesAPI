@@ -46,7 +46,7 @@ class CooFxModelBlockTestOption(
         sceneHandle = CooFxSceneManager.spawn(
             level = level,
             spec = CooFxSceneSpec(
-                resourceId = coofxAsset(CooParticlesConstants.MOD_ID, "people"),
+                resourceId = coofxAsset(CooParticlesConstants.MOD_ID, "emitter"),
                 transform = CooFxWorldTransform(
                     x = modelPosition.x,
                     y = modelPosition.y,
@@ -57,7 +57,8 @@ class CooFxModelBlockTestOption(
                 cameraId = "Camera",
                 cameraTargetPlayer = null,
                 cameraPriority = if (sceneMode == CooFxSceneMode.MODEL) 0 else 10,
-                clipId = null
+                clipId = null,
+                playbackSpeed = 1f
             ),
             ownerKey = logicalOwner,
         )

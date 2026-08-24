@@ -3,7 +3,11 @@ package cn.coostack.cooparticlesapi.network.particle.data
 import kotlin.random.Random
 
 class IntRangeData(min: Int, max: Int) : RangeData<Int>(min, max) {
-    fun random(): Int = Random.nextInt(min, max)
+
+    fun random(): Int {
+        if (min == max) return min
+        return Random.nextInt(min, max)
+    }
 }
 
 

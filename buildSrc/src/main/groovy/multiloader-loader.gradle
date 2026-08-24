@@ -1,3 +1,10 @@
+import groovy.xml.XmlUtil
+
+import java.net.HttpURLConnection
+import java.net.URI
+import java.nio.charset.StandardCharsets
+import java.util.Base64
+
 plugins {
     id 'multiloader-common'
 }
@@ -41,4 +48,99 @@ tasks.named('sourcesJar', Jar) {
     from(configurations.commonJava)
     dependsOn(configurations.commonResources)
     from(configurations.commonResources)
+}
+
+plugins.withId('maven-publish') {
+    afterEvaluate {
+        def publication = publishing.publications.findByName('mavenJava')
+        def repository = publishing.repositories.findByName('repo')
+        if (publication == null || repository == null) {
+            return
+        }
+
+        def publicationVersion = publication.version.toString()
+        def repositoryProperties = new Properties()
+        def repositoryFile = rootProject.file('repo.properties')
+        if (repositoryFile.exists()) {
+            repositoryFile.withInputStream { repositoryProperties.load(it) }
+        }
+
+        def metadataTask = tasks.register('prepareMavenSnapshotMetadata') {
+            onlyIf {
+                publicationVersion.endsWith('SNAPSHOT')
+            }
+            doLast {
+                def repositoryUrl = repository.url.toString().replaceAll('/+$', '')
+                def metadataUrl = "${repositoryUrl}/${publication.groupId.replace('.', '/')}/${publication.artifactId}/${publicationVersion}/maven-metadata.xml"
+                def username = repositoryProperties.getProperty('repo.user')
+                def password = repositoryProperties.getProperty('repo.password')
+                def authorization = username != null && password != null
+                        ? Base64.getEncoder().encodeToString("${username}:${password}".getBytes(StandardCharsets.UTF_8))
+                        : null
+
+                def openConnection = { String method ->
+                    def connection = (HttpURLConnection) URI.create(metadataUrl).toURL().openConnection()
+                    connection.requestMethod = method
+                    connection.instanceFollowRedirects = false
+                    connection.setRequestProperty('Accept', 'application/xml')
+                    if (authorization != null) {
+                        connection.setRequestProperty('Authorization', "Basic ${authorization}")
+                    }
+                    connection
+                }
+
+                def getConnection = openConnection('GET')
+                def getStatus = getConnection.responseCode
+                def getStream = getStatus >= 400 ? getConnection.errorStream : getConnection.inputStream
+                getStream?.close()
+                getConnection.disconnect()
+
+                if (getStatus != HttpURLConnection.HTTP_NOT_ACCEPTABLE) {
+                    if (getStatus >= 400) {
+                        throw new GradleException("无法检查 SNAPSHOT metadata：HTTP ${getStatus} ${metadataUrl}")
+                    }
+                    return
+                }
+
+                def groupId = XmlUtil.escapeXml(publication.groupId.toString())
+                def artifactId = XmlUtil.escapeXml(publication.artifactId.toString())
+                def version = XmlUtil.escapeXml(publicationVersion)
+                def metadata = """<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+<metadata modelVersion=\"1.1.0\">
+  <groupId>${groupId}</groupId>
+  <artifactId>${artifactId}</artifactId>
+  <versioning>
+    <lastUpdated>19700101000000</lastUpdated>
+    <snapshot>
+      <timestamp>19700101.000000</timestamp>
+      <buildNumber>0</buildNumber>
+    </snapshot>
+    <snapshotVersions/>
+  </versioning>
+  <version>${version}</version>
+</metadata>
+"""
+                def content = metadata.getBytes(StandardCharsets.UTF_8)
+                def putConnection = openConnection('PUT')
+                putConnection.doOutput = true
+                putConnection.setRequestProperty('Content-Type', 'application/xml')
+                putConnection.setFixedLengthStreamingMode(content.length)
+                putConnection.outputStream.withCloseable { stream ->
+                    stream.write(content)
+                }
+                def putStatus = putConnection.responseCode
+                def putStream = putStatus >= 400 ? putConnection.errorStream : putConnection.inputStream
+                putStream?.close()
+                putConnection.disconnect()
+
+                if (putStatus < 200 || putStatus >= 300) {
+                    throw new GradleException("无法初始化 SNAPSHOT metadata：HTTP ${putStatus} ${metadataUrl}")
+                }
+            }
+        }
+
+        tasks.named('publishMavenJavaPublicationToRepoRepository').configure {
+            dependsOn(metadataTask)
+        }
+    }
 }

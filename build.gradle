@@ -1,13 +1,3 @@
-import org.gradle.api.publish.maven.tasks.PublishToMavenRepository
-
-import java.net.HttpURLConnection
-import java.net.URL
-import java.nio.charset.StandardCharsets
-import java.time.Instant
-import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
-import java.util.Base64
-
 plugins {
     // see https://fabricmc.net/develop/ for new versions
     id 'fabric-loom' version '1.10-SNAPSHOT' apply false
@@ -16,10 +6,23 @@ plugins {
     id 'org.jetbrains.kotlin.jvm' version '2.2.0' apply false
 }
 
+tasks.register("publish-local") {
+    group("build")
+    description = "将 Fabric 和 NeoForge 的内容发布到本地 Maven 仓库"
+    dependsOn(
+            ":neoforge:publishMavenJavaPublicationToMavenLocal",
+            ":fabric:publishMavenJavaPublicationToMavenLocal"
+    )
+}
+
 tasks.register("publish-all") {
     group("build")
-    description = "上传Fabric和Neoforge的内容到仓库中"
-    dependsOn(":neoforge:publish", ":fabric:publish")
+    description = "将 Fabric 和 NeoForge 的内容发布到本地 Maven 和远程仓库"
+    dependsOn(
+            "publish-local",
+            ":neoforge:publishMavenJavaPublicationToRepoRepository",
+            ":fabric:publishMavenJavaPublicationToRepoRepository"
+    )
 }
 
 subprojects {
@@ -61,98 +64,6 @@ subprojects {
         }
         tasks.named("jar") {
             duplicatesStrategy = DuplicatesStrategy.INCLUDE
-        }
-    }
-
-    tasks.withType(PublishToMavenRepository).configureEach { publishTask ->
-        publishTask.doFirst {
-            if (publishTask.publication.version.endsWith("-SNAPSHOT")) {
-                def publication = publishTask.publication
-                def repository = publishTask.repository
-                def repositoryUrl = repository.url.toString().replaceFirst('/+$', '')
-                def groupPath = publication.groupId.replace('.', '/')
-                def metadataUrl = new URL(
-                        "${repositoryUrl}/${groupPath}/${publication.artifactId}/${publication.version}/maven-metadata.xml"
-                )
-                def username = repository.credentials.username
-                def password = repository.credentials.password
-
-                if (!username || !password) {
-                    throw new GradleException("仓库 ${repository.name} 缺少发布凭据")
-                }
-
-                def authorization = "Basic " + Base64.encoder.encodeToString(
-                        "${username}:${password}".getBytes(StandardCharsets.UTF_8)
-                )
-                def openConnection = { String method ->
-                    def connection = (HttpURLConnection) metadataUrl.openConnection()
-                    connection.requestMethod = method
-                    connection.connectTimeout = 15_000
-                    connection.readTimeout = 15_000
-                    connection.setRequestProperty("Authorization", authorization)
-                    connection
-                }
-
-                def getConnection = openConnection("GET")
-                def getStatus = getConnection.responseCode
-                if (getStatus == HttpURLConnection.HTTP_OK) {
-                    getConnection.disconnect()
-                    return
-                }
-
-                def getBody = getConnection.errorStream?.getText(StandardCharsets.UTF_8.name()) ?: ""
-                getConnection.disconnect()
-                if (getStatus == HttpURLConnection.HTTP_NOT_FOUND) {
-                    return
-                }
-                if (getStatus != HttpURLConnection.HTTP_NOT_ACCEPTABLE ||
-                        !getBody.contains("Reposilite - 404 Not Found") ||
-                        !getBody.contains("Resource not found")) {
-                    throw new GradleException("读取 SNAPSHOT 元数据失败：HTTP ${getStatus} ${metadataUrl}")
-                }
-
-                def now = Instant.now()
-                def lastUpdated = DateTimeFormatter.ofPattern("yyyyMMddHHmmss")
-                        .withZone(ZoneOffset.UTC)
-                        .format(now)
-                def timestamp = DateTimeFormatter.ofPattern("yyyyMMdd.HHmmss")
-                        .withZone(ZoneOffset.UTC)
-                        .format(now)
-                def metadata = """<?xml version="1.0" encoding="UTF-8"?>
-<metadata modelVersion="1.1.0">
-  <groupId>${publication.groupId}</groupId>
-  <artifactId>${publication.artifactId}</artifactId>
-  <version>${publication.version}</version>
-  <versioning>
-    <lastUpdated>${lastUpdated}</lastUpdated>
-    <snapshot>
-      <timestamp>${timestamp}</timestamp>
-      <buildNumber>0</buildNumber>
-    </snapshot>
-  </versioning>
-</metadata>
-""".getBytes(StandardCharsets.UTF_8)
-
-                def putConnection = openConnection("PUT")
-                putConnection.doOutput = true
-                putConnection.setFixedLengthStreamingMode(metadata.length)
-                putConnection.setRequestProperty("Content-Type", "application/xml")
-                putConnection.outputStream.withCloseable { output ->
-                    output.write(metadata)
-                }
-                def putStatus = putConnection.responseCode
-                def putBody = putStatus >= HttpURLConnection.HTTP_BAD_REQUEST
-                        ? putConnection.errorStream?.getText(StandardCharsets.UTF_8.name())
-                        : ""
-                putConnection.disconnect()
-                if (putStatus < HttpURLConnection.HTTP_OK || putStatus >= HttpURLConnection.HTTP_MULT_CHOICE) {
-                    throw new GradleException(
-                            "初始化 SNAPSHOT 元数据失败：HTTP ${putStatus} ${metadataUrl}${putBody ? "\n${putBody}" : ""}"
-                    )
-                }
-
-                logger.lifecycle("已初始化 SNAPSHOT 元数据：${metadataUrl}")
-            }
         }
     }
 }

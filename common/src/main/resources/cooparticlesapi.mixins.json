@@ -6,7 +6,8 @@
   "mixins": [
     "events.entity.EntityMixin",
     "events.entity.player.PlayerListMixin",
-    "events.entity.player.ServerPlayerGameModeMixin"
+    "events.entity.player.ServerPlayerGameModeMixin",
+    "PerformanceStatusVanillaPacketMixin"
   ],
   "refmap": "cooparticlesapi.refmap.json",
   "injectors": {

@@ -1,5 +1,7 @@
 package cn.coostack.cooparticlesapi.network.particle.emitters
 
+import cn.coostack.cooparticlesapi.cparticle.CParticleColorCurve
+import cn.coostack.cooparticlesapi.cparticle.CParticleCurve
 import cn.coostack.cooparticlesapi.utils.GraphMathHelper
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
@@ -144,6 +146,7 @@ class SimpleRandomParticleData {
     fun getRandomParticleMaxAge(): Int = if (maxAge > minAge) {
         Random.nextInt(minAge, maxAge)
     } else minAge
+
     fun getRandomCount(): Int = if (maxCount > minCount) Random.nextInt(minCount, maxCount) else minCount
     fun getRandomSize(): Float =
         if (maxSize > minSize) Random.nextDouble(minSize, maxSize).toFloat() else minSize.toFloat()
@@ -164,6 +167,12 @@ class SimpleRandomParticleData {
             getRandomBetween(leftColor.z, rightColor.z),
         )
     }
+
+    fun getLinerColorCurve(): CParticleColorCurve = CParticleColorCurve.linear(
+        leftColor, rightColor
+    )
+
+    fun getLinerAlphaCurve() = CParticleCurve.linear(minAlpha, maxAlpha)
 
     fun getInterpolatedParticleMaxAge(progress: Number): Int = getInterpolatedInt(progress, minAge, maxAge)
     fun getInterpolatedCount(progress: Number): Int = getInterpolatedInt(progress, minCount, maxCount)

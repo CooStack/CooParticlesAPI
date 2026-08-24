@@ -53,6 +53,9 @@ object ClientRenderEntityManager {
     @JvmStatic
     fun loadedEntityCount(): Int = entities.size
 
+    /** 返回当前客户端正在维护的 RenderEntity 快照，供调试渲染读取。 */
+    internal fun debugEntities(): List<RenderEntity> = entities.values.map { it.entity }
+
     /**
      * 清理 `ClientRenderEntityManager` 的 `clear` 状态，使缓存、绑定或 OpenGL 状态可以重新初始化。
      *

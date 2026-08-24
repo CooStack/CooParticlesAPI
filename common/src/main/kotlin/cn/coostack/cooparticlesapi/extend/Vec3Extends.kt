@@ -142,6 +142,12 @@ fun Vec3.cross(other: Vec3i): Vec3 = Vec3(
     this.x * other.y - this.y * other.x
 )
 
+fun Vec3.cross(other: Vec3): Vec3 = Vec3(
+    this.y * other.z - this.z * other.y,
+    this.z * other.x - this.x * other.z,
+    this.x * other.y - this.y * other.x
+)
+
 // --- 球面随机分布 ---
 fun randomVec3(): Vec3 {
     return randomVec3(random)

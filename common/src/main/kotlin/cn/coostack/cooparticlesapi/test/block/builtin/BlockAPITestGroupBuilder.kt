@@ -333,7 +333,7 @@ class BlockAPITestGroupBuilder(private val player: Player) : TestGroupBuilder {
             .appendOption {
                 CooFxModelBlockTestOption(
                     player = player,
-                    sceneMode = CooFxSceneMode.CAMERA_ONLY,
+                    sceneMode = CooFxSceneMode.MODEL_AND_EMITTER,
                     testOptionId = CooFxModelBlockTestOption.CAMERA_OPTION_ID,
                 )
             }

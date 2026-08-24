@@ -13,14 +13,10 @@ class InterpolatorRelativeLocation(value: RelativeLocation) : AbstractInterpolat
         @JvmStatic
         val CODEC = StreamCodec.of<FriendlyByteBuf, InterpolatorRelativeLocation>(
             { buf, data ->
-                buf.writeVec3(data.last.toVector())
                 buf.writeVec3(data.value.toVector())
             }, {
-                val last = it.readVec3().asRelative()
                 val current = it.readVec3().asRelative()
-                InterpolatorRelativeLocation(current).apply {
-                    this.last = last
-                }
+                InterpolatorRelativeLocation(current)
             }
         )
 

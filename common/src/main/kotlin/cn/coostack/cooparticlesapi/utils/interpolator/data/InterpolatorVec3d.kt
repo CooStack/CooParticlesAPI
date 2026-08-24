@@ -11,15 +11,10 @@ class InterpolatorVec3d(value: Vec3) : AbstractInterpolatorData<Vec3>(value) {
         @JvmStatic
         val CODEC = StreamCodec.of<FriendlyByteBuf, InterpolatorVec3d>(
             { buf, data ->
-                buf.writeVec3(data.last)
                 buf.writeVec3(data.value)
             }, {
-                val last = it.readVec3()
                 val current = it.readVec3()
                 InterpolatorVec3d(current)
-                    .apply {
-                        this.last = last
-                    }
             }
         )
 

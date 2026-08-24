@@ -2,6 +2,7 @@ package cn.coostack.cooparticlesapi.performance.client
 
 import cn.coostack.cooparticlesapi.performance.PerformanceStatusNetworkTotals
 import cn.coostack.cooparticlesapi.performance.PerformanceStatusServerSnapshot
+import cn.coostack.cooparticlesapi.performance.PerformanceStatusVanillaPacketTotals
 
 /**
  * 单个客户端 tick 采集的客户端性能状态。
@@ -28,9 +29,12 @@ import cn.coostack.cooparticlesapi.performance.PerformanceStatusServerSnapshot
  * @property postEffects 客户端活动后处理实例数
  * @property graphicsShaders Coo 图形 shader program 数
  * @property computeShaders Coo compute shader program 数
+ * @property gcCollectionCount 客户端 JVM 累计 GC 次数
+ * @property gcCollectionTimeMs 客户端 JVM 累计 GC 耗时毫秒
  * @property heapUsedBytes JVM 已使用堆字节数
  * @property heapMaxBytes JVM 最大堆字节数
  * @property cooPackets 客户端端点累计 CooPacket 业务流量
+ * @property vanillaPackets 客户端原版 Connection 累计收发包数量
  */
 data class PerformanceStatusClientSnapshot(
     val fps: Int,
@@ -55,9 +59,12 @@ data class PerformanceStatusClientSnapshot(
     val postEffects: Int,
     val graphicsShaders: Int,
     val computeShaders: Int,
+    val gcCollectionCount: Long = 0L,
+    val gcCollectionTimeMs: Long = 0L,
     val heapUsedBytes: Long,
     val heapMaxBytes: Long,
     val cooPackets: PerformanceStatusNetworkTotals,
+    val vanillaPackets: PerformanceStatusVanillaPacketTotals = PerformanceStatusVanillaPacketTotals(0L, 0L),
 )
 
 /**
@@ -68,9 +75,12 @@ data class PerformanceStatusClientSnapshot(
  * @property elapsedMillis 相对会话开始的真实毫秒数
  * @property client 客户端当前 tick 快照
  * @property clientNetworkDelta 客户端 CooPacket 自上一行以来的增量
+ * @property clientVanillaPacketDelta 客户端原版 Packet 当前完整聚合窗口增量；窗口未完成时为 null
+ * @property vanillaPacketAggregationTicks 原版 Packet 增量聚合窗口包含的客户端 tick 数
  * @property server 最近一次服务端快照；尚未响应时为 null
  * @property serverSnapshotAgeMillis 服务端快照相对本行的年龄；无快照时为 null
  * @property serverNetworkDelta 服务端累计 CooPacket 自上一份新快照以来的增量；没有新快照时为 null
+ * @property serverVanillaPacketDelta 服务端原版 Packet 自上一份新快照以来的增量；没有新快照时为 null
  */
 data class PerformanceStatusSample(
     val sampleIndex: Long,
@@ -78,9 +88,12 @@ data class PerformanceStatusSample(
     val elapsedMillis: Long,
     val client: PerformanceStatusClientSnapshot,
     val clientNetworkDelta: PerformanceStatusNetworkTotals,
+    val clientVanillaPacketDelta: PerformanceStatusVanillaPacketTotals? = null,
+    val vanillaPacketAggregationTicks: Int = 1,
     val server: PerformanceStatusServerSnapshot?,
     val serverSnapshotAgeMillis: Long?,
     val serverNetworkDelta: PerformanceStatusNetworkTotals?,
+    val serverVanillaPacketDelta: PerformanceStatusVanillaPacketTotals? = null,
 )
 
 /** 根据最近有效客户端 tick 间隔计算平均 TPS，并限制为原版 20 TPS 上限。 */
@@ -129,8 +142,13 @@ object PerformanceStatusCsv {
                 "client_post_effects",
                 "client_graphics_shaders",
                 "client_compute_shaders",
+                "client_gc_collection_count",
+                "client_gc_collection_time_ms",
                 "client_heap_used_bytes",
                 "client_heap_max_bytes",
+                "client_vanilla_packets_sent_window",
+                "client_vanilla_packets_received_window",
+                "vanilla_packet_aggregation_ticks",
                 "client_coopackets_sent_tick",
                 "client_coopacket_bytes_sent_tick",
                 "client_coopackets_received_tick",
@@ -139,6 +157,8 @@ object PerformanceStatusCsv {
                 "client_coopacket_bytes_sent_total",
                 "client_coopackets_received_total",
                 "client_coopacket_bytes_received_total",
+                "client_vanilla_packets_sent_total",
+                "client_vanilla_packets_received_total",
                 "server_captured_at_epoch_ms",
                 "server_snapshot_age_ms",
                 "server_tick",
@@ -160,6 +180,8 @@ object PerformanceStatusCsv {
                 "server_sound_loops",
                 "server_barrages",
                 "server_coofx_scenes",
+                "server_gc_collection_count",
+                "server_gc_collection_time_ms",
                 "server_heap_used_bytes",
                 "server_heap_max_bytes",
                 "server_coopackets_sent_interval",
@@ -170,6 +192,10 @@ object PerformanceStatusCsv {
                 "server_coopacket_bytes_sent_total",
                 "server_coopackets_received_total",
                 "server_coopacket_bytes_received_total",
+                "server_vanilla_packets_sent_interval",
+                "server_vanilla_packets_received_interval",
+                "server_vanilla_packets_sent_total",
+                "server_vanilla_packets_received_total",
             )
         )
     }
@@ -180,7 +206,7 @@ object PerformanceStatusCsv {
         val server = sample.server
         return csvLine(
             listOf(
-                1,
+                2,
                 sample.sampleIndex,
                 sample.capturedAtEpochMillis,
                 sample.elapsedMillis,
@@ -206,8 +232,13 @@ object PerformanceStatusCsv {
                 client.postEffects,
                 client.graphicsShaders,
                 client.computeShaders,
+                client.gcCollectionCount,
+                client.gcCollectionTimeMs,
                 client.heapUsedBytes,
                 client.heapMaxBytes,
+                sample.clientVanillaPacketDelta?.sentPackets,
+                sample.clientVanillaPacketDelta?.receivedPackets,
+                sample.vanillaPacketAggregationTicks,
                 sample.clientNetworkDelta.sentPackets,
                 sample.clientNetworkDelta.sentBytes,
                 sample.clientNetworkDelta.receivedPackets,
@@ -216,6 +247,8 @@ object PerformanceStatusCsv {
                 client.cooPackets.sentBytes,
                 client.cooPackets.receivedPackets,
                 client.cooPackets.receivedBytes,
+                client.vanillaPackets.sentPackets,
+                client.vanillaPackets.receivedPackets,
                 server?.capturedAtEpochMillis,
                 sample.serverSnapshotAgeMillis,
                 server?.serverTick,
@@ -237,6 +270,8 @@ object PerformanceStatusCsv {
                 server?.soundLoops,
                 server?.barrages,
                 server?.cooFxScenes,
+                server?.gcCollectionCount,
+                server?.gcCollectionTimeMs,
                 server?.heapUsedBytes,
                 server?.heapMaxBytes,
                 sample.serverNetworkDelta?.sentPackets,
@@ -247,6 +282,10 @@ object PerformanceStatusCsv {
                 server?.cooPackets?.sentBytes,
                 server?.cooPackets?.receivedPackets,
                 server?.cooPackets?.receivedBytes,
+                sample.serverVanillaPacketDelta?.sentPackets,
+                sample.serverVanillaPacketDelta?.receivedPackets,
+                server?.vanillaPackets?.sentPackets,
+                server?.vanillaPackets?.receivedPackets,
             )
         )
     }

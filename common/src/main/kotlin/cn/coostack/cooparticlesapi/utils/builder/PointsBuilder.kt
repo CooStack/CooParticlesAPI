@@ -609,12 +609,6 @@ class PointsBuilder {
     fun addBallSolid(offset: RelativeLocation, r: Double, count: Int): PointsBuilder =
         addWith(offset) { getBallSolidLocations(r, count) }
 
-    /** 与 [addBallSolid] 相同，保留用户原先约定的拼写。 */
-    fun addBallSoid(r: Double, count: Int): PointsBuilder = addBallSolid(r, count)
-
-    fun addBallSoid(offset: RelativeLocation, r: Double, count: Int): PointsBuilder =
-        addBallSolid(offset, r, count)
-
     fun addBallVolume(r: Double, count: Int): PointsBuilder = addBallSolid(r, count)
 
     fun addBallVolume(offset: RelativeLocation, r: Double, count: Int): PointsBuilder =
@@ -636,7 +630,13 @@ class PointsBuilder {
     fun addCubeSurface(width: Double, height: Double, depth: Double, count: Int): PointsBuilder =
         addWith { getCubeSurfaceLocations(width, height, depth, count) }
 
-    fun addCubeSurface(offset: RelativeLocation, width: Double, height: Double, depth: Double, count: Int): PointsBuilder =
+    fun addCubeSurface(
+        offset: RelativeLocation,
+        width: Double,
+        height: Double,
+        depth: Double,
+        count: Int
+    ): PointsBuilder =
         addWith(offset) { getCubeSurfaceLocations(width, height, depth, count) }
 
     fun addCubeSolid(size: Double, count: Int): PointsBuilder = addCubeSolid(size, size, size, count)
@@ -647,18 +647,15 @@ class PointsBuilder {
     fun addCubeSolid(width: Double, height: Double, depth: Double, count: Int): PointsBuilder =
         addWith { getCubeSolidLocations(width, height, depth, count) }
 
-    fun addCubeSolid(offset: RelativeLocation, width: Double, height: Double, depth: Double, count: Int): PointsBuilder =
+    fun addCubeSolid(
+        offset: RelativeLocation,
+        width: Double,
+        height: Double,
+        depth: Double,
+        count: Int
+    ): PointsBuilder =
         addWith(offset) { getCubeSolidLocations(width, height, depth, count) }
 
-    fun addCubeSoid(size: Double, count: Int): PointsBuilder = addCubeSolid(size, count)
-
-    fun addCubeSoid(offset: RelativeLocation, size: Double, count: Int): PointsBuilder = addCubeSolid(offset, size, count)
-
-    fun addCubeSoid(width: Double, height: Double, depth: Double, count: Int): PointsBuilder =
-        addCubeSolid(width, height, depth, count)
-
-    fun addCubeSoid(offset: RelativeLocation, width: Double, height: Double, depth: Double, count: Int): PointsBuilder =
-        addCubeSolid(offset, width, height, depth, count)
 
     fun addCubeVolume(size: Double, count: Int): PointsBuilder = addCubeSolid(size, count)
 
@@ -668,7 +665,13 @@ class PointsBuilder {
     fun addCubeVolume(width: Double, height: Double, depth: Double, count: Int): PointsBuilder =
         addCubeSolid(width, height, depth, count)
 
-    fun addCubeVolume(offset: RelativeLocation, width: Double, height: Double, depth: Double, count: Int): PointsBuilder =
+    fun addCubeVolume(
+        offset: RelativeLocation,
+        width: Double,
+        height: Double,
+        depth: Double,
+        count: Int
+    ): PointsBuilder =
         addCubeSolid(offset, width, height, depth, count)
 
     fun addCubeWireframe(size: Double, count: Int): PointsBuilder = addCubeWireframe(size, size, size, count)
@@ -679,7 +682,13 @@ class PointsBuilder {
     fun addCubeWireframe(width: Double, height: Double, depth: Double, count: Int): PointsBuilder =
         addWith { getCubeWireframeLocations(width, height, depth, count) }
 
-    fun addCubeWireframe(offset: RelativeLocation, width: Double, height: Double, depth: Double, count: Int): PointsBuilder =
+    fun addCubeWireframe(
+        offset: RelativeLocation,
+        width: Double,
+        height: Double,
+        depth: Double,
+        count: Int
+    ): PointsBuilder =
         addWith(offset) { getCubeWireframeLocations(width, height, depth, count) }
 
     fun addCubeOutline(size: Double, count: Int): PointsBuilder = addCubeWireframe(size, count)
@@ -690,7 +699,13 @@ class PointsBuilder {
     fun addCubeOutline(width: Double, height: Double, depth: Double, count: Int): PointsBuilder =
         addCubeWireframe(width, height, depth, count)
 
-    fun addCubeOutline(offset: RelativeLocation, width: Double, height: Double, depth: Double, count: Int): PointsBuilder =
+    fun addCubeOutline(
+        offset: RelativeLocation,
+        width: Double,
+        height: Double,
+        depth: Double,
+        count: Int
+    ): PointsBuilder =
         addCubeWireframe(offset, width, height, depth, count)
 
     /**

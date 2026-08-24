@@ -15,12 +15,8 @@ class InterpolatorVector3f(value: Vector3f) : AbstractInterpolatorData<Vector3f>
                 buf.writeVector3f(data.last)
                 buf.writeVector3f(data.value)
             }, {
-                val last = it.readVector3f()
                 val current = it.readVector3f()
-
-                InterpolatorVector3f(current).apply {
-                    this.last = last
-                }
+                InterpolatorVector3f(current)
             }
         )
 

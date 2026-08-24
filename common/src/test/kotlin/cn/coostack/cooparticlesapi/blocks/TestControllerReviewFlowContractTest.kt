@@ -46,6 +46,31 @@ class TestControllerReviewFlowContractTest {
         assertTrue("it.pendingReview = source.pendingReview" in packetDrafts)
     }
 
+    @Test
+    fun `review buttons submit pending config before sending the review result`() {
+        val screen = readProjectFile(
+            "common/src/main/kotlin/cn/coostack/cooparticlesapi/test/block/client/TestControllerScreen.kt"
+        )
+        val reviewButtonBody = screen
+            .substringAfter("private fun reviewButton(label: String, action: String, x: Int, y: Int, width: Int)")
+            .substringBefore("}.bounds(x, y, width, 20).build()")
+
+        val update = reviewButtonBody.indexOf("CooClientPacketManager.sendTo(updatePacket())")
+        val review = reviewButtonBody.indexOf("PacketReviewTestControllerC2S(packet.dimension, packet.blockPos, action)")
+        assertTrue(update >= 0, "复核按钮必须先提交当前界面配置")
+        assertTrue(review > update, "配置更新包必须早于复核包发送")
+    }
+
+    @Test
+    fun `config update keeps the pending review instead of restarting the group`() {
+        val updatePacket = readProjectFile(
+            "common/src/main/kotlin/cn/coostack/cooparticlesapi/network/packet/testblock/PacketUpdateTestControllerC2S.kt"
+        )
+
+        assertTrue("val pendingReview = blockEntity.hasPendingReview()" in updatePacket)
+        assertTrue("if (wasRunning && changed && !pendingReview) {" in updatePacket)
+    }
+
     private fun readProjectFile(relativePath: String): String {
         return Files.readString(findRepoRoot().resolve(relativePath))
     }

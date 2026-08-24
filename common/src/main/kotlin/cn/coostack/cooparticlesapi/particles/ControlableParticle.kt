@@ -153,7 +153,7 @@ abstract class ControlableParticle(
             currentWeightSize = value
             currentHeightSize = value
             updateRenderSizeBounds()
-    }
+        }
 
     private fun updateRenderSizeBounds() {
         val boundSize = maxOf(currentWeightSize, currentHeightSize, currentDepthSize)

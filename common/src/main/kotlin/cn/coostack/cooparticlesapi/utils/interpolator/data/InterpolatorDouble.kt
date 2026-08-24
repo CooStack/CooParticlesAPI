@@ -10,14 +10,10 @@ class InterpolatorDouble(value: Double) : AbstractInterpolatorData<Double>(value
         @JvmStatic
         val CODEC = StreamCodec.of<FriendlyByteBuf, InterpolatorDouble>(
             { buf, data ->
-                buf.writeDouble(data.last)
                 buf.writeDouble(data.value)
             }, {
-                val last = it.readDouble()
                 val current = it.readDouble()
-                InterpolatorDouble(current) .apply {
-                    this.last = last
-                }
+                InterpolatorDouble(current)
             }
         )
     }

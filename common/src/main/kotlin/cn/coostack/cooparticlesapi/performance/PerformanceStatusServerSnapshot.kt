@@ -40,9 +40,12 @@ import kotlin.math.min
  * @property soundLoops 服务端管理的循环声音数
  * @property barrages 服务端 Barrage 实例数
  * @property cooFxScenes 服务端 CooFX scene 数
+ * @property gcCollectionCount 服务端 JVM 累计 GC 次数
+ * @property gcCollectionTimeMs 服务端 JVM 累计 GC 耗时毫秒
  * @property heapUsedBytes JVM 已使用堆字节数
  * @property heapMaxBytes JVM 最大堆字节数
  * @property cooPackets CooPacket 服务端端点累计业务流量
+ * @property vanillaPackets 原版 Connection 服务端端点累计收发包数量
  */
 data class PerformanceStatusServerSnapshot(
     val capturedAtEpochMillis: Long,
@@ -65,9 +68,12 @@ data class PerformanceStatusServerSnapshot(
     val soundLoops: Int,
     val barrages: Int,
     val cooFxScenes: Int,
+    val gcCollectionCount: Long = 0L,
+    val gcCollectionTimeMs: Long = 0L,
     val heapUsedBytes: Long,
     val heapMaxBytes: Long,
     val cooPackets: PerformanceStatusNetworkTotals,
+    val vanillaPackets: PerformanceStatusVanillaPacketTotals = PerformanceStatusVanillaPacketTotals(0L, 0L),
 )
 
 /** 构造固定大小的服务端 Status 快照，不访问任何客户端或渲染类。 */
@@ -82,6 +88,7 @@ object PerformanceStatusServerSnapshotFactory {
         val targetTps = server.tickRateManager().tickrate().toDouble()
         val sustainableTps = if (averageMspt > 0.0) 1_000.0 / averageMspt else targetTps
         val runtime = Runtime.getRuntime()
+        val gc = PerformanceStatusJvmMetrics.snapshot()
         return PerformanceStatusServerSnapshot(
             capturedAtEpochMillis = System.currentTimeMillis(),
             serverTick = server.tickCount.toLong(),
@@ -104,9 +111,12 @@ object PerformanceStatusServerSnapshotFactory {
             soundLoops = ServerSoundLoopManager.activeLoopCount(),
             barrages = BarrageManager.count(),
             cooFxScenes = CooFxSceneManager.size(),
+            gcCollectionCount = gc.collectionCount,
+            gcCollectionTimeMs = gc.collectionTimeMs,
             heapUsedBytes = runtime.totalMemory() - runtime.freeMemory(),
             heapMaxBytes = runtime.maxMemory(),
             cooPackets = PerformanceStatusNetworkMetrics.snapshot(SERVER),
+            vanillaPackets = PerformanceStatusNetworkMetrics.vanillaSnapshot(SERVER),
         )
     }
 
