@@ -3,6 +3,8 @@ package cn.coostack.cooparticlesapi.event
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.annotations.events.EventHandler
 import cn.coostack.cooparticlesapi.annotations.events.EventListener
+import cn.coostack.cooparticlesapi.enums.DistType
+import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import cn.coostack.cooparticlesapi.event.api.CooEvent
 import cn.coostack.cooparticlesapi.event.api.EventExecutor
 import cn.coostack.cooparticlesapi.event.api.EventInterruptible
@@ -42,6 +44,10 @@ object CooEventBus {
         CooAPIScanner.getClassesWithAnnotation(EventListener::class.java)
             .forEach {
                 val value = it.getAnnotation(EventListener::class.java)
+                val dist = value?.dist ?: DistType.BOTH
+                if (dist != DistType.BOTH && dist != CooParticlesServices.PLATFORM.getDistType()) {
+                    return@forEach
+                }
                 appendListenerTarget(value?.modId ?: CooParticlesConstants.MOD_ID, it.name)
             }
         val end = System.currentTimeMillis()

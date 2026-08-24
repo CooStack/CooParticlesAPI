@@ -13,8 +13,10 @@ import net.minecraft.client.renderer.ItemBlockRenderTypes;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.SectionBufferBuilderPack;
 import net.minecraft.client.renderer.block.BlockRenderDispatcher;
+import net.minecraft.client.renderer.chunk.RenderChunkRegion;
 import net.minecraft.client.renderer.chunk.SectionCompiler;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.SectionPos;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.BlockAndTintGetter;
 import net.minecraft.world.level.block.state.BlockState;
@@ -26,13 +28,27 @@ import org.spongepowered.asm.mixin.injection.At;
 import java.util.List;
 import java.util.Map;
 
+/** NeoForge's SectionCompiler overload carries ModelData and RenderType. */
 @Mixin(SectionCompiler.class)
 public abstract class SectionCompilerNeoForgeMixin {
+    private static final String COMPILE_METHOD =
+            "compile(Lnet/minecraft/core/SectionPos;" +
+                    "Lnet/minecraft/client/renderer/chunk/RenderChunkRegion;" +
+                    "Lcom/mojang/blaze3d/vertex/VertexSorting;" +
+                    "Lnet/minecraft/client/renderer/SectionBufferBuilderPack;" +
+                    "Ljava/util/List;)" +
+                    "Lnet/minecraft/client/renderer/chunk/SectionCompiler$Results;";
+
     @WrapOperation(
-            method = "compile(Lnet/minecraft/core/SectionPos;Lnet/minecraft/client/renderer/chunk/RenderChunkRegion;Lcom/mojang/blaze3d/vertex/VertexSorting;Lnet/minecraft/client/renderer/SectionBufferBuilderPack;Ljava/util/List;)Lnet/minecraft/client/renderer/chunk/SectionCompiler$Results;",
+            method = COMPILE_METHOD,
             at = @At(
                     value = "INVOKE",
-                    target = "Lnet/minecraft/client/renderer/block/BlockRenderDispatcher;renderLiquid(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/BlockAndTintGetter;Lcom/mojang/blaze3d/vertex/VertexConsumer;Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/world/level/material/FluidState;)V"
+                    target = "Lnet/minecraft/client/renderer/block/BlockRenderDispatcher;renderLiquid(" +
+                            "Lnet/minecraft/core/BlockPos;" +
+                            "Lnet/minecraft/world/level/BlockAndTintGetter;" +
+                            "Lcom/mojang/blaze3d/vertex/VertexConsumer;" +
+                            "Lnet/minecraft/world/level/block/state/BlockState;" +
+                            "Lnet/minecraft/world/level/material/FluidState;)V"
             )
     )
     private void cooParticlesAPI$writeTerrainFluidOverlayBatch(
@@ -70,10 +86,19 @@ public abstract class SectionCompilerNeoForgeMixin {
     }
 
     @WrapOperation(
-            method = "compile(Lnet/minecraft/core/SectionPos;Lnet/minecraft/client/renderer/chunk/RenderChunkRegion;Lcom/mojang/blaze3d/vertex/VertexSorting;Lnet/minecraft/client/renderer/SectionBufferBuilderPack;Ljava/util/List;)Lnet/minecraft/client/renderer/chunk/SectionCompiler$Results;",
+            method = COMPILE_METHOD,
             at = @At(
                     value = "INVOKE",
-                    target = "Lnet/minecraft/client/renderer/block/BlockRenderDispatcher;renderBatched(Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/BlockAndTintGetter;Lcom/mojang/blaze3d/vertex/PoseStack;Lcom/mojang/blaze3d/vertex/VertexConsumer;ZLnet/minecraft/util/RandomSource;Lnet/neoforged/neoforge/client/model/data/ModelData;Lnet/minecraft/client/renderer/RenderType;)V"
+                    target = "Lnet/minecraft/client/renderer/block/BlockRenderDispatcher;renderBatched(" +
+                            "Lnet/minecraft/world/level/block/state/BlockState;" +
+                            "Lnet/minecraft/core/BlockPos;" +
+                            "Lnet/minecraft/world/level/BlockAndTintGetter;" +
+                            "Lcom/mojang/blaze3d/vertex/PoseStack;" +
+                            "Lcom/mojang/blaze3d/vertex/VertexConsumer;" +
+                            "Z" +
+                            "Lnet/minecraft/util/RandomSource;" +
+                            "Lnet/neoforged/neoforge/client/model/data/ModelData;" +
+                            "Lnet/minecraft/client/renderer/RenderType;)V"
             )
     )
     private void cooParticlesAPI$writeTerrainOverlayBatch(
@@ -86,26 +111,18 @@ public abstract class SectionCompilerNeoForgeMixin {
             boolean checkSides,
             RandomSource random,
             ModelData modelData,
-            RenderType baseLayer,
+            RenderType renderType,
             Operation<Void> original,
             @Local Map<RenderType, BufferBuilder> renderedLayers,
             @Local(argsOnly = true) SectionBufferBuilderPack sectionBufferBuilderPack
     ) {
+        RenderType baseLayer = ItemBlockRenderTypes.getChunkRenderType(state);
         List<RenderType> overlayLayers = CooTerrainPipelineManager.resolveOverlayRenderTypes(state, baseLayer, pos);
         if (overlayLayers.isEmpty() || CooTerrainPipelineManager.shouldPreserveVanillaTerrainGeometry(overlayLayers)) {
             poseStack.pushPose();
             try {
                 original.call(
-                        dispatcher,
-                        state,
-                        pos,
-                        level,
-                        poseStack,
-                        consumer,
-                        checkSides,
-                        random,
-                        modelData,
-                        baseLayer
+                        dispatcher, state, pos, level, poseStack, consumer, checkSides, random, modelData, renderType
                 );
             } finally {
                 poseStack.popPose();
@@ -138,7 +155,7 @@ public abstract class SectionCompilerNeoForgeMixin {
                         checkSides,
                         random,
                         modelData,
-                        baseLayer
+                        overlayLayer
                 );
             } finally {
                 poseStack.popPose();
@@ -147,7 +164,7 @@ public abstract class SectionCompilerNeoForgeMixin {
     }
 
     @WrapOperation(
-            method = "compile(Lnet/minecraft/core/SectionPos;Lnet/minecraft/client/renderer/chunk/RenderChunkRegion;Lcom/mojang/blaze3d/vertex/VertexSorting;Lnet/minecraft/client/renderer/SectionBufferBuilderPack;Ljava/util/List;)Lnet/minecraft/client/renderer/chunk/SectionCompiler$Results;",
+            method = COMPILE_METHOD,
             at = @At(
                     value = "INVOKE",
                     target = "Ljava/util/Map;put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;"

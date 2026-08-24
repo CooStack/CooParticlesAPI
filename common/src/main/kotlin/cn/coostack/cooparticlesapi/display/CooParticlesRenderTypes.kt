@@ -1,12 +1,12 @@
 package cn.coostack.cooparticlesapi.display
 
-import cn.coostack.cooparticlesapi.platform.CooParticlesServices
+import cn.coostack.cooparticlesapi.platform.CooClientServices
 import net.minecraft.client.renderer.RenderType
 import net.minecraft.resources.ResourceLocation
 
 object CooParticlesRenderTypes {
     private val provider: CooRenderTypesProvider
-        get() = CooParticlesServices.PLATFORM.getRenderTypesProvider()
+        get() = CooClientServices.RENDER_TYPES_PROVIDER
 
     @JvmStatic
     fun glow(): RenderType {

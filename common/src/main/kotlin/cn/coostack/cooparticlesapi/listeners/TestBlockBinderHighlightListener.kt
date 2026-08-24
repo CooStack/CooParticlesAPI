@@ -5,6 +5,7 @@ import cn.coostack.cooparticlesapi.annotations.events.EventHandler
 import cn.coostack.cooparticlesapi.annotations.events.EventListener
 import cn.coostack.cooparticlesapi.blocks.TestControllerBlock
 import cn.coostack.cooparticlesapi.blocks.TestControllerBlockEntity
+import cn.coostack.cooparticlesapi.enums.DistType
 import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldRenderEvent
 import cn.coostack.cooparticlesapi.items.CooItems
 import cn.coostack.cooparticlesapi.items.TestBlockBinding
@@ -15,7 +16,7 @@ import net.minecraft.client.renderer.RenderType
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.phys.AABB
 
-@EventListener(CooParticlesConstants.MOD_ID)
+@EventListener(CooParticlesConstants.MOD_ID, dist = DistType.CLIENT)
 object TestBlockBinderHighlightListener {
     private const val HIDDEN_SCAN_CHUNK_RADIUS = 6
 
