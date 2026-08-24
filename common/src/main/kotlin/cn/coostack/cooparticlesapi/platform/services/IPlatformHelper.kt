@@ -1,6 +1,5 @@
 package cn.coostack.cooparticlesapi.platform.services
 
-import cn.coostack.cooparticlesapi.display.CooRenderTypesProvider
 import cn.coostack.cooparticlesapi.enums.DistType
 
 interface IPlatformHelper {
@@ -26,17 +25,8 @@ interface IPlatformHelper {
      */
     fun isDevelopmentEnvironment(): Boolean
     fun getDistType(): DistType
-
-    /**
-     * Gets the name of the environment type as a string.
-     *
-     * @return The name of the environment type.
-     */
+    /** Gets the name of the environment type as a string. */
     fun getEnvironmentName(): String {
         return if (isDevelopmentEnvironment()) "development" else "production"
     }
-
-
-    fun getRenderTypesProvider(): CooRenderTypesProvider
-
 }

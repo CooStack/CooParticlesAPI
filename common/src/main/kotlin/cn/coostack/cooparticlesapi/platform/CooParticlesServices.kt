@@ -2,7 +2,6 @@ package cn.coostack.cooparticlesapi.platform
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.platform.services.IPlatformHelper
-import cn.coostack.cooparticlesapi.utils.api.ModelPartPointCollector
 import java.util.*
 import java.util.function.Supplier
 
@@ -24,9 +23,6 @@ object CooParticlesServices {
 
     @JvmField
     val COO_REGISTRY = load(CooRegistry::class.java)
-
-    @JvmField
-    val MODEL_PART_POINT_COLLECTOR: ModelPartPointCollector = load(ModelPartPointCollector::class.java)
 
     // This code is used to load a service for the current environment. Your implementation o   f the service must be defined
     // manually by including a text file in META-INF/services named with the fully qualified class name of the service.

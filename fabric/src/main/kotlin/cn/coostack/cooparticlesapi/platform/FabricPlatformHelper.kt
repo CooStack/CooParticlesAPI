@@ -1,6 +1,5 @@
 package cn.coostack.cooparticlesapi.platform
 
-import cn.coostack.cooparticlesapi.display.CooRenderTypesProvider
 import cn.coostack.cooparticlesapi.enums.DistType
 import cn.coostack.cooparticlesapi.platform.services.IPlatformHelper
 import net.fabricmc.api.EnvType
@@ -25,9 +24,4 @@ class FabricPlatformHelper : IPlatformHelper {
             EnvType.SERVER -> DistType.SERVER
         }
     }
-
-    override fun getRenderTypesProvider(): CooRenderTypesProvider {
-        return FabricRenderTypesProvider
-    }
-
 }
