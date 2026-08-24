@@ -350,10 +350,11 @@ public class LevelRendererMixin {
         }
     }
 
+    // ordinal=10 对应原版 entities 阶段入口；此时 terrain 已完成且实体尚未绘制。
     @Inject(method = "renderLevel",
             at = @At(value = "INVOKE",
                     target = "Lnet/minecraft/util/profiling/ProfilerFiller;popPush(Ljava/lang/String;)V",
-                    ordinal = 11))
+                    ordinal = 10))
     public void renderBeforeEntity(DeltaTracker deltaTracker,
                                    boolean renderBlockOutline,
                                    Camera camera,
