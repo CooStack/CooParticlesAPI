@@ -482,6 +482,18 @@ class PointsBuilder {
     ): PointsBuilder = addWith { generateBezierCurve(controlNodes, count) }
 
     /**
+     * 使用节点 DSL 添加按曲线弧长等距采样的空间贝塞尔曲线。
+     *
+     * @param count 返回点数量，至少为 1
+     * @param handler 贝塞尔曲线节点配置逻辑
+     * @return 当前 PointsBuilder
+     */
+    fun addBezierCurve(
+        count: Int,
+        handler: BezierCurveBuilder.() -> Unit
+    ): PointsBuilder = addBezierCurve(BezierCurveBuilder().apply(handler).build(), count)
+
+    /**
      * 按空间贝塞尔曲线等距放置点集。
      *
      * @param builder 贝塞尔分布构建器；调用时会使用其点集快照
