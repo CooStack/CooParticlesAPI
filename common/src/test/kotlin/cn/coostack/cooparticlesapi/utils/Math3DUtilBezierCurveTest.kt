@@ -93,6 +93,42 @@ class Math3DUtilBezierCurveTest {
     }
 
     @Test
+    fun `points builder accepts bezier node dsl`() {
+        val controls = listOf(
+            BezierNode(
+                RelativeLocation(0.25, 0.0, -2.125),
+                RelativeLocation(-0.75, 0.0, 1.75)
+            ),
+            BezierNode(
+                RelativeLocation(-2.0, 0.0, 3.125),
+                RelativeLocation(2.208333, 0.0, -0.791667)
+            ),
+            BezierNode(
+                RelativeLocation(4.625, 0.0, 0.75),
+                RelativeLocation(-1.0, 0.0, -1.25)
+            )
+        )
+
+        val expected = PointsBuilder().addBezierCurve(controls, 100).create()
+        val actual = PointsBuilder().addBezierCurve(100) {
+            addNode(
+                RelativeLocation(0.25, 0.0, -2.125),
+                RelativeLocation(-0.75, 0.0, 1.75)
+            )
+            addNode(
+                RelativeLocation(-2.0, 0.0, 3.125),
+                RelativeLocation(2.208333, 0.0, -0.791667)
+            )
+            addNode(
+                RelativeLocation(4.625, 0.0, 0.75),
+                RelativeLocation(-1.0, 0.0, -1.25)
+            )
+        }.create()
+
+        assertContentEquals(expected, actual)
+    }
+
+    @Test
     fun `short spatial bezier keeps nonzero distances`() {
         val points = Math3DUtil.generateBezierCurve(
             RelativeLocation(0.0, 0.0, 0.0),
@@ -105,5 +141,81 @@ class Math3DUtilBezierCurveTest {
         assertEquals(0.0, points[0].x, 1.0E-18)
         assertEquals(5.0E-10, points[1].x, 1.0E-18)
         assertEquals(1.0E-9, points[2].x, 1.0E-18)
+    }
+
+    @Test
+    fun `adaptive spatial bezier keeps linear segments exact`() {
+        val nodes = listOf(
+            BezierNode(RelativeLocation(0.0, 0.0, 0.0)),
+            BezierNode(RelativeLocation(4.0, 0.0, 0.0)),
+            BezierNode(RelativeLocation(10.0, 0.0, 0.0))
+        )
+
+        val points = Math3DUtil.generateEquidistantBezierCurve(nodes, 101)
+
+        points.forEachIndexed { index, point ->
+            assertEquals(index / 10.0, point.x, 1.0E-12)
+            assertEquals(0.0, point.y, 1.0E-12)
+            assertEquals(0.0, point.z, 1.0E-12)
+        }
+    }
+
+    @Test
+    fun `adaptive spatial bezier preserves endpoint count shortcuts`() {
+        val nodes = listOf(
+            BezierNode(RelativeLocation(1.0, 2.0, 3.0)),
+            BezierNode(RelativeLocation(4.0, 5.0, 6.0))
+        )
+
+        assertContentEquals(
+            listOf(nodes.last().point),
+            Math3DUtil.generateEquidistantBezierCurve(nodes, 1)
+        )
+        assertContentEquals(
+            listOf(nodes.first().point, nodes.last().point),
+            Math3DUtil.generateEquidistantBezierCurve(nodes, 2)
+        )
+    }
+
+    @Test
+    fun `adaptive spatial bezier tracks a tight loop`() {
+        val nodes = listOf(
+            BezierNode(
+                RelativeLocation(),
+                startHandle = RelativeLocation(20.0, 30.0, 10.0)
+            ),
+            BezierNode(
+                RelativeLocation(),
+                endHandle = RelativeLocation(-20.0, 30.0, -10.0)
+            )
+        )
+        val count = 101
+        val expected = Math3DUtil.sampleByDistance(
+            Math3DUtil.generateSmoothBezierCurve(nodes, 16_384),
+            count
+        )
+        val actual = Math3DUtil.generateEquidistantBezierCurve(nodes, count)
+
+        val maxError = actual.indices.maxOf { index -> actual[index].distance(expected[index]) }
+        assertTrue(maxError <= 0.01, "adaptive sampling error was $maxError")
+    }
+
+    @Test
+    fun `adaptive spatial bezier keeps a long shallow bend`() {
+        val nodes = listOf(
+            BezierNode(
+                RelativeLocation(0.0, 0.0, 0.0),
+                startHandle = RelativeLocation(250_000_000.0, 1_000.0, 0.0)
+            ),
+            BezierNode(
+                RelativeLocation(1_000_000_000.0, 0.0, 0.0),
+                endHandle = RelativeLocation(-250_000_000.0, -1_000.0, 0.0)
+            )
+        )
+        val points = Math3DUtil.generateEquidistantBezierCurve(nodes, 101)
+
+        assertTrue(points.any { it.y > 100.0 })
+        assertEquals(0.0, points.first().y, 1.0E-12)
+        assertEquals(0.0, points.last().y, 1.0E-12)
     }
 }

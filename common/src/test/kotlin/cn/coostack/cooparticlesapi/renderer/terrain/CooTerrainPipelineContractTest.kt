@@ -652,6 +652,8 @@ class CooTerrainPipelineContractTest {
         assertTrue("RenderSceneTargets.TERRAIN_TRANSLUCENT_DEPTH_BEFORE" in resolver)
         assertTrue("RenderSceneTargets.TERRAIN_TRANSLUCENT_DEPTH_AFTER" in resolver)
         assertTrue("CooTerrainPipelineManager.captureOpaqueTerrainDepth();" in levelRenderer)
+        assertTrue("ordinal = 10" in levelRenderer)
+        assertFalse("ordinal = 11))\r\n    public void renderBeforeEntity" in levelRenderer)
         assertTrue("CooTerrainPipelineManager.captureTranslucentTerrainDepthBefore();" in sodium)
         assertTrue("CooTerrainPipelineManager.captureTranslucentTerrainDepthAfter();" in sodium)
         assertTrue("override fun refreshSceneFrame(context: RenderFrameContext)" in backend)

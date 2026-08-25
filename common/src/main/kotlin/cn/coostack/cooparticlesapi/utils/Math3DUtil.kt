@@ -1460,20 +1460,17 @@ object Math3DUtil {
         if (count == 1) {
             return listOf(end.clone())
         }
+        if (count == 2) {
+            return listOf(start.clone(), end.clone())
+        }
 
-        // 先把曲线按参数均匀切成高密度折线，再用累计弧长重采样。
-        val subdivisionCount = bezierSubdivisionCount(count)
-        val sampled = generateSmoothBezierCurve(
-            start,
-            end,
-            startHandle,
-            endHandle,
-            subdivisionCount
+        return generateEquidistantBezierCurveInternal(
+            listOf(
+                BezierNode(start, startHandle = startHandle),
+                BezierNode(end, endHandle = endHandle)
+            ),
+            count
         )
-        val result = sampleByDistance(sampled, count).toMutableList()
-        result[0] = start.clone()
-        result[result.lastIndex] = end.clone()
-        return result
     }
 
     /**
@@ -1510,26 +1507,21 @@ object Math3DUtil {
         count: Int
     ): List<RelativeLocation> {
         require(count >= 1) { "Number of points must be at least 1" }
-        val nodes = controlNodes.map {
-            BezierNode(it.point.clone(), it.startHandle.clone(), it.endHandle.clone())
-        }
+        val nodes = controlNodes.toList()
         if (nodes.isEmpty()) {
             return emptyList()
         }
         if (nodes.size == 1) {
             return List(count) { nodes[0].point.clone() }
         }
+        if (count == 2) {
+            return listOf(nodes.first().point.clone(), nodes.last().point.clone())
+        }
         if (count == 1) {
             return listOf(nodes.last().point.clone())
         }
 
-        // 先用高密度参数采样近似曲线弧长，再沿累计长度取等距点。
-        val subdivisionCount = bezierSubdivisionCount(count)
-        val sampled = generateSmoothBezierCurve(nodes, subdivisionCount)
-        val result = sampleByDistance(sampled, count).toMutableList()
-        result[0] = nodes.first().point.clone()
-        result[result.lastIndex] = nodes.last().point.clone()
-        return result
+        return generateEquidistantBezierCurveInternal(nodes, count)
     }
 
     /**
@@ -1543,6 +1535,311 @@ object Math3DUtil {
         controlNodes: Collection<BezierNode>,
         count: Int
     ): List<RelativeLocation> = generateEquidistantBezierCurve(controlNodes, count)
+
+    /**
+     * 使用自适应细分完成贝塞尔弧长重采样，避免为平直曲线固定创建大量中间点。
+     *
+     * 每个分段根据控制多边形长度与端点弦长的差值判断平坦度。重采样目标距离按递增
+     * 顺序访问，因此使用单调游标即可定位折线段，避免每个输出点进行二分查找。
+     */
+    private fun generateEquidistantBezierCurveInternal(
+        nodes: List<BezierNode>,
+        count: Int
+    ): List<RelativeLocation> {
+        val nodeCount = nodes.size
+        val segmentCount = nodeCount - 1
+        val maxSampleCount = maxOf(segmentCount + 1, bezierSubdivisionCount(count))
+
+        // 每个节点的端点和两个控制点只计算一次，后续细分直接读取数组。
+        val pointX = DoubleArray(nodeCount)
+        val pointY = DoubleArray(nodeCount)
+        val pointZ = DoubleArray(nodeCount)
+        val startControlX = DoubleArray(nodeCount)
+        val startControlY = DoubleArray(nodeCount)
+        val startControlZ = DoubleArray(nodeCount)
+        val endControlX = DoubleArray(nodeCount)
+        val endControlY = DoubleArray(nodeCount)
+        val endControlZ = DoubleArray(nodeCount)
+        for (index in nodes.indices) {
+            val node = nodes[index]
+            pointX[index] = node.point.x
+            pointY[index] = node.point.y
+            pointZ[index] = node.point.z
+            startControlX[index] = node.point.x + node.startHandle.x
+            startControlY[index] = node.point.y + node.startHandle.y
+            startControlZ[index] = node.point.z + node.startHandle.z
+            endControlX[index] = node.point.x + node.endHandle.x
+            endControlY[index] = node.point.y + node.endHandle.y
+            endControlZ[index] = node.point.z + node.endHandle.z
+        }
+
+        val segmentControlPolygonLengths = DoubleArray(segmentCount)
+        var controlPolygonLength = 0.0
+        for (index in 0 until segmentCount) {
+            val nextIndex = index + 1
+            val segmentLength = distance(
+                pointX[index], pointY[index], pointZ[index],
+                startControlX[index], startControlY[index], startControlZ[index]
+            ) + distance(
+                startControlX[index], startControlY[index], startControlZ[index],
+                endControlX[nextIndex], endControlY[nextIndex], endControlZ[nextIndex]
+            ) + distance(
+                endControlX[nextIndex], endControlY[nextIndex], endControlZ[nextIndex],
+                pointX[nextIndex], pointY[nextIndex], pointZ[nextIndex]
+            )
+            segmentControlPolygonLengths[index] = segmentLength
+            controlPolygonLength += segmentLength
+        }
+
+        if (controlPolygonLength == 0.0) {
+            return List(count) { nodes.first().point.clone() }
+        }
+
+        val targetSpacing = controlPolygonLength / (count - 1)
+        val samplesPerSegment = maxOf(1, (maxSampleCount - 1) / segmentCount)
+        val samples = BezierSampleBuffer(minOf(maxSampleCount, maxOf(16, nodeCount)))
+        samples.append(pointX[0], pointY[0], pointZ[0])
+
+        // 将采样预算按分段分摊，保证极端曲线也不会无限增长，同时保留所有节点端点。
+        for (index in 0 until segmentCount) {
+            val nextIndex = index + 1
+            appendAdaptiveBezierSegment(
+                pointX[index], pointY[index], pointZ[index],
+                startControlX[index], startControlY[index], startControlZ[index],
+                endControlX[nextIndex], endControlY[nextIndex], endControlZ[nextIndex],
+                pointX[nextIndex], pointY[nextIndex], pointZ[nextIndex],
+                maxOf(
+                    minOf(targetSpacing, segmentControlPolygonLengths[index]) * 0.00001,
+                    1.0E-12
+                ),
+                samplesPerSegment,
+                0,
+                samples
+            )
+        }
+
+        val sampledCount = samples.size
+        val cumulativeLengths = DoubleArray(sampledCount)
+        for (index in 1 until sampledCount) {
+            val dx = samples.x[index] - samples.x[index - 1]
+            val dy = samples.y[index] - samples.y[index - 1]
+            val dz = samples.z[index] - samples.z[index - 1]
+            cumulativeLengths[index] = cumulativeLengths[index - 1] +
+                    sqrt(dx * dx + dy * dy + dz * dz)
+        }
+
+        val totalLength = cumulativeLengths.last()
+        if (totalLength == 0.0) {
+            return List(count) { nodes.first().point.clone() }
+        }
+
+        val result = ArrayList<RelativeLocation>(count)
+        var high = 1
+        for (index in 0 until count) {
+            if (index == 0) {
+                result += nodes.first().point.clone()
+                continue
+            }
+            if (index == count - 1) {
+                result += nodes.last().point.clone()
+                continue
+            }
+
+            val targetLength = totalLength * index / (count - 1)
+            while (high < sampledCount - 1 && cumulativeLengths[high] < targetLength) {
+                high++
+            }
+            val low = high - 1
+            val segmentLength = cumulativeLengths[high] - cumulativeLengths[low]
+            if (segmentLength == 0.0) {
+                result += RelativeLocation(samples.x[high], samples.y[high], samples.z[high])
+                continue
+            }
+            val ratio = (targetLength - cumulativeLengths[low]) / segmentLength
+            result += RelativeLocation(
+                samples.x[low] + (samples.x[high] - samples.x[low]) * ratio,
+                samples.y[low] + (samples.y[high] - samples.y[low]) * ratio,
+                samples.z[low] + (samples.z[high] - samples.z[low]) * ratio
+            )
+        }
+        return result
+    }
+
+    private fun appendAdaptiveBezierSegment(
+        p0x: Double,
+        p0y: Double,
+        p0z: Double,
+        c1x: Double,
+        c1y: Double,
+        c1z: Double,
+        c2x: Double,
+        c2y: Double,
+        c2z: Double,
+        p3x: Double,
+        p3y: Double,
+        p3z: Double,
+        flatnessTolerance: Double,
+        leafBudget: Int,
+        depth: Int,
+        samples: BezierSampleBuffer
+    ) {
+        if (leafBudget <= 1 || depth >= 16 || bezierFlatness(
+                p0x, p0y, p0z,
+                c1x, c1y, c1z,
+                c2x, c2y, c2z,
+                p3x, p3y, p3z
+            ) <= flatnessTolerance
+        ) {
+            samples.append(p3x, p3y, p3z)
+            return
+        }
+
+        val p01x = (p0x + c1x) * 0.5
+        val p01y = (p0y + c1y) * 0.5
+        val p01z = (p0z + c1z) * 0.5
+        val p12x = (c1x + c2x) * 0.5
+        val p12y = (c1y + c2y) * 0.5
+        val p12z = (c1z + c2z) * 0.5
+        val p23x = (c2x + p3x) * 0.5
+        val p23y = (c2y + p3y) * 0.5
+        val p23z = (c2z + p3z) * 0.5
+        val p012x = (p01x + p12x) * 0.5
+        val p012y = (p01y + p12y) * 0.5
+        val p012z = (p01z + p12z) * 0.5
+        val p123x = (p12x + p23x) * 0.5
+        val p123y = (p12y + p23y) * 0.5
+        val p123z = (p12z + p23z) * 0.5
+        val midpointX = (p012x + p123x) * 0.5
+        val midpointY = (p012y + p123y) * 0.5
+        val midpointZ = (p012z + p123z) * 0.5
+        val leftBudget = leafBudget / 2
+
+        appendAdaptiveBezierSegment(
+            p0x, p0y, p0z,
+            p01x, p01y, p01z,
+            p012x, p012y, p012z,
+            midpointX, midpointY, midpointZ,
+            flatnessTolerance,
+            leftBudget,
+            depth + 1,
+            samples
+        )
+        appendAdaptiveBezierSegment(
+            midpointX, midpointY, midpointZ,
+            p123x, p123y, p123z,
+            p23x, p23y, p23z,
+            p3x, p3y, p3z,
+            flatnessTolerance,
+            leafBudget - leftBudget,
+            depth + 1,
+            samples
+        )
+    }
+
+    private fun bezierFlatness(
+        p0x: Double,
+        p0y: Double,
+        p0z: Double,
+        c1x: Double,
+        c1y: Double,
+        c1z: Double,
+        c2x: Double,
+        c2y: Double,
+        c2z: Double,
+        p3x: Double,
+        p3y: Double,
+        p3z: Double
+    ): Double {
+        val controlPolygonLength = distance(p0x, p0y, p0z, c1x, c1y, c1z) +
+                distance(c1x, c1y, c1z, c2x, c2y, c2z) +
+                distance(c2x, c2y, c2z, p3x, p3y, p3z)
+        val chordLength = distance(p0x, p0y, p0z, p3x, p3y, p3z)
+        val controlDeviation = sqrt(
+            maxOf(
+                pointToSegmentDistanceSquared(c1x, c1y, c1z, p0x, p0y, p0z, p3x, p3y, p3z),
+                pointToSegmentDistanceSquared(c2x, c2y, c2z, p0x, p0y, p0z, p3x, p3y, p3z)
+            )
+        )
+        return maxOf(0.0, controlPolygonLength - chordLength, controlDeviation)
+    }
+
+    private fun pointToSegmentDistanceSquared(
+        px: Double,
+        py: Double,
+        pz: Double,
+        startX: Double,
+        startY: Double,
+        startZ: Double,
+        endX: Double,
+        endY: Double,
+        endZ: Double
+    ): Double {
+        val dx = endX - startX
+        val dy = endY - startY
+        val dz = endZ - startZ
+        val lengthSquared = dx * dx + dy * dy + dz * dz
+        if (lengthSquared == 0.0) {
+            return distanceSquared(px, py, pz, startX, startY, startZ)
+        }
+
+        val offsetX = px - startX
+        val offsetY = py - startY
+        val offsetZ = pz - startZ
+        val projection = ((offsetX * dx + offsetY * dy + offsetZ * dz) / lengthSquared)
+            .coerceIn(0.0, 1.0)
+        val nearestX = startX + dx * projection
+        val nearestY = startY + dy * projection
+        val nearestZ = startZ + dz * projection
+        return distanceSquared(px, py, pz, nearestX, nearestY, nearestZ)
+    }
+
+    private fun distanceSquared(
+        x1: Double,
+        y1: Double,
+        z1: Double,
+        x2: Double,
+        y2: Double,
+        z2: Double
+    ): Double {
+        val dx = x2 - x1
+        val dy = y2 - y1
+        val dz = z2 - z1
+        return dx * dx + dy * dy + dz * dz
+    }
+
+    private fun distance(
+        x1: Double,
+        y1: Double,
+        z1: Double,
+        x2: Double,
+        y2: Double,
+        z2: Double
+    ): Double {
+        val dx = x2 - x1
+        val dy = y2 - y1
+        val dz = z2 - z1
+        return sqrt(dx * dx + dy * dy + dz * dz)
+    }
+
+    private class BezierSampleBuffer(initialCapacity: Int) {
+        var x = DoubleArray(initialCapacity.coerceAtLeast(2))
+        var y = DoubleArray(initialCapacity.coerceAtLeast(2))
+        var z = DoubleArray(initialCapacity.coerceAtLeast(2))
+        var size = 0
+
+        fun append(xValue: Double, yValue: Double, zValue: Double) {
+            if (size == x.size) {
+                val newCapacity = x.size * 2
+                x = x.copyOf(newCapacity)
+                y = y.copyOf(newCapacity)
+                z = z.copyOf(newCapacity)
+            }
+            x[size] = xValue
+            y[size] = yValue
+            z[size] = zValue
+            size++
+        }
+    }
 
     private fun evaluateBezierNodePath(
         nodes: List<BezierNode>,
@@ -1572,9 +1869,9 @@ object Math3DUtil {
         )
     }
 
-    /** 根据目标点数生成有限的高密度预采样数量。 */
+    /** 生成自适应细分的最大采样预算。 */
     private fun bezierSubdivisionCount(count: Int): Int {
-        return (count.toLong() * 256L).coerceIn(256L, 16384L).toInt()
+        return (count.toLong() * 64L).coerceIn(256L, 16384L).toInt()
     }
 
     /**
