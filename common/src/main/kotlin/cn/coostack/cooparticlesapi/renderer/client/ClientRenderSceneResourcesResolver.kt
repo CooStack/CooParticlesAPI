@@ -83,7 +83,7 @@ object ClientRenderSceneResourcesResolver {
             ),
             RenderSceneResource(
                 id = RenderSceneTargets.CPARTICLE_COVERAGE_MASK,
-                label = "${resolvedTargets.targetLabel}:cparticle-coverage",
+                label = "${resolvedTargets.targetLabel}:cparticle-color-coverage",
                 colorTextureId = OpenGlPostEffectExecutionBackend.cParticleCoverageTexture()
             )
         )

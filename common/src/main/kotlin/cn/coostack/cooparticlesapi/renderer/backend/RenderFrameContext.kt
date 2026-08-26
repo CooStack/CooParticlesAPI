@@ -33,6 +33,8 @@ data class RenderFrameContext(
     val finalCompositeTarget: RenderTarget? = null,
     /** 当前帧最终合成输出 framebuffer；可指向 Iris 当前绑定的外部 FBO。 */
     val finalCompositeFramebufferId: Int? = null,
+    /** 当前帧最终合成输出颜色纹理；用于没有 RenderTarget 包装的 Iris colortex。 */
+    val finalCompositeColorTextureId: Int? = null,
     /** 当前帧是否使用了非 vanilla RenderTarget 管理的外部 framebuffer。 */
     val externalFramebuffer: Boolean = false,
     /** 当前解析出的主要目标标签，便于调试或 shader 侧日志追踪。 */

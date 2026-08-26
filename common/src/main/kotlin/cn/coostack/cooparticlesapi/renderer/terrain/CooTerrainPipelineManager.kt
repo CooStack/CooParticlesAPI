@@ -268,13 +268,24 @@ internal object CooTerrainPipelineManager {
     /**
      * 返回 CParticle 应在 Mapping 后重放的最终阶段；`true` 为 scene-post，`false` 为 frame-post。
      * 同帧同时存在两类 Mapping 时选择更晚的 frame-post，避免前景被第二次 Mapping 覆盖。
+     * Iris shader pack 激活时全部粒子保留原阶段，由 Iris 粒子 framebuffer 和深度过滤与 Mapping 隔离。
      */
     internal fun cParticleForegroundReplayScenePost(): Boolean? {
+        if (irisShaderPackActive) return null
         return when {
             framePostMappingActiveThisFrame -> false
             scenePostMappingActiveThisFrame -> true
             else -> null
         }
+    }
+
+    /**
+     * Iris 下存在 Terrain Mapping 后处理时，透明 CParticle 不应把自己的深度写入场景深度。
+     * 否则 Mapping 会把粒子深度误判为 terrain 的最终深度，导致粒子泛光区域出现硬边。
+     */
+    internal fun shouldFilterCParticleDepth(): Boolean {
+        return irisShaderPackActive &&
+            (framePostMappingActiveThisFrame || scenePostMappingActiveThisFrame)
     }
 
     /** @return 指定后处理阶段是否需要生成独立 CParticle 覆盖蒙版 */
@@ -352,8 +363,8 @@ internal object CooTerrainPipelineManager {
         context: RenderFrameContext,
         collector: RenderEffectCollector,
         includeMappings: Boolean,
-    ) {
-        collectPostEffects(context, collector, scenePost = false, includeMappings)
+    ): Set<String> {
+        return collectPostEffects(context, collector, scenePost = false, includeMappings)
     }
 
     /**
@@ -371,8 +382,8 @@ internal object CooTerrainPipelineManager {
         context: RenderFrameContext,
         collector: RenderEffectCollector,
         includeMappings: Boolean,
-    ) {
-        collectPostEffects(context, collector, scenePost = true, includeMappings)
+    ): Set<String> {
+        return collectPostEffects(context, collector, scenePost = true, includeMappings)
     }
 
     private fun collectPostEffects(
@@ -380,7 +391,8 @@ internal object CooTerrainPipelineManager {
         collector: RenderEffectCollector,
         scenePost: Boolean,
         includeMappings: Boolean,
-    ) {
+    ): Set<String> {
+        val mappingSources = linkedSetOf<String>()
         val draws = synchronized(pendingPostDraws) {
             val selected = pendingPostDraws.toList().filter { (renderType, _) ->
                 synchronized(terrainLayers) {
@@ -391,8 +403,10 @@ internal object CooTerrainPipelineManager {
             selected
         }
         if (draws.isEmpty()) {
-            if (includeMappings) collectScreenOnlyMappingPostEffects(context, collector, scenePost)
-            return
+            if (includeMappings) {
+                mappingSources += collectScreenOnlyMappingPostEffects(context, collector, scenePost)
+            }
+            return mappingSources
         }
         val grouped = draws.groupBy { (renderType, _) ->
             val pipeline = synchronized(terrainLayers) { terrainPipelines[renderType] }
@@ -448,8 +462,12 @@ internal object CooTerrainPipelineManager {
                 sourceId = owner
             )
             collector.submit(post.type.toDescriptor(instance))
+            if (groupKey.second != null) mappingSources += owner
         }
-        if (includeMappings) collectScreenOnlyMappingPostEffects(context, collector, scenePost)
+        if (includeMappings) {
+            mappingSources += collectScreenOnlyMappingPostEffects(context, collector, scenePost)
+        }
+        return mappingSources
     }
 
     /** 为不含 WORLD 节点的 Mapping 直接提交屏幕后处理，避免重放会被 Iris 改写的 terrain 顶点。 */
@@ -457,8 +475,9 @@ internal object CooTerrainPipelineManager {
         context: RenderFrameContext,
         collector: RenderEffectCollector,
         scenePost: Boolean
-    ) {
-        val level = Minecraft.getInstance().level ?: return
+    ): Set<String> {
+        val mappingSources = linkedSetOf<String>()
+        val level = Minecraft.getInstance().level ?: return mappingSources
         val mappings = CooTerrainMappingRegistry.activeRenderPlan(
             level.dimension().location(),
             level.gameTime
@@ -483,7 +502,9 @@ internal object CooTerrainPipelineManager {
                 priority = mapping.priority
             )
             collector.submit(post.type.toDescriptor(instance))
+            mappingSources += owner
         }
+        return mappingSources
     }
 
     private fun mappingPostParams(
@@ -772,6 +793,13 @@ internal object CooTerrainPipelineManager {
         OpenGlPostEffectExecutionBackend.captureTerrainOpaqueDepth()
     }
 
+    /** 在 Sodium terrain framebuffer 仍处于绑定状态时保存 opaque terrain 深度。 */
+    @JvmStatic
+    fun captureOpaqueTerrainDepthFromCurrentFramebuffer() {
+        if (!terrainDepthSnapshotsRequiredThisFrame) return
+        OpenGlPostEffectExecutionBackend.captureTerrainOpaqueDepthFromCurrentFramebuffer()
+    }
+
     /** 在半透明 terrain 绘制前保存深度快照。 */
     @JvmStatic
     fun captureTranslucentTerrainDepthBefore() {
@@ -779,11 +807,25 @@ internal object CooTerrainPipelineManager {
         OpenGlPostEffectExecutionBackend.captureTerrainTranslucentDepthBefore()
     }
 
+    /** 在 Sodium 半透明 terrain 绘制开始前，从当前绑定 framebuffer 保存深度。 */
+    @JvmStatic
+    fun captureTranslucentTerrainDepthBeforeFromCurrentFramebuffer() {
+        if (!terrainDepthSnapshotsRequiredThisFrame) return
+        OpenGlPostEffectExecutionBackend.captureTerrainTranslucentDepthBeforeFromCurrentFramebuffer()
+    }
+
     /** 在半透明 terrain 绘制后保存深度快照。 */
     @JvmStatic
     fun captureTranslucentTerrainDepthAfter() {
         if (!terrainDepthSnapshotsRequiredThisFrame) return
         OpenGlPostEffectExecutionBackend.captureTerrainTranslucentDepthAfter()
+    }
+
+    /** 在 Sodium 半透明 terrain 绘制完成且 Iris 尚未恢复 framebuffer 时保存深度。 */
+    @JvmStatic
+    fun captureTranslucentTerrainDepthAfterFromCurrentFramebuffer() {
+        if (!terrainDepthSnapshotsRequiredThisFrame) return
+        OpenGlPostEffectExecutionBackend.captureTerrainTranslucentDepthAfterFromCurrentFramebuffer()
     }
     /** 查询地形 RenderType 对应的 Pipeline。 */
     @JvmStatic

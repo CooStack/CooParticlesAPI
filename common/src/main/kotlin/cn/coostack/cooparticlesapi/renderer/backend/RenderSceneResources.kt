@@ -34,6 +34,7 @@ data class RenderSceneResource(
      */
     fun colorTextureId(attachment: Int): Int? {
         return colorTextureIds.getOrNull(attachment)
+            ?: colorTextureId.takeIf { attachment == 0 }
     }
 }
 

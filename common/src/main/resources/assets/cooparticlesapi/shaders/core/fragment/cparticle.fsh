@@ -34,14 +34,6 @@ void main() {
     if (tex.a * vColor.a < 0.001) {
         discard;
     }
-    if (uCoverageMask != 0) {
-        fragColor = vec4(1.0);
-        return;
-    }
-    if (uDepthOnly != 0) {
-        fragColor = vec4(0.0);
-        return;
-    }
     vec4 color = tex * vColor;
     vec4 light = texture(uLightmap, vLightUv);
     color.rgb *= light.rgb;
@@ -51,6 +43,16 @@ void main() {
         ? 0.0
         : (vFogDistance > uFogEnd ? 1.0 : (vFogDistance - uFogStart) / (uFogEnd - uFogStart));
     color.rgb = mix(color.rgb, uFogColor.rgb, fogValue * uFogColor.a);
+    if (uCoverageMask != 0) {
+        // 只记录软覆盖度；Mapping 不使用本地粒子 shader 的 RGB。
+        float coverage = clamp(tex.a * vColor.a, 0.0, 1.0);
+        fragColor = vec4(coverage);
+        return;
+    }
+    if (uDepthOnly != 0) {
+        fragColor = vec4(0.0);
+        return;
+    }
     if (uPremultiplyRgbByAlpha != 0) {
         color.a = clamp(color.a, 0.0, 1.0);
         color.rgb = clamp(color.rgb, 0.0, 1.0) * color.a;

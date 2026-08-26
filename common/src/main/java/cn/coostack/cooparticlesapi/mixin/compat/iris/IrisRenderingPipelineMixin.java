@@ -7,10 +7,11 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** 在 Iris final pass 前捕获场景 attachment，并在完成后提交最终屏幕后处理。 */
+/** 在 Iris composite 前捕获场景资源，并在 final 输出生成后执行场景后处理。 */
 @Pseudo
 @Mixin(targets = "net.irisshaders.iris.pipeline.IrisRenderingPipeline", remap = false)
 public abstract class IrisRenderingPipelineMixin {
+    /** 在 Iris composite 修改颜色 attachment 前捕获场景资源。 */
     @Inject(
             method = "finalizeLevelRendering",
             at = @At(
@@ -35,6 +36,7 @@ public abstract class IrisRenderingPipelineMixin {
             remap = false
     )
     private void cooparticlesapi$renderScenePostAfterFinalPass(CallbackInfo ci) {
+        ClientRenderPipelineManager.INSTANCE.renderIrisTerrainPostAfterFinalPass();
         ClientRenderPipelineManager.INSTANCE.renderIrisScenePost();
     }
 }

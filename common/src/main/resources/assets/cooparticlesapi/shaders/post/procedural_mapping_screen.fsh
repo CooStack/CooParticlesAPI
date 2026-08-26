@@ -45,16 +45,18 @@ float mappingSignedDistance(vec3 relativePosition, float progress) {
 
 void main() {
     vec4 scene = texture(SceneColor, screen_uv);
-    if (CooHasCParticleCoverage != 0 && texture(CParticleCoverageMask, screen_uv).r > 0.5) {
-        FragColor = scene;
-        return;
-    }
+    vec4 particleSample = CooHasCParticleCoverage != 0
+        ? texture(CParticleCoverageMask, screen_uv)
+        : vec4(0.0);
+    float particleCoverage = CooHasCParticleCoverage != 0
+        ? clamp(particleSample.r, 0.0, 1.0)
+        : 0.0;
     float sceneDepth = texture(SceneDepth, screen_uv).r;
     float sceneDepthNoHand = texture(SceneDepthNoHand, screen_uv).r;
     float opaqueDepth = texture(TerrainOpaqueDepth, screen_uv).r;
     float translucentBeforeDepth = texture(TerrainTranslucentDepthBefore, screen_uv).r;
     float translucentAfterDepth = texture(TerrainTranslucentDepthAfter, screen_uv).r;
-    float depthTolerance = max(0.000001, sceneDepth * 0.000001);
+    float depthTolerance = max(0.0001, sceneDepth * 0.00005);
     bool handDepthChanged = abs(sceneDepth - sceneDepthNoHand) > depthTolerance;
     bool visibleOpaqueTerrain = !handDepthChanged && opaqueDepth < 0.999999 &&
         abs(sceneDepth - opaqueDepth) <= depthTolerance;
@@ -80,6 +82,7 @@ void main() {
     float featherWidth = max(shapeScale * Feather, 0.0001);
     float signedDistance = mappingSignedDistance(relativePosition, progress);
     float shapeMask = 1.0 - smoothstep(-featherWidth, 0.0, signedDistance);
-    float mask = shapeMask * clamp(Blackness, 0.0, 1.0);
+    // CParticle 已经经过 Iris 的粒子 shader；coverage 只阻止 Mapping 覆盖粒子像素。
+    float mask = shapeMask * clamp(Blackness, 0.0, 1.0) * (1.0 - particleCoverage);
     FragColor = vec4(mix(scene.rgb, vec3(0.0), mask), scene.a);
 }

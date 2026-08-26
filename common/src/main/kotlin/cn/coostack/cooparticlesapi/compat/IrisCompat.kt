@@ -9,6 +9,11 @@ import net.minecraft.client.renderer.RenderStateShard
 import net.minecraft.client.renderer.RenderType
 import net.minecraft.client.renderer.ShaderInstance
 import org.joml.Matrix4f
+import org.lwjgl.opengl.GL20.GL_ACTIVE_UNIFORMS
+import org.lwjgl.opengl.GL20.GL_SAMPLER_2D
+import org.lwjgl.opengl.GL20.glGetActiveUniform
+import org.lwjgl.opengl.GL20.glGetProgrami
+import org.lwjgl.system.MemoryStack
 import org.slf4j.LoggerFactory
 import java.lang.invoke.MethodHandle
 import java.lang.invoke.MethodHandles
@@ -16,45 +21,6 @@ import java.lang.invoke.MethodType
 import java.lang.reflect.Field
 import java.lang.reflect.Method
 import java.util.Optional
-
-/**
- * Iris 阴影渲染阶段的反射探测结果。
- *
- * 该枚举只描述当前客户端是否处于 Iris shadow pass，不参与序列化，也不应跨线程缓存。
- * [ACTIVE] 表示 Iris 明确报告正在绘制阴影，[INACTIVE] 表示明确不在阴影阶段；[UNKNOWN]
- * 表示 Iris 未安装、版本没有对应字段或反射失败，调用方必须按保守路径处理。
- */
-internal enum class IrisShadowPassState {
-    /** Iris 明确处于阴影 framebuffer 绘制阶段。 */
-    ACTIVE,
-    /** Iris 明确处于普通世界或实体绘制阶段。 */
-    INACTIVE,
-    /** 无法从当前 Iris 版本可靠判断阶段。 */
-    UNKNOWN,
-}
-
-internal data class IrisTerrainDepthTexture(
-    val textureId: Int,
-    val width: Int,
-    val height: Int,
-)
-
-/**
- * CooFX 交给 Iris entity G-buffer 的基础材质程序选择。
- *
- * 该枚举仅用于客户端当前帧的 shader 选择，不参与资源序列化。默认值是
- * [TRANSLUCENT]，以保持既有 RenderEntity 调用的兼容行为；CooFX glTF 材质会根据
- * OPAQUE/MASK 选择 [SOLID] 或 [CUTOUT]。其中 [CUTOUT] 遵循 Iris entity program
- * 固定的 alpha 阈值，不能表达任意 glTF `alphaCutoff`。
- */
-internal enum class IrisEntityShaderKind {
-    /** 使用 Iris 的实体半透明程序，兼容旧的 RenderEntity 默认路径。 */
-    TRANSLUCENT,
-    /** 使用 Iris 的实体不透明程序，不执行 cutout alpha 丢弃。 */
-    SOLID,
-    /** 使用 Iris 的无剔除 cutout 程序，阈值由 Iris 固定为 0.1。 */
-    CUTOUT,
-}
 
 /**
  * 与 IRIS 互操作的反射桥接，不依赖 IRIS 类型也不需要 mixin。
@@ -94,7 +60,7 @@ object IrisCompat {
     private var particleRenderingMethodsResolved = false
 
     @Volatile
-    private var particleRenderingMethods: ParticleRenderingMethods? = null
+    private var particleRenderingMethods: IrisParticleRenderingMethods? = null
 
     @Volatile
     private var particleTranslucentShaderMethodResolved = false
@@ -115,7 +81,25 @@ object IrisCompat {
     private var terrainDepthMethodsResolved = false
 
     @Volatile
-    private var terrainDepthMethods: TerrainDepthMethods? = null
+    private var terrainDepthMethods: IrisTerrainDepthMethods? = null
+
+    @Volatile
+    private var finalPassMethodsResolved = false
+
+    @Volatile
+    private var finalPassMethods: IrisFinalPassMethods? = null
+
+    @Volatile
+    private var compositeMethodsResolved = false
+
+    @Volatile
+    private var compositeMethods: IrisCompositeMethods? = null
+
+    private var finalPassColorProgram: Any? = null
+    private var finalPassColorAttachment = 0
+
+    private var compositeColorProgram: Any? = null
+    private var compositeColorAttachment = 0
 
     /** 单例 MethodHandle：永远返回 false (= "请不要跳过我")。 */
     private val NEVER_SKIP: MethodHandle by lazy {
@@ -177,6 +161,16 @@ object IrisCompat {
     @JvmStatic
     fun isShadowPassActive(): Boolean {
         return shadowPassState() == IrisShadowPassState.ACTIVE
+    }
+
+    /** 返回是否应跳过当前可能属于 Iris 阴影 pass 的地形深度捕获。 */
+    @JvmStatic
+    fun shouldSkipShadowPass(): Boolean {
+        return when (shadowPassState()) {
+            IrisShadowPassState.ACTIVE,
+            IrisShadowPassState.UNKNOWN -> true
+            IrisShadowPassState.INACTIVE -> false
+        }
     }
 
     internal fun shadowPassState(): IrisShadowPassState {
@@ -273,6 +267,156 @@ object IrisCompat {
         }
     }
 
+    /** 返回 Iris final pass 当前读取的场景颜色纹理。 */
+    internal fun currentFinalPassColorTexture(): IrisFinalPassColorTexture? {
+        if (!CooParticlesAPIClient.checkIrisShaderPackUsed()) return null
+        val methods = resolveFinalPassMethods() ?: return null
+        return try {
+            val state = resolveIrisFinalColorState(methods) ?: return null
+            val textureId = selectIrisFinalPassColorTextureId(
+                hasFinalPass = state.finalPass != null,
+                finalPassReadsFromAlt = state.finalPassReadsFromAlt,
+                baselineTextureId = state.baselineTextureId,
+                mainTextureId = state.mainTextureId,
+                altTextureId = state.altTextureId,
+            )
+            if (textureId <= 0) return null
+            IrisFinalPassColorTexture(
+                textureId,
+                state.width,
+                state.height,
+            )
+        } catch (t: Throwable) {
+            LOGGER.error("Failed to resolve Iris final pass color texture", t)
+            null
+        }
+    }
+
+    /** 返回 Iris 最终 composite 链开始前读取的场景颜色纹理。 */
+    internal fun currentCompositeInputColorTexture(): IrisFinalPassColorTexture? {
+        if (!CooParticlesAPIClient.checkIrisShaderPackUsed()) return null
+        val methods = resolveCompositeMethods() ?: return null
+        return try {
+            val manager = methods.getPipelineManager.invoke(null)
+            val pipeline = (methods.getPipeline.invoke(manager) as Optional<*>).orElse(null) ?: return null
+            val renderTargets = methods.renderTargetsField.get(pipeline)
+            val compositeRenderer = methods.compositeRendererField.get(pipeline)
+            @Suppress("UNCHECKED_CAST")
+            val passes = methods.compositePassesField.get(compositeRenderer) as List<Any>
+            val firstFragmentPass = passes.firstOrNull { pass ->
+                methods.compositeProgramField.get(pass) != null
+            }
+            if (firstFragmentPass == null) return null
+            val compositeProgram = methods.compositeProgramField.get(firstFragmentPass)
+            val attachment = resolveCompositeSceneColorAttachment(
+                compositeProgram,
+                methods,
+            ) ?: return null
+            val renderTarget = methods.getRenderTarget.invoke(renderTargets, attachment)
+            val mainTextureId = methods.getMainTexture.invoke(renderTarget) as Int
+            val altTextureId = methods.getAltTexture.invoke(renderTarget) as Int
+            @Suppress("UNCHECKED_CAST")
+            val firstFragmentPassReadsFromAlt =
+                (methods.compositeStageReadsFromAltField.get(firstFragmentPass) as Set<Int>).contains(attachment)
+            val textureId = selectIrisCompositeInputColorTextureId(
+                firstFragmentPassReadsFromAlt = firstFragmentPassReadsFromAlt,
+                mainTextureId = mainTextureId,
+                altTextureId = altTextureId,
+            )
+            if (textureId <= 0) return null
+            IrisFinalPassColorTexture(
+                textureId,
+                methods.getCurrentWidth.invoke(renderTargets) as Int,
+                methods.getCurrentHeight.invoke(renderTargets) as Int,
+            )
+        } catch (t: Throwable) {
+            LOGGER.error("Failed to resolve Iris composite input color texture", t)
+            null
+        }
+    }
+
+    private fun resolveCompositeSceneColorAttachment(
+        program: Any,
+        methods: IrisCompositeMethods,
+    ): Int? {
+        if (compositeColorProgram === program) {
+            return compositeColorAttachment.takeIf { it >= 0 }
+        }
+        val activeUniformNames = activeSampler2DUniformNames(program, methods.getProgramId)
+        val attachment = selectIrisCompositeSceneColorAttachment(activeUniformNames)
+        compositeColorProgram = program
+        compositeColorAttachment = attachment ?: -1
+        LOGGER.info(
+            "Resolved Iris composite scene color attachment {} from active sampler2D uniforms {}",
+            attachment?.let { "colortex$it" } ?: "ambiguous",
+            activeUniformNames.filter { irisFinalPassColorAttachment(it) != null },
+        )
+        return attachment
+    }
+
+    private fun resolveIrisFinalColorState(methods: IrisFinalPassMethods): IrisFinalColorState? {
+        val manager = methods.getPipelineManager.invoke(null)
+        val pipeline = (methods.getPipeline.invoke(manager) as Optional<*>).orElse(null) ?: return null
+        val finalPassRenderer = methods.finalPassRendererField.get(pipeline)
+        val finalPass = methods.finalPassField.get(finalPassRenderer)
+        val renderTargets = methods.renderTargetsField.get(pipeline)
+        val attachment = if (finalPass == null) {
+            0
+        } else {
+            val program = methods.programField.get(finalPass)
+            resolveFinalPassColorAttachment(program, methods) ?: return null
+        }
+        val renderTarget = methods.getRenderTarget.invoke(renderTargets, attachment)
+        val baseline = methods.baselineField.get(finalPassRenderer)
+        val finalPassReadsFromAlt = finalPass?.let { pass ->
+            @Suppress("UNCHECKED_CAST")
+            (methods.stageReadsFromAltField.get(pass) as Set<Int>).contains(attachment)
+        } ?: false
+        return IrisFinalColorState(
+            pipeline = pipeline,
+            finalPass = finalPass,
+            attachment = attachment,
+            finalPassReadsFromAlt = finalPassReadsFromAlt,
+            baselineTextureId = methods.getColorAttachment.invoke(baseline, 0) as Int,
+            mainTextureId = methods.getMainTexture.invoke(renderTarget) as Int,
+            altTextureId = methods.getAltTexture.invoke(renderTarget) as Int,
+            width = methods.getCurrentWidth.invoke(renderTargets) as Int,
+            height = methods.getCurrentHeight.invoke(renderTargets) as Int,
+        )
+    }
+
+    private fun resolveFinalPassColorAttachment(program: Any, methods: IrisFinalPassMethods): Int? {
+        if (finalPassColorProgram === program) return finalPassColorAttachment.takeIf { it >= 0 }
+
+        val activeUniformNames = activeSampler2DUniformNames(program, methods.getProgramId)
+        val attachment = selectIrisFinalPassColorAttachment(activeUniformNames)
+        finalPassColorProgram = program
+        finalPassColorAttachment = attachment ?: -1
+        LOGGER.info(
+            "Resolved Iris final scene color attachment {} from active sampler2D uniforms {}",
+            attachment?.let { "colortex$it" } ?: "ambiguous",
+            activeUniformNames.filter { irisFinalPassColorAttachment(it) != null },
+        )
+        return attachment
+    }
+
+    private fun activeSampler2DUniformNames(program: Any, getProgramId: Method): List<String> {
+        val programId = getProgramId.invoke(program) as Int
+        return MemoryStack.stackPush().use { stack ->
+            val size = stack.mallocInt(1)
+            val type = stack.mallocInt(1)
+            buildList {
+                repeat(glGetProgrami(programId, GL_ACTIVE_UNIFORMS).coerceAtLeast(0)) { index ->
+                    size.clear()
+                    type.clear()
+                    val uniformName = glGetActiveUniform(programId, index, size, type)
+                    if (type[0] == GL_SAMPLER_2D) {
+                        add(uniformName)
+                    }
+                }
+            }
+        }
+    }
 
     /**
      * 使用 Iris 当前粒子 program 绘制已经展开为原版 PARTICLE 格式的 GPU 顶点。
@@ -414,7 +558,7 @@ object IrisCompat {
         }
     }
 
-    private fun resolveParticleRenderingMethods(): ParticleRenderingMethods? {
+    private fun resolveParticleRenderingMethods(): IrisParticleRenderingMethods? {
         if (particleRenderingMethodsResolved) return particleRenderingMethods
         synchronized(this) {
             if (particleRenderingMethodsResolved) return particleRenderingMethods
@@ -423,7 +567,7 @@ object IrisCompat {
                 val irisClass = Class.forName("net.irisshaders.iris.Iris")
                 val pipelineManagerClass = Class.forName("net.irisshaders.iris.pipeline.PipelineManager")
                 val worldPipelineClass = Class.forName("net.irisshaders.iris.pipeline.WorldRenderingPipeline")
-                ParticleRenderingMethods(
+                IrisParticleRenderingMethods(
                     irisClass.getMethod("getPipelineManager"),
                     pipelineManagerClass.getMethod("getPipeline"),
                     worldPipelineClass.getMethod("getParticleRenderingSettings"),
@@ -489,7 +633,8 @@ object IrisCompat {
         }
     }
 
-    private fun resolveTerrainDepthMethods(): TerrainDepthMethods? {
+    /** 解析 Iris 深度纹理访问所需的反射成员。 */
+    private fun resolveTerrainDepthMethods(): IrisTerrainDepthMethods? {
         if (terrainDepthMethodsResolved) return terrainDepthMethods
         synchronized(this) {
             if (terrainDepthMethodsResolved) return terrainDepthMethods
@@ -510,7 +655,7 @@ object IrisCompat {
                     } catch (_: NoSuchMethodException) {
                         null
                     }
-                    TerrainDepthMethods(
+                    IrisTerrainDepthMethods(
                         particleMethods.getPipelineManager,
                         particleMethods.getPipeline,
                         renderTargetsField,
@@ -536,22 +681,144 @@ object IrisCompat {
         }
     }
 
-    private data class ParticleRenderingMethods(
-        val getPipelineManager: Method,
-        val getPipeline: Method,
-        val getParticleRenderingSettings: Method,
-    )
+    /** 解析 Iris final pass 当前输入颜色纹理所需的反射成员。 */
+    private fun resolveFinalPassMethods(): IrisFinalPassMethods? {
+        if (finalPassMethodsResolved) return finalPassMethods
+        return synchronized(this) {
+            if (finalPassMethodsResolved) return@synchronized finalPassMethods
+            finalPassMethodsResolved = true
+            finalPassMethods = try {
+                val particleMethods = resolveParticleRenderingMethods()
+                if (particleMethods == null) {
+                    null
+                } else {
+                    val pipelineClass = Class.forName("net.irisshaders.iris.pipeline.IrisRenderingPipeline")
+                    val renderTargetsField = pipelineClass.getDeclaredField("renderTargets")
+                    check(renderTargetsField.trySetAccessible()) { "Iris renderTargets field is not accessible" }
+                    val finalPassRendererField = pipelineClass.getDeclaredField("finalPassRenderer")
+                    check(finalPassRendererField.trySetAccessible()) {
+                        "Iris finalPassRenderer field is not accessible"
+                    }
+                    val finalPassRendererClass = Class.forName("net.irisshaders.iris.pipeline.FinalPassRenderer")
+                    val finalPassField = finalPassRendererClass.getDeclaredField("finalPass")
+                    check(finalPassField.trySetAccessible()) { "Iris final pass field is not accessible" }
+                    val programField = finalPassField.type.getDeclaredField("program")
+                    check(programField.trySetAccessible()) { "Iris final pass program field is not accessible" }
+                    val programClass = Class.forName("net.irisshaders.iris.gl.program.Program")
+                    val stageReadsFromAltField = finalPassField.type.getDeclaredField("stageReadsFromAlt")
+                    check(stageReadsFromAltField.trySetAccessible()) {
+                        "Iris final pass stageReadsFromAlt field is not accessible"
+                    }
+                    val baselineField = finalPassRendererClass.getDeclaredField("baseline")
+                    check(baselineField.trySetAccessible()) { "Iris final pass baseline field is not accessible" }
+                    val glFramebufferClass = Class.forName("net.irisshaders.iris.gl.framebuffer.GlFramebuffer")
+                    val renderTargetsClass = Class.forName("net.irisshaders.iris.targets.RenderTargets")
+                    val renderTargetClass = Class.forName("net.irisshaders.iris.targets.RenderTarget")
+                    IrisFinalPassMethods(
+                        particleMethods.getPipelineManager,
+                        particleMethods.getPipeline,
+                        renderTargetsField,
+                        finalPassRendererField,
+                        finalPassField,
+                        programField,
+                        programClass.getMethod("getProgramId"),
+                        stageReadsFromAltField,
+                        baselineField,
+                        glFramebufferClass.getMethod("getColorAttachment", Int::class.javaPrimitiveType),
+                        renderTargetsClass.getMethod("get", Int::class.javaPrimitiveType),
+                        renderTargetClass.getMethod("getMainTexture"),
+                        renderTargetClass.getMethod("getAltTexture"),
+                        renderTargetsClass.getMethod("getCurrentWidth"),
+                        renderTargetsClass.getMethod("getCurrentHeight"),
+                    )
+                }
+            } catch (_: ClassNotFoundException) {
+                null
+            } catch (_: NoSuchFieldException) {
+                null
+            } catch (_: NoSuchMethodException) {
+                null
+            } catch (t: Throwable) {
+                LOGGER.warn("Unexpected failure resolving Iris final pass color access", t)
+                null
+            }
+            finalPassMethods
+        }
+    }
 
-    private data class TerrainDepthMethods(
-        val getPipelineManager: Method,
-        val getPipeline: Method,
-        val renderTargetsField: Field,
-        val getDepthTexture: Method,
-        val getDepthTextureNoTranslucents: Method,
-        val getDepthTextureNoHand: Method?,
-        val getDepthTextureId: Method,
-        val getCurrentWidth: Method,
-        val getCurrentHeight: Method,
-    )
+    /** 解析 Iris composite 链当前输入颜色纹理所需的反射成员。 */
+    private fun resolveCompositeMethods(): IrisCompositeMethods? {
+        if (compositeMethodsResolved) return compositeMethods
+        return synchronized(this) {
+            if (compositeMethodsResolved) return@synchronized compositeMethods
+            compositeMethodsResolved = true
+            compositeMethods = try {
+                val particleMethods = resolveParticleRenderingMethods()
+                if (particleMethods == null) {
+                    null
+                } else {
+                    val pipelineClass = Class.forName("net.irisshaders.iris.pipeline.IrisRenderingPipeline")
+                    val renderTargetsField = pipelineClass.getDeclaredField("renderTargets")
+                    check(renderTargetsField.trySetAccessible()) { "Iris renderTargets field is not accessible" }
+                    val compositeRendererField = pipelineClass.getDeclaredField("compositeRenderer")
+                    check(compositeRendererField.trySetAccessible()) {
+                        "Iris compositeRenderer field is not accessible"
+                    }
+                    val compositeRendererClass = Class.forName("net.irisshaders.iris.pipeline.CompositeRenderer")
+                    val compositePassesField = compositeRendererClass.getDeclaredField("passes")
+                    check(compositePassesField.trySetAccessible()) { "Iris composite passes field is not accessible" }
+                    val compositePassClass = Class.forName("net.irisshaders.iris.pipeline.CompositeRenderer\$Pass")
+                    val compositeProgramField = compositePassClass.getDeclaredField("program")
+                    check(compositeProgramField.trySetAccessible()) {
+                        "Iris composite pass program field is not accessible"
+                    }
+                    val compositeStageReadsFromAltField = compositePassClass.getDeclaredField("stageReadsFromAlt")
+                    check(compositeStageReadsFromAltField.trySetAccessible()) {
+                        "Iris composite pass stageReadsFromAlt field is not accessible"
+                    }
+                    val programClass = Class.forName("net.irisshaders.iris.gl.program.Program")
+                    val renderTargetsClass = Class.forName("net.irisshaders.iris.targets.RenderTargets")
+                    val renderTargetClass = Class.forName("net.irisshaders.iris.targets.RenderTarget")
+                    IrisCompositeMethods(
+                        particleMethods.getPipelineManager,
+                        particleMethods.getPipeline,
+                        renderTargetsField,
+                        compositeRendererField,
+                        compositePassesField,
+                        compositeProgramField,
+                        compositeStageReadsFromAltField,
+                        programClass.getMethod("getProgramId"),
+                        renderTargetsClass.getMethod("get", Int::class.javaPrimitiveType),
+                        renderTargetClass.getMethod("getMainTexture"),
+                        renderTargetClass.getMethod("getAltTexture"),
+                        renderTargetsClass.getMethod("getCurrentWidth"),
+                        renderTargetsClass.getMethod("getCurrentHeight"),
+                    )
+                }
+            } catch (_: ClassNotFoundException) {
+                null
+            } catch (_: NoSuchFieldException) {
+                null
+            } catch (_: NoSuchMethodException) {
+                null
+            } catch (t: Throwable) {
+                LOGGER.warn("Unexpected failure resolving Iris composite color access", t)
+                null
+            }
+            compositeMethods
+        }
+    }
 
 }
+
+private data class IrisFinalColorState(
+    val pipeline: Any,
+    val finalPass: Any?,
+    val attachment: Int,
+    val finalPassReadsFromAlt: Boolean,
+    val baselineTextureId: Int,
+    val mainTextureId: Int,
+    val altTextureId: Int,
+    val width: Int,
+    val height: Int,
+)

@@ -522,7 +522,7 @@ object CParticleSystemManager {
         return hasDeferredTerrainForeground() && deferredTerrainForegroundScenePost == scenePost
     }
 
-    /** 在 Mapping 后按原 layer、混合和 deferred-depth 语义重放当前帧全部 CParticle。 */
+    /** 在 Mapping 后按原 layer、混合和 deferred-depth 语义重放当前帧延后的 CParticle。 */
     internal fun renderDeferredTerrainForeground(
         view: Matrix4f,
         proj: Matrix4f,

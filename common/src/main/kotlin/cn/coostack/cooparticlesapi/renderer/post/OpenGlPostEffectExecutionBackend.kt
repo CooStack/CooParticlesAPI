@@ -20,6 +20,7 @@ import cn.coostack.cooparticlesapi.renderer.shader.glsl.SimpleFrameBuffer
 import cn.coostack.cooparticlesapi.renderer.shader.texture.IdentifierTexture
 import cn.coostack.cooparticlesapi.renderer.shader.vertex.SimpleVertexBuffer
 import cn.coostack.cooparticlesapi.renderer.shader.vertex.VertexBuffers
+import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainMappingShaderAbi
 import com.mojang.blaze3d.pipeline.RenderTarget
 import com.mojang.blaze3d.systems.RenderSystem
 import net.minecraft.client.Minecraft
@@ -28,6 +29,7 @@ import org.joml.Matrix4f
 import org.joml.Vector2f
 import org.joml.Vector3f
 import org.joml.Vector4f
+import org.lwjgl.BufferUtils
 import java.nio.ByteBuffer
 import org.lwjgl.opengl.GL33.GL_ACTIVE_TEXTURE
 import org.lwjgl.opengl.GL33.GL_BLEND
@@ -87,6 +89,13 @@ import org.lwjgl.opengl.GL33.GL_RENDERBUFFER_DEPTH_SIZE
 import org.lwjgl.opengl.GL33.GL_RENDERBUFFER_STENCIL_SIZE
 import org.lwjgl.opengl.GL33.GL_RENDERBUFFER_WIDTH
 import org.lwjgl.opengl.GL33.GL_RENDERBUFFER_HEIGHT
+import org.lwjgl.opengl.GL33.GL_R11F_G11F_B10F
+import org.lwjgl.opengl.GL33.GL_R16F
+import org.lwjgl.opengl.GL33.GL_R32F
+import org.lwjgl.opengl.GL33.GL_RG16F
+import org.lwjgl.opengl.GL33.GL_RG32F
+import org.lwjgl.opengl.GL33.GL_RGB16F
+import org.lwjgl.opengl.GL33.GL_RGB32F
 import org.lwjgl.opengl.GL33.GL_RGBA
 import org.lwjgl.opengl.GL33.GL_RGBA8
 import org.lwjgl.opengl.GL33.GL_RGBA16F
@@ -115,6 +124,22 @@ import org.lwjgl.opengl.GL33.GL_VERTEX_ARRAY_BINDING
 import org.lwjgl.opengl.GL11.GL_POLYGON_OFFSET_FACTOR
 import org.lwjgl.opengl.GL11.GL_POLYGON_OFFSET_FILL
 import org.lwjgl.opengl.GL11.GL_POLYGON_OFFSET_UNITS
+import org.lwjgl.opengl.GL11.GL_RGB10
+import org.lwjgl.opengl.GL11.GL_RGB10_A2
+import org.lwjgl.opengl.GL11.GL_RGB12
+import org.lwjgl.opengl.GL11.GL_RGB16
+import org.lwjgl.opengl.GL11.GL_RGBA12
+import org.lwjgl.opengl.GL11.GL_RGBA16
+import org.lwjgl.opengl.GL30.GL_R16
+import org.lwjgl.opengl.GL30.GL_RG16
+import org.lwjgl.opengl.GL31.GL_R8_SNORM
+import org.lwjgl.opengl.GL31.GL_R16_SNORM
+import org.lwjgl.opengl.GL31.GL_RG8_SNORM
+import org.lwjgl.opengl.GL31.GL_RG16_SNORM
+import org.lwjgl.opengl.GL31.GL_RGB8_SNORM
+import org.lwjgl.opengl.GL31.GL_RGB16_SNORM
+import org.lwjgl.opengl.GL31.GL_RGBA8_SNORM
+import org.lwjgl.opengl.GL31.GL_RGBA16_SNORM
 import org.lwjgl.opengl.GL33.glActiveTexture
 import org.lwjgl.opengl.GL33.glBindFramebuffer
 import org.lwjgl.opengl.GL33.glBindRenderbuffer
@@ -158,10 +183,12 @@ import org.lwjgl.opengl.GL33.glIsEnabled
 import org.lwjgl.opengl.GL33.glIsVertexArray
 import org.lwjgl.opengl.GL11.glPolygonOffset
 import org.lwjgl.opengl.GL33.glReadBuffer
+import org.lwjgl.opengl.GL33.glReadPixels
 import org.lwjgl.opengl.GL33.glScissor
 import org.lwjgl.opengl.GL33.glUseProgram
 import org.lwjgl.opengl.GL33.glViewport
 import kotlin.math.max
+import kotlin.math.abs
 
 /**
  * Minecraft 客户端 OpenGL 后处理执行后端。
@@ -204,6 +231,12 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
     private var terrainTranslucentAfterDepthCapture: DepthCapture? = null
     private var cParticleCoverageDepthCapture: DepthCapture? = null
     private var cParticleCoverageColorCapture: ColorCapture? = null
+    /** CParticle coverage 直连外部深度纹理时使用的 framebuffer。 */
+    private var cParticleCoverageFramebufferId = 0
+    /** API 为 Iris final pass 输入颜色纹理创建的非拥有型 framebuffer。 */
+    private var irisFinalColorFramebufferId = 0
+    /** 当前附加到 [irisFinalColorFramebufferId] 的 Iris 颜色纹理对象名。 */
+    private var irisFinalColorTextureId = 0
     private var terrainDepthIrisSourceResolved = false
     private var terrainDepthIrisSource: IrisTerrainDepthTexture? = null
     private var terrainDepthSourceCache: DepthSourceCache? = null
@@ -217,6 +250,12 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
     private var chainedSceneFramebufferId: Int? = null
     private var warnedSceneCopyFailure = false
     private var warnedTerrainSceneCopyFailure = false
+    /** 是否已经记录过 CParticle coverage framebuffer 不完整。 */
+    private var warnedCParticleCoverageFramebufferFailure = false
+    /** 是否已经记录过 Iris 深度纹理无法直接附加。 */
+    private var warnedCParticleCoverageDepthFormatFailure = false
+    /** 是否已经记录过 Iris final 颜色 framebuffer 创建失败。 */
+    private var warnedIrisFinalColorFramebufferFailure = false
     private val warnedTextureContractFailures = linkedSetOf<String>()
 
     /**
@@ -241,6 +280,56 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         preparedSceneFrame = null
         preparedSceneCopySpec = null
         chainedSceneFramebufferId = null
+    }
+
+    /**
+     * 为 Iris 合成链中的外部颜色纹理建立不拥有 attachment 的临时 framebuffer。
+     *
+     * @param textureId Iris 输入或最终输出的颜色纹理对象名
+     * @return 完整的 framebuffer 对象名；纹理无效或 attachment 不完整时返回 `null`
+     */
+    internal fun irisFinalColorFramebuffer(textureId: Int): Int? {
+        RenderSystem.assertOnRenderThread()
+        if (textureId <= 0) return null
+        val previousReadFramebuffer = glGetInteger(GL_READ_FRAMEBUFFER_BINDING)
+        val previousDrawFramebuffer = glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING)
+        clearPendingGlErrors()
+        return try {
+            if (irisFinalColorFramebufferId <= 0) {
+                irisFinalColorFramebufferId = glGenFramebuffers()
+            }
+            glBindFramebuffer(GL_FRAMEBUFFER, irisFinalColorFramebufferId)
+            if (irisFinalColorTextureId != textureId) {
+                glFramebufferTexture2D(
+                    GL_FRAMEBUFFER,
+                    GL_COLOR_ATTACHMENT0,
+                    GL_TEXTURE_2D,
+                    textureId,
+                    0,
+                )
+                irisFinalColorTextureId = textureId
+            }
+            glDrawBuffer(GL_COLOR_ATTACHMENT0)
+            glReadBuffer(GL_COLOR_ATTACHMENT0)
+            val framebufferStatus = glCheckFramebufferStatus(GL_FRAMEBUFFER)
+            if (framebufferStatus != GL_FRAMEBUFFER_COMPLETE || !operationCompletedWithoutGlError()) {
+                if (!warnedIrisFinalColorFramebufferFailure) {
+                    warnedIrisFinalColorFramebufferFailure = true
+                    CooParticlesConstants.logger.warn(
+                        "Iris final color framebuffer is unavailable: fbo={}, texture={}, status=0x{}",
+                        irisFinalColorFramebufferId,
+                        textureId,
+                        framebufferStatus.toString(16),
+                    )
+                }
+                null
+            } else {
+                irisFinalColorFramebufferId
+            }
+        } finally {
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, previousReadFramebuffer)
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, previousDrawFramebuffer)
+        }
     }
 
     /** 只使颜色副本失效；直接前景绘制后的 chain framebuffer 仍是后续 SceneColor 来源。 */
@@ -299,7 +388,18 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
 
     /** 在实体绘制前捕获当前 opaque terrain 深度。 */
     internal fun captureTerrainOpaqueDepth() {
+        if (terrainOpaqueDepthValid) return
         terrainOpaqueDepthValid = captureCurrentDepth(terrainOpaqueDepthCapture) { capture ->
+            terrainOpaqueDepthCapture = capture
+        }
+    }
+
+    /** 在 Sodium terrain framebuffer 仍处于绑定状态时捕获 opaque terrain 深度。 */
+    internal fun captureTerrainOpaqueDepthFromCurrentFramebuffer() {
+        terrainOpaqueDepthValid = captureCurrentDepth(
+            terrainOpaqueDepthCapture,
+            forceCurrentFramebuffer = true,
+        ) { capture ->
             terrainOpaqueDepthCapture = capture
         }
     }
@@ -315,10 +415,33 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         }
     }
 
+    /** 在 Sodium 半透明 terrain 绘制开始前，从当前 framebuffer 捕获深度。 */
+    internal fun captureTerrainTranslucentDepthBeforeFromCurrentFramebuffer() {
+        terrainTranslucentBeforeDepthValid = captureCurrentDepth(
+            terrainTranslucentBeforeDepthCapture,
+            forceCurrentFramebuffer = true,
+        ) { capture ->
+            terrainTranslucentBeforeDepthCapture = capture
+        }
+    }
+
     /** 在半透明 terrain 绘制后捕获深度，供 shader 识别实际改变深度的液体像素。 */
     internal fun captureTerrainTranslucentDepthAfter() {
         if (!terrainTranslucentBeforeDepthValid || terrainTranslucentAfterDepthValid) return
-        terrainTranslucentAfterDepthValid = captureCurrentDepth(terrainTranslucentAfterDepthCapture) { capture ->
+        terrainTranslucentAfterDepthValid = captureCurrentDepth(
+            terrainTranslucentAfterDepthCapture,
+        ) { capture ->
+            terrainTranslucentAfterDepthCapture = capture
+        }
+    }
+
+    /** 在 Sodium 半透明 terrain 绘制完成后，从当前 framebuffer 捕获深度。 */
+    internal fun captureTerrainTranslucentDepthAfterFromCurrentFramebuffer() {
+        if (!terrainTranslucentBeforeDepthValid) return
+        terrainTranslucentAfterDepthValid = captureCurrentDepth(
+            terrainTranslucentAfterDepthCapture,
+            forceCurrentFramebuffer = true,
+        ) { capture ->
             terrainTranslucentAfterDepthCapture = capture
         }
     }
@@ -372,6 +495,47 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
      */
     internal fun captureCParticleCoverage(render: () -> Unit): Boolean {
         RenderSystem.assertOnRenderThread()
+        val irisDepth = IrisCompat.currentSceneDepthTexture()
+        if (irisDepth != null) {
+            val textureSize = resolveTextureSize(irisDepth.textureId)
+            val width = (textureSize?.first ?: irisDepth.width).coerceAtLeast(1)
+            val height = (textureSize?.second ?: irisDepth.height).coerceAtLeast(1)
+            val previousColorCapture = cParticleCoverageColorCapture
+            val colorCapture = ensureCParticleCoverageColor(width, height)
+            val clearMask = !cParticleCoverageValid || colorCapture !== previousColorCapture
+            val depthAttachment = resolveDepthTextureFormat(irisDepth.textureId)?.attachment
+                ?: resolveDepthTextureAttachment(irisDepth.textureId)
+            if (depthAttachment == null) {
+                if (!warnedCParticleCoverageDepthFormatFailure) {
+                    warnedCParticleCoverageDepthFormatFailure = true
+                    CooParticlesConstants.logger.warn(
+                        "CParticle coverage depth texture is not directly attachable: texture={}, size={}x{}, internalFormat=0x{}",
+                        irisDepth.textureId,
+                        width,
+                        height,
+                        textureInternalFormat(irisDepth.textureId).toString(16),
+                    )
+                }
+            } else if (renderCParticleCoverage(
+                    framebufferId = ensureCParticleCoverageFramebuffer(),
+                    depthTextureId = irisDepth.textureId,
+                    depthAttachment = depthAttachment,
+                    width = width,
+                    height = height,
+                    colorCapture = colorCapture,
+                    clearMask = clearMask,
+                    render = render,
+                )
+            ) {
+                return true
+            }
+            cParticleCoverageValid = false
+        }
+        return captureCParticleCoverageWithCopiedDepth(render)
+    }
+
+    /** 复制场景深度后再绘制 coverage，兼容不能与颜色纹理直接组成 FBO 的 Iris 深度格式。 */
+    private fun captureCParticleCoverageWithCopiedDepth(render: () -> Unit): Boolean {
         val previousDepthCapture = cParticleCoverageDepthCapture
         if (!captureCurrentDepth(cParticleCoverageDepthCapture) { capture ->
                 cParticleCoverageDepthCapture = capture
@@ -382,6 +546,28 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         val colorCapture = ensureCParticleCoverageColor(depthCapture)
         val clearMask = !cParticleCoverageValid ||
             depthCapture !== previousDepthCapture || colorCapture !== previousColorCapture
+        return renderCParticleCoverage(
+            framebufferId = depthCapture.framebufferId,
+            depthTextureId = null,
+            depthAttachment = depthCapture.format.attachment,
+            width = depthCapture.width,
+            height = depthCapture.height,
+            colorCapture = colorCapture,
+            clearMask = clearMask,
+            render = render,
+        )
+    }
+
+    private fun renderCParticleCoverage(
+        framebufferId: Int,
+        depthTextureId: Int?,
+        depthAttachment: Int,
+        width: Int,
+        height: Int,
+        colorCapture: ColorCapture,
+        clearMask: Boolean,
+        render: () -> Unit,
+    ): Boolean {
         val previousDrawFramebuffer = glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING)
         val previousViewport = IntArray(4)
         glGetIntegerv(GL_VIEWPORT, previousViewport)
@@ -394,7 +580,37 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         var rendered = false
         clearPendingGlErrors()
         try {
-            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, depthCapture.framebufferId)
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, framebufferId)
+            if (depthTextureId != null) {
+                glFramebufferTexture2D(
+                    GL_DRAW_FRAMEBUFFER,
+                    GL_DEPTH_ATTACHMENT,
+                    GL_TEXTURE_2D,
+                    0,
+                    0,
+                )
+                glFramebufferTexture2D(
+                    GL_DRAW_FRAMEBUFFER,
+                    GL_STENCIL_ATTACHMENT,
+                    GL_TEXTURE_2D,
+                    0,
+                    0,
+                )
+                glFramebufferTexture2D(
+                    GL_DRAW_FRAMEBUFFER,
+                    GL_DEPTH_STENCIL_ATTACHMENT,
+                    GL_TEXTURE_2D,
+                    0,
+                    0,
+                )
+                glFramebufferTexture2D(
+                    GL_DRAW_FRAMEBUFFER,
+                    depthAttachment,
+                    GL_TEXTURE_2D,
+                    depthTextureId,
+                    0,
+                )
+            }
             glFramebufferTexture2D(
                 GL_DRAW_FRAMEBUFFER,
                 GL_COLOR_ATTACHMENT0,
@@ -403,8 +619,24 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
                 0
             )
             glDrawBuffer(GL_COLOR_ATTACHMENT0)
-            if (glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) return false
-            glViewport(0, 0, depthCapture.width, depthCapture.height)
+            val framebufferStatus = glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER)
+            if (framebufferStatus != GL_FRAMEBUFFER_COMPLETE) {
+                if (!warnedCParticleCoverageFramebufferFailure) {
+                    warnedCParticleCoverageFramebufferFailure = true
+                    CooParticlesConstants.logger.warn(
+                        "CParticle coverage framebuffer is incomplete: fbo={}, depthTexture={}, depthAttachment=0x{}, colorTexture={}, size={}x{}, status=0x{}",
+                        framebufferId,
+                        depthTextureId ?: 0,
+                        depthAttachment.toString(16),
+                        colorCapture.textureId,
+                        width,
+                        height,
+                        framebufferStatus.toString(16),
+                    )
+                }
+                return false
+            }
+            glViewport(0, 0, width, height)
             glColorMaski(0, true, true, true, true)
             glDepthMask(false)
             glDisable(GL_SCISSOR_TEST)
@@ -436,9 +668,58 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         return rendered
     }
 
+    private fun ensureCParticleCoverageFramebuffer(): Int {
+        if (cParticleCoverageFramebufferId <= 0) {
+            cParticleCoverageFramebufferId = glGenFramebuffers()
+        }
+        return cParticleCoverageFramebufferId
+    }
+
+    private fun resolveDepthTextureAttachment(textureId: Int): Int? {
+        if (textureId <= 0) return null
+        val previousActiveTexture = glGetInteger(GL_ACTIVE_TEXTURE)
+        glActiveTexture(GL_TEXTURE0)
+        val previousTexture = glGetInteger(GL_TEXTURE_BINDING_2D)
+        return try {
+            glBindTexture(GL_TEXTURE_2D, textureId)
+            when (glGetTexLevelParameteri(GL_TEXTURE_2D, 0, GL_TEXTURE_INTERNAL_FORMAT)) {
+                GL_DEPTH_STENCIL,
+                GL_DEPTH24_STENCIL8,
+                GL_DEPTH32F_STENCIL8 -> GL_DEPTH_STENCIL_ATTACHMENT
+                GL_DEPTH_COMPONENT,
+                GL_DEPTH_COMPONENT16,
+                GL_DEPTH_COMPONENT24,
+                GL_DEPTH_COMPONENT32,
+                GL_DEPTH_COMPONENT32F -> GL_DEPTH_ATTACHMENT
+                else -> null
+            }
+        } finally {
+            glBindTexture(GL_TEXTURE_2D, previousTexture)
+            glActiveTexture(previousActiveTexture)
+        }
+    }
+
+    private fun textureInternalFormat(textureId: Int): Int {
+        if (textureId <= 0) return 0
+        val previousActiveTexture = glGetInteger(GL_ACTIVE_TEXTURE)
+        glActiveTexture(GL_TEXTURE0)
+        val previousTexture = glGetInteger(GL_TEXTURE_BINDING_2D)
+        return try {
+            glBindTexture(GL_TEXTURE_2D, textureId)
+            glGetTexLevelParameteri(GL_TEXTURE_2D, 0, GL_TEXTURE_INTERNAL_FORMAT)
+        } finally {
+            glBindTexture(GL_TEXTURE_2D, previousTexture)
+            glActiveTexture(previousActiveTexture)
+        }
+    }
+
     private fun ensureCParticleCoverageColor(depthCapture: DepthCapture): ColorCapture {
+        return ensureCParticleCoverageColor(depthCapture.width, depthCapture.height)
+    }
+
+    private fun ensureCParticleCoverageColor(width: Int, height: Int): ColorCapture {
         val current = cParticleCoverageColorCapture
-        if (current != null && current.width == depthCapture.width && current.height == depthCapture.height) {
+        if (current != null && current.width == width && current.height == height) {
             return current
         }
         current?.release()
@@ -452,19 +733,19 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
             glTexImage2D(
                 GL_TEXTURE_2D,
                 0,
-                GL_RGBA8,
-                depthCapture.width,
-                depthCapture.height,
+                GL_RGBA16F,
+                width,
+                height,
                 0,
                 GL_RGBA,
-                GL_UNSIGNED_BYTE,
+                GL_FLOAT,
                 null as ByteBuffer?
             )
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-            ColorCapture(textureId, depthCapture.width, depthCapture.height).also {
+            ColorCapture(textureId, width, height).also {
                 cParticleCoverageColorCapture = it
             }
         } catch (error: RuntimeException) {
@@ -483,9 +764,12 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
 
     private fun captureCurrentDepth(
         existing: DepthCapture?,
+        forceCurrentFramebuffer: Boolean = false,
         accept: (DepthCapture) -> Unit
     ): Boolean {
-        val irisDepth = if (!terrainDepthIrisSourceResolved) {
+        val irisDepth = if (forceCurrentFramebuffer) {
+            null
+        } else if (!terrainDepthIrisSourceResolved) {
             terrainDepthIrisSourceResolved = true
             terrainDepthIrisSource = IrisCompat.currentSceneDepthTexture()
             terrainDepthIrisSource
@@ -1179,7 +1463,7 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
      *
      * @param step 当前操作需要的输入值；其语义由方法名和所属组件共同限定
      */
-    override fun execute(step: PostEffectExecutionStep) {
+    override fun execute(step: PostEffectExecutionStep): Boolean {
         val state = instanceStates.getOrPut(step.instance.instanceId) { InstanceFrameState() }
         instanceLastSeenFrame[step.instance.instanceId] = frameCounter
         val frameKey = frameKey(step.context)
@@ -1190,20 +1474,22 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         }
 
         if (step.output.output == PostEffectOutput.FINAL_SCREEN) {
-            drawToFinal(step, state)
-            return
+            return drawToFinal(step, state)
         }
 
         val target = targetFor(step)
+        var submitted = false
         target.buffer.writeFrameBufferWith(step.output.generateMipmaps) {
-            drawStep(step, state)
+            submitted = drawStep(step, state)
         }
+        if (!submitted) return false
         target.buffer.colorAttachments.forEachIndexed { attachment, texture ->
             state.lastPassOutputTextures[PassAttachment(step.pass.name, attachment)] = texture
             namedTargetTextures[NamedAttachment(step.output.targetId, attachment)] = texture
         }
         val colorTexture = target.buffer.colorAttachments.firstOrNull() ?: 0
         state.lastOutputTextures[step.output.output] = colorTexture
+        return true
     }
 
     /**
@@ -1364,6 +1650,15 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         cParticleCoverageDepthCapture = null
         cParticleCoverageColorCapture?.release()
         cParticleCoverageColorCapture = null
+        if (cParticleCoverageFramebufferId > 0) {
+            glDeleteFramebuffers(cParticleCoverageFramebufferId)
+            cParticleCoverageFramebufferId = 0
+        }
+        if (irisFinalColorFramebufferId > 0) {
+            glDeleteFramebuffers(irisFinalColorFramebufferId)
+            irisFinalColorFramebufferId = 0
+            irisFinalColorTextureId = 0
+        }
         cParticleCoverageValid = false
         terrainDepthIrisSourceResolved = false
         terrainDepthIrisSource = null
@@ -1374,6 +1669,9 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         preparedSceneFrame = null
         preparedSceneCopySpec = null
         warnedTerrainSceneCopyFailure = false
+        warnedCParticleCoverageFramebufferFailure = false
+        warnedCParticleCoverageDepthFormatFailure = false
+        warnedIrisFinalColorFramebufferFailure = false
     }
 
     /**
@@ -1456,7 +1754,7 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         }
     }
 
-    private fun drawToFinal(step: PostEffectExecutionStep, state: InstanceFrameState) {
+    private fun drawToFinal(step: PostEffectExecutionStep, state: InstanceFrameState): Boolean {
         val target = step.context.finalCompositeTarget ?: Minecraft.getInstance().mainRenderTarget
         val framebuffer = step.context.finalCompositeFramebufferId?.takeIf { it > 0 } ?: target.frameBufferId
         val width = max(1, step.context.targetWidth ?: target.width)
@@ -1467,36 +1765,43 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         glGetIntegerv(GL_VIEWPORT, previousViewport)
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, framebuffer)
         glViewport(0, 0, width, height)
+        var submitted = false
         try {
-            drawStep(step, state)
+            submitted = drawStep(step, state)
         } finally {
             glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3])
             glBindFramebuffer(GL_READ_FRAMEBUFFER, previousReadFramebuffer)
             glBindFramebuffer(GL_DRAW_FRAMEBUFFER, previousDrawFramebuffer)
         }
+        if (!submitted) return false
         chainedSceneFramebufferId = framebuffer
         preparedSceneFrame = null
         preparedSceneCopySpec = null
+        return true
     }
 
-    private fun drawStep(step: PostEffectExecutionStep, state: InstanceFrameState) {
+    private fun drawStep(step: PostEffectExecutionStep, state: InstanceFrameState): Boolean {
         val program = programFor(step.pass.vertex, step.pass.fragment)
         val buffer = screenBuffer()
+        var submitted = false
         withFlatPostState {
             program.useOnContext {
                 uploadBuiltInUniforms(this, step)
                 uploadUniforms(this, step.uniforms)
-                bindInputs(step, state, this) {
+                submitted = bindInputs(step, state, this) {
                     buffer.draw()
                 }
             }
         }
-        if (step.output.output == PostEffectOutput.FINAL_SCREEN) {
-            val colorTexture = step.context.finalCompositeTarget?.colorTextureId ?: 0
+        if (submitted && step.output.output == PostEffectOutput.FINAL_SCREEN) {
+            val colorTexture = step.context.finalCompositeColorTextureId
+                ?: step.context.finalCompositeTarget?.colorTextureId
+                ?: 0
             state.lastOutputTextures[step.output.output] = colorTexture
             state.lastPassOutputTextures[PassAttachment(step.pass.name, 0)] = colorTexture
             namedTargetTextures[NamedAttachment(step.output.targetId, 0)] = colorTexture
         }
+        return submitted
     }
 
     private fun bindInputs(
@@ -1504,11 +1809,16 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         state: InstanceFrameState,
         program: CooShaderProgram,
         draw: () -> Unit
-    ) {
+    ): Boolean {
         val missingRequiredInputs = mutableListOf<String>()
         val explicitSlots = step.inputs.mapNotNull { it.textureSlot }.toSet()
         val usedSlots = linkedSetOf<Int>()
         var nextAutoSlot = 0
+        val cParticleCoverageInput = step.inputs.firstOrNull { input ->
+            input.sourceResourceId == RenderSceneTargets.CPARTICLE_COVERAGE_MASK &&
+                input.sourceResourceChannel == PostEffectResourceChannel.COLOR &&
+                input.sourceResourceAttachment == 0
+        }
         val availableInputs = step.inputs.mapNotNull { input ->
             if (!input.available) {
                 if (!input.optional) {
@@ -1540,11 +1850,20 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
                 step.pass.name,
                 missingRequiredInputs.joinToString()
             )
-            return
+            return false
         }
         val previousActive = glGetInteger(GL_ACTIVE_TEXTURE)
         val previousBindings = linkedMapOf<Int, Int>()
         try {
+            if (cParticleCoverageInput != null) {
+                val coverageBound = availableInputs.any { input ->
+                    input.samplerName == cParticleCoverageInput.samplerName
+                }
+                program.setInt(
+                    CooTerrainMappingShaderAbi.HAS_CPARTICLE_COVERAGE,
+                    if (coverageBound) 1 else 0,
+                )
+            }
             availableInputs.forEach { input ->
                 glActiveTexture(GL_TEXTURE0 + input.textureSlot)
                 previousBindings[input.textureSlot] = glGetInteger(GL_TEXTURE_BINDING_2D)
@@ -1556,6 +1875,7 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
                 }
             }
             draw()
+            return true
         } finally {
             previousBindings.entries.reversed().forEach { (textureSlot, previousBinding) ->
                 glActiveTexture(GL_TEXTURE0 + textureSlot)
@@ -1574,7 +1894,7 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
             PostEffectInputSource.SCENE_COLOR -> ensureSceneCopy(
                 step.context,
                 PostEffectAttachmentSpec(
-                    input.expectedFormat ?: CooTextureFormat.RGBA8,
+                    input.expectedFormat ?: resolveSceneCopyFormat(step.context),
                     input.minimumMipLevels
                 )
             )
@@ -1595,12 +1915,39 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
             PostEffectInputSource.PASS_OUTPUT -> input.producedByPassName?.let { passName ->
                 state.lastPassOutputTextures[PassAttachment(passName, input.producedByPassAttachment)]
             }
-            PostEffectInputSource.SCENE_RESOURCE -> input.textureId
+            PostEffectInputSource.SCENE_RESOURCE -> resolveSceneResourceTexture(input)
                 ?: input.sourceResourceId?.let { resource ->
                     namedTargetTextures[NamedAttachment(resource, input.sourceResourceAttachment)]
                 }
         }?.takeIf { it > 0 } ?: return null
         return texture.takeIf { validateTextureContract(step, input, texture) }
+    }
+
+    /** 按真实 SceneColor 内部格式选择不会截断 HDR 的中间 attachment。 */
+    private fun resolveSceneCopyFormat(context: RenderFrameContext): CooTextureFormat {
+        val textureId = context.sceneColorTextureId
+            ?: context.sceneResources[RenderSceneTargets.SCENE_COLOR]?.colorTextureId
+            ?: context.finalCompositeColorTextureId
+            ?: context.finalCompositeTarget?.colorTextureId
+            ?: return CooTextureFormat.RGBA8
+        return sceneCopyFormatForInternalFormat(textureInternalFormat(textureId))
+    }
+
+    /** 解析已冻结或当前可用的场景资源纹理；coverage 允许在捕获后动态刷新。 */
+    private fun resolveSceneResourceTexture(input: PostEffectResolvedInput): Int? {
+        input.textureId?.takeIf { it > 0 }?.let { return it }
+        val resourceTexture = when (input.sourceResourceChannel) {
+            PostEffectResourceChannel.COLOR -> input.resource?.colorTextureId(input.sourceResourceAttachment)
+            PostEffectResourceChannel.DEPTH -> input.resource?.depthTextureId
+        }
+        if (resourceTexture != null && resourceTexture > 0) return resourceTexture
+        if (input.sourceResourceId == RenderSceneTargets.CPARTICLE_COVERAGE_MASK &&
+            input.sourceResourceChannel == PostEffectResourceChannel.COLOR &&
+            input.sourceResourceAttachment == 0
+        ) {
+            return cParticleCoverageTexture()
+        }
+        return null
     }
 
     /** 解析 terrain opaque depth；不可用时返回 null，不回退到颜色或方块图集。 */
@@ -2195,6 +2542,7 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         val scissorEnabled = glIsEnabled(GL_SCISSOR_TEST)
         val blendEnabled = glIsEnabled(GL_BLEND)
         val indexedBlendStates = captureIndexedBlendStates()
+        val indexedColorMasks = captureIndexedColorMasks()
         val depthMask = glGetBoolean(GL_DEPTH_WRITEMASK)
         val depthFunc = glGetInteger(GL_DEPTH_FUNC)
         val polygonOffsetEnabled = glIsEnabled(GL_POLYGON_OFFSET_FILL)
@@ -2271,6 +2619,7 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
                 previousColorMask[2] != 0,
                 previousColorMask[3] != 0
             )
+            restoreIndexedColorMasks(indexedColorMasks)
             if (blendEnabled) {
                 RenderSystem.enableBlend()
             } else {
@@ -2334,6 +2683,26 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         }
     }
 
+    /** 保存并恢复 Iris composite 可能为每个颜色 attachment 设置的独立写掩码。 */
+    private fun captureIndexedColorMasks(): List<IndexedColorMask> {
+        return List(glGetInteger(GL_MAX_DRAW_BUFFERS)) { drawBuffer ->
+            val mask = IntArray(4)
+            glGetIntegeri_v(GL_COLOR_WRITEMASK, drawBuffer, mask)
+            IndexedColorMask(
+                red = mask[0] != 0,
+                green = mask[1] != 0,
+                blue = mask[2] != 0,
+                alpha = mask[3] != 0,
+            )
+        }
+    }
+
+    private fun restoreIndexedColorMasks(states: List<IndexedColorMask>) {
+        states.forEachIndexed { drawBuffer, state ->
+            glColorMaski(drawBuffer, state.red, state.green, state.blue, state.alpha)
+        }
+    }
+
     private fun indexedInteger(parameter: Int, drawBuffer: Int): Int {
         val value = IntArray(1)
         glGetIntegeri_v(parameter, drawBuffer, value)
@@ -2350,12 +2719,20 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         val equationAlpha: Int,
     )
 
+    private data class IndexedColorMask(
+        val red: Boolean,
+        val green: Boolean,
+        val blue: Boolean,
+        val alpha: Boolean,
+    )
+
     /** 在完整状态保护内切换到全屏后处理使用的无混合、无深度、无裁剪状态。 */
     private fun withFlatPostState(block: () -> Unit) {
         withPreservedGlState {
             RenderSystem.disableBlend()
             RenderSystem.disableDepthTest()
             RenderSystem.disableCull()
+            glColorMaski(0, true, true, true, true)
             if (glIsEnabled(GL_SCISSOR_TEST)) {
                 RenderSystem.disableScissor()
             }
@@ -2511,4 +2888,36 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         val sourceTexture: Int,
         val finalFbo: Int
     )
+}
+
+/** 把外部 SceneColor 的 OpenGL 内部格式映射为 API 可分配的无损或保守格式。 */
+internal fun sceneCopyFormatForInternalFormat(internalFormat: Int): CooTextureFormat {
+    return when (internalFormat) {
+        GL_R32F,
+        GL_RG32F,
+        GL_RGB32F,
+        GL_RGBA32F -> CooTextureFormat.RGBA32F
+        GL_R16F,
+        GL_RG16F,
+        GL_RGB16F,
+        GL_RGBA16F,
+        GL_R11F_G11F_B10F -> CooTextureFormat.RGBA16F
+        GL_RGB10,
+        GL_RGB10_A2,
+        GL_RGB12,
+        GL_RGBA12,
+        GL_R8_SNORM,
+        GL_RG8_SNORM,
+        GL_RGB8_SNORM,
+        GL_RGBA8_SNORM -> CooTextureFormat.RGBA16F
+        GL_R16,
+        GL_RG16,
+        GL_RGB16,
+        GL_RGBA16,
+        GL_R16_SNORM,
+        GL_RG16_SNORM,
+        GL_RGB16_SNORM,
+        GL_RGBA16_SNORM -> CooTextureFormat.RGBA32F
+        else -> CooTextureFormat.RGBA8
+    }
 }

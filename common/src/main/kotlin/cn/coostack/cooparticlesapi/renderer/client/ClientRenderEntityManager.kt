@@ -261,10 +261,16 @@ object ClientRenderEntityManager {
         graph.execute()
     }
 
-    /** 执行需要参与后续云层或 shader pack composite 的 Pipeline fullscreen 节点。 */
-    fun runScenePost(context: RenderFrameContext) {
+    /**
+     * 执行 Terrain Mapping 的场景后处理；Iris 下在 final pass 输出生成后单独调用。
+     *
+     * 示例：`runTerrainScenePost(context)`。
+     *
+     * @return `true` 表示 coverage 已准备完成且允许提交 Mapping；`false` 表示应在后续阶段重试
+     */
+    fun runTerrainScenePost(context: RenderFrameContext): Boolean {
         if (!context.backend.supports(RenderBackendCapability.FINAL_FRAME_POST)) {
-            return
+            return false
         }
         // Terrain Mapping 先提交，避免大范围映射覆盖 RenderEntity 的场景后处理结果。
         val includeTerrainMappings = prepareTerrainCoverage(context, scenePost = true)
@@ -272,13 +278,27 @@ object ClientRenderEntityManager {
             sceneResources = ClientRenderSceneResourcesResolver.resolveCurrentResources(),
         )
         val terrainGraph = RenderEffectGraph(terrainContext.backend.capabilities, terrainContext)
-        CooTerrainPipelineManager.collectScenePostEffects(
+        val mappingSources = CooTerrainPipelineManager.collectScenePostEffects(
             terrainContext,
             terrainGraph,
             includeMappings = includeTerrainMappings,
         )
-        terrainGraph.execute()
+        val submittedMappings = PostEffectFrameExecutor.trackFinalOutputSubmissions(mappingSources) {
+            terrainGraph.execute()
+        }
         replayDeferredCParticleForeground(terrainContext, scenePost = true)
+        if (!includeTerrainMappings || mappingSources.isEmpty()) return false
+        return submittedMappings.containsAll(mappingSources)
+    }
+
+    /** 执行需要参与后续云层或 shader pack composite 的 Pipeline fullscreen 节点。 */
+    fun runScenePost(context: RenderFrameContext, includeTerrainMappings: Boolean = true) {
+        if (!context.backend.supports(RenderBackendCapability.FINAL_FRAME_POST)) {
+            return
+        }
+        if (includeTerrainMappings) {
+            runTerrainScenePost(context)
+        }
 
         val graph = RenderEffectGraph(context.backend.capabilities, context)
         entities.values.asSequence()

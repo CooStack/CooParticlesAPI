@@ -15,6 +15,7 @@
     "RenderRegionManagerMixin",
     "RenderSectionMixin",
     "RenderSectionManagerMixin",
+    "ShaderChunkRendererMixin",
     "SodiumWorldRendererMixin"
   ]
 }

@@ -124,7 +124,7 @@ internal fun interface PostEffectExecutionBackend {
      *
      * @param step 当前操作需要的输入值；其语义由方法名和所属组件共同限定
      */
-    fun execute(step: PostEffectExecutionStep)
+    fun execute(step: PostEffectExecutionStep): Boolean
 }
 
 /** 可选接口：backend 可在每帧开始时清理临时状态或准备 scene copy。 */
@@ -253,7 +253,7 @@ internal object LoggingPostEffectExecutionBackend : PostEffectExecutionBackend {
      *
      * @param step 当前操作需要的输入值；其语义由方法名和所属组件共同限定
      */
-    override fun execute(step: PostEffectExecutionStep) {
+    override fun execute(step: PostEffectExecutionStep): Boolean {
         CooParticlesConstants.logger.debug(
             "Executing post effect type={} id={} pass={} output={} inputs={} uniforms={}",
             step.instance.type.id,
@@ -263,6 +263,7 @@ internal object LoggingPostEffectExecutionBackend : PostEffectExecutionBackend {
             step.inputs.map { "${it.samplerName}:${it.source}" },
             step.uniforms.keys
         )
+        return true
     }
 }
 
@@ -280,6 +281,8 @@ internal object LoggingPostEffectExecutionBackend : PostEffectExecutionBackend {
  */
 internal object PostEffectFrameExecutor {
     private var backend: PostEffectExecutionBackend = LoggingPostEffectExecutionBackend
+    private var trackedFinalOutputSources: Set<String>? = null
+    private var submittedTrackedFinalOutputSources: MutableSet<String>? = null
 
     /**
      * 安装真实执行后端。
@@ -293,6 +296,32 @@ internal object PostEffectFrameExecutor {
     /** 恢复到无 OpenGL 副作用的 logging backend，常用于测试清理或客户端关闭后的状态复位。 */
     fun resetBackend() {
         backend = LoggingPostEffectExecutionBackend
+    }
+
+    /** 执行渲染块并返回其中真正提交了 final-screen draw 的指定 source。 */
+    internal fun trackFinalOutputSubmissions(
+        sourceIds: Set<String>,
+        render: () -> Unit,
+    ): Set<String> {
+        if (sourceIds.isEmpty()) {
+            render()
+            return emptySet()
+        }
+        val previousSources = trackedFinalOutputSources
+        val previousSubmitted = submittedTrackedFinalOutputSources
+        val submitted = linkedSetOf<String>()
+        trackedFinalOutputSources = sourceIds
+        submittedTrackedFinalOutputSources = submitted
+        return try {
+            render()
+            submitted.toSet()
+        } finally {
+            trackedFinalOutputSources = previousSources
+            submittedTrackedFinalOutputSources = previousSubmitted
+            if (previousSources != null && previousSubmitted != null) {
+                previousSubmitted += submitted.filter { sourceId -> sourceId in previousSources }
+            }
+        }
     }
 
     /**
@@ -423,8 +452,17 @@ internal object PostEffectFrameExecutor {
         plans.forEach { plan ->
             plan.steps.forEach { step ->
                 if (step.executable) {
-                    backend.execute(step)
-                    executedPasses++
+                    val submitted = backend.execute(step)
+                    if (submitted) {
+                        executedPasses++
+                        if (step.output.output == PostEffectOutput.FINAL_SCREEN &&
+                            step.instance.sourceId in trackedFinalOutputSources.orEmpty()
+                        ) {
+                            submittedTrackedFinalOutputSources?.add(step.instance.sourceId)
+                        }
+                    } else {
+                        skippedPasses++
+                    }
                 } else {
                     skippedPasses++
                     CooParticlesConstants.logger.debug(
@@ -595,10 +633,12 @@ internal object PostEffectFrameExecutor {
             PostEffectInputSource.SCENE_RESOURCE -> {
                 val resourceId = input.sourceResourceId
                 val resource = resourceId?.let { context.sceneResources[it] }
-                val textureId = when (input.sourceResourceChannel) {
-                    PostEffectResourceChannel.COLOR -> resource?.colorTextureId(input.sourceResourceAttachment)
-                    PostEffectResourceChannel.DEPTH -> resource?.depthTextureId
-                }
+                val textureId = resolveSceneResourceTexture(
+                    resourceId = resourceId,
+                    resource = resource,
+                    attachment = input.sourceResourceAttachment,
+                    channel = input.sourceResourceChannel,
+                )
                 PostEffectResolvedInput(
                     samplerName = input.samplerName,
                     source = input.source,
@@ -642,6 +682,27 @@ internal object PostEffectFrameExecutor {
     private fun hasCapturedAttachment(target: ResourceLocation, attachment: Int): Boolean {
         val attachmentBackend = backend as? PostEffectAttachmentPreparationBackend ?: return false
         return attachmentBackend.hasAttachment(target, attachment)
+    }
+
+    /** 解析场景资源颜色/深度；coverage 纹理允许在同帧捕获后从 backend 动态读取。 */
+    private fun resolveSceneResourceTexture(
+        resourceId: ResourceLocation?,
+        resource: RenderSceneResource?,
+        attachment: Int,
+        channel: PostEffectResourceChannel,
+    ): Int? {
+        val resourceTexture = when (channel) {
+            PostEffectResourceChannel.COLOR -> resource?.colorTextureId(attachment)
+            PostEffectResourceChannel.DEPTH -> resource?.depthTextureId
+        }
+        if (resourceTexture != null && resourceTexture > 0) return resourceTexture
+        if (resourceId == RenderSceneTargets.CPARTICLE_COVERAGE_MASK &&
+            channel == PostEffectResourceChannel.COLOR &&
+            attachment == 0
+        ) {
+            return OpenGlPostEffectExecutionBackend.cParticleCoverageTexture()
+        }
+        return null
     }
 
     private fun resolveProducedInput(

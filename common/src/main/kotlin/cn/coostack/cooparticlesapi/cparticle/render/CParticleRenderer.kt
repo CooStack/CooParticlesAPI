@@ -17,6 +17,7 @@ import cn.coostack.cooparticlesapi.renderer.post.OpenGlPostEffectExecutionBacken
 import cn.coostack.cooparticlesapi.renderer.shader.AdvancedShaderProgramBuilder
 import cn.coostack.cooparticlesapi.renderer.shader.ShaderProgramRegistry
 import cn.coostack.cooparticlesapi.renderer.shader.api.CooShaderProgram
+import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainPipelineManager
 import com.mojang.blaze3d.systems.RenderSystem
 import net.minecraft.client.Camera
 import net.minecraft.client.Minecraft
@@ -32,7 +33,8 @@ import org.lwjgl.opengl.GL33.*
  *
  * 无光影时直接使用 CParticle shader。Iris 光影启用后，常规层展开为原版粒子顶点，
  * 需要完整片元 Alpha 的有界 Screen 层只写 Iris framebuffer 的主颜色附件。
- * screen-only Terrain Mapping 活跃时，CParticle 延迟到 Mapping 最终合成后按原 layer 语义重放。
+ * 非 Iris 环境下 screen-only Terrain Mapping 活跃时，CParticle 延迟到 Mapping 最终合成后按原 layer 语义重放；
+ * Iris shader pack 激活时全部粒子保留在 Iris 原生粒子阶段。
  */
 object CParticleRenderer {
 
@@ -416,7 +418,7 @@ object CParticleRenderer {
         return true
     }
 
-    /** 在独立 framebuffer 中把全部可见 CParticle 光栅化为覆盖蒙版，不写回场景深度。 */
+    /** 在独立 framebuffer 中把全部可见 CParticle 光栅化为颜色与覆盖度，不写回场景深度。 */
     private fun renderCoverage(
         shader: CooShaderProgram,
         systems: List<CParticleSystem>,
@@ -432,9 +434,14 @@ object CParticleRenderer {
             shader.setInt("uCoverageMask", 1)
             shader.setInt("uPremultiplyRgbByAlpha", 0)
             if (CooParticlesAPIClient.checkIrisShaderPackUsed() && CParticleIndexedBlendState.isAvailable()) {
-                GL30.glDisablei(GL_BLEND, 0)
+                // 覆盖纹理记录可见粒子的最大 Alpha，避免被最后一次低 Alpha 绘制覆盖。
+                GL30.glEnablei(GL_BLEND, 0)
+                CParticleIndexedBlendState.setEquation(0, GL_MAX, GL_MAX)
+                CParticleIndexedBlendState.setFactors(0, GL_ONE, GL_ONE, GL_ONE, GL_ONE)
             } else {
-                glDisable(GL_BLEND)
+                glEnable(GL_BLEND)
+                glBlendEquationSeparate(GL_MAX, GL_MAX)
+                glBlendFuncSeparate(GL_ONE, GL_ONE, GL_ONE, GL_ONE)
             }
             glEnable(GL_DEPTH_TEST)
             glDepthFunc(GL_LEQUAL)
@@ -473,6 +480,7 @@ object CParticleRenderer {
         pass: CParticleRenderPass,
         uniformScratch: UniformScratch,
     ) {
+        val filterParticleDepth = CooTerrainPipelineManager.shouldFilterCParticleDepth()
         shader.setInt("uIrisExpansion", 1)
         shader.setInt("uPremultiplyRgbByAlpha", 0)
         for (system in systems) {
@@ -498,7 +506,10 @@ object CParticleRenderer {
                 if (layerSystems.isEmpty()) continue
 
                 layer.applyIndexedState(0)
-                if (layer.requiresDeferredDepthWrite) {
+                if (filterParticleDepth && layer.blend) {
+                    glDepthMask(false)
+                }
+                if (layer.requiresDeferredDepthWrite && !filterParticleDepth) {
                     glDepthMask(false)
                     if (layer.premultiplyRgbByAlpha) {
                         deferredDirectSystems.addAll(layerSystems)
