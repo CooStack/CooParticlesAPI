@@ -10,6 +10,7 @@ import org.lwjgl.opengl.GL43
 import org.lwjgl.system.MemoryUtil
 import java.nio.FloatBuffer
 import java.nio.ByteOrder
+import java.util.Arrays
 
 /**
  * 计算 Direct scratch 的下一次容量。
@@ -40,7 +41,7 @@ internal fun nextScratchCapacity(currentCapacity: Int, requiredFloats: Int, maxF
  * 顶点布局: 无 per-vertex 属性, 六个三角形顶点由 gl_VertexID 生成;
  * 9 个 vec4 实例属性 (divisor=1), stride = [CParticleStore.BYTE_STRIDE].
  */
-class CParticleGlBuffer(val capacity: Int) {
+class CParticleGlBuffer(capacity: Int) {
     private companion object {
         const val VISUAL_FLOAT_COUNT = CParticleStore.STRIDE - CParticleStore.OFF_FLAGS
         const val EXPANDED_VERTICES_PER_PARTICLE = 6
@@ -55,9 +56,13 @@ class CParticleGlBuffer(val capacity: Int) {
     private var expandedVbo = 0
     private var expandedCapacity = 0
     private var expandedInstances = 0
+    private var configuredFirstSlot = -1
 
     private var scratch: FloatBuffer? = null
     private var smallPatchScratch: FloatBuffer? = null
+
+    var capacity: Int = capacity
+        private set
 
     val initialized: Boolean get() = vao != 0 && vbo != 0
 
@@ -70,13 +75,89 @@ class CParticleGlBuffer(val capacity: Int) {
         glBindVertexArray(vao)
         glBindBuffer(GL_ARRAY_BUFFER, vbo)
         glBufferData(GL_ARRAY_BUFFER, capacity.toLong() * CParticleStore.BYTE_STRIDE, GL_DYNAMIC_DRAW)
+        configureInstanceAttributes(0)
+        restoreVertexArray(prevVao)
+        glBindBuffer(GL_ARRAY_BUFFER, prevVbo)
+    }
+
+    /**
+     * 扩大实例 VBO，并在 GPU 内复制已有模拟结果。
+     *
+     * @param newCapacity 新实例容量，必须大于当前容量
+     */
+    internal fun growTo(newCapacity: Int) {
+        require(newCapacity > capacity) {
+            "newCapacity must be greater than capacity: $newCapacity <= $capacity"
+        }
+        if (!initialized) {
+            capacity = newCapacity
+            return
+        }
+
+        val oldCapacity = capacity
+        val oldVbo = vbo
+        val previousVao = glGetInteger(GL_VERTEX_ARRAY_BINDING)
+        val previousArrayBuffer = glGetInteger(GL_ARRAY_BUFFER_BINDING)
+        val replacementVbo = glGenBuffers()
+        var committed = false
+        try {
+            glBindBuffer(GL31.GL_COPY_WRITE_BUFFER, replacementVbo)
+            glBufferData(
+                GL31.GL_COPY_WRITE_BUFFER,
+                newCapacity.toLong() * CParticleStore.BYTE_STRIDE,
+                GL_DYNAMIC_DRAW,
+            )
+            glBindBuffer(GL31.GL_COPY_READ_BUFFER, oldVbo)
+            GL31.glCopyBufferSubData(
+                GL31.GL_COPY_READ_BUFFER,
+                GL31.GL_COPY_WRITE_BUFFER,
+                0L,
+                0L,
+                oldCapacity.toLong() * CParticleStore.BYTE_STRIDE,
+            )
+
+            glBindVertexArray(vao)
+            glBindBuffer(GL_ARRAY_BUFFER, replacementVbo)
+            configureInstanceAttributes(configuredFirstSlot.coerceAtLeast(0))
+            vbo = replacementVbo
+            capacity = newCapacity
+            committed = true
+        } finally {
+            restoreVertexArray(previousVao)
+            glBindBuffer(
+                GL_ARRAY_BUFFER,
+                if (committed && previousArrayBuffer == oldVbo) replacementVbo else previousArrayBuffer,
+            )
+            glBindBuffer(GL31.GL_COPY_READ_BUFFER, 0)
+            glBindBuffer(GL31.GL_COPY_WRITE_BUFFER, 0)
+            if (committed) glDeleteBuffers(oldVbo) else glDeleteBuffers(replacementVbo)
+        }
+    }
+
+    private fun configureInstanceAttributes(firstSlot: Int) {
+        val firstByteOffset = firstSlot.toLong() * CParticleStore.BYTE_STRIDE
         for (loc in 0 until 9) {
-            glVertexAttribPointer(loc, 4, GL_FLOAT, false, CParticleStore.BYTE_STRIDE, loc * 16L)
+            glVertexAttribPointer(
+                loc,
+                4,
+                GL_FLOAT,
+                false,
+                CParticleStore.BYTE_STRIDE,
+                firstByteOffset + loc * 16L,
+            )
             glEnableVertexAttribArray(loc)
             CParticleCapabilities.setVertexAttribDivisor(loc, 1)
         }
-        restoreVertexArray(prevVao)
-        glBindBuffer(GL_ARRAY_BUFFER, prevVbo)
+        configuredFirstSlot = firstSlot
+    }
+
+    /** 当前 VAO 改为从指定实例槽位读取。调用前必须绑定本缓冲的 VAO。 */
+    private fun bindInstanceRange(firstSlot: Int) {
+        if (configuredFirstSlot == firstSlot) return
+        val previousArrayBuffer = glGetInteger(GL_ARRAY_BUFFER_BINDING)
+        glBindBuffer(GL_ARRAY_BUFFER, vbo)
+        configureInstanceAttributes(firstSlot)
+        glBindBuffer(GL_ARRAY_BUFFER, previousArrayBuffer)
     }
 
     /** 按本次实际上传量获取 scratch；增长时立即释放旧 Direct Buffer。 */
@@ -127,7 +208,7 @@ class CParticleGlBuffer(val capacity: Int) {
      */
     fun uploadSlots(data: FloatArray, slots: IntArray, count: Int) {
         if (!initialized || count <= 0) return
-        java.util.Arrays.sort(slots, 0, count)
+        Arrays.sort(slots, 0, count)
         val prev = glGetInteger(GL_ARRAY_BUFFER_BINDING)
         glBindBuffer(GL_ARRAY_BUFFER, vbo)
         var i = 0
@@ -219,9 +300,18 @@ class CParticleGlBuffer(val capacity: Int) {
 
     /** instanced 绘制 (TRIANGLES x6 顶点), 调用方负责程序/纹理/混合状态 */
     fun draw(instances: Int) {
+        draw(0, instances)
+    }
+
+    /** 从 [firstSlot] 开始绘制连续实例区间。 */
+    fun draw(firstSlot: Int, instances: Int) {
         if (!initialized || instances <= 0) return
+        require(firstSlot >= 0 && instances <= capacity - firstSlot) {
+            "invalid instance range: first=$firstSlot count=$instances capacity=$capacity"
+        }
         val prevVao = glGetInteger(GL_VERTEX_ARRAY_BINDING)
         glBindVertexArray(vao)
+        bindInstanceRange(firstSlot)
         GL31.glDrawArraysInstanced(GL_TRIANGLES, 0, EXPANDED_VERTICES_PER_PARTICLE, instances)
         restoreVertexArray(prevVao)
     }
@@ -229,15 +319,23 @@ class CParticleGlBuffer(val capacity: Int) {
     /**
      * 在 GPU 上把实例展开为原版 `DefaultVertexFormat.PARTICLE` 顶点。
      *
-     * 示例：Iris 粒子 program 绘制前调用 `expandForParticleShader(highWater)`。
+     * 示例：Iris 粒子 program 绘制前调用 `expandForParticleShader(firstAliveSlot, activeSlotCount)`。
      * 禁止在未绑定带 transform-feedback 输出的 CParticle program 时调用。
      *
      * @param instances 需要展开的实例槽位数量
      */
     fun expandForParticleShader(instances: Int) {
+        expandForParticleShader(0, instances)
+    }
+
+    /** 从 [firstSlot] 开始把连续实例区间展开到紧凑的原版粒子顶点缓冲。 */
+    fun expandForParticleShader(firstSlot: Int, instances: Int) {
         if (!initialized || instances <= 0) {
             expandedInstances = 0
             return
+        }
+        require(firstSlot >= 0 && instances <= capacity - firstSlot) {
+            "invalid expansion range: first=$firstSlot count=$instances capacity=$capacity"
         }
         ensureExpandedCapacity(instances)
 
@@ -249,6 +347,7 @@ class CParticleGlBuffer(val capacity: Int) {
         var feedbackActive = false
         try {
             glBindVertexArray(vao)
+            bindInstanceRange(firstSlot)
             glBindBufferBase(GL_TRANSFORM_FEEDBACK_BUFFER, 0, expandedVbo)
             glEnable(GL_RASTERIZER_DISCARD)
             glBeginTransformFeedback(GL_TRIANGLES)
@@ -348,6 +447,7 @@ class CParticleGlBuffer(val capacity: Int) {
         }
         expandedCapacity = 0
         expandedInstances = 0
+        configuredFirstSlot = -1
         scratch?.let { MemoryUtil.memFree(it) }
         scratch = null
         smallPatchScratch = null

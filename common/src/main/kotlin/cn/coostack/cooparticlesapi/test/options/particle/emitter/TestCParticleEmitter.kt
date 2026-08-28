@@ -6,6 +6,7 @@ import cn.coostack.cooparticlesapi.cparticle.CParticleColorCurve
 import cn.coostack.cooparticlesapi.cparticle.CParticleCurve
 import cn.coostack.cooparticlesapi.cparticle.CParticleUpdateMode
 import cn.coostack.cooparticlesapi.cparticle.force.CParticleForce
+import cn.coostack.cooparticlesapi.cparticle.force.CParticleForceSink
 import cn.coostack.cooparticlesapi.extend.PIF
 import cn.coostack.cooparticlesapi.network.particle.emitters.AutoParticleEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableCParticleData
@@ -30,8 +31,8 @@ import kotlin.random.Random
  * 发射器只负责产出彼此独立的 [ControlableParticleData]。这个压测使用同一个模板，
  * 普通 emitter 也可以在一次 `genParticles()` 中按 [ControlableParticleData.sign] 混合不同 data。
  * [ControlableCParticleData] 不再变成逐个 `ControlableParticle` 对象,
- * 而是直接写入 GPU 粒子系统的 SoA 缓冲 — 运动由 [cparticleForces] 声明的力场
- * 在 compute shader (或 CPU 并行回退) 中统一驱动, 渲染坍缩为单次 instanced draw.
+ * 而是直接写入 GPU 粒子系统的 SoA 缓冲，运动由 [submitCParticleForces] 声明的力场
+ * 默认由 compute shader 驱动；只有显式开启 CPU 模式时才使用 CPU simulator。
  *
  * 默认参数下稳态粒子数 ≈ [spawnPerTick] × [particleMaxAge] = 600 × 170 ≈ **10.2 万**,
  * 用于验证 10 万粒子 60FPS 指标. 调小 `spawn_per_tick` 可降低负载.
@@ -42,7 +43,7 @@ import kotlin.random.Random
  * - 不执行 `singleParticleDeathAction` 粒子重生
  *
  * 发射器自身的 `gravity` / `airDensity` / 全局风会被桥接层自动映射为 GPU 力场,
- * 无需在 [cparticleForces] 里重复声明.
+ * 无需在 [submitCParticleForces] 里重复声明.
  */
 @CooAutoRegister
 class TestCParticleEmitter(pos: Vec3, world: Level?) : AutoParticleEmitters(pos, world) {
@@ -51,16 +52,21 @@ class TestCParticleEmitter(pos: Vec3, world: Level?) : AutoParticleEmitters(pos,
     @CodecField
     var template = ControlableCParticleData().apply {
         setTextureSheet(TextureSheetsEnum.PARTICLE_SHEET_TRANSLUCENT)
-        size = 0.10f
-        alpha = 0.85f
+        size = 0.10F
+        alpha = 0.85F
         maxAge = 170
         light = 15
         speedLimit = 2.0
-        visibleRange = 192f
+        visibleRange = 192F
         updateMode = CParticleUpdateMode.STATIC
         blockCollision = true
-        alphaCurve = LIFETIME_ALPHA
-        scaleCurve = LIFETIME_SCALE
+        alphaCurve = CParticleCurve.fadeInOut(fadeIn = 0.12F, fadeOut = 0.82F)
+        scaleCurve = CParticleCurve.of(
+            0F to 0.35F,
+            0.12F to 1F,
+            0.82F to 1F,
+            1F to 0.2F,
+        )
         cameraOption = ParticleCameraOption.ROTATION
         angularVelocity = Vector3f(
             PIF / 64,
@@ -79,7 +85,7 @@ class TestCParticleEmitter(pos: Vec3, world: Level?) : AutoParticleEmitters(pos,
 
     /** 单个粒子边长 */
     @CodecField
-    var particleSize = 0.10f
+    var particleSize = 0.10F
 
     /** 生成圆盘半径 (粒子在以发射器为心的水平圆盘上均匀生成) */
     @CodecField
@@ -91,11 +97,11 @@ class TestCParticleEmitter(pos: Vec3, world: Level?) : AutoParticleEmitters(pos,
 
     /** 粒子出生时的颜色 */
     @CodecField
-    var colorStart = Vector3f(0.20f, 0.72f, 1.00f)
+    var colorStart = Vector3f(0.20F, 0.72F, 1.00F)
 
     /** 粒子死亡前的颜色 */
     @CodecField
-    var colorEnd = Vector3f(1.00f, 0.36f, 0.12f)
+    var colorEnd = Vector3f(1.00F, 0.36F, 0.12F)
 
     /** 漩涡切向强度 (龙卷风打旋力度) */
     @CodecField
@@ -139,13 +145,12 @@ class TestCParticleEmitter(pos: Vec3, world: Level?) : AutoParticleEmitters(pos,
     }
 
     /**
-     * GPU 力场声明 — 每 tick 与发射器状态同步一次 (打包进 SSBO/uniform, 不逐粒子分配).
+     * GPU 力场声明：每个 emitter tick 构建一次共享 Command 快照，不逐粒子分配。
      * 中心点用 lambda 取 [pos], 因此力场会跟随发射器移动.
      */
-    override fun cparticleForces(): List<CParticleForce> {
-        val forces = ArrayList<CParticleForce>(3)
+    override fun submitCParticleForces(sink: CParticleForceSink) {
         if (vortexSwirl != 0.0 || vortexRadialPull != 0.0 || vortexLift != 0.0) {
-            forces += CParticleForce.Vortex(
+            sink.submit(CParticleForce.Vortex(
                 center = { pos },
                 axis = Vec3(0.0, 1.0, 0.0),
                 swirlStrength = vortexSwirl,
@@ -154,27 +159,26 @@ class TestCParticleEmitter(pos: Vec3, world: Level?) : AutoParticleEmitters(pos,
                 range = vortexRange,
                 falloffPower = 2.0,
                 minDistance = 0.25,
-            )
+            ))
         }
         if (noiseStrength > 0.0) {
-            forces += CParticleForce.Noise(
+            sink.submit(CParticleForce.Noise(
                 strength = noiseStrength,
                 frequency = 0.40,
                 speed = 0.03,
                 clampSpeed = 1.5,
-            )
+            ))
         }
         if (dragDamping > 0.0) {
-            forces += CParticleForce.ExpDrag(damping = dragDamping)
+            sink.submit(CParticleForce.ExpDrag(damping = dragDamping))
         }
-        return forces
     }
 
     /**
      * 在水平圆盘上均匀撒点.
      *
      * 注意: 这里每个粒子仍要 clone 一份 data (走的是现有 emitter API 的通用契约,
-     * CPU 回退路径需要独立实例). GPU 侧的模拟与渲染本身是零分配的 —
+     * 显式 CPU 路径需要独立实例)。GPU 侧的模拟与渲染本身是零分配的，
      * 这些 clone 是接入旧 API 的固定开销, 与粒子存活数量无关.
      */
     override fun genParticles(lerpProgress: Float): List<Pair<ControlableParticleData, RelativeLocation>> {
@@ -190,7 +194,7 @@ class TestCParticleEmitter(pos: Vec3, world: Level?) : AutoParticleEmitters(pos,
 //            val sinA = sin(angle)
 //
 //            val data = template.clone().apply {
-//                color = Vector3f(1f)
+//                color = Vector3f(1F)
 //                this.colorCurve = colorCurve
 //                size = particleSize
 //                yaw = Random.nextFloat() * PIF * 2
@@ -212,7 +216,7 @@ class TestCParticleEmitter(pos: Vec3, world: Level?) : AutoParticleEmitters(pos,
             .addDiscreteCircleXZ(emitRadius, count, 1.0)
             .createWithoutClone().map {
                 template.clone().apply {
-                    color = Vector3f(1f)
+                    color = Vector3f(1F)
                     this.colorCurve = colorCurve
                     size = particleSize
                     yaw = Random.nextFloat() * PIF * 2
@@ -228,7 +232,7 @@ class TestCParticleEmitter(pos: Vec3, world: Level?) : AutoParticleEmitters(pos,
 //        return result
     }
 
-    /** GPU 入池成功时不会被调用；选择性回退或满池回退时仍走这里 */
+    /** GPU 入池成功时不会被调用；非 CParticle 数据仍走这里。 */
     override fun singleParticleAction(
         controler: ParticleControler,
         data: ControlableParticleData,
@@ -239,14 +243,4 @@ class TestCParticleEmitter(pos: Vec3, world: Level?) : AutoParticleEmitters(pos,
     ) {
     }
 
-    companion object {
-        private val LIFETIME_ALPHA = CParticleCurve.fadeInOut(fadeIn = 0.12f, fadeOut = 0.82f)
-        private val LIFETIME_SCALE = CParticleCurve.of(
-            0f to 0.35f,
-            0.12f to 1f,
-            0.82f to 1f,
-            1f to 0.2f,
-        )
-        private const val TAU = Math.PI * 2.0
-    }
 }

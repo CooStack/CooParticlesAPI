@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi.renderer.client
 
+import cn.coostack.cooparticlesapi.CooParticlesAPIClient
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.cparticle.CParticleSystemManager
 import cn.coostack.cooparticlesapi.renderer.RenderEntity
@@ -262,7 +263,7 @@ object ClientRenderEntityManager {
     }
 
     /**
-     * 执行 Terrain Mapping 的场景后处理；Iris 下在 final pass 输出生成后单独调用。
+     * 执行 Terrain Mapping 的场景后处理。Iris 开启时不提交 Mapping。
      *
      * 示例：`runTerrainScenePost(context)`。
      *
@@ -309,6 +310,8 @@ object ClientRenderEntityManager {
 
     /** 生成当前阶段的 CParticle 保护蒙版；延迟前景路径不再使用二值 SceneColor 保护。 */
     private fun prepareTerrainCoverage(context: RenderFrameContext, scenePost: Boolean): Boolean {
+        // Terrain Mapping 仅支持原版/无 Iris 的最终 framebuffer；Iris 下不提交 Mapping。
+        if (CooParticlesAPIClient.checkIrisShaderPackUsed()) return false
         if (!CooTerrainPipelineManager.requiresCParticleCoverageMask(scenePost)) return true
         if (CParticleSystemManager.hasDeferredTerrainForeground()) return true
         val ready = try {

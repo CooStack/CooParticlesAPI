@@ -2,6 +2,7 @@ package cn.coostack.cooparticlesapi.test.options.particle.emitter
 
 import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
 import cn.coostack.cooparticlesapi.cparticle.force.CParticleForce
+import cn.coostack.cooparticlesapi.cparticle.force.CParticleForceSink
 import cn.coostack.cooparticlesapi.network.particle.emitters.AutoTransformableCParticleEmitter
 import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableCParticleData
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
@@ -16,10 +17,8 @@ class TestTransformGPUEmitter(pos: Vec3, world: Level?) : AutoTransformableCPart
         rotateEmitter(PI / 64)
     }
 
-    override fun cparticleForces(): List<CParticleForce> {
-        return listOf(
-            CParticleForce.ExpDrag(0.05, 0.0, 0.0)
-        )
+    override fun submitCParticleForces(sink: CParticleForceSink) {
+        sink.submit(CParticleForce.ExpDrag(0.05, 0.0, 0.0))
     }
 
     override fun genParticles(lerpProgress: Float): List<Pair<ControlableCParticleData, RelativeLocation>> {

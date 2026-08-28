@@ -8,6 +8,7 @@ import cn.coostack.cooparticlesapi.cparticle.CParticleSystemManager
 import cn.coostack.cooparticlesapi.cparticle.CParticleSystemMode
 import cn.coostack.cooparticlesapi.cparticle.CParticleTextureBindingKey
 import cn.coostack.cooparticlesapi.cparticle.force.CParticleForce
+import cn.coostack.cooparticlesapi.cparticle.force.CParticleForceSink
 import cn.coostack.cooparticlesapi.cparticle.resolveTextures
 import cn.coostack.cooparticlesapi.extend.plus
 import cn.coostack.cooparticlesapi.network.particle.emitters.CParticleEmitterSpace
@@ -22,10 +23,19 @@ import org.joml.Vector3f
 import java.util.UUID
 
 /**
- * 保存一个可变换 emitter 渲染分组的当前分段游标。
+ * 保存一个可变换 emitter 渲染分组的可扩容 system。
  *
  * 坐标空间、渲染层和两类纹理 binding 都属于分组键。LOCAL 与 WORLD 必须分开，避免模式切换时
  * 改动已有粒子的矩阵。
+ *
+ * @property baseName 当前分组的 system 名称
+ * @property layer 粒子渲染层
+ * @property textureBindingKey 基础纹理 binding
+ * @property maskTextureBindingKey 可选蒙版纹理 binding
+ * @property space 粒子模拟坐标空间
+ * @property capacityHint 当前批次粒子数，只用于首次分配
+ * @property globalLimit 当前全局存活数量上限
+ * @property onSystem 新 system 创建或重新取得后的登记回调
  */
 private class TransformableEmitterSystemCursor(
     private val baseName: String,
@@ -33,14 +43,11 @@ private class TransformableEmitterSystemCursor(
     private val textureBindingKey: CParticleTextureBindingKey,
     private val maskTextureBindingKey: CParticleTextureBindingKey?,
     val space: CParticleEmitterSpace,
-    var segmentCapacity: Int,
+    var capacityHint: Int,
+    var globalLimit: Int,
     private val onSystem: (CParticleSystem) -> Unit,
 ) {
-    private val segments = CParticleEmitterSegmentCursor(
-        isReleased = CParticleSystem::released,
-        isFull = { it.store.isFull() },
-        getOrCreate = ::getOrCreateSystem,
-    )
+    private var system: CParticleSystem? = null
 
     fun matches(
         layer: CParticleRenderLayer,
@@ -52,19 +59,26 @@ private class TransformableEmitterSystemCursor(
         this.maskTextureBindingKey == maskTextureBindingKey &&
         this.space == space
 
-    fun findAvailable(): CParticleSystem = segments.findAvailable()
+    fun findAvailable(): CParticleSystem {
+        val current = system?.takeUnless(CParticleSystem::released)
+            ?: getOrCreateSystem().also { system = it }
+        if (current.store.isFull()) {
+            val nextCapacity = CParticleEmitterBridge.nextSystemCapacity(current.capacity, globalLimit)
+            if (nextCapacity > current.capacity) current.growTo(nextCapacity)
+        }
+        return current
+    }
 
-    private fun getOrCreateSystem(segment: Int): CParticleSystem {
-        val name = if (segment == 0) baseName else "$baseName/$segment"
+    private fun getOrCreateSystem(): CParticleSystem {
         val system = CParticleSystemManager.getSystem(
-            name,
+            baseName,
             CParticleSystemMode.SIMULATED,
             layer,
             textureBindingKey,
             maskTextureBindingKey,
         ) ?: CParticleSystemManager.getOrCreateSystem(
-            name,
-            segmentCapacity,
+            baseName,
+            CParticleEmitterBridge.initialSystemCapacity(capacityHint, globalLimit),
             layer,
             CParticleSystemMode.SIMULATED,
             textureBindingKey,
@@ -86,6 +100,8 @@ object TransformableCParticleEmitterBridge {
     private data class EmitterSystems(
         val cursors: ArrayList<TransformableEmitterSystemCursor> = ArrayList(2),
         val systems: LinkedHashMap<CParticleSystem, CParticleEmitterSpace> = LinkedHashMap(),
+        val forceSnapshot: CParticleForceSink = CParticleForceSink(),
+        var forceTick: Int = Int.MIN_VALUE,
     )
 
     private val emitterSystems = HashMap<UUID, EmitterSystems>()
@@ -93,7 +109,7 @@ object TransformableCParticleEmitterBridge {
     /**
      * 把一份可控 GPU data 生成到当前坐标空间。
      *
-     * GPU 能力关闭、纹理无效或达到全局上限时直接丢弃，不会退回 CPU 粒子路径。
+     * 纹理无效或达到全局上限时直接丢弃；GPU 渲染能力缺失时直接报错，不会退回 CPU 粒子路径。
      */
     @JvmStatic
     fun trySpawn(
@@ -102,17 +118,18 @@ object TransformableCParticleEmitterBridge {
         spawnPos: Vec3,
         relative: RelativeLocation,
         data: ControlableCParticleData,
-        segmentCapacityHint: Int,
+        capacityHint: Int,
     ): Boolean {
         if (!world.isClientSide || !CParticleSystemManager.enabled) return false
         CParticleCapabilities.detect()
-        if (!CParticleCapabilities.instancingSupported) return false
+        CParticleCapabilities.requireGpuParticleRendering()
 
         val storagePosition = resolveStoragePosition(emitter, spawnPos, relative) ?: return true
         val worldPosition = storageToWorld(emitter, storagePosition)
         val particle = CParticle.from(data).apply {
             pos = worldPosition
             velocity = resolveStorageVelocity(emitter, data.velocity)
+            mass = emitter.mass.toFloat()
         }
         val resolved = particle.resolveTextures(worldPosition)
         if (!resolved.isValid || !CParticleSystemManager.hasAvailableParticleCapacity()) return true
@@ -123,7 +140,7 @@ object TransformableCParticleEmitterBridge {
             layer,
             resolved.base.bindingKey,
             resolved.mask?.bindingKey,
-            segmentCapacityHint,
+            capacityHint,
         )
         configureSystem(system, emitter, emitter.space)
         if (data.visibleRange.toDouble() > system.visibleRange) {
@@ -164,6 +181,7 @@ object TransformableCParticleEmitterBridge {
     internal fun syncSystems(emitter: TransformableCParticleEmitter) {
         val systems = emitterSystems[emitter.uuid] ?: return
         systems.systems.entries.removeIf { it.key.released }
+        ensureForceSnapshot(emitter, systems)
         systems.systems.forEach { (system, space) ->
             configureSystem(system, emitter, space)
         }
@@ -180,12 +198,9 @@ object TransformableCParticleEmitterBridge {
         layer: CParticleRenderLayer,
         textureBindingKey: CParticleTextureBindingKey,
         maskTextureBindingKey: CParticleTextureBindingKey?,
-        segmentCapacityHint: Int,
+        capacityHint: Int,
     ): CParticleSystem {
-        val segmentCapacity = CParticleEmitterBridge.segmentCapacityFor(
-            segmentCapacityHint,
-            CParticleSystemManager.particleCountLimit,
-        )
+        val globalLimit = CParticleSystemManager.particleCountLimit
         val state = emitterSystems.getOrPut(emitter.uuid) { EmitterSystems() }
         val spaceName = emitter.space.name.lowercase()
         val cursor = state.cursors.firstOrNull {
@@ -196,9 +211,14 @@ object TransformableCParticleEmitterBridge {
             textureBindingKey,
             maskTextureBindingKey,
             emitter.space,
-            segmentCapacity,
-        ) { system -> state.systems[system] = emitter.space }.also(state.cursors::add)
-        cursor.segmentCapacity = segmentCapacity
+            capacityHint,
+            globalLimit,
+        ) { system ->
+            state.systems.entries.removeIf { it.key.released }
+            state.systems[system] = emitter.space
+        }.also(state.cursors::add)
+        cursor.capacityHint = capacityHint
+        cursor.globalLimit = globalLimit
         return cursor.findAvailable()
     }
 
@@ -216,13 +236,14 @@ object TransformableCParticleEmitterBridge {
             system.groupTransform.identity()
         }
 
-        if (system.forcesSyncTick != emitter.tick) {
-            system.forcesSyncTick = emitter.tick
-            CParticleSystemManager.updateBlockCollisionRange(
-                "transformable_emitter/${emitter.uuid}/${space.name.lowercase()}/",
-                emitter.cparticleBlockCollisionRange(),
+        val emitterState = emitterSystems.getValue(emitter.uuid)
+        ensureForceSnapshot(emitter, emitterState)
+        if (system.forcesSyncTick != emitterState.forceTick) {
+            CParticleEmitterBridge.applyForceSnapshot(
+                system,
+                emitterState.forceSnapshot,
+                emitterState.forceTick,
             )
-            syncForces(system.forces, emitter)
         }
     }
 
@@ -280,21 +301,34 @@ object TransformableCParticleEmitterBridge {
             .scale(emitter.scale.toFloat())
     }
 
-    private fun syncForces(target: MutableList<CParticleForce>, emitter: TransformableCParticleEmitter) {
+    /** 每个 emitter tick 只构建一次共享 Command 快照。 */
+    private fun ensureForceSnapshot(
+        emitter: TransformableCParticleEmitter,
+        state: EmitterSystems,
+    ) {
+        if (state.forceTick == emitter.tick) return
+        state.forceTick = emitter.tick
+        val target = state.forceSnapshot
         target.clear()
         if (emitter.gravity != 0.0) {
-            target.add(CParticleForce.Gravity(emitter.gravity))
+            target.submit(CParticleForce.Gravity(emitter.gravity))
         }
         if (emitter.airDensity > 0.0) {
-            target.add(CParticleForce.EnvDrag(emitter.airDensity))
+            target.submit(CParticleForce.EnvDrag(emitter.airDensity))
         }
         val wind = emitter.wind
         if (wind is GlobalWindDirection && !wind.relative && wind.direction.lengthSqr() > 1e-12) {
-            target.add(CParticleForce.Wind({ wind.direction }, emitter.airDensity.coerceAtLeast(1e-4)))
+            target.submit(CParticleForce.Wind({ wind.direction }, emitter.airDensity.coerceAtLeast(1e-4)))
         }
-        for (force in emitter.cparticleForces()) {
-            if (target.size >= CParticleForce.MAX_FORCES) break
-            target.add(force)
+        emitter.submitCParticleForces(target)
+        CParticleSystemManager.updateBlockCollisionRange(
+            "transformable_emitter/${emitter.uuid}/",
+            emitter.cparticleBlockCollisionRange(),
+        )
+        state.systems.keys.forEach { system ->
+            if (!system.released) {
+                CParticleEmitterBridge.applyForceSnapshot(system, target, state.forceTick)
+            }
         }
     }
 }

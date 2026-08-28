@@ -17,7 +17,6 @@ import cn.coostack.cooparticlesapi.renderer.post.OpenGlPostEffectExecutionBacken
 import cn.coostack.cooparticlesapi.renderer.shader.AdvancedShaderProgramBuilder
 import cn.coostack.cooparticlesapi.renderer.shader.ShaderProgramRegistry
 import cn.coostack.cooparticlesapi.renderer.shader.api.CooShaderProgram
-import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainPipelineManager
 import com.mojang.blaze3d.systems.RenderSystem
 import net.minecraft.client.Camera
 import net.minecraft.client.Minecraft
@@ -33,8 +32,8 @@ import org.lwjgl.opengl.GL33.*
  *
  * 无光影时直接使用 CParticle shader。Iris 光影启用后，常规层展开为原版粒子顶点，
  * 需要完整片元 Alpha 的有界 Screen 层只写 Iris framebuffer 的主颜色附件。
- * 非 Iris 环境下 screen-only Terrain Mapping 活跃时，CParticle 延迟到 Mapping 最终合成后按原 layer 语义重放；
- * Iris shader pack 激活时全部粒子保留在 Iris 原生粒子阶段。
+ * screen-only Terrain Mapping 活跃时，CParticle 延迟到 Mapping 最终合成后按原 layer 语义重放；
+ * Iris shader pack 激活时不参与 Terrain Mapping 分流，直接保留 Iris 原生粒子阶段。
  */
 object CParticleRenderer {
 
@@ -209,13 +208,18 @@ object CParticleRenderer {
         val blendEquationRgb = glGetInteger(GL_BLEND_EQUATION_RGB)
         val blendEquationAlpha = glGetInteger(GL_BLEND_EQUATION_ALPHA)
         val indexedBlendStateAvailable = irisShaderPackActive && CParticleIndexedBlendState.isAvailable()
-        val indexedBlendEnabled = indexedBlendStateAvailable && GL30.glIsEnabledi(GL_BLEND, 0)
-        val indexedBlendSrcRgb = if (indexedBlendStateAvailable) GL30.glGetIntegeri(GL_BLEND_SRC_RGB, 0) else 0
-        val indexedBlendDstRgb = if (indexedBlendStateAvailable) GL30.glGetIntegeri(GL_BLEND_DST_RGB, 0) else 0
-        val indexedBlendSrcAlpha = if (indexedBlendStateAvailable) GL30.glGetIntegeri(GL_BLEND_SRC_ALPHA, 0) else 0
-        val indexedBlendDstAlpha = if (indexedBlendStateAvailable) GL30.glGetIntegeri(GL_BLEND_DST_ALPHA, 0) else 0
-        val indexedBlendEquationRgb = if (indexedBlendStateAvailable) GL30.glGetIntegeri(GL_BLEND_EQUATION_RGB, 0) else 0
-        val indexedBlendEquationAlpha = if (indexedBlendStateAvailable) GL30.glGetIntegeri(GL_BLEND_EQUATION_ALPHA, 0) else 0
+        val indexedBlendStateCount = if (indexedBlendStateAvailable) glGetInteger(GL_MAX_DRAW_BUFFERS) else 0
+        val indexedBlendEnabled = BooleanArray(indexedBlendStateCount) { GL30.glIsEnabledi(GL_BLEND, it) }
+        val indexedBlendSrcRgb = IntArray(indexedBlendStateCount) { GL30.glGetIntegeri(GL_BLEND_SRC_RGB, it) }
+        val indexedBlendDstRgb = IntArray(indexedBlendStateCount) { GL30.glGetIntegeri(GL_BLEND_DST_RGB, it) }
+        val indexedBlendSrcAlpha = IntArray(indexedBlendStateCount) { GL30.glGetIntegeri(GL_BLEND_SRC_ALPHA, it) }
+        val indexedBlendDstAlpha = IntArray(indexedBlendStateCount) { GL30.glGetIntegeri(GL_BLEND_DST_ALPHA, it) }
+        val indexedBlendEquationRgb = IntArray(indexedBlendStateCount) {
+            GL30.glGetIntegeri(GL_BLEND_EQUATION_RGB, it)
+        }
+        val indexedBlendEquationAlpha = IntArray(indexedBlendStateCount) {
+            GL30.glGetIntegeri(GL_BLEND_EQUATION_ALPHA, it)
+        }
         val depthEnabled = glIsEnabled(GL_DEPTH_TEST)
         val depthMask = glGetBoolean(GL_DEPTH_WRITEMASK)
         val depthFunc = glGetInteger(GL_DEPTH_FUNC)
@@ -383,22 +387,29 @@ object CParticleRenderer {
             RenderSystem.bindTexture(prevTex0)
             RenderSystem.setShaderTexture(0, prevShaderTexture0)
             RenderSystem.activeTexture(prevActiveTexture)
+            if (blendEnabled) glEnable(GL_BLEND) else glDisable(GL_BLEND)
+            glBlendFuncSeparate(blendSrcRgb, blendDstRgb, blendSrcAlpha, blendDstAlpha)
+            glBlendEquationSeparate(blendEquationRgb, blendEquationAlpha)
             if (indexedBlendStateAvailable) {
-                if (indexedBlendEnabled) glEnablei(GL_BLEND, 0) else glDisablei(GL_BLEND, 0)
-                CParticleIndexedBlendState.setFactors(
-                    0,
-                    indexedBlendSrcRgb,
-                    indexedBlendDstRgb,
-                    indexedBlendSrcAlpha,
-                    indexedBlendDstAlpha,
-                )
-                CParticleIndexedBlendState.setEquation(
-                    0, indexedBlendEquationRgb, indexedBlendEquationAlpha,
-                )
-            } else {
-                if (blendEnabled) glEnable(GL_BLEND) else glDisable(GL_BLEND)
-                glBlendFuncSeparate(blendSrcRgb, blendDstRgb, blendSrcAlpha, blendDstAlpha)
-                glBlendEquationSeparate(blendEquationRgb, blendEquationAlpha)
+                repeat(indexedBlendStateCount) { drawBuffer ->
+                    if (indexedBlendEnabled[drawBuffer]) {
+                        glEnablei(GL_BLEND, drawBuffer)
+                    } else {
+                        glDisablei(GL_BLEND, drawBuffer)
+                    }
+                    CParticleIndexedBlendState.setFactors(
+                        drawBuffer,
+                        indexedBlendSrcRgb[drawBuffer],
+                        indexedBlendDstRgb[drawBuffer],
+                        indexedBlendSrcAlpha[drawBuffer],
+                        indexedBlendDstAlpha[drawBuffer],
+                    )
+                    CParticleIndexedBlendState.setEquation(
+                        drawBuffer,
+                        indexedBlendEquationRgb[drawBuffer],
+                        indexedBlendEquationAlpha[drawBuffer],
+                    )
+                }
             }
             if (depthEnabled) glEnable(GL_DEPTH_TEST) else glDisable(GL_DEPTH_TEST)
             glDepthMask(depthMask)
@@ -480,7 +491,6 @@ object CParticleRenderer {
         pass: CParticleRenderPass,
         uniformScratch: UniformScratch,
     ) {
-        val filterParticleDepth = CooTerrainPipelineManager.shouldFilterCParticleDepth()
         shader.setInt("uIrisExpansion", 1)
         shader.setInt("uPremultiplyRgbByAlpha", 0)
         for (system in systems) {
@@ -506,10 +516,7 @@ object CParticleRenderer {
                 if (layerSystems.isEmpty()) continue
 
                 layer.applyIndexedState(0)
-                if (filterParticleDepth && layer.blend) {
-                    glDepthMask(false)
-                }
-                if (layer.requiresDeferredDepthWrite && !filterParticleDepth) {
+                if (layer.requiresDeferredDepthWrite) {
                     glDepthMask(false)
                     if (layer.premultiplyRgbByAlpha) {
                         deferredDirectSystems.addAll(layerSystems)
@@ -555,6 +562,10 @@ object CParticleRenderer {
                     if (deferredDirectSystems.isNotEmpty()) {
                         glUseProgram(shader.program)
                         try {
+                            RenderSystem.activeTexture(GL_TEXTURE1)
+                            RenderSystem.bindTexture(RenderSystem.getShaderTexture(2))
+                            CParticleSprites.bindLookup(2)
+                            CParticleAppearanceDescriptors.bindLookup(3)
                             shader.setInt("uDepthOnly", 1)
                             drawInstancedSystems(
                                 shader,

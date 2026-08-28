@@ -4,6 +4,7 @@ import cn.coostack.cooparticlesapi.annotations.emitter.handle.ParticleEmittersRe
 import cn.coostack.cooparticlesapi.cparticle.CParticleSystemManager
 import cn.coostack.cooparticlesapi.cparticle.compat.CParticleEmitterBridge
 import cn.coostack.cooparticlesapi.cparticle.force.CParticleForce
+import cn.coostack.cooparticlesapi.cparticle.force.CParticleForceSink
 import cn.coostack.cooparticlesapi.extend.asVec3
 import cn.coostack.cooparticlesapi.extend.lengthCoerceAtMost
 import cn.coostack.cooparticlesapi.extend.ofFloored
@@ -183,16 +184,34 @@ abstract class ClassParticleEmitters(
     }
 
     /**
-     * GPU 模式附加力场 (每 tick 同步一次).
-     * 内置 ParticleCommand 可用 [cn.coostack.cooparticlesapi.cparticle.force.CParticleForce.fromCommand] 转换.
+     * 旧版 GPU 力场列表接口。
+     *
+     * 旧 emitter 可以继续覆写此方法；桥接层会在每 tick 调用
+     * [submitCParticleForces]，由默认实现把列表内容提交到 sink。
+     * 新 emitter 应直接覆写流式接口，避免创建临时列表。
+     *
+     * @return 按执行顺序排列的力场列表
      */
     open fun cparticleForces(): List<CParticleForce> = emptyList()
 
     /**
+     * GPU 模式附加力场 (每 tick 同步一次)。
+     *
+     * 默认实现兼容旧版 [cparticleForces]；新 emitter 可以直接向 sink 提交，
+     * 从而避免每 tick 构建临时列表。内置 ParticleCommand 可用
+     * [CParticleForce.fromCommand] 转换。
+     *
+     * @param sink 当前 emitter 的力场快照，调用期间只应提交本 emitter 的力
+     */
+    open fun submitCParticleForces(sink: CParticleForceSink) {
+        sink.submitAll(cparticleForces())
+    }
+
+    /**
      * CParticle 方块碰撞相对 system 原点的最大保证范围，单位为方块。
      *
-     * Example: 粒子最远会离开 system 原点 40 格时返回 `40`。
-     * Forbidden: 返回值会被限制在 `0..96`；范围越大，网格刷新成本按立方增长。
+     * 示例：粒子最远会离开 system 原点 40 格时返回 `40`。
+     * 禁止：返回值会被限制在 `0..96`；范围越大，网格刷新成本按立方增长。
      */
     open fun cparticleBlockCollisionRange(): Int = CParticleSystemManager.DEFAULT_BLOCK_COLLISION_RANGE
 
@@ -226,6 +245,7 @@ abstract class ClassParticleEmitters(
             increaseTick()
             return
         }
+        CParticleEmitterBridge.syncSystems(this)
         if (enableInterpolator) {
             emittersInterpolator.insertPoint(pos)
         }
@@ -238,12 +258,12 @@ abstract class ClassParticleEmitters(
                 val count = res.size
                 res.forEachIndexed { index, it ->
                     val pos = it.toVector()
-                    val lerpProgress = index / (count - 1f)
+                    val lerpProgress = index / (count - 1F)
                     doSubtick(pos, lerpProgress) // 用于设置其他插值
                     spawnParticle(pos, lerpProgress)
                 }
             } else {
-                spawnParticle(pos, 1f)
+                spawnParticle(pos, 1F)
             }
         }
         increaseTick()
@@ -261,7 +281,7 @@ abstract class ClassParticleEmitters(
         }
         val world = world as ClientLevel
         // 生成粒子样式
-        var spawnedCount = 0f
+        var spawnedCount = 0F
         val particles = genParticles(lerpProgress)
         val total = particles.size
         val cparticleBatchSize = particles.count { it.first is ControlableCParticleData }

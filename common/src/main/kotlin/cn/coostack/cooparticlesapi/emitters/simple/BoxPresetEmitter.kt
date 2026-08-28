@@ -5,6 +5,7 @@ import cn.coostack.cooparticlesapi.annotations.CodecField
 import cn.coostack.cooparticlesapi.cparticle.CParticleColorCurve
 import cn.coostack.cooparticlesapi.cparticle.CParticleUpdateMode
 import cn.coostack.cooparticlesapi.cparticle.force.CParticleForce
+import cn.coostack.cooparticlesapi.cparticle.force.CParticleForceSink
 import cn.coostack.cooparticlesapi.network.particle.data.minRangeTo
 import cn.coostack.cooparticlesapi.network.particle.emitters.*
 import cn.coostack.cooparticlesapi.network.particle.emitters.command.*
@@ -93,9 +94,9 @@ class BoxPresetEmitter(pos: Vec3, world: Level?) : AutoParticleEmitters(pos, wor
         maxTick = 1
     }
 
-    override fun cparticleForces(): List<CParticleForce> = listOf(
-        CParticleForce.ExpDrag(damping = damping, minSpeed = 0.0, linear = 0.0)
-    )
+    override fun submitCParticleForces(sink: CParticleForceSink) {
+        sink.submit(CParticleForce.ExpDrag(damping = damping, minSpeed = 0.0, linear = 0.0))
+    }
 
     override fun doTick() {
     }

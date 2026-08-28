@@ -2,6 +2,9 @@ package cn.coostack.cooparticlesapi.cparticle
 
 import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableParticleData
 import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableCParticleData
+import cn.coostack.cooparticlesapi.cparticle.compat.CParticleControlable
+import cn.coostack.cooparticlesapi.cparticle.compat.CParticleDisplayer
+import cn.coostack.cooparticlesapi.particles.ControlableParticle
 import cn.coostack.cooparticlesapi.particles.ParticleCameraOption
 import net.minecraft.core.particles.ParticleOptions
 import net.minecraft.core.particles.ParticleTypes
@@ -12,14 +15,14 @@ import org.joml.Vector3f
 /**
  * # CParticle — GPU 粒子系统的粒子基类(生成描述符)
  *
- * 与 [cn.coostack.cooparticlesapi.particles.ControlableParticle] 不同,
+ * 与 [ControlableParticle] 不同,
  * [updateMode] 为 [CParticleUpdateMode.DYNAMIC] 时，系统会保留本对象，
  * 并在绘制前同步可变的渲染字段。[CParticleUpdateMode.STATIC] 只在生成时写入一次，
  * 适合不需要逐粒子更新的大型粒子池。位置与速度始终由模拟器或控制句柄管理。
  *
  * 若需要在生成后持续控制单个粒子(composition 语义), 使用
- * [cn.coostack.cooparticlesapi.cparticle.compat.CParticleDisplayer] 返回的句柄
- * ([cn.coostack.cooparticlesapi.cparticle.compat.CParticleControlable]).
+ * [CParticleDisplayer] 返回的句柄
+ * ([CParticleControlable]).
  *
  * 字段语义与 [ControlableParticleData] 一一对应, 可用 [from] 直接转换.
  */
@@ -36,8 +39,8 @@ open class CParticle {
     /** 是否保持宽高等比 */
     var uniformSize = true
 
-    private var currentWeightSize = 0.2f
-    private var currentHeightSize = 0.2f
+    private var currentWeightSize = 0.2F
+    private var currentHeightSize = 0.2F
 
     /** 粒子宽度 */
     var weightSize: Float
@@ -57,17 +60,17 @@ open class CParticle {
 
     /** 快捷 size (同时设置宽高) */
     var size: Float
-        get() = (currentWeightSize + currentHeightSize) / 2f
+        get() = (currentWeightSize + currentHeightSize) / 2F
         set(value) {
             currentWeightSize = value
             currentHeightSize = value
         }
 
     /** 颜色 (0..1) */
-    var color = Vector3f(1f, 1f, 1f)
+    var color = Vector3f(1F, 1F, 1F)
 
     /** 不透明度 (0..1) */
-    var alpha = 1f
+    var alpha = 1F
 
     /** 初始age */
     var age = 0
@@ -87,13 +90,13 @@ open class CParticle {
     var axis: Vec3 = Vec3(0.0, 1.0, 0.0)
 
     /** ROTATION 模式水平朝向 (弧度) */
-    var yaw = 0f
+    var yaw = 0F
 
     /** ROTATION 模式垂直朝向 (弧度) */
-    var pitch = 0f
+    var pitch = 0F
 
     /** 滚转 (弧度, 所有模式生效) */
-    var roll = 0f
+    var roll = 0F
 
     /**
      * ROTATION 使用的指向向量。为 null 时使用 [yaw] 和 [pitch]。
@@ -126,6 +129,27 @@ open class CParticle {
      */
     var speedLimit: Float? = null
 
+    /** GPU command selector 使用的 sourceId；通常由 system 在生成时覆盖。 */
+    var sourceId: Int = 0
+
+    /** 用户定义的逻辑标签，不承担 emitter 身份。 */
+    var sign: Int = 0
+
+    /** 供 CommandMask 选择的粒子位掩码。 */
+    var commandMask: Int = 0
+
+    /** metadata 扩展标志位。 */
+    var metadataFlags: Int = 0
+
+    /** 粒子电荷；NaN 表示未设置，由 Charge command 使用默认值。 */
+    var charge: Float = Float.NaN
+
+    /** 粒子质量，单位由固定 tick 模拟约定。 */
+    var mass: Float = 1F
+
+    /** 粒子半径，供单点 Lennard-Jones 使用。 */
+    var radius: Float = 0F
+
     private var dynamicDataSource: ControlableCParticleData? = null
 
     private var appearanceRevisionCounter = 0
@@ -157,7 +181,7 @@ open class CParticle {
     /**
      * 按生命周期只缩放 X 方向尺寸的 GPU 曲线。
      *
-     * Example: `scaleXCurve = CParticleCurve.linear(0.2f, 1f)` 会横向展开粒子。
+     * 示例：`scaleXCurve = CParticleCurve.linear(0.2F, 1F)` 会横向展开粒子。
      * Forbidden: 不要把本字段当成 Z 方向或等比缩放入口。
      */
     var scaleXCurve: CParticleCurve? = null
@@ -170,7 +194,7 @@ open class CParticle {
     /**
      * 按生命周期只缩放 Y 方向尺寸的 GPU 曲线。
      *
-     * Example: `scaleYCurve = CParticleCurve.linear(1f, 0f)` 会纵向收拢粒子。
+     * 示例：`scaleYCurve = CParticleCurve.linear(1F, 0F)` 会纵向收拢粒子。
      * Forbidden: 不要把本字段当成 Z 方向或等比缩放入口。
      */
     var scaleYCurve: CParticleCurve? = null
@@ -340,6 +364,13 @@ open class CParticle {
         target.randomSeed = randomSeed
         target.blockCollision = blockCollision
         target.speedLimit = speedLimit
+        target.sourceId = sourceId
+        target.sign = sign
+        target.commandMask = commandMask
+        target.metadataFlags = metadataFlags
+        target.charge = charge
+        target.mass = mass
+        target.radius = radius
         target.alphaCurve = alphaCurve
         target.scaleCurve = scaleCurve
         target.scaleXCurve = scaleXCurve
@@ -387,7 +418,8 @@ open class CParticle {
         randomAgePreTick = data.randomAgePreTick
         randomSeed = data.randomSeed
         blockCollision = data.blockCollision
-        speedLimit = data.speedLimit.toFloat().coerceAtLeast(0f)
+        speedLimit = data.speedLimit.toFloat().coerceAtLeast(0F)
+        // sign、commandMask、metadataFlags、charge 和 radius 都是出生 metadata，生命周期内不再同步。
     }
 
     /**
@@ -423,6 +455,7 @@ open class CParticle {
                 it.pitch = data.pitch
                 it.roll = data.roll
                 it.effect = data.effect
+                it.sign = data.sign
                 if (data is ControlableCParticleData) {
                     it.updateMode = data.updateMode
                     it.textureSource = data.textureSource
@@ -436,7 +469,11 @@ open class CParticle {
                     it.randomAgePreTick = data.randomAgePreTick
                     it.randomSeed = data.randomSeed
                     it.blockCollision = data.blockCollision
-                    it.speedLimit = data.speedLimit.toFloat().coerceAtLeast(0f)
+                    it.speedLimit = data.speedLimit.toFloat().coerceAtLeast(0F)
+                    it.commandMask = data.commandMask
+                    it.metadataFlags = data.metadataFlags
+                    it.charge = data.charge
+                    it.radius = data.radius
                     if (data.updateMode == CParticleUpdateMode.DYNAMIC) {
                         it.dynamicDataSource = data
                     }

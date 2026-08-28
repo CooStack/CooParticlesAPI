@@ -2,7 +2,6 @@ package cn.coostack.cooparticlesapi.renderer.client
 
 import cn.coostack.cooparticlesapi.CooParticlesAPIClient
 import cn.coostack.cooparticlesapi.CooParticlesConstants
-import cn.coostack.cooparticlesapi.compat.IrisFinalPassColorTexture
 import cn.coostack.cooparticlesapi.renderer.backend.RenderBackend
 import cn.coostack.cooparticlesapi.renderer.backend.RenderBackendCapability
 import cn.coostack.cooparticlesapi.renderer.backend.RenderBackendHooks
@@ -11,7 +10,6 @@ import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameStage
 import cn.coostack.cooparticlesapi.renderer.backend.RenderSceneTargets
 import cn.coostack.cooparticlesapi.renderer.backend.VanillaSafeRenderBackend
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelineRuntimeEffect
-import cn.coostack.cooparticlesapi.renderer.post.OpenGlPostEffectExecutionBackend
 import cn.coostack.cooparticlesapi.renderer.post.PostEffectFrameExecutor
 import com.mojang.blaze3d.pipeline.RenderTarget
 import net.minecraft.client.Minecraft
@@ -30,11 +28,7 @@ object ClientRenderPipelineManager {
     private var irisShaderPackFrameActive = false
     private var scenePostCaptured = false
     private var scenePostExecuted = false
-    /** 当前帧的 Terrain Mapping 是否已经成功写入 Iris final 输出。 */
-    private var irisTerrainScenePostExecuted = false
     private var irisScenePostFallbackLogged = false
-    private var irisFinalOutputHookLogged = false
-    private var irisFinalMappingSubmittedLogged = false
     private var frameTickDelta = 0F
     private val frameViewMatrix = Matrix4f()
     private val frameProjectionMatrix = Matrix4f()
@@ -86,7 +80,7 @@ object ClientRenderPipelineManager {
             }
             ClientRenderEntityManager.runScenePost(
                 context,
-                includeTerrainMappings = !irisTerrainScenePostExecuted,
+                includeTerrainMappings = !irisShaderPackFrameActive,
             )
         }
 
@@ -145,10 +139,7 @@ object ClientRenderPipelineManager {
         frameActive = false
         scenePostCaptured = false
         scenePostExecuted = false
-        irisTerrainScenePostExecuted = false
         irisShaderPackFrameActive = false
-        irisFinalOutputHookLogged = false
-        irisFinalMappingSubmittedLogged = false
         loggedTargetSignatures.clear()
         cooFxWorldPassDelegate = null
     }
@@ -180,7 +171,6 @@ object ClientRenderPipelineManager {
         irisShaderPackFrameActive = CooParticlesAPIClient.checkIrisShaderPackUsed()
         scenePostCaptured = false
         scenePostExecuted = false
-        irisTerrainScenePostExecuted = false
         CooPipelineRuntimeEffect.beginFrame()
         frameTickDelta = tickDelta
         frameViewMatrix.set(viewMatrix)
@@ -216,71 +206,6 @@ object ClientRenderPipelineManager {
     fun renderIrisScenePost() {
         if (!frameActive || !irisShaderPackFrameActive) return
         runScenePost(frameTickDelta, frameViewMatrix, frameProjectionMatrix)
-    }
-
-    /** Iris final pass 完成后，把 Terrain Mapping 写入已经包含完整光影结果的主颜色纹理。 */
-    fun renderIrisTerrainPostAfterFinalPass() {
-        if (!frameActive || !irisShaderPackFrameActive || irisTerrainScenePostExecuted) return
-        val target = minecraft.mainRenderTarget
-        renderIrisTerrainPost(
-            IrisFinalPassColorTexture(target.colorTextureId, target.width, target.height),
-            "iris-final-output",
-        )
-    }
-
-    private fun renderIrisTerrainPost(finalColor: IrisFinalPassColorTexture?, targetLabel: String) {
-        if (finalColor == null) return
-        val finalFramebuffer = OpenGlPostEffectExecutionBackend.irisFinalColorFramebuffer(
-            finalColor.textureId
-        )
-        if (finalFramebuffer == null) return
-        val context = buildFrameContext(
-            frameTickDelta,
-            frameViewMatrix,
-            frameProjectionMatrix,
-            RenderFrameStage.SCENE_POST,
-        ).copy(
-            sceneColorTextureId = finalColor.textureId,
-            sceneColorFramebufferId = finalFramebuffer,
-            finalCompositeFramebufferId = finalFramebuffer,
-            finalCompositeColorTextureId = finalColor.textureId,
-            externalFramebuffer = true,
-            resolvedTargetLabel = targetLabel,
-            boundFramebufferId = finalFramebuffer,
-            targetWidth = finalColor.width,
-            targetHeight = finalColor.height,
-        )
-        currentFrameContext = context
-        if (!scenePostCaptured) {
-            ClientRenderEntityManager.preparePostProcess(
-                context.tickDelta,
-                context.viewMatrix,
-                context.projMatrix,
-            )
-            PostEffectFrameExecutor.prepareFrame(context)
-            scenePostCaptured = true
-        }
-        PostEffectFrameExecutor.refreshSceneFrame(context)
-        irisTerrainScenePostExecuted = ClientRenderEntityManager.runTerrainScenePost(context)
-        if (!irisFinalOutputHookLogged) {
-            CooParticlesConstants.logger.info(
-                "Iris final output hook active texture={} framebuffer={} size={}x{} mappingSubmitted={}",
-                finalColor.textureId,
-                finalFramebuffer,
-                finalColor.width,
-                finalColor.height,
-                irisTerrainScenePostExecuted,
-            )
-            irisFinalOutputHookLogged = true
-        }
-        if (irisTerrainScenePostExecuted && !irisFinalMappingSubmittedLogged) {
-            CooParticlesConstants.logger.info(
-                "Terrain Mapping submitted to Iris final output texture={} framebuffer={}",
-                finalColor.textureId,
-                finalFramebuffer,
-            )
-            irisFinalMappingSubmittedLogged = true
-        }
     }
 
     private fun runScenePost(tickDelta: Float, viewMatrix: Matrix4f, projMatrix: Matrix4f) {

@@ -6,6 +6,7 @@ import cn.coostack.cooparticlesapi.cparticle.CParticleColorCurve
 import cn.coostack.cooparticlesapi.cparticle.CParticleCurve
 import cn.coostack.cooparticlesapi.cparticle.CParticleUpdateMode
 import cn.coostack.cooparticlesapi.cparticle.force.CParticleForce
+import cn.coostack.cooparticlesapi.cparticle.force.CParticleForceSink
 import cn.coostack.cooparticlesapi.network.particle.emitters.*
 import cn.coostack.cooparticlesapi.network.particle.emitters.command.*
 import cn.coostack.cooparticlesapi.network.particle.emitters.command.curve.*
@@ -23,9 +24,9 @@ import kotlin.random.Random
 
 @CooAutoRegister
 class TestGPUEmitter(pos: Vec3, world: Level?) : AutoParticleEmitters(pos, world) {
-    override fun cparticleForces(): List<CParticleForce> = listOf(
-        CParticleForce.ExpDrag(damping = 0.05, minSpeed = 0.0, linear = 0.0)
-    )
+    override fun submitCParticleForces(sink: CParticleForceSink) {
+        sink.submit(CParticleForce.ExpDrag(damping = 0.05, minSpeed = 0.0, linear = 0.0))
+    }
 
     private val data1 = SimpleRandomParticleData()
 
@@ -36,10 +37,10 @@ class TestGPUEmitter(pos: Vec3, world: Level?) : AutoParticleEmitters(pos, world
     var template = ControlableCParticleData().apply {
         velocity = Vec3(0.0, 0.12, 0.0)
         uniformSize = false
-        weightSize = 1.0f
-        heightSize = 1.0f
-        visibleRange = 128.0f
-        color = Vector3f(1f, 1f, 1f)
+        weightSize = 1.0F
+        heightSize = 1.0F
+        visibleRange = 128.0F
+        color = Vector3f(1F, 1F, 1F)
         alpha = (100.0 / 100.0).toFloat()
         light = -1
         setTextureSheet(TextureSheetsEnum.ADDITION_BLEND_TRANSLUCENT)
@@ -54,7 +55,7 @@ class TestGPUEmitter(pos: Vec3, world: Level?) : AutoParticleEmitters(pos, world
         alphaCurve = CParticleCurve.fromFloatCurve(emitter1Opacity)
         scaleXCurve = CParticleCurve.fromFloatCurve(emitter1SizeX)
         scaleYCurve = CParticleCurve.fromFloatCurve(emitter1SizeY)
-        colorCurve = CParticleColorCurve.linear(Vector3f(0.996078f, 0.521569f, 0.262745f), Vector3f(1.0f, 0.878431f, 0.439216f))
+        colorCurve = CParticleColorCurve.linear(Vector3f(0.996078F, 0.521569F, 0.262745F), Vector3f(1.0F, 0.878431F, 0.439216F))
         randomAgePreTick = false
     }
 
@@ -80,8 +81,8 @@ class TestGPUEmitter(pos: Vec3, world: Level?) : AutoParticleEmitters(pos, world
                 maxSize = 0.2
                 minSpeed = 0.2
                 maxSpeed = 0.6
-                leftColor = Vector3f(0.996078f, 0.521569f, 0.262745f)
-                rightColor = Vector3f(1.0f, 0.878431f, 0.439216f)
+                leftColor = Vector3f(0.996078F, 0.521569F, 0.262745F)
+                rightColor = Vector3f(1.0F, 0.878431F, 0.439216F)
             }
             res.addAll(
                 PointsBuilder()
@@ -95,7 +96,7 @@ class TestGPUEmitter(pos: Vec3, world: Level?) : AutoParticleEmitters(pos, world
                         val velocity = if (baseDir.lengthSqr() < 1e-8) Vec3.ZERO else baseDir.normalize().scale(speed)
                         template.clone().apply {
                             maxAge = data1.getRandomParticleMaxAge()
-                            this.color = Vector3f(1f, 1f, 1f)
+                            this.color = Vector3f(1F, 1F, 1F)
                             uniformSize = false
                             weightSize = (particleSize * template.weightSize)
                             heightSize = (particleSize * template.heightSize)
@@ -124,7 +125,7 @@ class TestGPUEmitter(pos: Vec3, world: Level?) : AutoParticleEmitters(pos, world
                     this.uniformSize = false
                     this.weightSize = (data.weightSize * emitter1SizeX.sample(lifeProgress)).toFloat()
                     this.heightSize = (data.heightSize * emitter1SizeY.sample(lifeProgress)).toFloat()
-                    this.particleAlpha = (emitter1Opacity.sample(lifeProgress)).toFloat().coerceIn(0f, 1f)
+                    this.particleAlpha = (emitter1Opacity.sample(lifeProgress)).toFloat().coerceIn(0F, 1F)
                 }
             }
         }

@@ -786,7 +786,7 @@ class PointsBuilder {
      * @param builder 被添加的 builder
      */
     fun addBuilder(origin: RelativeLocation, builder: PointsBuilder): PointsBuilder {
-        points.addAll(builder.create().onEach { it.add(origin) })
+        points.addAll(builder.createWithOffset(origin))
         return this
     }
 
@@ -1284,6 +1284,180 @@ class PointsBuilder {
      * 导出点集副本（每个点 clone 一份），避免外部修改影响 builder。
      */
     fun create(): List<RelativeLocation> = points.asSequence().map { it.clone() }.toList()
+    fun createWithOffset(offset: Vec3): List<RelativeLocation> = points.asSequence().map { it + offset }.toList()
+    fun createWithOffset(offset: RelativeLocation): List<RelativeLocation> =
+        points.asSequence().map { it + offset }.toList()
+
+    /**
+     * 导出点集副本，并按统一倍率缩放。
+     *
+     * 与 [scale] 保持一致，[factor] 小于等于 0 时返回未缩放的点集副本。
+     * 示例：`builder.createWithScale(2.0)`
+     *
+     * @param factor 统一缩放倍率
+     * @return 缩放后的新点集，不修改 builder 内部点对象
+     */
+    fun createWithScale(factor: Number): List<RelativeLocation> {
+        val scale = factor.toDouble()
+        if (scale <= 0.0) {
+            return create()
+        }
+        return points.asSequence().map { it * scale }.toList()
+    }
+
+    /**
+     * 导出点集副本，并绕当前 [axis] 旋转。
+     *
+     * 示例：`builder.createWithRotation(Math.PI / 2.0)`
+     *
+     * @param radian 旋转角，单位为弧度
+     * @return 旋转后的新点集，不修改 builder 内部点对象
+     */
+    fun createWithRotation(radian: Double): List<RelativeLocation> = createWithRotation(radian, axis)
+
+    /**
+     * 导出点集副本，并绕指定 [axis] 旋转。
+     *
+     * 示例：`builder.createWithRotation(Math.PI / 2.0, RelativeLocation.zAxis())`
+     *
+     * @param radian 旋转角，单位为弧度
+     * @param axis 旋转轴
+     * @return 旋转后的新点集，不修改 builder 内部点对象
+     */
+    fun createWithRotation(radian: Double, axis: RelativeLocation): List<RelativeLocation> =
+        points.asSequence().map { Math3DUtil.rotateVector(it, axis, radian) }.toList()
+
+    /**
+     * 导出点集副本，先绕当前 [axis] 旋转，再整体偏移。
+     *
+     * 示例：`builder.createWithTransform(Math.PI / 2.0, Vec3(1.0, 0.0, 0.0))`
+     *
+     * @param radian 旋转角，单位为弧度
+     * @param offset 旋转后应用的偏移量
+     * @return 完成旋转和平移的新点集，不修改 builder 内部点对象
+     */
+    fun createWithTransform(radian: Double, offset: Vec3): List<RelativeLocation> =
+        createWithTransform(radian, axis, offset)
+
+    /**
+     * 导出点集副本，先绕当前 [axis] 旋转，再整体偏移。
+     *
+     * 示例：`builder.createWithTransform(Math.PI / 2.0, RelativeLocation(1.0, 0.0, 0.0))`
+     *
+     * @param radian 旋转角，单位为弧度
+     * @param offset 旋转后应用的偏移量
+     * @return 完成旋转和平移的新点集，不修改 builder 内部点对象
+     */
+    fun createWithTransform(radian: Double, offset: RelativeLocation): List<RelativeLocation> =
+        createWithTransform(radian, axis, offset)
+
+    /**
+     * 导出点集副本，先绕指定 [axis] 旋转，再整体偏移。
+     *
+     * 示例：
+     * `builder.createWithTransform(Math.PI / 2.0, RelativeLocation.zAxis(), Vec3(1.0, 0.0, 0.0))`
+     *
+     * @param radian 旋转角，单位为弧度
+     * @param axis 旋转轴
+     * @param offset 旋转后应用的偏移量
+     * @return 完成旋转和平移的新点集，不修改 builder 内部点对象
+     */
+    fun createWithTransform(radian: Double, axis: RelativeLocation, offset: Vec3): List<RelativeLocation> =
+        points.asSequence().map { Math3DUtil.rotateVector(it, axis, radian) + offset }.toList()
+
+    /**
+     * 导出点集副本，先绕指定 [axis] 旋转，再整体偏移。
+     *
+     * 示例：
+     * `builder.createWithTransform(Math.PI / 2.0, RelativeLocation.zAxis(), RelativeLocation(1.0, 0.0, 0.0))`
+     *
+     * @param radian 旋转角，单位为弧度
+     * @param axis 旋转轴
+     * @param offset 旋转后应用的偏移量
+     * @return 完成旋转和平移的新点集，不修改 builder 内部点对象
+     */
+    fun createWithTransform(
+        radian: Double,
+        axis: RelativeLocation,
+        offset: RelativeLocation
+    ): List<RelativeLocation> =
+        points.asSequence().map { Math3DUtil.rotateVector(it, axis, radian) + offset }.toList()
+
+    /**
+     * 导出点集副本，依次执行统一缩放、绕当前 [axis] 旋转和整体偏移。
+     *
+     * 示例：`builder.createWithTransform(2.0, Math.PI / 2.0, Vec3(1.0, 0.0, 0.0))`
+     *
+     * @param factor 统一缩放倍率；小于等于 0 时不缩放
+     * @param radian 旋转角，单位为弧度
+     * @param offset 旋转后应用的偏移量
+     * @return 完成缩放、旋转和平移的新点集，不修改 builder 内部点对象
+     */
+    fun createWithTransform(factor: Number, radian: Double, offset: Vec3): List<RelativeLocation> =
+        createWithTransform(factor, radian, axis, offset)
+
+    /**
+     * 导出点集副本，依次执行统一缩放、绕当前 [axis] 旋转和整体偏移。
+     *
+     * 示例：`builder.createWithTransform(2.0, Math.PI / 2.0, RelativeLocation(1.0, 0.0, 0.0))`
+     *
+     * @param factor 统一缩放倍率；小于等于 0 时不缩放
+     * @param radian 旋转角，单位为弧度
+     * @param offset 旋转后应用的偏移量
+     * @return 完成缩放、旋转和平移的新点集，不修改 builder 内部点对象
+     */
+    fun createWithTransform(factor: Number, radian: Double, offset: RelativeLocation): List<RelativeLocation> =
+        createWithTransform(factor, radian, axis, offset)
+
+    /**
+     * 导出点集副本，依次执行统一缩放、绕指定 [axis] 旋转和整体偏移。
+     *
+     * 示例：
+     * `builder.createWithTransform(2.0, Math.PI / 2.0, RelativeLocation.zAxis(), Vec3(1.0, 0.0, 0.0))`
+     *
+     * @param factor 统一缩放倍率；小于等于 0 时不缩放
+     * @param radian 旋转角，单位为弧度
+     * @param axis 旋转轴
+     * @param offset 旋转后应用的偏移量
+     * @return 完成缩放、旋转和平移的新点集，不修改 builder 内部点对象
+     */
+    fun createWithTransform(
+        factor: Number,
+        radian: Double,
+        axis: RelativeLocation,
+        offset: Vec3
+    ): List<RelativeLocation> {
+        val scale = factor.toDouble()
+        return points.asSequence().map {
+            val scaled = if (scale <= 0.0) it else it * scale
+            Math3DUtil.rotateVector(scaled, axis, radian) + offset
+        }.toList()
+    }
+
+    /**
+     * 导出点集副本，依次执行统一缩放、绕指定 [axis] 旋转和整体偏移。
+     *
+     * 示例：
+     * `builder.createWithTransform(2.0, Math.PI / 2.0, RelativeLocation.zAxis(), RelativeLocation(1.0, 0.0, 0.0))`
+     *
+     * @param factor 统一缩放倍率；小于等于 0 时不缩放
+     * @param radian 旋转角，单位为弧度
+     * @param axis 旋转轴
+     * @param offset 旋转后应用的偏移量
+     * @return 完成缩放、旋转和平移的新点集，不修改 builder 内部点对象
+     */
+    fun createWithTransform(
+        factor: Number,
+        radian: Double,
+        axis: RelativeLocation,
+        offset: RelativeLocation
+    ): List<RelativeLocation> {
+        val scale = factor.toDouble()
+        return points.asSequence().map {
+            val scaled = if (scale <= 0.0) it else it * scale
+            Math3DUtil.rotateVector(scaled, axis, radian) + offset
+        }.toList()
+    }
 
     /**
      * 导出点集合，但是不clone （节约性能）
@@ -1428,8 +1602,24 @@ class PointsBuilder {
     fun createAsBlockPos(): Set<BlockPos> =
         points.asSequence().map { ofFloored(it.toVector()) }.toMutableSet()
 
-     /**
+    /**
      * 克隆一个新的 builder（包含当前 axis 与点集副本）。
      */
     fun cloneBuilder(): PointsBuilder = of(axis, create())
+
+    /**
+     * 克隆一个新的 builder，并对点集副本应用 [offset]。
+     *
+     * @param offset 新点集的偏移量
+     * @return 保留当前 [axis] 的独立 builder
+     */
+    fun cloneBuilderWithOffset(offset: RelativeLocation): PointsBuilder = of(axis, createWithOffset(offset))
+
+    /**
+     * 克隆一个新的 builder，并对点集副本应用 [offset]。
+     *
+     * @param offset 新点集的偏移量
+     * @return 保留当前 [axis] 的独立 builder
+     */
+    fun cloneBuilderWithOffset(offset: Vec3): PointsBuilder = of(axis, createWithOffset(offset))
 }

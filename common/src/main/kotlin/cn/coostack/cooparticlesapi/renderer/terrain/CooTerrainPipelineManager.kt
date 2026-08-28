@@ -212,6 +212,7 @@ internal object CooTerrainPipelineManager {
                 requestMappingSectionRebuild(CooTerrainMappingRegistry.drainTopologyRegions(dimension))
             }
             CooTerrainMappingRegistry.activeRenderPlan(dimension, level.gameTime).forEach { mapping ->
+                if (irisShaderPackActive) return@forEach
                 val pipeline = CooTerrainMappingManager.pipeline(mapping.mappingId) ?: return@forEach
                 if (pipeline.nodes.none { node -> node.kind != CooPipelineNodeKind.WORLD }) return@forEach
                 if (!hasMandatoryCParticleCoverage(pipeline)) {
@@ -262,13 +263,14 @@ internal object CooTerrainPipelineManager {
      * @return 当前是否存在必须先于 RenderEntity 合成的 scene Mapping 全屏节点
      */
     fun shouldDeferShaderPackRenderEntities(): Boolean {
-        return scenePostMappingActiveThisFrame
+        // Iris 下放弃 Terrain Mapping 兼容，避免改变 shader pack 的原生场景阶段。
+        return !irisShaderPackActive && scenePostMappingActiveThisFrame
     }
 
     /**
      * 返回 CParticle 应在 Mapping 后重放的最终阶段；`true` 为 scene-post，`false` 为 frame-post。
      * 同帧同时存在两类 Mapping 时选择更晚的 frame-post，避免前景被第二次 Mapping 覆盖。
-     * Iris shader pack 激活时全部粒子保留原阶段，由 Iris 粒子 framebuffer 和深度过滤与 Mapping 隔离。
+     * Iris shader pack 下不参与 Terrain Mapping 分流，保持 `612795a` 的原生粒子阶段。
      */
     internal fun cParticleForegroundReplayScenePost(): Boolean? {
         if (irisShaderPackActive) return null
@@ -279,17 +281,9 @@ internal object CooTerrainPipelineManager {
         }
     }
 
-    /**
-     * Iris 下存在 Terrain Mapping 后处理时，透明 CParticle 不应把自己的深度写入场景深度。
-     * 否则 Mapping 会把粒子深度误判为 terrain 的最终深度，导致粒子泛光区域出现硬边。
-     */
-    internal fun shouldFilterCParticleDepth(): Boolean {
-        return irisShaderPackActive &&
-            (framePostMappingActiveThisFrame || scenePostMappingActiveThisFrame)
-    }
-
     /** @return 指定后处理阶段是否需要生成独立 CParticle 覆盖蒙版 */
     internal fun requiresCParticleCoverageMask(scenePost: Boolean): Boolean {
+        if (irisShaderPackActive) return false
         return if (scenePost) {
             scenePostMappingActiveThisFrame
         } else {
@@ -609,17 +603,19 @@ internal object CooTerrainPipelineManager {
                 group.snapshot.id
             ), null)
         }
-        val mappings = CooTerrainMappingRegistry.activeRenderPlan(level.dimension().location(), level.gameTime)
-        if (mappings.isNotEmpty()) {
-            return mappings.flatMap { mapping ->
-                val pipeline = CooTerrainMappingManager.pipeline(mapping.mappingId) ?: return@flatMap emptyList()
-                resolveTerrainBatch(
-                    state,
-                    original,
-                    pipeline,
-                    CooTerrainMappingBatchKey(mapping.dimension, mapping.instanceId, mapping.composition),
-                    mapping
-                )
+        if (!irisShaderPackActive) {
+            val mappings = CooTerrainMappingRegistry.activeRenderPlan(level.dimension().location(), level.gameTime)
+            if (mappings.isNotEmpty()) {
+                return mappings.flatMap { mapping ->
+                    val pipeline = CooTerrainMappingManager.pipeline(mapping.mappingId) ?: return@flatMap emptyList()
+                    resolveTerrainBatch(
+                        state,
+                        original,
+                        pipeline,
+                        CooTerrainMappingBatchKey(mapping.dimension, mapping.instanceId, mapping.composition),
+                        mapping
+                    )
+                }
             }
         }
         val pipeline = CooBlockPipelines.resolve(state)

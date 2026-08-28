@@ -27,14 +27,32 @@ layout(std430, binding = 1) readonly buffer CollisionGridBuffer {
     uint collisionWords[];
 };
 
+layout(std430, binding = 2) readonly buffer ParticleMetadataBuffer {
+    vec4 metadataRaw[];
+};
+
+layout(std430, binding = 3) readonly buffer ForceCommandBuffer {
+    vec4 commandRaw[];
+};
+
+// Command 在一次 dispatch 中不会变化。每个工作组只加载一次，避免每个粒子都从
+// SSBO 重复读取同一组五个 vec4。128 * 5 * 16 字节为 10 KiB，低于 OpenGL 4.3
+// 保证的 16 KiB 最小共享内存容量，CPU/GPU Command 语义不变。
+const int MAX_COMMANDS = 128;
+const int COMMAND_VEC4_STRIDE = 5;
+shared vec4 commandCache[MAX_COMMANDS * COMMAND_VEC4_STRIDE];
+
 uniform int uCount;
-uniform int uForceCount;
+uniform int uFirstSlot;
 uniform float uSpeedLimit;
 uniform vec3 uOrigin;     // 系统原点世界坐标 (噪声/流场用绝对坐标)
 uniform int uTransformSimulation;
 uniform mat4 uSimulationTransform;
 uniform mat4 uInverseSimulationTransform;
-uniform vec4 uForces[64]; // MAX_FORCES(16) * 4 vec4
+uniform int uCommandCount;
+uniform int uMetadataEnabled;
+uniform sampler2D uTextureResources[8];
+uniform sampler3D uFluidResources[8];
 uniform int uCollisionEnabled;
 uniform int uCollisionSize;
 uniform vec3 uCollisionOffset; // system 相对位置 + 此值 = 网格局部位置
@@ -48,6 +66,17 @@ const int TYPE_ATTRACT = 6;
 const int TYPE_ROTATION = 7;
 const int TYPE_NOISE = 8;
 const int TYPE_FLOW_FIELD = 9;
+const int TYPE_RADIAL = 10;
+const int TYPE_DIRECTIONAL_WIND = 11;
+const int TYPE_BLENDER_VORTEX = 12;
+const int TYPE_MAGNETIC = 13;
+const int TYPE_HARMONIC = 14;
+const int TYPE_VELOCITY_DRAG = 15;
+const int TYPE_CHARGE = 16;
+const int TYPE_LENNARD_JONES = 17;
+const int TYPE_TURBULENCE = 18;
+const int TYPE_TEXTURE = 19;
+const int TYPE_FLUID_FLOW = 20;
 const int FLAG_BLOCK_COLLISION = 32768;
 const int FLAG_NEWBORN = 1 << 16;
 const float COLLISION_SURFACE_OFFSET = 0.07;
@@ -175,11 +204,59 @@ float valueNoise3(vec3 p, int seed) {
     return mix(nxy0, nxy1, w);
 }
 
+bool finiteFloat(float value) {
+    return !isnan(value) && !isinf(value);
+}
+
+float textureLuminance(vec4 sampleValue) {
+    return (sampleValue.r + sampleValue.g + sampleValue.b) / 3.0;
+}
+
+bool commandSelected(int mode, int value, int mask, int sourceId, int sign, int commandMask) {
+    if (mode == 0) return true;
+    if (mode == 1) return sourceId == value;
+    if (mode == 2) return (sourceId & mask) == (value & mask);
+    if (mode == 3) return sign == value;
+    if (mode == 4) return (sign & mask) == (value & mask);
+    if (mode == 5) return (commandMask & mask) != 0;
+    return false;
+}
+
+float blenderFalloff(vec3 r, vec3 axis, vec4 falloff, int zdir, float distance) {
+    if (!finiteFloat(distance)) return 0.0;
+    int shape = int(falloff.w + 0.5);
+    float axisLength = length(axis);
+    if (axisLength <= 1e-9 && (shape != 0 || zdir != 0)) return 0.0;
+    float axial = axisLength > 1e-9 ? dot(axis / axisLength, r) : 0.0;
+    if ((zdir == 1 && axial < 0.0) || (zdir == 2 && axial > 0.0)) return 0.0;
+    float factor = distance;
+    if (shape == 1) factor = sqrt(max(distance * distance - axial * axial, 0.0));
+    else if (shape == 2) factor = degrees(acos(clamp(axial / max(distance, 1e-6), -1.0, 1.0)));
+    float minDistance = falloff.x;
+    float maxDistance = falloff.y;
+    if (maxDistance >= 0.0 && factor > maxDistance) return 0.0;
+    if (factor < minDistance) return 1.0;
+    return pow(max(1.0 + factor - minDistance, 1e-6), -max(falloff.z, 0.0));
+}
+
 void main() {
-    uint i = gl_GlobalInvocationID.x;
-    if (i >= uint(uCount)) {
+    uint localIndex = gl_GlobalInvocationID.x;
+
+    // 工作组内的所有 invocation 都必须到达 barrier，包括最后一个工作组中超出粒子范围的线程。
+    // 没有 Command 时跳过整个缓存阶段，保留无力场路径的低开销。
+    if (uCommandCount > 0) {
+        for (uint commandIndex = gl_LocalInvocationID.x;
+             commandIndex < uint(uCommandCount * COMMAND_VEC4_STRIDE);
+             commandIndex += gl_WorkGroupSize.x) {
+            commandCache[commandIndex] = commandRaw[commandIndex];
+        }
+        barrier();
+    }
+
+    if (localIndex >= uint(uCount)) {
         return;
     }
+    uint i = uint(uFirstSlot) + localIndex;
     int flags = int(particles[i].velFlags.w + 0.5);
     if ((flags & 1) == 0) {
         return;
@@ -202,110 +279,191 @@ void main() {
         : storageVelocity;
     vec3 prev = storagePos;
 
-    for (int fi = 0; fi < uForceCount; fi++) {
-        vec4 f0 = uForces[fi * 4];
-        vec4 f1 = uForces[fi * 4 + 1];
-        vec4 f2 = uForces[fi * 4 + 2];
-        vec4 f3 = uForces[fi * 4 + 3];
-        int type = int(f0.x);
-
+    if (uCommandCount > 0) {
+        ivec4 identity = ivec4(0);
+        vec4 physical = vec4(uintBitsToFloat(0x7fc00000u), 1.0, 0.0, 0.0);
+        if (uMetadataEnabled != 0) {
+            identity = ivec4(
+                floatBitsToInt(metadataRaw[i * 2u].x),
+                floatBitsToInt(metadataRaw[i * 2u].y),
+                floatBitsToInt(metadataRaw[i * 2u].z),
+                floatBitsToInt(metadataRaw[i * 2u].w)
+            );
+            physical = metadataRaw[i * 2u + 1u];
+        }
+        for (int ci = 0; ci < uCommandCount; ci++) {
+            int cb = ci * 5;
+            vec4 header = commandCache[cb];
+            if (!commandSelected(
+                floatBitsToInt(header.y),
+                floatBitsToInt(header.z),
+                floatBitsToInt(header.w),
+                identity.x,
+                identity.y,
+                identity.z
+            )) continue;
+            vec4 p0 = commandCache[cb + 1];
+            vec4 p1 = commandCache[cb + 2];
+            vec4 p2 = commandCache[cb + 3];
+            vec4 p3 = commandCache[cb + 4];
+            int type = floatBitsToInt(header.x);
+            // 旧的全局力大多不需要位置差；不要为每个粒子、每条命令无条件执行 length。
+            // Vortex/Rotation 与新 ABI 的径向力才需要这组值。
+            vec3 r = vec3(0.0);
+            float distance = 0.0;
+            if (type == TYPE_VORTEX || type == TYPE_ROTATION || type >= TYPE_RADIAL) {
+                r = pos - p1.xyz;
+            }
+            if (type == TYPE_ROTATION || type >= TYPE_RADIAL) {
+                distance = length(r);
+            }
+            float falloff = 1.0;
+            if (type >= TYPE_RADIAL) {
+                falloff = blenderFalloff(r, p2.xyz, vec4(p2.w, p3.x, p3.y, p3.z), int(p3.w + 0.5), distance);
+            }
         if (type == TYPE_GRAVITY) {
-            vel += f1.xyz;
+            vel += p1.xyz;
         } else if (type == TYPE_ENV_DRAG) {
             float speed = length(vel);
-            if (speed > 0.01) {
-                vel -= f0.y * speed * vel;
-            }
+            if (speed > 0.01) vel -= p0.y * speed * vel;
         } else if (type == TYPE_EXP_DRAG) {
             float speed = length(vel);
-            if (f0.w > 0.0 && speed <= f0.w) {
-                vel = vec3(0.0);
-            } else {
-                vel *= f0.y * f0.z;
-            }
+            if (p0.w > 0.0 && speed <= p0.w) vel = vec3(0.0);
+            else vel *= p0.y * p0.z;
         } else if (type == TYPE_WIND) {
-            int mode = int(f0.z);
+            int mode = int(p0.z);
             bool inRange = true;
             if (mode != 0) {
-                vec3 d = pos - f1.xyz;
+                vec3 d = pos - p1.xyz;
                 if (mode == 1) {
-                    inRange = dot(d, d) <= f3.x * f3.x;
+                    inRange = dot(d, d) <= p3.x * p3.x;
                 } else {
-                    inRange = abs(d.x) <= f3.x && abs(d.y) <= f3.y && abs(d.z) <= f3.z;
+                    inRange = abs(d.x) <= p3.x && abs(d.y) <= p3.y && abs(d.z) <= p3.z;
                 }
             }
             if (inRange) {
-                vec3 rw = f2.xyz - vel;
+                vec3 rw = p2.xyz - vel;
                 float len = length(rw);
-                if (len > 1e-6) {
-                    vel += f0.y * len * rw;
-                }
+                if (len > 1e-6) vel += p0.y * len * rw;
             }
         } else if (type == TYPE_VORTEX) {
-            vec3 r = pos - f1.xyz;
-            vec3 axis = f2.xyz;
+            vec3 axis = p2.xyz;
             vec3 radial = r - axis * dot(r, axis);
             float dist = length(radial);
-            float d = max(dist, f3.x);
-            float falloff = inversePowerFalloff(d, f1.w, f2.w);
+            float d = max(dist, p3.x);
+            float f = inversePowerFalloff(d, p1.w, p2.w);
             vec3 tangential = cross(axis, radial);
             float tLen = length(tangential);
             tangential = tLen > 1e-9 ? tangential / tLen : vec3(0.0);
             vec3 inward = dist > 1e-9 ? -radial / dist : vec3(0.0);
-            vel += tangential * (f0.y * falloff) + inward * (f0.z * falloff) + axis * (f0.w * falloff);
+            vel += tangential * (p0.y * f) + inward * (p0.z * f) + axis * (p0.w * f);
         } else if (type == TYPE_ATTRACT) {
-            vec3 dir = f1.xyz - pos;
+            vec3 dir = p1.xyz - pos;
             float dist = length(dir);
-            if (dist >= 1e-9) {
-                float d = max(dist, f1.w);
-                float falloff = inversePowerFalloff(d, f0.z, f0.w);
-                vel += dir / dist * (f0.y * falloff);
-            }
+            if (dist > 1e-9) vel += dir / dist * (p0.y * inversePowerFalloff(max(dist, p1.w), p0.z, p0.w));
         } else if (type == TYPE_ROTATION) {
-            vec3 r = pos - f1.xyz;
-            float dist = length(r);
-            if (dist >= 1e-9) {
-                vec3 t = cross(f2.xyz, r);
-                float tLen = length(t);
-                if (tLen >= 1e-9) {
-                    float falloff = inversePowerFalloff(dist, f0.z, f0.w);
-                    vel += t / tLen * (f0.y * falloff);
-                }
-            }
+            vec3 tangent = cross(p2.xyz, r);
+            float tLen = length(tangent);
+            if (tLen > 1e-9) vel += tangent / tLen * (p0.y * inversePowerFalloff(distance, p0.z, p0.w));
         } else if (type == TYPE_NOISE) {
-            int seed = int(i) * 668265263 + int(f3.y);
+            int seed = int(i) * 668265263 + int(p3.y);
             float lifeT = maxAge > 0.0 ? clamp(age / maxAge, 0.0, 1.0) : 0.0;
-            float time = age * f0.w;
-            vec3 np = (pos + uOrigin) * f0.z + vec3(time, time * 0.7, time * 1.3);
-            float amp = f0.y;
-            if (f3.x > 0.5) {
-                amp *= (1.0 - lifeT);
-            }
-            vec3 n = vec3(
-                valueNoise3(np, seed + 11) * 2.0 - 1.0,
-                valueNoise3(np, seed + 23) * 2.0 - 1.0,
-                valueNoise3(np, seed + 37) * 2.0 - 1.0
-            );
+            float time = age * p0.w;
+            vec3 np = (pos + uOrigin) * p0.z + vec3(time, time * 0.7, time * 1.3);
+            float amp = p0.y * (p3.x > 0.5 ? 1.0 - lifeT : 1.0);
+            vec3 n = vec3(valueNoise3(np, seed + 11), valueNoise3(np, seed + 23), valueNoise3(np, seed + 37)) * 2.0 - 1.0;
             float nLen = length(n);
             if (nLen > 1e-4) {
-                n /= nLen;
-                vel += vec3(n.x, n.y * f2.w, n.z) * amp;
+                vel += vec3(n.x, n.y * p2.w, n.z) / nLen * amp;
                 float sp2 = dot(vel, vel);
-                if (sp2 > f1.w * f1.w && sp2 > 1e-12) {
-                    vel *= f1.w / sqrt(sp2);
+                if (sp2 > p1.w * p1.w && sp2 > 1e-12) {
+                    vel *= p1.w / sqrt(sp2);
                 }
             }
         } else if (type == TYPE_FLOW_FIELD) {
-            vec3 wp = pos + uOrigin + f1.xyz;
-            float t = age * f0.w + f1.w;
-            float freq = f0.z;
-            vec3 fv = vec3(
-                sin((wp.y + t) * freq) + cos((wp.z - t) * freq),
-                sin((wp.z + t) * freq) + cos((wp.x + t) * freq),
-                sin((wp.x - t) * freq) + cos((wp.y - t) * freq)
-            );
-            vel += fv * (0.5 * f0.y);
+            vec3 wp = pos + uOrigin + p1.xyz;
+            float t = age * p0.w + p1.w;
+            vec3 fv = vec3(sin((wp.y + t) * p0.z) + cos((wp.z - t) * p0.z), sin((wp.z + t) * p0.z) + cos((wp.x + t) * p0.z), sin((wp.x - t) * p0.z) + cos((wp.y - t) * p0.z));
+            vel += fv * (0.5 * p0.y);
+        } else if (type == TYPE_RADIAL) {
+            if (distance > 1e-6 && falloff > 0.0) {
+                float magnitude = p0.y * falloff;
+                if (p0.z > 0.5) magnitude /= max(distance * distance, 1e-6);
+                vel += r / distance * magnitude;
+            }
+        } else if (type == TYPE_DIRECTIONAL_WIND) {
+            vel += p2.xyz * (p0.y * falloff);
+        } else if (type == TYPE_BLENDER_VORTEX) {
+            float axisLength = length(p2.xyz);
+            vec3 axis = axisLength > 1e-9 ? p2.xyz / axisLength : vec3(0.0);
+            vec3 radial = r - axis * dot(r, axis);
+            float radialLength = length(radial);
+            if (radialLength > 1e-6) {
+                vec3 tangentCross = cross(axis, radial);
+                float tangentLength = length(tangentCross);
+                vec3 tangent = tangentLength > 1e-6 ? tangentCross / tangentLength : vec3(0.0);
+                vel += tangent * p0.y * falloff - radial / radialLength * p0.z * falloff - vel * p0.w * falloff;
+            }
+        } else if (type == TYPE_MAGNETIC) {
+            int fieldMode = int(p0.z + 0.5);
+            vec3 field = fieldMode == 1 ? p2.xyz : (fieldMode == 2 ? r : cross(p2.xyz, r));
+            float fieldLength = length(field);
+            if (fieldLength > 1e-6) {
+                field = field / fieldLength * p0.y * falloff;
+                vel += cross(vel, field);
+            }
+        } else if (type == TYPE_HARMONIC) {
+            if (distance > 1e-6 && falloff > 0.0) {
+                float displacement = distance - p0.w;
+                vel += r * (-p0.y * falloff * displacement / distance) - vel * p0.z;
+            }
+        } else if (type == TYPE_VELOCITY_DRAG) {
+            float speed = length(vel);
+            if (speed > 1e-6) {
+                if (p0.w > 0.5) vel -= normalize(vel) * speed * (p0.y * speed + p0.z) * falloff;
+                else vel *= exp(-p0.z * falloff);
+            }
+        } else if (type == TYPE_CHARGE) {
+            if (distance > 1e-6) {
+                float charge = finiteFloat(physical.x) ? physical.x : p0.z;
+                vel += r / distance * (charge * p0.y * falloff);
+            }
+        } else if (type == TYPE_LENNARD_JONES) {
+            if (distance > 1e-6) {
+                float particleRadius = finiteFloat(physical.z) ? max(physical.z, 0.0) : 0.0;
+                float q = max(p0.z + particleRadius, 0.0) / distance;
+                float sixth = q*q*q*q*q*q;
+                float fac = min(-sixth * (1.0 - sixth) / distance, 2.0) * p0.y * falloff;
+                vel += r / distance * fac;
+            }
+        } else if (type == TYPE_TURBULENCE) {
+            float scale = max(p0.z, 1e-4);
+            float t = age * p0.w;
+            vec3 q = (pos + uOrigin) / scale;
+            vec3 n = vec3(valueNoise3(q + vec3(t,0,0), int(p2.w)), valueNoise3(q.yzx + vec3(t,0,0), int(p2.w)+17), valueNoise3(q.zxy + vec3(t,0,0), int(p2.w)+31)) * 2.0 - 1.0;
+            vel += n * p0.y * falloff;
+        } else if (type == TYPE_TEXTURE) {
+            int resourceSlot = int(p0.w);
+            vec2 textureUv = fract(pos.xz);
+            if (int(p0.z) == 0) {
+                vec3 vectorSample = texture(uTextureResources[resourceSlot], textureUv).rgb * 2.0 - 1.0;
+                vel += vectorSample * (p0.y * falloff);
+            } else {
+                float nabla = max(p1.w, 1e-6);
+                float positiveX = textureLuminance(texture(uTextureResources[resourceSlot], fract(textureUv + vec2(nabla, 0.0))));
+                float negativeX = textureLuminance(texture(uTextureResources[resourceSlot], fract(textureUv - vec2(nabla, 0.0))));
+                float positiveZ = textureLuminance(texture(uTextureResources[resourceSlot], fract(textureUv + vec2(0.0, nabla))));
+                float negativeZ = textureLuminance(texture(uTextureResources[resourceSlot], fract(textureUv - vec2(0.0, nabla))));
+                vec3 gradient = vec3(positiveX - negativeX, 0.0, positiveZ - negativeZ) / (2.0 * nabla);
+                vel += gradient * (p0.y * falloff);
+            }
+        } else if (type == TYPE_FLUID_FLOW) {
+            int resourceSlot = int(p0.z);
+            vec4 flowSample = texture(uFluidResources[resourceSlot], pos);
+            float density = p0.w > 0.5 ? flowSample.a : 1.0;
+            vel += (flowSample.rgb - vel * p1.w) * (p0.y * falloff * density);
         }
+    }
     }
 
     // 每粒子限速优先；负数哨兵沿用 system 限速

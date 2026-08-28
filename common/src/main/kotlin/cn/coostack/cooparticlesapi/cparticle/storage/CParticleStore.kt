@@ -7,14 +7,17 @@ import cn.coostack.cooparticlesapi.cparticle.CParticleInstanceFlags
 import cn.coostack.cooparticlesapi.cparticle.CParticleResolvedTexture
 import cn.coostack.cooparticlesapi.cparticle.CParticleResolvedTextures
 import cn.coostack.cooparticlesapi.cparticle.CParticleSprites
+import cn.coostack.cooparticlesapi.cparticle.CParticleSystem
 import cn.coostack.cooparticlesapi.cparticle.CParticleSystemManager
 import cn.coostack.cooparticlesapi.cparticle.CParticleTextureBindingKey
 import cn.coostack.cooparticlesapi.cparticle.CParticleTextureDescriptors
 import cn.coostack.cooparticlesapi.cparticle.CParticleUpdateMode
+import cn.coostack.cooparticlesapi.cparticle.CParticleUv
 import cn.coostack.cooparticlesapi.particles.ParticleCameraOption
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
+import java.util.Arrays
 import kotlin.math.roundToInt
 
 /**
@@ -42,13 +45,13 @@ import kotlin.math.roundToInt
  * 槽位管理: 空闲栈 + 存活位图 + 世代计数(句柄失效检测).
  * 死槽位不压缩 — 渲染端对非 alive 实例输出退化三角形, 代价可忽略.
  */
-class CParticleStore(val capacity: Int) {
+class CParticleStore(capacity: Int) {
     companion object {
         /**
          * 创建受 CParticle 全局数量上限约束的存储。
          *
-         * Example: [cn.coostack.cooparticlesapi.cparticle.CParticleSystem] 用它创建 GPU 粒子池。
-         * Forbidden: 独立的 CPU 数据测试不应使用该入口占用全局额度。
+         * 示例：[CParticleSystem] 用它创建 GPU 粒子池。
+         * 禁止：独立的 CPU 数据测试不应使用该入口占用全局额度。
          *
          * @param capacity 槽位容量
          * @return 接入全局数量统计的存储
@@ -77,9 +80,13 @@ class CParticleStore(val capacity: Int) {
         const val OFF_SPEED_LIMIT = OFF_APPEARANCE + 1
         const val OFF_MASK_ANIMATION = OFF_APPEARANCE + 2
 
-        /** 蒙版 RGB8 倍率的 24-bit 打包值。Example: 白色为 `0xFFFFFF`。Forbidden: 不要写入超过 24 bit 的值。 */
+        /** 蒙版 RGB8 倍率的 24-bit 打包值。示例：白色为 `0xFFFFFF`。禁止写入超过 24 bit 的值。 */
         const val OFF_MASK_COLOR = OFF_APPEARANCE + 3
-        private const val SYSTEM_SPEED_LIMIT_SENTINEL = -1f
+        private const val SYSTEM_SPEED_LIMIT_SENTINEL = -1F
+        private const val NO_EXPIRATION_TICK = Long.MAX_VALUE
+        private const val INITIAL_EXPIRATION_BATCH_CAPACITY = 64
+        private const val INITIAL_EXPIRATION_HEAP_CAPACITY = 16
+        private const val MAX_RECYCLED_EXPIRATION_BATCHES = 256
 
         const val FLAG_ALIVE = CParticleInstanceFlags.ALIVE
         const val CAMERA_SHIFT = CParticleInstanceFlags.CAMERA_SHIFT
@@ -114,8 +121,8 @@ class CParticleStore(val capacity: Int) {
         /**
          * 按旧布局打包基础实例 flags。
          *
-         * Example: `packFlags(true, 0, 15, 15)` 创建一个存活 billboard 粒子。
-         * Forbidden: 该兼容入口不会设置蒙版裁剪位。
+         * 示例：`packFlags(true, 0, 15, 15)` 创建一个存活 billboard 粒子。
+         * 禁止：该兼容入口不会设置蒙版裁剪位。
          */
         @JvmStatic
         fun packFlags(
@@ -141,8 +148,8 @@ class CParticleStore(val capacity: Int) {
         /**
          * 打包包含蒙版裁剪位的实例 flags。
          *
-         * Example: 方块蒙版开启随机裁剪时把 [randomMaskQuarterUv] 设为 `true`。
-         * Forbidden: 不要把蒙版裁剪位写进基础裁剪参数。
+         * 示例：方块蒙版开启随机裁剪时把 [randomMaskQuarterUv] 设为 `true`。
+         * 禁止：不要把蒙版裁剪位写进基础裁剪参数。
          */
         internal fun packFlagsWithMask(
             alive: Boolean,
@@ -169,60 +176,93 @@ class CParticleStore(val capacity: Int) {
         /**
          * 把蒙版 RGB 倍率量化为 float 可精确保存的 24-bit 整数。
          *
-         * Example: `(1, 0.5, 0)` 会打包为 `0x0080FF`。
-         * Forbidden: 不要用它保存 HDR 或负颜色，输入会限制到 `0..1`。
+         * 示例：`(1, 0.5, 0)` 会打包为 `0x0080FF`。
+         * 禁止：不要用它保存 HDR 或负颜色，输入会限制到 `0..1`。
          *
          * @param color 蒙版 RGB 倍率；`null` 表示白色
          * @return 按低位到高位排列的 R、G、B 8-bit 通道
          */
         internal fun packRgb8(color: Vector3f?): Int {
-            val red = ((color?.x ?: 1f).coerceIn(0f, 1f) * 255f).roundToInt()
-            val green = ((color?.y ?: 1f).coerceIn(0f, 1f) * 255f).roundToInt()
-            val blue = ((color?.z ?: 1f).coerceIn(0f, 1f) * 255f).roundToInt()
+            val red = ((color?.x ?: 1F).coerceIn(0F, 1F) * 255F).roundToInt()
+            val green = ((color?.y ?: 1F).coerceIn(0F, 1F) * 255F).roundToInt()
+            val blue = ((color?.z ?: 1F).coerceIn(0F, 1F) * 255F).roundToInt()
             return red or (green shl 8) or (blue shl 16)
         }
     }
 
+    /** 当前槽位容量；只允许在池满时增长。 */
+    var capacity: Int = capacity
+        private set
+
     /** 交错主数据 (与 GPU 缓冲 1:1) */
-    val data = FloatArray(capacity * STRIDE)
+    var data = FloatArray(capacity * STRIDE)
+        private set
+
+    /** 独立的粒子身份与物理 metadata，不计入渲染粒子 stride。 */
+    val metadata = CParticleMetadataStore(capacity)
 
     /**
      * 当前开启方块占用网格碰撞的存活粒子数。
      *
-     * Example: system 只在本值大于零时构建和绑定碰撞网格。
-     * Forbidden: 调用方不能直接修改；spawn、DYNAMIC 更新和 kill 会维护计数。
+     * 示例：system 只在本值大于零时构建和绑定碰撞网格。
+     * 禁止：调用方不能直接修改；spawn、DYNAMIC 更新和 kill 会维护计数。
      */
     var blockCollisionCount = 0
         private set
 
     /** CPU 侧生命周期账本 (槽位回收依据; GPU 模式下缓冲内 age 由 kernel 自增) */
-    val ages = IntArray(capacity)
-    val maxAges = IntArray(capacity)
+    var ages = IntArray(capacity)
+        private set
+    var maxAges = IntArray(capacity)
+        private set
 
     /** 存活位图 */
-    val aliveBits = LongArray((capacity + 63) ushr 6)
+    var aliveBits = LongArray((capacity + 63) ushr 6)
+        private set
 
     /** 需要推进生命周期的槽位。持久 composition 粒子不进入此位图。 */
-    private val agingBits = LongArray((capacity + 63) ushr 6)
+    private var agingBits = LongArray((capacity + 63) ushr 6)
     private var agingCount = 0
 
-    /** 槽位世代 (句柄安全性: 槽位复用后旧句柄立即失效) */
-    val generations = IntArray(capacity)
+    /** GPU 模式的到期时间账本。相同到期 tick 的槽位放进同一个批次。 */
+    private var expirationTicks = LongArray(capacity) { NO_EXPIRATION_TICK }
+    private var expirationBatchHeap = arrayOfNulls<ExpirationBatch>(INITIAL_EXPIRATION_HEAP_CAPACITY)
+    private var expirationBatchCount = 0
+    private var lastExpirationBatch: ExpirationBatch? = null
+    private var nextExpirationBatchOrder = 0L
+    private val recycledExpirationBatches = ArrayDeque<ExpirationBatch>()
 
-    private val freeStack = IntArray(capacity) { capacity - 1 - it }
+    /** 当前堆中的到期批次数，供生命周期调度回归测试使用。 */
+    internal val scheduledExpirationBatchCount: Int
+        get() = expirationBatchCount
+
+    /** 槽位世代 (句柄安全性: 槽位复用后旧句柄立即失效) */
+    var generations = IntArray(capacity)
+        private set
+
+    private var freeStack = IntArray(capacity) { capacity - 1 - it }
     private var freeTop = capacity
 
-    /** 已用高水位 (draw instanceCount) */
+    /** 已用高水位，不含尾部连续死槽。 */
     var highWater = 0
         private set
+
+    /** 第一个存活槽位；空池时为 0。 */
+    internal var firstAliveSlot = 0
+        private set
+
+    /** GPU 模拟和渲染需要访问的连续槽位数量。 */
+    internal val activeSlotCount: Int
+        get() = if (aliveCount == 0) 0 else highWater - firstAliveSlot
 
     var aliveCount = 0
         private set
 
     /** 本 tick 新生成的槽位 (供 GPU 模式做增量上传) */
-    val spawnedSlots = IntArray(capacity)
-    private val spawnedBits = LongArray((capacity + 63) ushr 6)
-    private val newbornBits = LongArray((capacity + 63) ushr 6)
+    var spawnedSlots = IntArray(capacity)
+        private set
+    private var spawnedBits = LongArray((capacity + 63) ushr 6)
+    private var newbornBits = LongArray((capacity + 63) ushr 6)
     var spawnedCount = 0
         private set
 
@@ -233,7 +273,8 @@ class CParticleStore(val capacity: Int) {
         private set
 
     /** scripted 模式: 每槽位最后写入的 tick (用于同 tick 首次写入时滚动 prev) */
-    val writeTicks = IntArray(capacity) { Int.MIN_VALUE }
+    var writeTicks = IntArray(capacity) { Int.MIN_VALUE }
+        private set
 
     private var dynamicState: DynamicState? = null
     private var killedState: KilledState? = null
@@ -241,8 +282,8 @@ class CParticleStore(val capacity: Int) {
     /**
      * 该存储中的存活槽位是否计入 CParticle 全局上限。
      *
-     * Example: CParticleSystem 创建的 store 将该值设为 `true`。
-     * Forbidden: 普通 [CParticleStore] 数据容器不能占用 GPU 粒子额度。
+     * 示例：CParticleSystem 创建的 store 将该值设为 `true`。
+     * 禁止：普通 [CParticleStore] 数据容器不能占用 GPU 粒子额度。
      */
     private var countsTowardGlobalLimit = false
 
@@ -259,14 +300,52 @@ class CParticleStore(val capacity: Int) {
 
     fun isFull(): Boolean = freeTop <= 0
 
+    /**
+     * 在池满时扩大槽位数组，保留存活位、句柄世代、出生队列和 metadata。
+     *
+     * 扩容只增加空槽，不改变存活数量，也不会重新申请全局粒子额度。
+     *
+     * @param newCapacity 新槽位容量，必须大于当前容量
+     * @throws IllegalStateException 当前仍有空槽时抛出
+     */
+    internal fun growTo(newCapacity: Int) {
+        require(newCapacity > capacity) {
+            "newCapacity must be greater than capacity: $newCapacity <= $capacity"
+        }
+        check(isFull()) { "CParticleStore can grow only after all current slots are occupied" }
+
+        val oldCapacity = capacity
+        data = data.copyOf(newCapacity * STRIDE)
+        metadata.growTo(newCapacity)
+        ages = ages.copyOf(newCapacity)
+        maxAges = maxAges.copyOf(newCapacity)
+        aliveBits = aliveBits.copyOf((newCapacity + 63) ushr 6)
+        agingBits = agingBits.copyOf((newCapacity + 63) ushr 6)
+        expirationTicks = expirationTicks.copyOf(newCapacity).also {
+            it.fill(NO_EXPIRATION_TICK, oldCapacity, newCapacity)
+        }
+        generations = generations.copyOf(newCapacity)
+        spawnedSlots = spawnedSlots.copyOf(newCapacity)
+        spawnedBits = spawnedBits.copyOf((newCapacity + 63) ushr 6)
+        newbornBits = newbornBits.copyOf((newCapacity + 63) ushr 6)
+        writeTicks = writeTicks.copyOf(newCapacity).also {
+            it.fill(Int.MIN_VALUE, oldCapacity, newCapacity)
+        }
+        freeStack = IntArray(newCapacity) { newCapacity - 1 - it }
+        freeTop = newCapacity - oldCapacity
+        dynamicState = dynamicState?.copyToCapacity(newCapacity)
+        killedState = killedState?.copyToCapacity(newCapacity)
+        capacity = newCapacity
+    }
+
     fun isAlive(slot: Int): Boolean =
         slot in 0 until capacity && (aliveBits[slot ushr 6] and (1L shl (slot and 63))) != 0L
 
     /**
      * 使用基础纹理描述符生成一个粒子。
      *
-     * Example: `spawn(particle, origin, animationId, 15, 15)` 占用一个空槽位。
-     * Forbidden: 该兼容入口不接受额外蒙版；蒙版由 system 的解析路径写入。
+     * 示例：`spawn(particle, origin, animationId, 15, 15)` 占用一个空槽位。
+     * 禁止：该兼容入口不接受额外蒙版；蒙版由 system 的解析路径写入。
      *
      * @param p 粒子数据
      * @param origin 系统原点
@@ -290,7 +369,7 @@ class CParticleStore(val capacity: Int) {
         skyLight: Int,
         epochTick: Int = 0,
         randomSeed: Int = p.randomSeed ?: CParticleGpuMath.nextAutomaticSeed(),
-        colorMultiplier: Vector3f = Vector3f(1f),
+        colorMultiplier: Vector3f = Vector3f(1F),
         randomQuarterUv: Boolean = false,
         textureBindingKey: CParticleTextureBindingKey = CParticleTextureBindingKey.PARTICLE_ATLAS,
         textureGeneration: Int = 0,
@@ -343,7 +422,7 @@ class CParticleStore(val capacity: Int) {
         skyLight: Int,
         epochTick: Int = 0,
         randomSeed: Int = p.randomSeed ?: CParticleGpuMath.nextAutomaticSeed(),
-        colorMultiplier: Vector3f = Vector3f(1f),
+        colorMultiplier: Vector3f = Vector3f(1F),
         randomQuarterUv: Boolean = false,
         textureBindingKey: CParticleTextureBindingKey = CParticleTextureBindingKey.PARTICLE_ATLAS,
         textureGeneration: Int = 0,
@@ -353,6 +432,14 @@ class CParticleStore(val capacity: Int) {
         maskTextureBindingKey: CParticleTextureBindingKey? = null,
         maskColorMultiplier: Vector3f? = null,
         spawnPosition: Vec3 = p.pos,
+        sourceId: Int = p.sourceId,
+        sign: Int = p.sign,
+        commandMask: Int = p.commandMask,
+        metadataFlags: Int = p.metadataFlags,
+        charge: Float = p.charge,
+        mass: Float = p.mass,
+        radius: Float = p.radius,
+        lifecycleTick: Long = epochTick.toLong() - 1L,
     ): Int {
         CParticleTextureDescriptors.requireValidDescriptorId(animationId)
         maskAnimationId?.let(CParticleTextureDescriptors::requireValidDescriptorId)
@@ -391,8 +478,8 @@ class CParticleStore(val capacity: Int) {
         if (p.blockCollision) blockCollisionCount++
         data[base + OFF_SIZE] = p.weightSize
         data[base + OFF_SIZE + 1] = p.heightSize
-        data[base + OFF_SIZE + 2] = if (hasDirection) 0f else p.yaw
-        data[base + OFF_SIZE + 3] = if (hasDirection) 0f else p.pitch
+        data[base + OFF_SIZE + 2] = if (hasDirection) 0F else p.yaw
+        data[base + OFF_SIZE + 3] = if (hasDirection) 0F else p.pitch
         val orientation = p.rotationDirection.takeIf { hasDirection }
         data[base + OFF_AXIS] = orientation?.x ?: p.axis.x.toFloat()
         data[base + OFF_AXIS + 1] = orientation?.y ?: p.axis.y.toFloat()
@@ -414,6 +501,7 @@ class CParticleStore(val capacity: Int) {
         data[base + OFF_SPEED_LIMIT] = p.speedLimit ?: SYSTEM_SPEED_LIMIT_SENTINEL
         data[base + OFF_MASK_ANIMATION] = (maskAnimationId ?: 0).toFloat()
         data[base + OFF_MASK_COLOR] = packRgb8(maskColorMultiplier).toFloat()
+        metadata.set(slot, sourceId, sign, commandMask, metadataFlags, charge, mass, radius)
 
         ages[slot] = p.age
         maxAges[slot] = maxAge
@@ -421,8 +509,13 @@ class CParticleStore(val capacity: Int) {
         if (maxAge < Int.MAX_VALUE) {
             agingBits[slot ushr 6] = agingBits[slot ushr 6] or (1L shl (slot and 63))
             agingCount++
+            val remainingTicks = (maxAge.toLong() - p.age.toLong()).coerceAtLeast(1L)
+            scheduleExpiration(slot, lifecycleTick + remainingTicks)
+        } else {
+            expirationTicks[slot] = NO_EXPIRATION_TICK
         }
         writeTicks[slot] = Int.MIN_VALUE
+        if (aliveCount == 0 || slot < firstAliveSlot) firstAliveSlot = slot
         aliveCount++
         if (slot + 1 > highWater) highWater = slot + 1
         val spawnedWord = slot ushr 6
@@ -436,6 +529,8 @@ class CParticleStore(val capacity: Int) {
         if (p.updateMode == CParticleUpdateMode.DYNAMIC) {
             val state = dynamicState ?: DynamicState(capacity).also { dynamicState = it }
             state.sources[slot] = p
+            state.activeSlots[state.sourceCount] = slot
+            state.activeIndices[slot] = state.sourceCount
             state.sourceCount++
             snapshotDynamicSource(
                 state,
@@ -465,8 +560,8 @@ class CParticleStore(val capacity: Int) {
     /**
      * 释放槽位，清除 alive 位并让旧句柄失效。
      *
-     * Example: `kill(slot)` 立即隐藏粒子并归还一份全局额度。
-     * Forbidden: 重复释放同一槽位不能再次归还额度。
+     * 示例：`kill(slot)` 立即隐藏粒子并归还一份全局额度。
+     * 禁止：重复释放同一槽位不能再次归还额度。
      *
      * @param slot 待释放的槽位
      * @param queueGpuFlag 是否排队补写 GPU alive 标记
@@ -482,6 +577,8 @@ class CParticleStore(val capacity: Int) {
             agingCount--
         }
         releaseDynamicSource(slot)
+        expirationTicks[slot] = NO_EXPIRATION_TICK
+        metadata.clear(slot)
         generations[slot]++
         freeStack[freeTop++] = slot
         aliveCount--
@@ -498,6 +595,13 @@ class CParticleStore(val capacity: Int) {
                 highWater--
             }
         }
+        if (aliveCount == 0) {
+            firstAliveSlot = 0
+        } else if (slot == firstAliveSlot) {
+            while (firstAliveSlot < highWater && !isAlive(firstAliveSlot)) {
+                firstAliveSlot++
+            }
+        }
     }
 
     /**
@@ -511,8 +615,10 @@ class CParticleStore(val capacity: Int) {
         if (agingCount == 0) return false
         var anyDead = false
         val words = (highWater + 63) ushr 6
-        for (w in 0 until words) {
+        val firstWord = firstAliveSlot ushr 6
+        for (w in firstWord until words) {
             var bits = agingBits[w]
+            if (w == firstWord) bits = bits and (-1L shl (firstAliveSlot and 63))
             while (bits != 0L) {
                 val bit = java.lang.Long.numberOfTrailingZeros(bits)
                 bits = bits and (bits - 1)
@@ -533,6 +639,125 @@ class CParticleStore(val capacity: Int) {
             }
         }
         return anyDead
+    }
+
+    /**
+     * GPU 模式的生命周期回收。
+     *
+     * compute shader 负责递增并隐藏 GPU age。CPU 只从小堆中取出已到期批次，再顺序回收
+     * 批内槽位。大量同生命周期粒子不会再逐个维护百万级最小堆。
+     *
+     * @param currentTick 当前 system tick，必须与 [CParticleSystem] 的 tickCount 对齐
+     * @return 本次是否回收了至少一个粒子
+     */
+    internal fun tickGpuAges(currentTick: Int): Boolean {
+        val now = currentTick.toLong()
+        var anyDead = false
+        while (expirationBatchCount > 0) {
+            val batch = expirationBatchHeap[0] ?: break
+            if (batch.expiryTick > now) break
+            popExpirationBatch()
+            for (index in 0 until batch.size) {
+                val slot = batch.slotAt(index)
+                if (!isAlive(slot) || expirationTicks[slot] != batch.expiryTick) continue
+                expirationTicks[slot] = NO_EXPIRATION_TICK
+                kill(slot, queueGpuFlag = false)
+                anyDead = true
+            }
+            recycleExpirationBatch(batch)
+        }
+        // DYNAMIC 源需要看到与 GPU age 对齐的年龄；静态粒子不做逐槽位 CPU 同步。
+        dynamicState?.let { state ->
+            for (index in 0 until state.sourceCount) {
+                val slot = state.activeSlots[index]
+                if (!isAlive(slot)) continue
+                val expiry = expirationTicks[slot]
+                if (expiry != NO_EXPIRATION_TICK) {
+                    ages[slot] = (maxAges[slot].toLong() - (expiry - now))
+                        .coerceIn(0L, maxAges[slot].toLong())
+                        .toInt()
+                }
+            }
+        }
+        return anyDead
+    }
+
+    private fun scheduleExpiration(slot: Int, expiryTick: Long) {
+        expirationTicks[slot] = expiryTick
+        lastExpirationBatch?.takeIf { it.expiryTick == expiryTick }?.let { batch ->
+            batch.add(slot)
+            return
+        }
+        val batch = recycledExpirationBatches.removeLastOrNull()
+            ?.also { it.reset(expiryTick, nextExpirationBatchOrder++) }
+            ?: ExpirationBatch(expiryTick, nextExpirationBatchOrder++)
+        batch.add(slot)
+        if (expirationBatchCount == expirationBatchHeap.size) {
+            expirationBatchHeap = expirationBatchHeap.copyOf(expirationBatchHeap.size * 2)
+        }
+        val index = expirationBatchCount++
+        expirationBatchHeap[index] = batch
+        lastExpirationBatch = batch
+        siftExpirationBatchUp(index)
+    }
+
+    private fun popExpirationBatch(): ExpirationBatch {
+        val root = checkNotNull(expirationBatchHeap[0])
+        if (lastExpirationBatch === root) lastExpirationBatch = null
+        val lastIndex = --expirationBatchCount
+        val moved = expirationBatchHeap[lastIndex]
+        expirationBatchHeap[lastIndex] = null
+        if (lastIndex > 0) {
+            expirationBatchHeap[0] = moved
+            siftExpirationBatchDown(0)
+        }
+        return root
+    }
+
+    private fun siftExpirationBatchUp(startIndex: Int) {
+        var index = startIndex
+        while (index > 0) {
+            val parent = (index - 1) ushr 1
+            if (!expirationBatchPrecedes(index, parent)) return
+            swapExpirationBatches(parent, index)
+            index = parent
+        }
+    }
+
+    private fun siftExpirationBatchDown(startIndex: Int) {
+        var index = startIndex
+        while (true) {
+            val left = index * 2 + 1
+            if (left >= expirationBatchCount) return
+            val right = left + 1
+            var child = left
+            if (right < expirationBatchCount && expirationBatchPrecedes(right, left)) {
+                child = right
+            }
+            if (!expirationBatchPrecedes(child, index)) return
+            swapExpirationBatches(index, child)
+            index = child
+        }
+    }
+
+    private fun expirationBatchPrecedes(first: Int, second: Int): Boolean {
+        val firstBatch = checkNotNull(expirationBatchHeap[first])
+        val secondBatch = checkNotNull(expirationBatchHeap[second])
+        return firstBatch.expiryTick < secondBatch.expiryTick ||
+            (firstBatch.expiryTick == secondBatch.expiryTick && firstBatch.order < secondBatch.order)
+    }
+
+    private fun swapExpirationBatches(first: Int, second: Int) {
+        val batch = expirationBatchHeap[first]
+        expirationBatchHeap[first] = expirationBatchHeap[second]
+        expirationBatchHeap[second] = batch
+    }
+
+    private fun recycleExpirationBatch(batch: ExpirationBatch) {
+        batch.clear()
+        if (recycledExpirationBatches.size < MAX_RECYCLED_EXPIRATION_BATCHES) {
+            recycledExpirationBatches.addLast(batch)
+        }
     }
 
     fun getAge(slot: Int): Int = ages[slot]
@@ -675,13 +900,21 @@ class CParticleStore(val capacity: Int) {
     /**
      * 清空全部粒子并一次性归还它们占用的全局额度。
      *
-     * Example: system 换世界时调用 `store.clear()` 复位整个池。
-     * Forbidden: 对空池重复调用不能减少其他 system 的全局计数。
+     * 示例：system 换世界时调用 `store.clear()` 复位整个池。
+     * 禁止：对空池重复调用不能减少其他 system 的全局计数。
      */
     fun clear() {
         val releasedCount = aliveCount
-        java.util.Arrays.fill(aliveBits, 0L)
-        java.util.Arrays.fill(agingBits, 0L)
+        Arrays.fill(aliveBits, 0L)
+        Arrays.fill(agingBits, 0L)
+        expirationTicks.fill(NO_EXPIRATION_TICK)
+        for (index in 0 until expirationBatchCount) {
+            expirationBatchHeap[index]?.let(::recycleExpirationBatch)
+            expirationBatchHeap[index] = null
+        }
+        expirationBatchCount = 0
+        lastExpirationBatch = null
+        nextExpirationBatchOrder = 0L
         for (i in 0 until capacity) {
             generations[i]++
             freeStack[i] = capacity - 1 - i
@@ -692,17 +925,19 @@ class CParticleStore(val capacity: Int) {
         blockCollisionCount = 0
         agingCount = 0
         highWater = 0
-        java.util.Arrays.fill(spawnedBits, 0L)
-        java.util.Arrays.fill(newbornBits, 0L)
+        firstAliveSlot = 0
+        Arrays.fill(spawnedBits, 0L)
+        Arrays.fill(newbornBits, 0L)
         spawnedCount = 0
         dynamicState = null
         killedState = null
+        Arrays.fill(metadata.data, 0F)
         dirtyMin = -1
         dirtyMax = -1
         // flags 清零即可 (渲染端只看 alive 位)
         var base = OFF_FLAGS
         while (base < data.size) {
-            data[base] = 0f
+            data[base] = 0F
             base += STRIDE
         }
         if (countsTowardGlobalLimit) CParticleSystemManager.releaseParticleSlots(releasedCount)
@@ -714,8 +949,8 @@ class CParticleStore(val capacity: Int) {
     }
 
     fun markAllAliveDirty() {
-        if (highWater > 0) {
-            dirtyMin = 0
+        if (aliveCount > 0) {
+            dirtyMin = firstAliveSlot
             dirtyMax = highWater - 1
         }
     }
@@ -760,7 +995,8 @@ class CParticleStore(val capacity: Int) {
     internal fun publishDynamicAges() {
         val state = dynamicState ?: return
         if (state.sourceCount == 0) return
-        for (slot in 0 until highWater) {
+        for (index in 0 until state.sourceCount) {
+            val slot = state.activeSlots[index]
             state.sources[slot]?.age = ages[slot]
             state.sources[slot]?.publishAgeToDynamicData()
         }
@@ -785,9 +1021,9 @@ class CParticleStore(val capacity: Int) {
             CParticleResolvedTexture(
                 CParticleTextureBindingKey.PARTICLE_ATLAS,
                 descriptorId,
-                cn.coostack.cooparticlesapi.cparticle.CParticleUv.FULL,
+                CParticleUv.FULL,
                 null,
-                Vector3f(1f),
+                Vector3f(1F),
             )
         },
         onBindingMismatch = { _, _ -> },
@@ -797,8 +1033,8 @@ class CParticleStore(val capacity: Int) {
      * 把 DYNAMIC 来源中变化的视觉字段和纹理描述符写回 CPU 镜像。
      *
      * 纹理只在 revision 或资源代数变化时解析；跨 binding 的槽位会被移除。
-     * Example: 同一方块图集内从石头切到泥土只更新 descriptor。
-     * Forbidden: age 变化不能触发 [resolveTexture]。
+     * 示例：同一方块图集内从石头切到泥土只更新 descriptor。
+     * 禁止：age 变化不能触发 [resolveTexture]。
      *
      * @param tick 当前系统 tick
      * @param textureGeneration 资源解析缓存代数
@@ -832,8 +1068,8 @@ class CParticleStore(val capacity: Int) {
     /**
      * 把 DYNAMIC 来源中的基础纹理和蒙版描述符写回 CPU 镜像。
      *
-     * Example: 石头蒙版换成泥土蒙版时，两个来源都留在原 binding 才会更新槽位。
-     * Forbidden: 任一来源跨 binding 时不能继续使用旧 system。
+     * 示例：石头蒙版换成泥土蒙版时，两个来源都留在原 binding 才会更新槽位。
+     * 禁止：任一来源跨 binding 时不能继续使用旧 system。
      *
      * @param tick 当前 system tick
      * @param textureGeneration 资源解析缓存代数
@@ -854,9 +1090,18 @@ class CParticleStore(val capacity: Int) {
         val state = dynamicState ?: return 0
         if (state.sourceCount == 0) return 0
         var dirtyCount = 0
-        for (slot in 0 until highWater) {
-            val source = state.sources[slot] ?: continue
-            if (!isAlive(slot)) continue
+        var activeIndex = 0
+        while (activeIndex < state.sourceCount) {
+            val slot = state.activeSlots[activeIndex]
+            val source = state.sources[slot]
+            if (source == null) {
+                activeIndex++
+                continue
+            }
+            if (!isAlive(slot)) {
+                activeIndex++
+                continue
+            }
             source.refreshDynamicDataSource()
             val base = slot * STRIDE
             val snapshot = slot * SNAPSHOT_STRIDE
@@ -958,7 +1203,7 @@ class CParticleStore(val capacity: Int) {
                 data[base + OFF_MASK_ANIMATION] = resolved.mask
                     ?.let { it.animationId ?: it.descriptorId }
                     ?.toFloat()
-                    ?: 0f
+                    ?: 0F
                 state.textureRevisions[slot] = source.textureRevision
                 state.textureGenerations[slot] = textureGeneration
                 state.bindingKeys[slot] = resolved.base.bindingKey
@@ -1025,6 +1270,7 @@ class CParticleStore(val capacity: Int) {
             }
 
             if (changed) state.dirtySlots[dirtyCount++] = slot
+            activeIndex++
         }
         return dirtyCount
     }
@@ -1034,7 +1280,7 @@ class CParticleStore(val capacity: Int) {
         dataOffset: Int,
         snapshotOffset: Int,
         value: Float,
-        multiplier: Float = 1f,
+        multiplier: Float = 1F,
     ): Boolean {
         if (value == state.snapshots[snapshotOffset]) return false
         data[dataOffset] = value * multiplier
@@ -1153,12 +1399,12 @@ class CParticleStore(val capacity: Int) {
         val pitchPhase = if (preserveEulerPhase) {
             current.x - if (oldHasDirection) oldPointed.x else state.snapshots[snapshot + SNAP_PITCH]
         } else {
-            0f
+            0F
         }
         val yawPhase = if (preserveEulerPhase) {
             current.y - if (oldHasDirection) oldPointed.y else state.snapshots[snapshot + SNAP_YAW]
         } else {
-            0f
+            0F
         }
         val rollPhase = current.z - state.snapshots[snapshot + SNAP_ROLL]
         data[base + OFF_SIZE + 2] = when {
@@ -1189,10 +1435,21 @@ class CParticleStore(val capacity: Int) {
 
     private fun releaseDynamicSource(slot: Int) {
         val state = dynamicState ?: return
-        if (state.sources[slot] != null) {
+        val index = state.activeIndices[slot]
+        if (index < 0 || index >= state.sourceCount || state.activeSlots[index] != slot) {
             state.sources[slot] = null
-            state.sourceCount--
+            state.activeIndices[slot] = -1
+            return
         }
+        val lastIndex = state.sourceCount - 1
+        val lastSlot = state.activeSlots[lastIndex]
+        if (index != lastIndex) {
+            state.activeSlots[index] = lastSlot
+            state.activeIndices[lastSlot] = index
+        }
+        state.activeIndices[slot] = -1
+        state.sources[slot] = null
+        state.sourceCount = lastIndex
     }
 
     private fun queueKilled(slot: Int) {
@@ -1206,6 +1463,8 @@ class CParticleStore(val capacity: Int) {
 
     private class DynamicState(capacity: Int) {
         val sources = arrayOfNulls<CParticle>(capacity)
+        val activeSlots = IntArray(capacity)
+        val activeIndices = IntArray(capacity) { -1 }
         val snapshots = FloatArray(capacity * SNAPSHOT_STRIDE)
         val cameraModes = IntArray(capacity)
         val lights = IntArray(capacity)
@@ -1223,12 +1482,73 @@ class CParticleStore(val capacity: Int) {
         val explicitSeeds = IntArray(capacity)
         val dirtySlots = IntArray(capacity)
         var sourceCount = 0
+
+        /** 复制动态外观账本，新增槽位保持默认状态。 */
+        fun copyToCapacity(newCapacity: Int): DynamicState {
+            val target = DynamicState(newCapacity)
+            sources.copyInto(target.sources)
+            activeSlots.copyInto(target.activeSlots)
+            activeIndices.copyInto(target.activeIndices)
+            snapshots.copyInto(target.snapshots)
+            cameraModes.copyInto(target.cameraModes)
+            lights.copyInto(target.lights)
+            directionModes.copyInto(target.directionModes)
+            textureRevisions.copyInto(target.textureRevisions)
+            textureGenerations.copyInto(target.textureGenerations)
+            bindingKeys.copyInto(target.bindingKeys)
+            maskBindingKeys.copyInto(target.maskBindingKeys)
+            colorMultipliers.copyInto(target.colorMultipliers)
+            randomCropModes.copyInto(target.randomCropModes)
+            randomMaskCropModes.copyInto(target.randomMaskCropModes)
+            randomModes.copyInto(target.randomModes)
+            appearanceRevisions.copyInto(target.appearanceRevisions)
+            explicitSeedModes.copyInto(target.explicitSeedModes)
+            explicitSeeds.copyInto(target.explicitSeeds)
+            dirtySlots.copyInto(target.dirtySlots)
+            target.sourceCount = sourceCount
+            return target
+        }
     }
 
     private class KilledState(capacity: Int) {
         val slots = IntArray(capacity)
         val queuedBits = LongArray((capacity + 63) ushr 6)
         var count = 0
+
+        /** 复制等待补写 GPU flags 的槽位队列。 */
+        fun copyToCapacity(newCapacity: Int): KilledState {
+            val target = KilledState(newCapacity)
+            slots.copyInto(target.slots)
+            queuedBits.copyInto(target.queuedBits)
+            target.count = count
+            return target
+        }
+    }
+
+    private class ExpirationBatch(
+        var expiryTick: Long,
+        var order: Long,
+    ) {
+        private var slots = IntArray(INITIAL_EXPIRATION_BATCH_CAPACITY)
+        var size = 0
+            private set
+
+        fun reset(expiryTick: Long, order: Long) {
+            this.expiryTick = expiryTick
+            this.order = order
+            size = 0
+        }
+
+        fun add(slot: Int) {
+            if (size == slots.size) slots = slots.copyOf(slots.size * 2)
+            slots[size++] = slot
+        }
+
+        fun slotAt(index: Int): Int = slots[index]
+
+        fun clear() {
+            size = 0
+        }
     }
 
 }

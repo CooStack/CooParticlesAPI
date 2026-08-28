@@ -2,11 +2,17 @@ package cn.coostack.cooparticlesapi.cparticle
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.cparticle.force.CParticleForce
+import cn.coostack.cooparticlesapi.cparticle.force.CParticleSelector
+import cn.coostack.cooparticlesapi.cparticle.force.CParticleForceSink
+import cn.coostack.cooparticlesapi.cparticle.force.CParticleForceResourceTable
+import cn.coostack.cooparticlesapi.cparticle.force.ForceCommand
 import cn.coostack.cooparticlesapi.cparticle.collision.CParticleBlockCollisionGridManager
 import cn.coostack.cooparticlesapi.cparticle.render.CParticleGlBuffer
 import cn.coostack.cooparticlesapi.cparticle.simulate.CParticleCpuSimulator
 import cn.coostack.cooparticlesapi.cparticle.simulate.CParticleGpuSimulator
 import cn.coostack.cooparticlesapi.cparticle.storage.CParticleStore
+import cn.coostack.cooparticlesapi.cparticle.storage.CParticleMetadataGlBuffer
+import cn.coostack.cooparticlesapi.cparticle.storage.CParticleCommandGlBuffer
 import cn.coostack.cooparticlesapi.extend.plus
 import cn.coostack.cooparticlesapi.particles.ParticleCameraOption
 import net.minecraft.client.Minecraft
@@ -17,13 +23,14 @@ import org.joml.Matrix4f
 import org.joml.Matrix4fc
 import org.joml.Vector3f
 import org.joml.Vector3fc
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.sqrt
 
 /**
  * # CParticleSystem — 一个 GPU 粒子池
  *
- * 一个系统 = 一份固定容量的 SoA 存储 + 一个 GL 实例缓冲 + 一个渲染层 + 一组力场.
- * 每帧一次 instanced draw; 每 tick 一次模拟 (GL43 compute 或 CPU 并行回退).
+ * 一个系统 = 一份可扩容的 SoA 存储 + 一个 GL 实例缓冲 + 一个渲染层 + 一组力场.
+ * 每帧一次 instanced draw；每 tick 使用 GL43 compute 模拟，或由调用方显式选择 CPU 并行模拟。
  *
  * 两种模式:
  * - [CParticleSystemMode.SIMULATED]: 发射器语义 — 粒子生成后由力场驱动, 不可单独控制
@@ -32,26 +39,31 @@ import kotlin.math.sqrt
  *   通过句柄 teleport/rotate, 或整组 groupTransform 变换 (对应 "composition 是显示")
  */
 class CParticleSystem(
-    val name: String,
-    val capacity: Int,
+    var name: String,
+    capacity: Int,
     val layer: CParticleRenderLayer,
     val mode: CParticleSystemMode,
     /**
      * 本系统所有实例共用的基础纹理绑定。
      *
-     * Example: 同一方块图集系统可混合多种 BlockState。
-     * Forbidden: 粒子生成后不能把槽位改到另一 binding。
+     * 示例：同一方块图集系统可混合多种 BlockState。
+     * 禁止：粒子生成后不能把槽位改到另一 binding。
      */
     val textureBindingKey: CParticleTextureBindingKey = CParticleTextureBindingKey.PARTICLE_ATLAS,
 ) {
-    /** 构造阶段记录的蒙版 binding。Example: 方块蒙版使用 `BLOCK_ATLAS`。Forbidden: 初始化后不能改动。 */
+    /** Manager 在 emitter 接管后同步新的逻辑名称；不改变粒子、VBO 或 sourceId。 */
+    internal fun renameForManager(newName: String) {
+        name = newName
+    }
+
+    /** 构造阶段记录的蒙版 binding。示例：方块蒙版使用 `BLOCK_ATLAS`。禁止：初始化后不能改动。 */
     private var configuredMaskTextureBindingKey: CParticleTextureBindingKey? = null
 
     /**
      * 本 system 所有实例共用的可选蒙版纹理 binding。
      *
-     * Example: 粒子图集基础纹理可以配 [CParticleTextureBindingKey.BLOCK_ATLAS] 蒙版。
-     * Forbidden: 生成后不能把槽位切到另一蒙版图集。
+     * 示例：粒子图集基础纹理可以配 [CParticleTextureBindingKey.BLOCK_ATLAS] 蒙版。
+     * 禁止：生成后不能把槽位切到另一蒙版图集。
      */
     val maskTextureBindingKey: CParticleTextureBindingKey?
         get() = configuredMaskTextureBindingKey
@@ -59,8 +71,8 @@ class CParticleSystem(
     /**
      * 创建同时固定基础纹理和蒙版纹理 binding 的粒子系统。
      *
-     * Example: `CParticleSystem(name, capacity, layer, mode, PARTICLE_ATLAS, BLOCK_ATLAS)`。
-     * Forbidden: 蒙版 binding 不能在系统存活期间改变。
+     * 示例：`CParticleSystem(name, capacity, layer, mode, PARTICLE_ATLAS, BLOCK_ATLAS)`。
+     * 禁止：蒙版 binding 不能在系统存活期间改变。
      *
      * @param name 系统逻辑名称
      * @param capacity 最大槽位数
@@ -83,11 +95,38 @@ class CParticleSystem(
     /**
      * 该 system 的 CPU 槽位存储，所有存活槽位计入全局 GPU 粒子上限。
      *
-     * Example: `store.spawn(...)` 仍会申请全局额度。
-     * Forbidden: 不能用公开 store 入口绕过 [CParticleSystemManager.particleCountLimit]。
+     * 示例：`store.spawn(...)` 仍会申请全局额度。
+     * 禁止：不能用公开 store 入口绕过 [CParticleSystemManager.particleCountLimit]。
      */
     val store = CParticleStore.globallyCounted(capacity)
+
+    /** 当前槽位容量；emitter system 写满后会按几何级数增长。 */
+    val capacity: Int
+        get() = store.capacity
+
     val glBuffer = CParticleGlBuffer(capacity)
+    val metadataGlBuffer = CParticleMetadataGlBuffer(capacity)
+    internal val commandGlBuffer = CParticleCommandGlBuffer()
+    internal val forceResourceTable = CParticleForceResourceTable()
+
+    /** 本 system 的运行时来源 ID；同一兼容分组的存活粒子共用该值。 */
+    val sourceId: Int = nextSourceId()
+
+    /**
+     * 扩大一个已经写满的 system，保留 CPU 账本和 GPU 模拟结果。
+     *
+     * @param newCapacity 新槽位容量，必须大于当前容量
+     */
+    internal fun growTo(newCapacity: Int) {
+        check(!released) { "released CParticleSystem cannot grow: $name" }
+        check(store.isFull()) { "CParticleSystem can grow only after all current slots are occupied: $name" }
+        require(newCapacity > capacity) {
+            "newCapacity must be greater than capacity: $newCapacity <= $capacity"
+        }
+        glBuffer.growTo(newCapacity)
+        metadataGlBuffer.growTo(newCapacity)
+        store.growTo(newCapacity)
+    }
 
     /**
      * 系统原点 (双精度): 粒子位置以它为基准存 float,
@@ -99,11 +138,15 @@ class CParticleSystem(
     /** 力场列表 (SIMULATED 模式生效) */
     val forces = ArrayList<CParticleForce>()
 
+    /** 所有 Force 的统一 Command sink；bridge 只在 emitter tick 边界更新一次快照。 */
+    internal val forceSink = CParticleForceSink(ForceCommand.MAX_COMMANDS)
+    private var metadataGpuSynchronized = false
+
     /** emitter 桥接: 上次同步力场和视觉配置的 emitter tick (避免同 tick 重复重建) */
     var forcesSyncTick = Int.MIN_VALUE
 
     /** 速度上限 (对应 ControlableParticleData.speedLimit) */
-    var speedLimit = 32f
+    var speedLimit = 32F
 
     /** Emitter 粒子相对 system 原点的方块碰撞保证范围。 */
     internal var blockCollisionRange = CParticleSystemManager.DEFAULT_BLOCK_COLLISION_RANGE
@@ -117,8 +160,8 @@ class CParticleSystem(
     /**
      * 系统内所有粒子的生命周期等比缩放倍率曲线。
      *
-     * Example: `scaleCurve = CParticleCurve.linear(1f, 0f)` 会让粒子逐渐缩小。
-     * Forbidden: 不要用它设置粒子生成时的基础宽高。
+     * 示例：`scaleCurve = CParticleCurve.linear(1F, 0F)` 会让粒子逐渐缩小。
+     * 禁止：不要用它设置粒子生成时的基础宽高。
      */
     var scaleCurve: CParticleCurve? = null
 
@@ -126,13 +169,13 @@ class CParticleSystem(
     var colorCurve: CParticleColorCurve? = null
 
     /** 大于 0 时，alpha/scale/color 曲线按系统 tick 循环，不再使用粒子生命周期进度。 */
-    var curveCycleTicks = 0f
+    var curveCycleTicks = 0F
 
     /** 大于 0 时，颜色在指定 tick 周期内完成一次色相循环。 */
-    var colorCycleTicks = 0f
+    var colorCycleTicks = 0F
 
     /** 颜色沿粒子绕系统原点的角度分布多少个循环。 */
-    var colorCycleSpatialScale = 0f
+    var colorCycleSpatialScale = 0F
 
     internal var visualTransition: CParticleVisualTransition? = null
         private set
@@ -163,7 +206,10 @@ class CParticleSystem(
     /** scripted 模式: prev 收敛计数 (写入后需 1 tick 让 prev==cur) */
     private var settleTicks = 0
 
-    private val packedForces = FloatArray(CParticleGpuSimulator.PACKED_SIZE)
+    /** 旧 1..9 Force 的兼容 uniform payload；仅用于传输快路径。 */
+    private val packedForces = FloatArray(CParticleForce.MAX_FORCES * CParticleForce.STRIDE)
+    private val packedCommands = FloatArray(ForceCommand.MAX_COMMANDS * ForceCommand.STRIDE)
+    private var packedCommandsNeedMetadata = false
     private val warnedBindingMismatches = HashSet<Pair<CParticleTextureBindingKey, CParticleTextureBindingKey?>>()
 
     internal var lastDynamicPrepareFrame = Long.MIN_VALUE
@@ -193,7 +239,7 @@ class CParticleSystem(
                     descriptorId,
                     uv,
                     null,
-                    Vector3f(1f),
+                    Vector3f(1F),
             )
             val maskSource = p.textureSource
             val mask = maskSource?.let { CParticleTextureResolver.resolve(it, p.pos) }
@@ -218,7 +264,7 @@ class CParticleSystem(
                 validatedId,
                 CParticleTextureDescriptors.firstFrame(validatedId),
                 validatedId,
-                Vector3f(1f),
+                Vector3f(1F),
         )
         val maskSource = p.textureSource
         val mask = maskSource?.let { CParticleTextureResolver.resolve(it, p.pos) }
@@ -294,6 +340,13 @@ class CParticleSystem(
             maskTextureBindingKey = maskTextureBindingKey,
             maskColorMultiplier = resolved.mask?.colorMultiplier,
             spawnPosition = resolvedStoragePosition,
+            sourceId = sourceId,
+            sign = p.sign,
+            commandMask = p.commandMask,
+            metadataFlags = p.metadataFlags,
+            charge = p.charge,
+            mass = p.mass,
+            radius = p.radius,
         )
     }
 
@@ -329,8 +382,8 @@ class CParticleSystem(
      * alpha 和 scale 曲线作为粒子原始值的倍率；同时提供 [colorFrom]、[colorTo]
      * 时，颜色在两者之间插值。相同配置的重复调用不会重置进度；需要重播时传入 [restart]。
      * 该操作不会改写粒子实例缓冲。
-     * Example: `playVisualTransition(20f, scaleCurve = CParticleCurve.linear(1f, 0f))`。
-     * Forbidden: 不要传入非正数或非有限的 [durationTicks]。
+     * 示例：`playVisualTransition(20F, scaleCurve = CParticleCurve.linear(1F, 0F))`。
+     * 禁止：不要传入非正数或非有限的 [durationTicks]。
      *
      * @param durationTicks 过渡时长，单位 tick
      * @param alphaCurve 不透明度倍率曲线
@@ -364,8 +417,8 @@ class CParticleSystem(
     /**
      * 播放 GPU 视觉过渡，并允许强制重新开始相同配置。
      *
-     * Example: `playVisualTransition(20f, true, scaleCurve = curve)` 会重置进度。
-     * Forbidden: 不要传入非正数或非有限的 [durationTicks]。
+     * 示例：`playVisualTransition(20F, true, scaleCurve = curve)` 会重置进度。
+     * 禁止：不要传入非正数或非有限的 [durationTicks]。
      *
      * @param durationTicks 过渡时长，单位 tick
      * @param restart 是否强制从头播放
@@ -401,8 +454,8 @@ class CParticleSystem(
     /**
      * 校验并保存一段系统级视觉过渡。
      *
-     * Example: 两个公开重载都通过本方法统一处理 [restart]。
-     * Forbidden: 不要绕过这里的时长和颜色参数校验。
+     * 示例：两个公开重载都通过本方法统一处理 [restart]。
+     * 禁止：不要绕过这里的时长和颜色参数校验。
      *
      * @param durationTicks 过渡时长，单位 tick
      * @param alphaCurve 不透明度倍率曲线
@@ -423,7 +476,7 @@ class CParticleSystem(
         mode: CParticleTransitionMode,
         restart: Boolean,
     ): CParticleSystem {
-        require(durationTicks.isFinite() && durationTicks > 0f) {
+        require(durationTicks.isFinite() && durationTicks > 0F) {
             "durationTicks must be finite and greater than zero"
         }
         require((colorFrom == null) == (colorTo == null)) {
@@ -474,7 +527,7 @@ class CParticleSystem(
         mode: CParticleTransitionMode = CParticleTransitionMode.HOLD_END,
         restart: Boolean = false,
     ): CParticleSystem {
-        require(durationTicks.isFinite() && durationTicks > 0f) {
+        require(durationTicks.isFinite() && durationTicks > 0F) {
             "durationTicks must be finite and greater than zero"
         }
         if (!restart && alphaTransition?.matches(
@@ -490,7 +543,7 @@ class CParticleSystem(
         }
         // tickCount 会在本轮 system tick 末尾自增；下一次渲染应从曲线起点开始。
         alphaTransition = CParticleVisualTransition(
-            startTick = tickCount.toFloat() + 1f,
+            startTick = tickCount.toFloat() + 1F,
             durationTicks = durationTicks,
             alphaCurve = alphaCurve,
             scaleCurve = null,
@@ -584,7 +637,7 @@ class CParticleSystem(
 
     fun scriptedSetAlpha(slot: Int, generation: Int, alpha: Float) {
         if (!checkHandle(slot, generation)) return
-        store.data[slot * CParticleStore.STRIDE + CParticleStore.OFF_COLOR + 3] = alpha.coerceIn(0f, 1f)
+        store.data[slot * CParticleStore.STRIDE + CParticleStore.OFF_COLOR + 3] = alpha.coerceIn(0F, 1F)
         store.markDirty(slot)
     }
 
@@ -794,7 +847,7 @@ class CParticleSystem(
 
     private fun inverseAffine(matrix: Matrix4fc): Matrix4f? {
         val determinant = matrix.determinant3x3()
-        if (!determinant.isFinite() || determinant == 0f) return null
+        if (!determinant.isFinite() || determinant == 0F) return null
         return Matrix4f(matrix).invertAffine()
     }
 
@@ -860,7 +913,9 @@ class CParticleSystem(
     }
 
     private fun tickSimulated() {
-        val forceCount = packForces()
+        // 旧 1..9 且 selector=All 的批次保留 uniform 快路径；其数学仍等价于 Command。
+        val legacyForceCount = packLegacyForces()
+        val commandCount = if (legacyForceCount >= 0) 0 else packCommands()
         val simulationTransform = currentGroupTransform.takeIf {
             transformsSimulatedParticleSpace && !isIdentityTransform(it)
         }
@@ -870,7 +925,13 @@ class CParticleSystem(
         } else {
             null
         }
-        val useGpu = CParticleCapabilities.useGpuSimulation()
+        // 能力探测只记录诊断信息；GPU 请求不能在 shader 编译前静默改成 CPU。
+        // 只有显式 forceCpuSimulation=true 才允许 CPU 模拟。
+        val useGpu = !CParticleCapabilities.forceCpuSimulation
+        if (store.spawnedCount > 0 && (!useGpu || legacyForceCount >= 0 || !packedCommandsNeedMetadata)) {
+            // metadata 未在本 tick 上传；以后重新启用 selector/Charge 时必须整段重传。
+            metadataGpuSynchronized = false
+        }
         if (useGpu) {
             // compute 必须先看到本 tick 的死亡和新生成槽位，否则 CPU age 会领先 GPU 一 tick。
             if (store.killedCount > 0) {
@@ -879,29 +940,50 @@ class CParticleSystem(
             if (store.spawnedCount > 0) {
                 glBuffer.uploadSlots(store.data, store.spawnedSlots, store.spawnedCount)
             }
-        }
-        if (useGpu &&
+            if (legacyForceCount < 0 && commandCount > 0) {
+                ensureCommandGl(packedCommandsNeedMetadata)
+                var fullMetadataUpload = false
+                if (packedCommandsNeedMetadata && !metadataGpuSynchronized && store.aliveCount > 0) {
+                    metadataGlBuffer.uploadRange(store.metadata, store.firstAliveSlot, store.highWater - 1)
+                    metadataGpuSynchronized = true
+                    fullMetadataUpload = true
+                }
+                if (packedCommandsNeedMetadata && store.spawnedCount > 0 && !fullMetadataUpload) {
+                    metadataGlBuffer.uploadSlots(store.metadata, store.spawnedSlots, store.spawnedCount)
+                }
+                commandGlBuffer.upload(packedCommands, commandCount)
+            }
             CParticleGpuSimulator.simulate(
                 this,
                 packedForces,
-                forceCount,
+                legacyForceCount,
+                packedCommands,
+                commandCount,
+                packedCommandsNeedMetadata,
                 collisionGrid,
                 simulationTransform,
                 inverseSimulationTransform,
             )
-        ) {
-            store.tickAges(writeBufferAge = false)
+            store.tickGpuAges(tickCount)
             store.publishDynamicAges()
             store.clearSpawned()
             store.clearKilled()
             store.clearDirty()
         } else {
-            // CPU: 模拟写回 SoA → 整段上传
-            CParticleCpuSimulator.simulate(
-                store, packedForces, forceCount,
-                origin.x, origin.y, origin.z, speedLimit, collisionGrid,
-                simulationTransform, inverseSimulationTransform,
-            )
+            // 只有调用方显式设置 forceCpuSimulation 才走 CPU；GPU 执行错误不会进入这里。
+            if (legacyForceCount >= 0) {
+                CParticleCpuSimulator.simulate(
+                    store, packedForces, legacyForceCount,
+                    origin.x, origin.y, origin.z, speedLimit, collisionGrid,
+                    simulationTransform, inverseSimulationTransform,
+                )
+            } else {
+                CParticleCpuSimulator.simulate(
+                    store, packedCommands, commandCount, forceResourceTable,
+                    origin.x, origin.y, origin.z, speedLimit, collisionGrid,
+                    simulationTransform, inverseSimulationTransform,
+                )
+            }
             store.tickAges(writeBufferAge = true)
             store.publishDynamicAges()
             store.clearSpawned()
@@ -931,7 +1013,7 @@ class CParticleSystem(
         for (w in 0 until words) {
             var b = bits[w]
             while (b != 0L) {
-                val bit = java.lang.Long.numberOfTrailingZeros(b)
+                val bit = b.countTrailingZeroBits()
                 b = b and (b - 1)
                 val slot = (w shl 6) + bit
                 if (store.writeTicks[slot] != tickCount) {
@@ -968,13 +1050,81 @@ class CParticleSystem(
         }
     }
 
-    private fun packForces(): Int {
-        val count = forces.size.coerceAtMost(CParticleForce.MAX_FORCES)
-        java.util.Arrays.fill(packedForces, 0f)
-        for (i in 0 until count) {
-            forces[i].pack(packedForces, i * CParticleForce.STRIDE, origin)
+    private fun packCommands(): Int {
+        forceSink.setExternalOverflow(
+            (forces.size + forceSink.size - ForceCommand.MAX_COMMANDS).coerceAtLeast(0),
+        )
+        packedCommands.fill(0F)
+        packedCommandsNeedMetadata = false
+        forceResourceTable.clear()
+        var count = 0
+        for (force in forces) {
+            if (count >= ForceCommand.MAX_COMMANDS) break
+            packCommand(ForceCommand(force), count * ForceCommand.STRIDE)
+            count++
+        }
+        forceSink.forEach { command ->
+            if (count < ForceCommand.MAX_COMMANDS) {
+                packCommand(command, count * ForceCommand.STRIDE)
+                count++
+            }
         }
         return count
+    }
+
+    /**
+     * 尝试把全部 Force 编码为旧 uniform ABI。
+     *
+     * 返回 `-1` 表示当前批次包含 selector、新 Force、资源 Force 或超过旧上限，必须使用
+     * Command SSBO；非负返回值表示可以安全走旧 1..9 kernel。
+     */
+    private fun packLegacyForces(): Int {
+        packedForces.fill(0F)
+        var count = 0
+        var compatible = true
+
+        fun append(force: CParticleForce): Boolean {
+            if (force.typeId !in CParticleForce.TYPE_GRAVITY..CParticleForce.TYPE_FLOW_FIELD ||
+                count >= CParticleForce.MAX_FORCES
+            ) return false
+            force.pack(packedForces, count * CParticleForce.STRIDE, origin)
+            count++
+            return true
+        }
+
+        for (force in forces) {
+            if (!append(force)) compatible = false
+        }
+        forceSink.forEach { command ->
+            if (command.selector.mode != CParticleSelector.All.mode || !append(command.force)) {
+                compatible = false
+            }
+        }
+        return if (compatible) count else -1
+    }
+
+    private fun packCommand(command: ForceCommand, base: Int) {
+        if (command.selector.mode != CParticleSelector.All.mode ||
+            command.force.typeId == CParticleForce.TYPE_CHARGE ||
+            command.force.typeId == CParticleForce.TYPE_LENNARD_JONES
+        ) {
+            packedCommandsNeedMetadata = true
+        }
+        when (val force = command.force) {
+            is CParticleForce.Texture -> command.pack(
+                packedCommands,
+                base,
+                origin,
+                forceResourceTable.slotFor(force.resource),
+            )
+            is CParticleForce.FluidFlow -> command.pack(
+                packedCommands,
+                base,
+                origin,
+                forceResourceTable.slotFor(force.resource),
+            )
+            else -> command.pack(packedCommands, base, origin)
+        }
     }
 
     private fun simulationCenter(): Vec3 {
@@ -993,17 +1143,24 @@ class CParticleSystem(
     fun ensureGl() {
         if (!glBuffer.initialized) {
             glBuffer.init()
+            metadataGpuSynchronized = false
             // 新缓冲: 把当前 CPU 侧数据整体上传 (含 shader 重载后重建的场景)
-            if (store.highWater > 0) {
-                glBuffer.uploadRange(store.data, 0, store.highWater - 1)
+            if (store.aliveCount > 0) {
+                glBuffer.uploadRange(store.data, store.firstAliveSlot, store.highWater - 1)
             }
         }
+    }
+
+    private fun ensureCommandGl(metadataRequired: Boolean) {
+        if (metadataRequired && !metadataGlBuffer.initialized) metadataGlBuffer.init()
+        if (!commandGlBuffer.initialized) commandGlBuffer.init()
     }
 
     /** 清空全部粒子 (保留 GL 资源) */
     fun clearParticles() {
         val prevHigh = store.highWater
         store.clear()
+        metadataGpuSynchronized = false
         snapGroupTransform()
         settleTicks = 0
         lastDynamicPrepareFrame = Long.MIN_VALUE
@@ -1016,14 +1173,20 @@ class CParticleSystem(
     /** 仅释放 GL 资源 (shader/资源重载时; CPU 数据保留, 下次 ensureGl 重传) */
     fun releaseGl() {
         glBuffer.release()
+        metadataGlBuffer.release()
+        commandGlBuffer.release()
+        metadataGpuSynchronized = false
     }
 
     /** 彻底销毁 */
     fun release() {
         released = true
         store.clear()
+        metadataGpuSynchronized = false
         lastDynamicPrepareFrame = Long.MIN_VALUE
         glBuffer.release()
+        metadataGlBuffer.dispose()
+        commandGlBuffer.dispose()
     }
 
     /** 粗可见性：LOCAL emitter 使用变换后中心，放大时同步扩展可见半径。 */
@@ -1046,6 +1209,14 @@ class CParticleSystem(
         previousGroupTransform.set(groupTransform)
         currentGroupTransform.set(groupTransform)
     }
+}
+
+private val cParticleNextSourceId = AtomicInteger(1)
+
+private fun nextSourceId(): Int {
+    var id = cParticleNextSourceId.getAndIncrement()
+    if (id == 0) id = cParticleNextSourceId.getAndIncrement()
+    return id
 }
 
 enum class CParticleSystemMode {

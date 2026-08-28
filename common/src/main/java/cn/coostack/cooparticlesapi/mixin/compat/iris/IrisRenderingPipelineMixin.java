@@ -36,7 +36,6 @@ public abstract class IrisRenderingPipelineMixin {
             remap = false
     )
     private void cooparticlesapi$renderScenePostAfterFinalPass(CallbackInfo ci) {
-        ClientRenderPipelineManager.INSTANCE.renderIrisTerrainPostAfterFinalPass();
         ClientRenderPipelineManager.INSTANCE.renderIrisScenePost();
     }
 }

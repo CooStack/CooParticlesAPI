@@ -4,6 +4,7 @@ import cn.coostack.cooparticlesapi.annotations.emitter.handle.ParticleEmittersRe
 import cn.coostack.cooparticlesapi.cparticle.CParticleSystemManager
 import cn.coostack.cooparticlesapi.cparticle.compat.TransformableCParticleEmitterBridge
 import cn.coostack.cooparticlesapi.cparticle.force.CParticleForce
+import cn.coostack.cooparticlesapi.cparticle.force.CParticleForceSink
 import cn.coostack.cooparticlesapi.extend.minus
 import cn.coostack.cooparticlesapi.extend.plus
 import cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind.GlobalWindDirection
@@ -71,7 +72,7 @@ abstract class TransformableCParticleEmitter(
     /** LOCAL 粒子所在的发射器空间旋转；变化时会带动已经生成的粒子。 */
     var emitterRotation: Quaternionf = Quaternionf()
         set(value) {
-            require(value.isFinite && value.lengthSquared() > 1e-12f) {
+            require(value.isFinite && value.lengthSquared() > 1e-12F) {
                 "rotation must be finite and non-zero"
             }
             field = Quaternionf(value).normalize()
@@ -80,7 +81,7 @@ abstract class TransformableCParticleEmitter(
     /** 新生成粒子的出生位置和初速度旋转；不会改变已经生成的粒子。 */
     var particleRotation: Quaternionf = Quaternionf()
         set(value) {
-            require(value.isFinite && value.lengthSquared() > 1e-12f) {
+            require(value.isFinite && value.lengthSquared() > 1e-12F) {
                 "particle rotation must be finite and non-zero"
             }
             field = Quaternionf(value).normalize()
@@ -119,11 +120,26 @@ abstract class TransformableCParticleEmitter(
     private var lastSyncedTransform = TransformSnapshot.capture(this)
 
     /**
+     * 旧版 GPU 力场列表接口。
+     *
+     * 该类不继承 [ClassParticleEmitters]，因此单独保留旧签名。
+     * 默认实现由流式接口转发，旧 emitter 覆写此方法仍能参与 GPU 模拟。
+     *
+     * @return 按执行顺序排列的力场列表
+     */
+    open fun cparticleForces(): List<CParticleForce> = emptyList()
+
+    /**
      * 返回当前 GPU system 使用的附加力场。
      *
      * 位置和方向参数都沿用 [ClassParticleEmitters] 的世界坐标语义。
+     * 默认实现兼容旧版 [cparticleForces]；新 emitter 可直接提交到 sink。
+     *
+     * @param sink 当前 emitter 的力场快照
      */
-    open fun cparticleForces(): List<CParticleForce> = emptyList()
+    open fun submitCParticleForces(sink: CParticleForceSink) {
+        sink.submitAll(cparticleForces())
+    }
 
     /** 返回方块碰撞网格相对当前发射器中心的保证范围。 */
     open fun cparticleBlockCollisionRange(): Int = CParticleSystemManager.DEFAULT_BLOCK_COLLISION_RANGE
@@ -177,12 +193,12 @@ abstract class TransformableCParticleEmitter(
                 val denominator = (refined.size - 1).coerceAtLeast(1).toFloat()
                 refined.forEachIndexed { index, location ->
                     val spawnPos = location.toVector()
-                    val lerpProgress = if (refined.size == 1) 1f else index / denominator
+                    val lerpProgress = if (refined.size == 1) 1F else index / denominator
                     doSubtick(spawnPos, lerpProgress)
                     spawnParticle(spawnPos, lerpProgress)
                 }
             } else {
-                spawnParticle(pos, 1f)
+                spawnParticle(pos, 1F)
             }
         }
         increaseTick()

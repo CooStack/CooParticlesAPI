@@ -180,7 +180,7 @@ object CooParticlesAPIClient {
         RenderEntityModelExecutors.install(OpenGlRenderEntityModelExecutor)
         PostEffectFrameExecutor.installBackend(OpenGlPostEffectExecutionBackend)
         CParticleCapabilities.detect()
-        CParticleGpuSimulator.initializeProgramIfSupported()
+        CParticleGpuSimulator.initializeProgramForRequestedRoute()
         ShaderProgramRegistry.reinitializeAll()
         CooFXClient.prepareResourcesIfNeeded(Minecraft.getInstance().resourceManager)
         CooFXClient.onRenderPipelineReady()

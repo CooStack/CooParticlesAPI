@@ -1,5 +1,7 @@
 package cn.coostack.cooparticlesapi.cparticle
 
+import cn.coostack.cooparticlesapi.cparticle.force.CParticleForceResourceRegistry
+import cn.coostack.cooparticlesapi.cparticle.force.CParticleForceResource
 import cn.coostack.cooparticlesapi.cparticle.render.CParticleRenderer
 import cn.coostack.cooparticlesapi.cparticle.simulate.CParticleGpuSimulator
 import cn.coostack.cooparticlesapi.cparticle.collision.CParticleBlockCollisionGridManager
@@ -11,6 +13,7 @@ import net.minecraft.client.Camera
 import net.minecraft.client.DeltaTracker
 import net.minecraft.client.Minecraft
 import org.joml.Matrix4f
+import net.minecraft.world.phys.Vec3
 
 /**
  * Manager 内部使用的完整批次键。
@@ -33,6 +36,58 @@ private data class ManagedCParticleSystemKey(
 )
 
 /**
+ * 普通 emitter 退休后接管 system 时使用的严格兼容键。
+ *
+ * Command 按候选 system 的原点完成打包后再比较原始位，因此动态中心、selector、Force 参数和
+ * 资源槽位都必须一致。数组在构造时复制，避免下一 tick 重用打包缓冲后改变已经登记的键。
+ *
+ * @property emitterType 发射器注册 ID，同一实现才能接管
+ * @property emitterPosition 发射器退休时的位置，新实例必须从同一点继续
+ * @property blockCollisionRange 方块碰撞网格范围
+ * @property droppedCommands Force Sink 已丢弃的 Command 数量
+ * @property commandBits 完整 Command payload 的原始 32-bit 位
+ * @property resources 资源型 Force 按首次出现顺序使用的稳定资源键
+ */
+internal class CParticleSystemReuseKey(
+    val emitterType: String,
+    val emitterPosition: Vec3,
+    val blockCollisionRange: Int,
+    val droppedCommands: Int,
+    commandBits: IntArray,
+    resources: List<CParticleForceResource>,
+) {
+    private val commandBits = commandBits.copyOf()
+    private val resources = resources.toList()
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is CParticleSystemReuseKey) return false
+        return emitterType == other.emitterType &&
+            emitterPosition == other.emitterPosition &&
+            blockCollisionRange == other.blockCollisionRange &&
+            droppedCommands == other.droppedCommands &&
+            commandBits.contentEquals(other.commandBits) &&
+            resources == other.resources
+    }
+
+    override fun hashCode(): Int {
+        var result = emitterType.hashCode()
+        result = 31 * result + emitterPosition.hashCode()
+        result = 31 * result + blockCollisionRange
+        result = 31 * result + droppedCommands
+        result = 31 * result + commandBits.contentHashCode()
+        result = 31 * result + resources.hashCode()
+        return result
+    }
+}
+
+/** Manager 完成键迁移后返回给 emitter bridge 的接管结果。 */
+internal data class AdoptedCParticleSystem(
+    val system: CParticleSystem,
+    val managedName: String,
+)
+
+/**
  * # CParticleSystemManager — GPU 粒子系统客户端总管
  *
  * 生命周期挂载点:
@@ -44,7 +99,6 @@ private data class ManagedCParticleSystemKey(
  * 所有方法都只应在客户端渲染线程调用 (MC 客户端 tick 与渲染同线程).
  */
 object CParticleSystemManager {
-
     /** Emitter 未覆写时，CParticle 方块碰撞相对 system 原点的保证范围。 */
     const val DEFAULT_BLOCK_COLLISION_RANGE = 24
 
@@ -90,6 +144,8 @@ object CParticleSystemManager {
     private val lastNonEmptyTick = HashMap<ManagedCParticleSystemKey, Int>()
     private val autoRelease = HashSet<ManagedCParticleSystemKey>()
     private val terminalAutoRelease = HashSet<ManagedCParticleSystemKey>()
+    private val retiredAutoSystemReuseKeys = HashMap<ManagedCParticleSystemKey, CParticleSystemReuseKey>()
+    private var autoSystemNameSequence = 0L
 
     // ------------------------------------------------------------ 系统管理
 
@@ -392,6 +448,126 @@ object CParticleSystemManager {
         lastNonEmptyTick.remove(key)
         autoRelease.remove(key)
         terminalAutoRelease.remove(key)
+        retiredAutoSystemReuseKeys.remove(key)
+    }
+
+    /**
+     * 把 emitter 已停止写入但仍有存活粒子的 system 登记为可接管状态。
+     *
+     * 空 system 直接释放；仍有粒子的 system 会继续模拟，若没有兼容的新 emitter 接管，则在
+     * 粒子归零后的第一个 manager tick 释放。
+     *
+     * @param system 要停止接收旧 emitter 写入的自动回收 system
+     * @param reuseKey 新 emitter 必须完整匹配的兼容键
+     * @return system 仍存活并已登记时返回 `true`
+     */
+    internal fun retireAutoSystem(
+        system: CParticleSystem,
+        reuseKey: CParticleSystemReuseKey,
+    ): Boolean {
+        val key = systems.entries.firstOrNull { it.value === system }?.key ?: return false
+        if (key !in autoRelease) return false
+        if (system.store.aliveCount == 0) {
+            removeSystem(key)
+            return false
+        }
+        terminalAutoRelease.add(key)
+        retiredAutoSystemReuseKeys[key] = reuseKey
+        return true
+    }
+
+    /**
+     * 取得一个渲染分组一致且兼容键匹配的退休 system，并取消其终止回收状态。
+     *
+     * 查找只发生在新 emitter 首次创建游标时，不进入逐粒子生成热路径。
+     *
+     * @param layer 新粒子的渲染层
+     * @param textureBindingKey 基础纹理 binding
+     * @param maskTextureBindingKey 可选蒙版纹理 binding
+     * @param matches 使用候选 system 原点验证 emitter 与 Force Command 是否兼容
+     * @return 可以继续写入的原 system 及迁移后的 Manager 名称；没有匹配项时返回 `null`
+     */
+    internal fun takeRetiredAutoSystem(
+        name: String,
+        mode: CParticleSystemMode,
+        layer: CParticleRenderLayer,
+        textureBindingKey: CParticleTextureBindingKey,
+        maskTextureBindingKey: CParticleTextureBindingKey?,
+        matches: (CParticleSystem, CParticleSystemReuseKey) -> Boolean,
+    ): AdoptedCParticleSystem? {
+        val iterator = retiredAutoSystemReuseKeys.entries.iterator()
+        while (iterator.hasNext()) {
+            val entry = iterator.next()
+            val key = entry.key
+            val system = systems[key]
+            if (system == null || system.released) {
+                iterator.remove()
+                terminalAutoRelease.remove(key)
+                continue
+            }
+            if (key.mode != mode ||
+                key.layer != layer ||
+                key.textureBindingKey != textureBindingKey ||
+                key.maskTextureBindingKey != maskTextureBindingKey ||
+                !matches(system, entry.value)
+            ) {
+                continue
+            }
+            iterator.remove()
+            terminalAutoRelease.remove(key)
+            lastNonEmptyTick[key] = currentTick
+            val requestedTargetKey = ManagedCParticleSystemKey(
+                name,
+                mode,
+                layer,
+                textureBindingKey,
+                maskTextureBindingKey,
+            )
+            val targetKey = if (requestedTargetKey == key || requestedTargetKey !in systems) {
+                requestedTargetKey
+            } else {
+                nextAvailableAutoSystemKey(requestedTargetKey)
+            }
+            if (targetKey != key) {
+                systems.remove(key)
+                lastNonEmptyTick.remove(key)
+                autoRelease.remove(key)
+                terminalAutoRelease.remove(key)
+                systems[targetKey] = system
+                system.renameForManager(targetKey.name)
+                lastNonEmptyTick[targetKey] = currentTick
+                autoRelease.add(targetKey)
+            } else {
+                autoRelease.add(targetKey)
+            }
+            return AdoptedCParticleSystem(system, targetKey.name)
+        }
+        return null
+    }
+
+    /** 返回不会覆盖现有批次的自动 system 名称；只在 emitter 重启冲突时生成后缀。 */
+    internal fun availableAutoSystemName(
+        name: String,
+        mode: CParticleSystemMode,
+        layer: CParticleRenderLayer,
+        textureBindingKey: CParticleTextureBindingKey,
+        maskTextureBindingKey: CParticleTextureBindingKey?,
+    ): String {
+        val requestedKey = ManagedCParticleSystemKey(
+            name,
+            mode,
+            layer,
+            textureBindingKey,
+            maskTextureBindingKey,
+        )
+        return if (requestedKey !in systems) name else nextAvailableAutoSystemKey(requestedKey).name
+    }
+
+    private fun nextAvailableAutoSystemKey(base: ManagedCParticleSystemKey): ManagedCParticleSystemKey {
+        while (true) {
+            val candidate = base.copy(name = "${base.name}/restart-${++autoSystemNameSequence}")
+            if (candidate !in systems) return candidate
+        }
     }
 
     /**
@@ -611,12 +787,15 @@ object CParticleSystemManager {
         }
         autoRelease.removeAll { it !in systems.keys }
         terminalAutoRelease.clear()
+        retiredAutoSystemReuseKeys.clear()
     }
 
     /** 资源重载: 图集 UV 会变, 清空贴图缓存; shader 程序由 registry 自动重建 */
     @JvmStatic
     fun onResourceReload() {
         CParticleSprites.clearCache()
+        CParticleForceResourceRegistry.clearResolvedBindings()
+        CParticleGpuSimulator.release()
     }
 
     /** 完全释放 (退出/调试) */
@@ -627,9 +806,11 @@ object CParticleSystemManager {
         lastNonEmptyTick.clear()
         autoRelease.clear()
         terminalAutoRelease.clear()
+        retiredAutoSystemReuseKeys.clear()
         CParticleRenderer.release()
         CParticleGpuSimulator.release()
         CParticleBlockCollisionGridManager.clear()
         CParticleSprites.release()
+        CParticleForceResourceRegistry.clearResolvedBindings()
     }
 }

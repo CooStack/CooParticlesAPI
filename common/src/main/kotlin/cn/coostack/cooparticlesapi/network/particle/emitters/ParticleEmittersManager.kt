@@ -289,6 +289,7 @@ object ParticleEmittersManager {
             CooEventBus.call(EmitterRemoveEvent(it, true))
         }
         clientEmitters.clear()
+        CParticleEmitterBridge.clear()
     }
 
     fun clearServer() {
@@ -390,8 +391,8 @@ object ParticleEmittersManager {
     private fun finishClientSystems(emitter: ParticleEmitters) {
         if (emitter is TransformableCParticleEmitter) {
             emitter.finishClientSystems()
-        } else {
-            CParticleEmitterBridge.finishEmitter(emitter.uuid)
+        } else if (emitter is ClassParticleEmitters) {
+            CParticleEmitterBridge.finishEmitter(emitter)
         }
     }
 }

@@ -13,6 +13,7 @@ import cn.coostack.cooparticlesapi.test.SimpleCompositionOption
 import cn.coostack.cooparticlesapi.test.SimpleDisplayEntityOption
 import cn.coostack.cooparticlesapi.test.SimpleEmitterOption
 import cn.coostack.cooparticlesapi.test.SimpleStyleOption
+import cn.coostack.cooparticlesapi.test.api.BooleanTestOptionValue
 import cn.coostack.cooparticlesapi.test.api.ControlableParticleEffectBuilder
 import cn.coostack.cooparticlesapi.test.api.ControlableParticleEffectTestOptionValue
 import cn.coostack.cooparticlesapi.test.api.DoubleTestOptionValue
@@ -106,6 +107,7 @@ class BlockAPITestGroupBuilder(private val player: Player) : TestGroupBuilder {
                 )
                     .applyParam(IntTestOptionValue("cp_spawn_per_tick", "每tick生成数"), 600)
                     .applyParam(IntTestOptionValue("cp_max_age", "粒子存活tick"), 170)
+                    .applyParam(BooleanTestOptionValue(CP_BLOCK_COLLISION_ID, "方块碰撞"), true)
                     .applyParam(FloatTestOptionValue("cp_size", "粒子大小"), 0.10F)
                     .applyParam(DoubleTestOptionValue("cp_emit_radius", "生成圆盘半径"), 2.4)
                     .applyParam(DoubleTestOptionValue("cp_spread_speed", "初速度"), 0.10)
@@ -135,6 +137,7 @@ class BlockAPITestGroupBuilder(private val player: Player) : TestGroupBuilder {
                     .applyTo {
                         it.spawnPerTick = getParam<Int>("cp_spawn_per_tick")!!
                         it.particleMaxAge = getParam<Int>("cp_max_age")!!
+                        it.template.blockCollision = getParam<Boolean>(CP_BLOCK_COLLISION_ID)!!
                         it.particleSize = getParam<Float>("cp_size")!!
                         it.emitRadius = getParam<Double>("cp_emit_radius")!!
                         it.spreadSpeed = getParam<Double>("cp_spread_speed")!!
@@ -341,6 +344,9 @@ class BlockAPITestGroupBuilder(private val player: Player) : TestGroupBuilder {
     }
 
     companion object {
+        /** CParticle 压测中方块碰撞开关的参数 ID。 */
+        private const val CP_BLOCK_COLLISION_ID = "cp_block_collision"
+
         /** 注册与构建结果共同使用的方块测试组 ID。 */
         @JvmField
         val ID: ResourceLocation = ofID("block-api-test-group-builder")

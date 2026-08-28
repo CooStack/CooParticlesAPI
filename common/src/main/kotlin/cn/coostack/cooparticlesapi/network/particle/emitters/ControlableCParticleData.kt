@@ -68,7 +68,7 @@ open class ControlableCParticleData : ControlableParticleData() {
     /**
      * 按 `age / maxAge` 只缩放 X 方向尺寸的 GPU 曲线。
      *
-     * Example: 从 `0.2f` 变化到 `1f` 可以让粒子横向展开。
+     * 示例：从 `0.2F` 变化到 `1F` 可以让粒子横向展开。
      * Forbidden: 不要把本字段当成 Z 方向或等比缩放入口。
      */
     var scaleXCurve: CParticleCurve? = null
@@ -76,7 +76,7 @@ open class ControlableCParticleData : ControlableParticleData() {
     /**
      * 按 `age / maxAge` 只缩放 Y 方向尺寸的 GPU 曲线。
      *
-     * Example: 从 `1f` 变化到 `0f` 可以让粒子纵向收拢。
+     * 示例：从 `1F` 变化到 `0F` 可以让粒子纵向收拢。
      * Forbidden: 不要把本字段当成 Z 方向或等比缩放入口。
      */
     var scaleYCurve: CParticleCurve? = null
@@ -106,6 +106,18 @@ open class ControlableCParticleData : ControlableParticleData() {
      * Forbidden: 不要用它代替需要台阶、栅栏或实体精确形状的 CPU 碰撞。
      */
     var blockCollision: Boolean = false
+
+    /** 供 Force Command 的 CommandMask 选择。 */
+    var commandMask: Int = 0
+
+    /** metadata 扩展标志位。 */
+    var metadataFlags: Int = 0
+
+    /** 粒子电荷；NaN 表示由 Charge command 使用默认值。 */
+    var charge: Float = Float.NaN
+
+    /** 粒子半径，供单点 Lennard-Jones 使用。 */
+    var radius: Float = 0F
 
     /**
      * 保存专用 data 的网络编解码器。
@@ -155,6 +167,10 @@ open class ControlableCParticleData : ControlableParticleData() {
             buf.writeBoolean(seed != null)
             if (seed != null) buf.writeInt(seed)
             buf.writeBoolean(data.blockCollision)
+            buf.writeInt(data.commandMask)
+            buf.writeInt(data.metadataFlags)
+            buf.writeFloat(data.charge)
+            buf.writeFloat(data.radius)
         }
 
         /**
@@ -186,6 +202,10 @@ open class ControlableCParticleData : ControlableParticleData() {
             data.randomAgePreTick = buf.readBoolean()
             if (buf.readBoolean()) data.randomSeed = buf.readInt()
             data.blockCollision = buf.readBoolean()
+            data.commandMask = buf.readInt()
+            data.metadataFlags = buf.readInt()
+            data.charge = buf.readFloat()
+            data.radius = buf.readFloat()
             return data
         }
 
@@ -237,6 +257,10 @@ open class ControlableCParticleData : ControlableParticleData() {
             it.randomAgePreTick = randomAgePreTick
             it.randomSeed = randomSeed
             it.blockCollision = blockCollision
+            it.commandMask = commandMask
+            it.metadataFlags = metadataFlags
+            it.charge = charge
+            it.radius = radius
         }
     }
 }
