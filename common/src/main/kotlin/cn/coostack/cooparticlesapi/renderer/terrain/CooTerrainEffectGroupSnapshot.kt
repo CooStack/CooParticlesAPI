@@ -19,7 +19,7 @@ import net.minecraft.resources.ResourceLocation
  * @property sequence 用于确定重叠组的绘制优先顺序，数值越大越新
  * @property revision 用于丢弃乱序网络更新的单调版本号
  */
-internal data class CooTerrainEffectGroupSnapshot(
+data class CooTerrainEffectGroupSnapshot(
     val dimension: ResourceLocation,
     val id: ResourceLocation,
     val pipelineId: ResourceLocation,

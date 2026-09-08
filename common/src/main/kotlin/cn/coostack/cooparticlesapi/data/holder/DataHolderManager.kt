@@ -24,7 +24,7 @@ object DataHolderManager {
 
     fun tick() {
         entities.entries.removeIf {
-            !it.key.isAlive
+            it.key.isRemoved
         }
     }
 

@@ -24,6 +24,8 @@ object ClientRenderSceneResourcesResolver {
         val sceneDepthTextureId = irisSceneDepthTextureId ?: resolvedTargets.sceneDepthTextureId
         val sceneDepthNoHandTextureId = IrisCompat.currentSceneDepthNoHandTexture()?.textureId
             ?: sceneDepthTextureId
+        val finalColorTextureId = IrisCompat.currentFinalPassColorTexture()?.textureId
+            ?: resolvedTargets.sceneColorTextureId
         val resources = mutableListOf(
             RenderSceneResource(
                 id = RenderSceneTargets.MAIN,
@@ -34,14 +36,14 @@ object ClientRenderSceneResourcesResolver {
                 id = RenderSceneTargets.POST,
                 label = resolvedTargets.targetLabel,
                 target = resolvedTargets.finalCompositeTarget,
-                colorTextureId = resolvedTargets.sceneColorTextureId,
+                colorTextureId = finalColorTextureId,
                 depthTextureId = sceneDepthTextureId
             ),
             RenderSceneResource(
                 id = RenderSceneTargets.SCENE_COLOR,
                 label = "${resolvedTargets.targetLabel}:color",
                 target = resolvedTargets.sceneColorTarget,
-                colorTextureId = resolvedTargets.sceneColorTextureId,
+                colorTextureId = finalColorTextureId,
                 depthTextureId = resolvedTargets.sceneColorTarget.depthTextureId
             ),
             RenderSceneResource(

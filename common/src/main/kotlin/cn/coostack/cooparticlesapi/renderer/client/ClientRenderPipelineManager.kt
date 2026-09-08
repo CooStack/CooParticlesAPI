@@ -2,6 +2,7 @@ package cn.coostack.cooparticlesapi.renderer.client
 
 import cn.coostack.cooparticlesapi.CooParticlesAPIClient
 import cn.coostack.cooparticlesapi.CooParticlesConstants
+import cn.coostack.cooparticlesapi.compat.iris.CooIrisRenderState
 import cn.coostack.cooparticlesapi.renderer.backend.RenderBackend
 import cn.coostack.cooparticlesapi.renderer.backend.RenderBackendCapability
 import cn.coostack.cooparticlesapi.renderer.backend.RenderBackendHooks
@@ -134,6 +135,7 @@ object ClientRenderPipelineManager {
      * 示例：`release()`。
      */
     fun release() {
+        CooIrisRenderState.clear()
         initialized = false
         currentFrameContext = null
         frameActive = false
@@ -169,6 +171,7 @@ object ClientRenderPipelineManager {
     fun beginFrame(tickDelta: Float, viewMatrix: Matrix4f, projMatrix: Matrix4f) {
         frameActive = true
         irisShaderPackFrameActive = CooParticlesAPIClient.checkIrisShaderPackUsed()
+        CooIrisRenderState.clearFinalColor()
         scenePostCaptured = false
         scenePostExecuted = false
         CooPipelineRuntimeEffect.beginFrame()
@@ -251,6 +254,7 @@ object ClientRenderPipelineManager {
                 projMatrix
             )
         } finally {
+            CooIrisRenderState.clear()
             currentFrameContext = null
             frameActive = false
             irisShaderPackFrameActive = false
@@ -263,6 +267,7 @@ object ClientRenderPipelineManager {
      * 示例：`endFrame()`。
      */
     fun endFrame() {
+        CooIrisRenderState.clear()
         currentFrameContext = null
         frameActive = false
         irisShaderPackFrameActive = false
@@ -290,10 +295,21 @@ object ClientRenderPipelineManager {
         val resolvedTargets = ClientRenderTargetResolver.resolveCurrentTargets()
         val sceneResources = ClientRenderSceneResourcesResolver.resolveCurrentResources()
         logResolvedTargets(resolvedTargets)
+        val irisFinal = CooIrisRenderState.snapshot().takeIf {
+            irisShaderPackFrameActive && it.finalColorTextureId() > 0 && it.finalColorFramebufferId() > 0
+        }
         val sceneColorTextureId =
-            if (activeBackend.supports(RenderBackendCapability.SCENE_COLOR_COPY)) resolvedTargets.sceneColorTextureId else null
+            if (activeBackend.supports(RenderBackendCapability.SCENE_COLOR_COPY)) {
+                irisFinal?.finalColorTextureId() ?: resolvedTargets.sceneColorTextureId
+            } else {
+                null
+            }
         val sceneDepthTextureId =
-            if (activeBackend.supports(RenderBackendCapability.SCENE_DEPTH_READ)) resolvedTargets.sceneDepthTextureId else null
+            if (activeBackend.supports(RenderBackendCapability.SCENE_DEPTH_READ)) {
+                sceneResources[RenderSceneTargets.SCENE_DEPTH]?.depthTextureId ?: resolvedTargets.sceneDepthTextureId
+            } else {
+                null
+            }
         return RenderFrameContext(
             tickDelta = tickDelta,
             viewMatrix = Matrix4f(viewMatrix),
@@ -303,7 +319,7 @@ object ClientRenderPipelineManager {
             sceneResources = sceneResources,
             sceneColorTextureId = sceneColorTextureId,
             sceneColorFramebufferId = if (activeBackend.supports(RenderBackendCapability.SCENE_COLOR_COPY)) {
-                resolvedTargets.sceneColorFramebufferId
+                irisFinal?.finalColorFramebufferId() ?: resolvedTargets.sceneColorFramebufferId
             } else {
                 null
             },
@@ -314,12 +330,14 @@ object ClientRenderPipelineManager {
                 null
             },
             finalCompositeTarget = resolvedTargets.finalCompositeTarget,
-            finalCompositeFramebufferId = resolvedTargets.finalCompositeFramebufferId,
-            externalFramebuffer = resolvedTargets.externalFramebuffer,
+            finalCompositeFramebufferId = irisFinal?.finalColorFramebufferId()
+                ?: resolvedTargets.finalCompositeFramebufferId,
+            finalCompositeColorTextureId = irisFinal?.finalColorTextureId(),
+            externalFramebuffer = resolvedTargets.externalFramebuffer || irisFinal != null,
             resolvedTargetLabel = resolvedTargets.targetLabel,
             boundFramebufferId = resolvedTargets.boundFramebufferId,
-            targetWidth = resolvedTargets.width,
-            targetHeight = resolvedTargets.height
+            targetWidth = irisFinal?.finalColorWidth() ?: resolvedTargets.width,
+            targetHeight = irisFinal?.finalColorHeight() ?: resolvedTargets.height
         )
     }
 

@@ -9,7 +9,7 @@ package cn.coostack.cooparticlesapi.renderer.terrain
  * @property snapshot 客户端当前持有的效果组快照
  * @property resolved 快照是否已解析出可渲染 Pipeline
  */
-internal data class CooTerrainEffectDebugGroup(
+data class CooTerrainEffectDebugGroup(
     val snapshot: CooTerrainEffectGroupSnapshot,
     val resolved: Boolean
 )

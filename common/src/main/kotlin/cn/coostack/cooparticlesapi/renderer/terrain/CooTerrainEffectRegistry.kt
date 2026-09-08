@@ -19,12 +19,13 @@ import java.util.concurrent.atomic.AtomicLong
  * 每次可见状态变化都会记录受影响位置并推进 [revision]，帧入口随后调用
  * [drainChangedPositions] 触发局部 section 重建。
  */
-internal object CooTerrainEffectRegistry {
+object CooTerrainEffectRegistry {
     private val groups = ConcurrentHashMap<GroupKey, StoredGroup>()
     private val pendingGroups = ConcurrentHashMap<GroupKey, CooTerrainEffectGroupSnapshot>()
     private val configuredPipelines = ConcurrentHashMap<PipelineConfigKey, CooRenderPipeline<BlockState>>()
     private val positionIndex = ConcurrentHashMap<PositionKey, CopyOnWriteArrayList<GroupKey>>()
     private val changedPositions = ConcurrentHashMap.newKeySet<PositionKey>()
+
     /** 保存每个组最后接受的协议 revision，包括近期已删除组的 tombstone。 */
     private val protocolRevisions = ConcurrentHashMap<GroupKey, Long>()
     private val revisionCounter = AtomicLong()
@@ -282,7 +283,12 @@ internal object CooTerrainEffectRegistry {
                     revision = revision
                 )
             )
-            current.snapshot.activations.keys.forEach { position -> changedPositions += PositionKey(dimension, position) }
+            current.snapshot.activations.keys.forEach { position ->
+                changedPositions += PositionKey(
+                    dimension,
+                    position
+                )
+            }
             revisionCounter.incrementAndGet()
             return
         }

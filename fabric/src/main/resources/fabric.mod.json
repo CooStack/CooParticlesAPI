@@ -37,7 +37,8 @@
   "mixins": [
     "${mod_id}.mixins.json",
     "${mod_id}.fabric.mixins.json",
-    "${mod_id}.sodium.mixins.json"
+    "${mod_id}.sodium.mixins.json",
+    "${mod_id}.iris.mixins.json"
   ],
   "accessWidener": "${mod_id}.accesswidener",
   "depends": {

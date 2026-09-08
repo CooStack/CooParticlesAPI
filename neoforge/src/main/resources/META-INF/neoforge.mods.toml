@@ -19,6 +19,8 @@ config = "${mod_id}.mixins.json"
 config = "${mod_id}.neoforge.mixins.json"
 [[mixins]]
 config = "${mod_id}.sodium.mixins.json"
+[[mixins]]
+config = "${mod_id}.iris.mixins.json"
 [[dependencies."${mod_id}"]] #optional
 modId = "neoforge" #mandatory
 type = "required" #mandatory (Can be one of "required", "optional", "incompatible" or "discouraged")

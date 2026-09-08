@@ -310,7 +310,7 @@ object ClientRenderEntityManager {
 
     /** 生成当前阶段的 CParticle 保护蒙版；延迟前景路径不再使用二值 SceneColor 保护。 */
     private fun prepareTerrainCoverage(context: RenderFrameContext, scenePost: Boolean): Boolean {
-        // Terrain Mapping 仅支持原版/无 Iris 的最终 framebuffer；Iris 下不提交 Mapping。
+        // final 后的 coverage 无法保护 shaderpack 扩散到粒子轮廓外的 Bloom。
         if (CooParticlesAPIClient.checkIrisShaderPackUsed()) return false
         if (!CooTerrainPipelineManager.requiresCParticleCoverageMask(scenePost)) return true
         if (CParticleSystemManager.hasDeferredTerrainForeground()) return true
