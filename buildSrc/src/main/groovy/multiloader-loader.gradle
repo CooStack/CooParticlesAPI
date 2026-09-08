@@ -95,7 +95,8 @@ plugins.withId('maven-publish') {
                 getStream?.close()
                 getConnection.disconnect()
 
-                if (getStatus != HttpURLConnection.HTTP_NOT_ACCEPTABLE) {
+                if (getStatus != HttpURLConnection.HTTP_NOT_ACCEPTABLE
+                        && getStatus != HttpURLConnection.HTTP_NOT_FOUND) {
                     if (getStatus >= 400) {
                         throw new GradleException("无法检查 SNAPSHOT metadata：HTTP ${getStatus} ${metadataUrl}")
                     }
