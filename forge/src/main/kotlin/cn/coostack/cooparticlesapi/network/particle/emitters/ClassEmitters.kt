@@ -1,0 +1,342 @@
+package cn.coostack.cooparticlesapi.network.particle.emitters
+
+import cn.coostack.cooparticlesapi.annotations.emitter.handle.ParticleEmittersRegistryHelper
+import cn.coostack.cooparticlesapi.api.controler.Controlable
+import cn.coostack.cooparticlesapi.api.controler.SerializableData
+import cn.coostack.cooparticlesapi.api.controler.Tickable
+import cn.coostack.cooparticlesapi.display.DisplayEntity
+import cn.coostack.cooparticlesapi.extend.lengthCoerceAtMost
+import cn.coostack.cooparticlesapi.network.particle.composition.ParticleComposition
+import cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind.GlobalWindDirection
+import cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind.WindDirection
+import cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind.WindDirections
+import cn.coostack.cooparticlesapi.network.particle.emitters.event.ParticleEventHandler
+import cn.coostack.cooparticlesapi.network.particle.emitters.event.ParticleEventHandlerManager
+import cn.coostack.cooparticlesapi.particles.ControlableParticle
+import cn.coostack.cooparticlesapi.utils.PhysicsUtil
+import cn.coostack.cooparticlesapi.utils.RelativeLocation
+import cn.coostack.cooparticlesapi.utils.interpolator.Interpolator
+import cn.coostack.cooparticlesapi.utils.interpolator.emitters.LineEmitterInterpolator
+import net.minecraft.client.Minecraft
+import net.minecraft.client.multiplayer.ClientLevel
+import net.minecraft.core.BlockPos
+import net.minecraft.core.Direction
+import net.minecraft.network.PacketByteBuf
+import net.minecraft.world.level.Level
+import net.minecraft.world.phys.BlockHitResult
+import net.minecraft.world.phys.Vec3
+import java.util.ArrayList
+import java.util.HashMap
+import java.util.SortedMap
+import java.util.TreeMap
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.max
+
+abstract class ClassEmitters(
+    pos: Vec3,
+    override var world: Level?,
+) : ParticleEmitters {
+    private val posState = dirty(pos)
+    override var pos by posState
+    override var tick: Int = 0
+    override var maxTick: Int = 120
+    override var delay: Int = 0
+    override var uuid: UUID = UUID.randomUUID()
+    override var canceled: Boolean = false
+    override var playing: Boolean = false
+    var airDensity = 0.0
+    var gravity: Double = 0.0
+    val handlerList = ConcurrentHashMap<String, SortedMap<ParticleEventHandler, Boolean>>()
+
+    var enableInterpolator = false
+
+    var emittersInterpolator: Interpolator = LineEmitterInterpolator()
+        .setRefiner(5.0)
+
+    override fun addEventHandler(handler: ParticleEventHandler, innerClass: Boolean) {
+        val handlerID = handler.getHandlerID()
+        if (!ParticleEventHandlerManager.hasRegister(handlerID)) {
+            ParticleEventHandlerManager.register(handler)
+        }
+        val eventID = handler.getTargetEventID()
+        val list = handlerList.getOrPut(eventID) { TreeMap() }
+        list[handler] = innerClass
+    }
+
+    private fun addEventHandlerList(list: MutableList<ParticleEventHandler>) {
+        val dirtyLists = HashMap<String, MutableList<ParticleEventHandler>>()
+        list.forEach { handler ->
+            val handlerID = handler.getHandlerID()
+            if (!ParticleEventHandlerManager.hasRegister(handlerID)) {
+                ParticleEventHandlerManager.register(handler)
+            }
+            val eventID = handler.getTargetEventID()
+            val handlers = handlerList.getOrPut(eventID) { TreeMap() }
+            handlers[handler] = false
+        }
+        dirtyLists.forEach {
+            it.value.sortBy { h -> h.getPriority() }
+        }
+    }
+
+    private fun collectEventHandles(): List<ParticleEventHandler> {
+        return handlerList.flatMap {
+            it.value.filter { item -> !item.value }.keys
+        }
+    }
+
+    companion object {
+        fun encodeBase(data: ClassEmitters, buf: PacketByteBuf) {
+            val handles = data.collectEventHandles()
+            buf.writeInt(handles.size)
+            handles.forEach {
+                buf.writeUtf(it.getHandlerID())
+            }
+            buf.writeVec3(data.pos)
+            buf.writeInt(data.tick)
+            buf.writeInt(data.maxTick)
+            buf.writeInt(data.delay)
+            buf.writeUUID(data.uuid)
+            buf.writeBoolean(data.canceled)
+            buf.writeBoolean(data.playing)
+            buf.writeDouble(data.gravity)
+            buf.writeDouble(data.airDensity)
+            buf.writeDouble(data.mass)
+            buf.writeBoolean(data.enableInterpolator)
+            buf.writeDouble(data.emittersInterpolator.refinerCount)
+            buf.writeUtf(data.wind.getID())
+            data.wind.getCodec().encode(buf, data.wind)
+        }
+
+        fun decodeBase(container: ClassEmitters, buf: PacketByteBuf) {
+            val handlerCount = buf.readInt()
+            val handlers = ArrayList<ParticleEventHandler>()
+            repeat(handlerCount) {
+                val handleID = buf.readUtf()
+                val handler = ParticleEventHandlerManager.getHandlerById(handleID)!!
+                handlers.add(handler)
+            }
+            container.addEventHandlerList(handlers)
+
+            val pos = buf.readVec3()
+            val tick = buf.readInt()
+            val maxTick = buf.readInt()
+            val delay = buf.readInt()
+            val uuid = buf.readUUID()
+            val canceled = buf.readBoolean()
+            val playing = buf.readBoolean()
+            val gravity = buf.readDouble()
+            val airDensity = buf.readDouble()
+            val mass = buf.readDouble()
+            val enableInterpolator = buf.readBoolean()
+            val interpolatorCount = buf.readDouble()
+            val windID = buf.readUtf()
+            val wind = WindDirections.getCodecFromID(windID).decode(buf)
+            container.apply {
+                this.posState.setCodecValue(pos)
+                this.tick = tick
+                this.maxTick = maxTick
+                this.delay = delay
+                this.uuid = uuid
+                this.canceled = canceled
+                this.playing = playing
+                this.gravity = gravity
+                this.airDensity = airDensity
+                this.mass = mass
+                this.wind = wind
+                this.enableInterpolator = enableInterpolator
+                this.emittersInterpolator.setRefiner(interpolatorCount)
+            }
+        }
+    }
+
+    var wind: WindDirection = GlobalWindDirection(Vec3.ZERO).also {
+        it.loadEmitters(this)
+    }
+
+    var mass: Double = 1.0
+
+    override fun start() {
+        if (playing) return
+        playing = true
+        if (enableInterpolator) {
+            emittersInterpolator.insertPoint(pos)
+        }
+    }
+
+    override fun stop() {
+        canceled = true
+    }
+
+    override fun tick() {
+        if (canceled || !playing) return
+        world ?: return
+        doTick()
+        if (!world!!.isClientSide) {
+            increaseTick()
+            return
+        }
+
+        if (enableInterpolator) {
+            emittersInterpolator.insertPoint(pos)
+        }
+
+        if (tick % max(1, delay) == 0) {
+            if (enableInterpolator) {
+                val res = emittersInterpolator.getRefinedResult()
+                val count = res.size
+                res.forEachIndexed { index, relative ->
+                    val current = relative.toVector()
+                    val lerpProgress = index / (count - 1f)
+                    doSubtick(current, lerpProgress)
+                    spawnParticle(current, lerpProgress)
+                }
+            } else {
+                spawnParticle(pos, 1f)
+            }
+        }
+        increaseTick()
+    }
+
+    private fun increaseTick() {
+        if (++tick >= maxTick && maxTick != -1) {
+            stop()
+        }
+    }
+
+    override fun spawnParticle(pos: Vec3, lerpProgress: Float) {
+        if (!world!!.isClientSide) return
+        val spawnWorld = world as ClientLevel
+        val controls = genControls(lerpProgress)
+        val total = controls.size.coerceAtLeast(1).toFloat()
+        var spawnedCount = 0f
+        controls.forEach { (data, relative) ->
+            spawnedCount++
+            val spawnPos = pos.add(relative.toVector())
+            val particleLerpProgress = spawnedCount / total
+            if (!isVisibleToClient(data, spawnPos)) {
+                return@forEach
+            }
+            val control = data.createControler(
+                spawnWorld,
+                spawnPos,
+                particleLerpProgress,
+                lerpProgress
+            )
+            val displayed = data.getDisplayer().display(spawnPos, spawnWorld) ?: control
+            singleControlableAction(
+                displayed,
+                data,
+                RelativeLocation.of(spawnPos),
+                spawnWorld,
+                particleLerpProgress,
+                lerpProgress
+            )
+            bindControlerMotion(displayed, data, spawnWorld)
+        }
+    }
+
+    protected open fun resolveVisibleRange(data: SerializableData): Float {
+        return when (data) {
+            is ControlableParticleData -> data.visibleRange
+            is DisplayEntityEmittersData -> data.visibleRange
+            else -> -1f
+        }
+    }
+
+    private fun isVisibleToClient(data: SerializableData, spawnPos: Vec3): Boolean {
+        val visibleRange = resolveVisibleRange(data)
+        if (visibleRange < 0f) {
+            return true
+        }
+        val player = Minecraft.getInstance().player ?: return false
+        return player.position().distanceTo(spawnPos) <= visibleRange
+    }
+
+    abstract fun doTick()
+
+    abstract fun genControls(lerpProgress: Float): List<Pair<SerializableData, RelativeLocation>>
+
+    protected open fun doSubtick(current: Vec3, lerpProgress: Float) {}
+
+    abstract fun singleControlableAction(
+        controler: Controlable<*>,
+        data: SerializableData,
+        spawnPos: RelativeLocation,
+        spawnWorld: Level,
+        particleLerpProgress: Float,
+        posLerpProgress: Float,
+    )
+
+    protected open fun moveSingleControler(
+        controler: Controlable<*>,
+        data: SerializableData,
+        to: Vec3,
+        collide: BlockHitResult
+    ) {
+        controler.teleportTo(to)
+    }
+
+    protected open fun resolveControlerPos(
+        controler: Controlable<*>,
+        data: SerializableData
+    ): Vec3? {
+        val value = runCatching { controler.getControlObject() }.getOrNull() ?: return null
+        return when (value) {
+            is ControlableParticle -> value.loc
+            is ParticleComposition -> value.position
+            is DisplayEntity -> value.pos
+            else -> null
+        }
+    }
+
+    protected open fun resolveControlerVelocity(
+        controler: Controlable<*>,
+        data: SerializableData
+    ): Vec3 {
+        if (data is ControlableParticleData) {
+            data.velocity = data.velocity.lengthCoerceAtMost(data.speedLimit)
+            return data.velocity
+        }
+        return Vec3.ZERO
+    }
+
+    private fun bindControlerMotion(
+        controler: Controlable<*>,
+        data: SerializableData,
+        spawnWorld: ClientLevel
+    ) {
+        val tickable = controler as? Tickable<*> ?: return
+        @Suppress("UNCHECKED_CAST")
+        (tickable as Tickable<Any>).addPreTickAction {
+            val current = resolveControlerPos(controler, data) ?: return@addPreTickAction
+            val velocity = resolveControlerVelocity(controler, data)
+            if (velocity.lengthSqr() <= 0.001) {
+                return@addPreTickAction
+            }
+            val to = current.add(velocity)
+            val collide = if (velocity.length() <= 200) {
+                PhysicsUtil.collide(current, velocity, spawnWorld)
+            } else {
+                BlockHitResult.miss(current, Direction.UP, BlockPos.containing(current))
+            }
+            moveSingleControler(controler, data, to, collide)
+        }
+    }
+
+    override fun update(emitters: ParticleEmitters) {
+        if (emitters !is ClassEmitters) return
+        this.posState.setCodecValue(emitters.pos)
+        this.world = emitters.world
+        this.tick = emitters.tick
+        this.maxTick = emitters.maxTick
+        this.delay = emitters.delay
+        this.uuid = emitters.uuid
+        this.canceled = emitters.canceled
+        this.playing = emitters.playing
+        this.handlerList.putAll(emitters.handlerList)
+        this.emittersInterpolator.setRefiner(emitters.emittersInterpolator.refinerCount)
+        ParticleEmittersRegistryHelper.updateEmitter(this, emitters)
+    }
+}

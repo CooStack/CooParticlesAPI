@@ -3,16 +3,16 @@ package cn.coostack.cooparticlesapi.data.holder
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
 import cn.coostack.cooparticlesapi.annotations.codec.CodecHelper
+import cn.coostack.cooparticlesapi.annotations.codec.CommonStreamCodec
 import cn.coostack.cooparticlesapi.network.packet.server.PacketDataHolderS2C
 import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
 import cn.coostack.cooparticlesapi.reflect.SimpleClassInfo
-import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.entity.Entity
 import java.util.concurrent.ConcurrentHashMap
 
 object DataHolderManager {
     val entities = ConcurrentHashMap<Entity, DataHolder>()
-    private val registeredTypes = ConcurrentHashMap<String, StreamCodec<*, *>>()
+    private val registeredTypes = ConcurrentHashMap<String, CommonStreamCodec<*>>()
 
     fun getOrCreate(entity: Entity): DataHolder {
         return entities.getOrPut(entity) { DataHolder(entity) }
@@ -33,11 +33,11 @@ object DataHolderManager {
         registeredTypes[randomInstance::class.java.name] = codec
     }
 
-    fun register(type: Class<*>, codec: StreamCodec<*, *>) {
+    fun register(type: Class<*>, codec: CommonStreamCodec<*>) {
         registeredTypes[type.name] = codec
     }
 
-    fun getCodecFromID(id: String): StreamCodec<*, *>? {
+    fun getCodecFromID(id: String): CommonStreamCodec<*>? {
         return registeredTypes[id] ?: CodecHelper.supposedTypes[id]
     }
 
@@ -63,7 +63,7 @@ object DataHolderManager {
         register(instance)
     }
 
-    private fun findCodec(instance: Any): StreamCodec<*, *> {
+    private fun findCodec(instance: Any): CommonStreamCodec<*> {
         val codec = CodecHelper.supposedTypes[instance::class.java.name]
         return codec
             ?: throw IllegalStateException("DataHolder codec not registered for type: ${instance::class.java.name}")

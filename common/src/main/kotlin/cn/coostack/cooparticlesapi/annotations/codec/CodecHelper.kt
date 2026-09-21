@@ -38,10 +38,8 @@ import cn.coostack.cooparticlesapi.utils.interpolator.data.InterpolatorRelativeL
 import com.mojang.serialization.Codec
 import net.minecraft.core.BlockPos
 import net.minecraft.core.registries.BuiltInRegistries
-import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.ByteBufCodecs
-import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.state.BlockState
@@ -58,7 +56,7 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 object CodecHelper {
-    val supposedTypes = ConcurrentHashMap<String, StreamCodec<out FriendlyByteBuf, *>>()
+    val supposedTypes = ConcurrentHashMap<String, CommonStreamCodec<*>>()
 
     /**
      * 记录只能由 [RegistryFriendlyByteBuf] 驱动的 codec 类型。
@@ -70,19 +68,19 @@ object CodecHelper {
 
     init {
         CodecHelperJava.init()
-        register(Short::class.java, StreamCodec.of({ buf, i -> buf.writeShort(i.toInt()) }, { it.readShort() }))
-        register(Int::class.java, StreamCodec.of({ buf, i -> buf.writeInt(i) }, { it.readInt() }))
-        register(Long::class.java, StreamCodec.of({ buf, i -> buf.writeLong(i) }, { it.readLong() }))
-        register(LongArray::class.java, StreamCodec.of({ buf, i -> buf.writeLongArray(i) }, { it.readLongArray() }))
-        register(Float::class.java, StreamCodec.of({ buf, i -> buf.writeFloat(i) }, { it.readFloat() }))
-        register(Double::class.java, StreamCodec.of({ buf, i -> buf.writeDouble(i) }, { it.readDouble() }))
-        register(String::class.java, StreamCodec.of({ buf, i -> buf.writeUtf(i) }, { it.readUtf() }))
-        register(Byte::class.java, StreamCodec.of({ buf, i -> buf.writeByte(i.toInt()) }, { it.readByte() }))
-        register(Boolean::class.java, StreamCodec.of({ buf, i -> buf.writeBoolean(i) }, { it.readBoolean() }))
-        register(ByteArray::class.java, StreamCodec.of({ buf, i -> buf.writeByteArray(i) }, { it.readByteArray() }))
+        register(Short::class.java, CommonStreamCodec.of({ buf, i -> buf.writeShort(i.toInt()) }, { it.readShort() }))
+        register(Int::class.java, CommonStreamCodec.of({ buf, i -> buf.writeInt(i) }, { it.readInt() }))
+        register(Long::class.java, CommonStreamCodec.of({ buf, i -> buf.writeLong(i) }, { it.readLong() }))
+        register(LongArray::class.java, CommonStreamCodec.of({ buf, i -> buf.writeLongArray(i) }, { it.readLongArray() }))
+        register(Float::class.java, CommonStreamCodec.of({ buf, i -> buf.writeFloat(i) }, { it.readFloat() }))
+        register(Double::class.java, CommonStreamCodec.of({ buf, i -> buf.writeDouble(i) }, { it.readDouble() }))
+        register(String::class.java, CommonStreamCodec.of({ buf, i -> buf.writeUtf(i) }, { it.readUtf() }))
+        register(Byte::class.java, CommonStreamCodec.of({ buf, i -> buf.writeByte(i.toInt()) }, { it.readByte() }))
+        register(Boolean::class.java, CommonStreamCodec.of({ buf, i -> buf.writeBoolean(i) }, { it.readBoolean() }))
+        register(ByteArray::class.java, CommonStreamCodec.of({ buf, i -> buf.writeByteArray(i) }, { it.readByteArray() }))
         register(CooUniformValue::class.java, CooUniformValue.STREAM_CODEC)
-        register(Char::class.java, StreamCodec.of({ buf, i -> buf.writeChar(i.code) }, { it.readChar() }))
-        register(UUID::class.java, StreamCodec.of({ buf, i -> buf.writeUUID(i) }, { it.readUUID() }))
+        register(Char::class.java, CommonStreamCodec.of({ buf, i -> buf.writeChar(i.code) }, { it.readChar() }))
+        register(UUID::class.java, CommonStreamCodec.of({ buf, i -> buf.writeUUID(i) }, { it.readUUID() }))
         registerRegistry(ControlableParticleData::class.java, ControlableParticleData.PACKET_CODEC)
         registerRegistry(ControlableCParticleData::class.java, ControlableCParticleData.PACKET_CODEC)
         registerRegistry(CParticleTextureSource::class.java, CParticleTextureSource.STREAM_CODEC)
@@ -90,7 +88,7 @@ object CodecHelper {
         register(CParticleColorCurve::class.java, CParticleColorCurve.STREAM_CODEC)
         register(
             CParticleUpdateMode::class.java,
-            StreamCodec.of(
+            CommonStreamCodec.of(
                 { buf, mode -> buf.writeByte(mode.ordinal) },
                 { buf ->
                     val ordinal = buf.readUnsignedByte().toInt()
@@ -103,8 +101,8 @@ object CodecHelper {
         )
         registerRegistry(CompositionEmittersData::class.java, CompositionEmittersData.PACKET_CODEC)
         registerRegistry(DisplayEntityEmittersData::class.java, DisplayEntityEmittersData.PACKET_CODEC)
-        register(Vector3f::class.java, StreamCodec.of({ buf, i -> buf.writeVector3f(i) }, { it.readVector3f() }))
-        register(Vector4f::class.java, StreamCodec.of({ buf, v ->
+        register(Vector3f::class.java, CommonStreamCodec.of({ buf, i -> buf.writeVector3f(i) }, { it.readVector3f() }))
+        register(Vector4f::class.java, CommonStreamCodec.of({ buf, v ->
             buf.writeFloat(v.x)
             buf.writeFloat(v.y)
             buf.writeFloat(v.z)
@@ -112,15 +110,15 @@ object CodecHelper {
         }, {
             Vector4f(it.readFloat(), it.readFloat(), it.readFloat(), it.readFloat())
         }))
-        register(Vec2::class.java, StreamCodec.of({ buf, i ->
+        register(Vec2::class.java, CommonStreamCodec.of({ buf, i ->
             buf.writeFloat(i.x)
             buf.writeFloat(i.y)
         }, {
             Vec2(it.readFloat(), it.readFloat())
         }))
-        register(Vec3::class.java, StreamCodec.of({ buf, i -> buf.writeVec3(i) }, { it.readVec3() }))
-        register(Quaternionf::class.java, StreamCodec.of({ buf, q -> buf.writeQuaternion(q) }, { it.readQuaternion() }))
-        register(AABB::class.java, StreamCodec.of({ buf, i ->
+        register(Vec3::class.java, CommonStreamCodec.of({ buf, i -> buf.writeVec3(i) }, { it.readVec3() }))
+        register(Quaternionf::class.java, CommonStreamCodec.of({ buf, q -> buf.writeQuaternion(q) }, { it.readQuaternion() }))
+        register(AABB::class.java, CommonStreamCodec.of({ buf, i ->
             buf.writeDouble(i.minX)
             buf.writeDouble(i.minY)
             buf.writeDouble(i.minZ)
@@ -130,7 +128,7 @@ object CodecHelper {
         }, {
             AABB(it.readDouble(), it.readDouble(), it.readDouble(), it.readDouble(), it.readDouble(), it.readDouble())
         }))
-        register(HitBox::class.java, StreamCodec.of({ buf, i ->
+        register(HitBox::class.java, CommonStreamCodec.of({ buf, i ->
             buf.writeDouble(i.x1)
             buf.writeDouble(i.y1)
             buf.writeDouble(i.z1)
@@ -142,7 +140,7 @@ object CodecHelper {
         }))
         registerRegistry(ItemStack::class.java, ItemStack.OPTIONAL_STREAM_CODEC)
         register(SimpleRandomParticleData::class.java, SimpleRandomParticleData.PACKET_CODEC)
-        register(RelativeLocation::class.java, StreamCodec.of({ buf, r ->
+        register(RelativeLocation::class.java, CommonStreamCodec.of({ buf, r ->
             buf.apply {
                 writeDouble(r.x)
                 writeDouble(r.y)
@@ -158,29 +156,29 @@ object CodecHelper {
         register(InterpolatorRelativeLocation::class.java, InterpolatorRelativeLocation.CODEC)
         register(
             DoubleRangeData::class.java,
-            StreamCodec.of({ buf, i -> buf.writeDouble(i.min); buf.writeDouble(i.max) }, {
+            CommonStreamCodec.of({ buf, i -> buf.writeDouble(i.min); buf.writeDouble(i.max) }, {
                 DoubleRangeData(it.readDouble(), it.readDouble())
             })
         )
         register(
             IntRangeData::class.java,
-            StreamCodec.of({ buf, i -> buf.writeInt(i.min); buf.writeInt(i.max) }, {
+            CommonStreamCodec.of({ buf, i -> buf.writeInt(i.min); buf.writeInt(i.max) }, {
                 IntRangeData(it.readInt(), it.readInt())
             })
         )
         register(
             FloatRangeData::class.java,
-            StreamCodec.of({ buf, i -> buf.writeFloat(i.min); buf.writeFloat(i.max) }, {
+            CommonStreamCodec.of({ buf, i -> buf.writeFloat(i.min); buf.writeFloat(i.max) }, {
                 FloatRangeData(it.readFloat(), it.readFloat())
             })
         )
         register(
             BlockPos::class.java,
-            StreamCodec.of(BlockPos.STREAM_CODEC::encode, BlockPos.STREAM_CODEC::decode)
+            CommonStreamCodec.of({ buf, pos -> buf.writeBlockPos(pos) }, { buf -> buf.readBlockPos() })
         )
         register(
             BlockState::class.java,
-            StreamCodec.of({ buf, s ->
+            CommonStreamCodec.of({ buf, s ->
                 ByteBufCodecs.idMapper(Block.BLOCK_STATE_REGISTRY)
                     .encode(buf, s)
             }, { buf ->
@@ -190,7 +188,7 @@ object CodecHelper {
         )
         register(
             ValueConstTimeAnimator::class.java,
-            StreamCodec.of({ buf, i ->
+            CommonStreamCodec.of({ buf, i ->
                 buf.writeInt(i.durationTick)
                 buf.writeDouble(i.targetNum.toDouble())
                 buf.writeDouble(i.current.toDouble())
@@ -201,7 +199,7 @@ object CodecHelper {
         )
         register(
             ValueConstSpeedAnimator::class.java,
-            StreamCodec.of({ buf, i ->
+            CommonStreamCodec.of({ buf, i ->
                 buf.writeDouble(i.speed.toDouble())
                 buf.writeDouble(i.targetNum.toDouble())
                 buf.writeDouble(i.current.toDouble())
@@ -212,7 +210,7 @@ object CodecHelper {
         )
         register(
             DoubleConstTimeAnimator::class.java,
-            StreamCodec.of({ buf, i ->
+            CommonStreamCodec.of({ buf, i ->
                 buf.writeInt(i.durationTick)
                 buf.writeDouble(i.targetNum)
                 buf.writeDouble(i.current)
@@ -223,7 +221,7 @@ object CodecHelper {
         )
         register(
             FloatConstTimeAnimator::class.java,
-            StreamCodec.of({ buf, i ->
+            CommonStreamCodec.of({ buf, i ->
                 buf.writeInt(i.durationTick)
                 buf.writeFloat(i.targetNum)
                 buf.writeFloat(i.current)
@@ -234,7 +232,7 @@ object CodecHelper {
         )
         register(
             IntConstTimeAnimator::class.java,
-            StreamCodec.of({ buf, i ->
+            CommonStreamCodec.of({ buf, i ->
                 buf.writeInt(i.durationTick)
                 buf.writeInt(i.targetNum)
                 buf.writeDouble(i.currentRaw)
@@ -245,7 +243,7 @@ object CodecHelper {
         )
         register(
             Vec3ConstTimeAnimator::class.java,
-            StreamCodec.of({ buf, i ->
+            CommonStreamCodec.of({ buf, i ->
                 buf.writeInt(i.durationTick)
                 buf.writeVec3(i.targetNum)
                 buf.writeVec3(i.current)
@@ -256,7 +254,7 @@ object CodecHelper {
         )
         register(
             RelativeLocationConstTimeAnimator::class.java,
-            StreamCodec.of({ buf, i ->
+            CommonStreamCodec.of({ buf, i ->
                 buf.writeInt(i.durationTick)
                 buf.writeDouble(i.targetNum.x)
                 buf.writeDouble(i.targetNum.y)
@@ -273,7 +271,7 @@ object CodecHelper {
         )
         register(
             Vector3fConstTimeAnimator::class.java,
-            StreamCodec.of({ buf, i ->
+            CommonStreamCodec.of({ buf, i ->
                 buf.writeInt(i.durationTick)
                 buf.writeVector3f(i.targetNum)
                 buf.writeVector3f(i.current)
@@ -284,7 +282,7 @@ object CodecHelper {
         )
         register(
             DoubleConstSpeedAnimator::class.java,
-            StreamCodec.of({ buf, i ->
+            CommonStreamCodec.of({ buf, i ->
                 buf.writeDouble(i.speed)
                 buf.writeDouble(i.targetNum)
                 buf.writeDouble(i.current)
@@ -295,7 +293,7 @@ object CodecHelper {
         )
         register(
             FloatConstSpeedAnimator::class.java,
-            StreamCodec.of({ buf, i ->
+            CommonStreamCodec.of({ buf, i ->
                 buf.writeFloat(i.speed)
                 buf.writeFloat(i.targetNum)
                 buf.writeFloat(i.current)
@@ -306,7 +304,7 @@ object CodecHelper {
         )
         register(
             IntConstSpeedAnimator::class.java,
-            StreamCodec.of({ buf, i ->
+            CommonStreamCodec.of({ buf, i ->
                 buf.writeInt(i.speed)
                 buf.writeInt(i.targetNum)
                 buf.writeDouble(i.currentRaw)
@@ -317,7 +315,7 @@ object CodecHelper {
         )
         register(
             Vec3ConstSpeedAnimator::class.java,
-            StreamCodec.of({ buf, i ->
+            CommonStreamCodec.of({ buf, i ->
                 buf.writeDouble(i.speed)
                 buf.writeVec3(i.targetNum)
                 buf.writeVec3(i.current)
@@ -328,7 +326,7 @@ object CodecHelper {
         )
         register(
             RelativeLocationConstSpeedAnimator::class.java,
-            StreamCodec.of({ buf, i ->
+            CommonStreamCodec.of({ buf, i ->
                 buf.writeDouble(i.speed)
                 buf.writeDouble(i.targetNum.x)
                 buf.writeDouble(i.targetNum.y)
@@ -345,7 +343,7 @@ object CodecHelper {
         )
         register(
             Vector3fConstSpeedAnimator::class.java,
-            StreamCodec.of({ buf, i ->
+            CommonStreamCodec.of({ buf, i ->
                 buf.writeDouble(i.speed)
                 buf.writeVector3f(i.targetNum)
                 buf.writeVector3f(i.current)
@@ -379,7 +377,7 @@ object CodecHelper {
      * @param codec 他的编解码器
      */
     @JvmStatic
-    fun <T> register(type: Class<T>, codec: StreamCodec<out FriendlyByteBuf, T>) {
+    fun <T> register(type: Class<T>, codec: CommonStreamCodec<T>) {
         supposedTypes[type.name] = codec
         registryRequiredTypes.remove(type.name)
     }
@@ -397,7 +395,7 @@ object CodecHelper {
     @JvmStatic
     fun <T> registerRegistry(
         type: Class<T>,
-        codec: StreamCodec<RegistryFriendlyByteBuf, T>,
+        codec: CommonStreamCodec<T>,
     ) {
         supposedTypes[type.name] = codec
         registryRequiredTypes.add(type.name)
@@ -409,7 +407,7 @@ object CodecHelper {
      * @param type
      */
 
-    fun codecOf(type: Type): StreamCodec<out FriendlyByteBuf, *> {
+    fun codecOf(type: Type): CommonStreamCodec<*> {
         val codecType = normalizeCodecType(type)
 
         if (codecType is Class<*>) {
@@ -450,11 +448,11 @@ object CodecHelper {
      * @return 接受 [RegistryFriendlyByteBuf] 的字段 codec
      */
     @Suppress("UNCHECKED_CAST")
-    fun registryCodecOf(type: Type): StreamCodec<RegistryFriendlyByteBuf, *> {
+    fun registryCodecOf(type: Type): CommonStreamCodec<*> {
         val codecType = normalizeCodecType(type)
 
         if (codecType is Class<*>) {
-            return supposedTypes[codecType.name] as? StreamCodec<RegistryFriendlyByteBuf, *>
+            return supposedTypes[codecType.name] as? CommonStreamCodec<*>
                 ?: throw IllegalArgumentException("不支持的类型: ${codecType.name}")
         }
 
@@ -492,15 +490,15 @@ object CodecHelper {
     }
 
     @Suppress("UNCHECKED_CAST")
-    fun codecList(type: Type): StreamCodec<out FriendlyByteBuf, *> {
+    fun codecList(type: Type): CommonStreamCodec<*> {
         if (type !is ParameterizedType) {
             throw IllegalArgumentException("List字段必须声明具体泛型: $type")
         }
 
         val elementType = type.actualTypeArguments[0]
-        val elementCodec = codecOf(elementType) as StreamCodec<FriendlyByteBuf, Any>
+        val elementCodec = codecOf(elementType) as CommonStreamCodec<Any>
 
-        return StreamCodec.of<FriendlyByteBuf, List<*>>(
+        return CommonStreamCodec.of({ buf, value ->
             { buf, value ->
                 buf.writeVarInt(value.size)
                 value.forEach { element ->
@@ -519,15 +517,15 @@ object CodecHelper {
     }
 
     @Suppress("UNCHECKED_CAST")
-    fun codecSet(type: Type): StreamCodec<out FriendlyByteBuf, *> {
+    fun codecSet(type: Type): CommonStreamCodec<*> {
         if (type !is ParameterizedType) {
             throw IllegalArgumentException("Set字段必须声明具体泛型: $type")
         }
 
         val elementType = type.actualTypeArguments[0]
-        val elementCodec = codecOf(elementType) as StreamCodec<FriendlyByteBuf, Any>
+        val elementCodec = codecOf(elementType) as CommonStreamCodec<Any>
 
-        return StreamCodec.of<FriendlyByteBuf, Set<*>>(
+        return CommonStreamCodec.of({ buf, value ->
             { buf, value ->
                 buf.writeVarInt(value.size)
                 value.forEach { element ->
@@ -546,17 +544,17 @@ object CodecHelper {
     }
 
     @Suppress("UNCHECKED_CAST")
-    fun codecMap(type: Type): StreamCodec<out FriendlyByteBuf, *> {
+    fun codecMap(type: Type): CommonStreamCodec<*> {
         if (type !is ParameterizedType) {
             throw IllegalArgumentException("Map字段必须声明具体泛型: $type")
         }
 
         val keyType = type.actualTypeArguments[0]
         val valueType = type.actualTypeArguments[1]
-        val keyCodec = codecOf(keyType) as StreamCodec<FriendlyByteBuf, Any>
-        val valueCodec = codecOf(valueType) as StreamCodec<FriendlyByteBuf, Any>
+        val keyCodec = codecOf(keyType) as CommonStreamCodec<Any>
+        val valueCodec = codecOf(valueType) as CommonStreamCodec<Any>
 
-        return StreamCodec.of<FriendlyByteBuf, Map<*, *>>(
+        return CommonStreamCodec.of({ buf, value ->
             { buf, value ->
                 buf.writeVarInt(value.size)
                 value.forEach { (key, mapValue) ->
@@ -585,10 +583,10 @@ object CodecHelper {
      * @return registry-aware List codec
      */
     @Suppress("UNCHECKED_CAST")
-    private fun registryCodecList(type: ParameterizedType): StreamCodec<RegistryFriendlyByteBuf, *> {
+    private fun registryCodecList(type: ParameterizedType): CommonStreamCodec<*> {
         val elementCodec = registryCodecOf(type.actualTypeArguments[0]) as
-                StreamCodec<RegistryFriendlyByteBuf, Any>
-        return StreamCodec.of<RegistryFriendlyByteBuf, List<*>>(
+                CommonStreamCodec<Any>
+        return CommonStreamCodec.of({ buf, value ->
             { buf, value ->
                 buf.writeVarInt(value.size)
                 value.forEach { element ->
@@ -612,10 +610,10 @@ object CodecHelper {
      * @return registry-aware Set codec
      */
     @Suppress("UNCHECKED_CAST")
-    private fun registryCodecSet(type: ParameterizedType): StreamCodec<RegistryFriendlyByteBuf, *> {
+    private fun registryCodecSet(type: ParameterizedType): CommonStreamCodec<*> {
         val elementCodec = registryCodecOf(type.actualTypeArguments[0]) as
-                StreamCodec<RegistryFriendlyByteBuf, Any>
-        return StreamCodec.of<RegistryFriendlyByteBuf, Set<*>>(
+                CommonStreamCodec<Any>
+        return CommonStreamCodec.of({ buf, value ->
             { buf, value ->
                 buf.writeVarInt(value.size)
                 value.forEach { element ->
@@ -641,12 +639,12 @@ object CodecHelper {
      * @return registry-aware Map codec
      */
     @Suppress("UNCHECKED_CAST")
-    private fun registryCodecMap(type: ParameterizedType): StreamCodec<RegistryFriendlyByteBuf, *> {
+    private fun registryCodecMap(type: ParameterizedType): CommonStreamCodec<*> {
         val keyCodec = registryCodecOf(type.actualTypeArguments[0]) as
-                StreamCodec<RegistryFriendlyByteBuf, Any>
+                CommonStreamCodec<Any>
         val valueCodec = registryCodecOf(type.actualTypeArguments[1]) as
-                StreamCodec<RegistryFriendlyByteBuf, Any>
-        return StreamCodec.of<RegistryFriendlyByteBuf, Map<*, *>>(
+                CommonStreamCodec<Any>
+        return CommonStreamCodec.of({ buf, value ->
             { buf, value ->
                 buf.writeVarInt(value.size)
                 value.forEach { (key, mapValue) ->

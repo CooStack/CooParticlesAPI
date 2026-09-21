@@ -5,6 +5,8 @@ import cn.coostack.cooparticlesapi.cparticle.CParticleCapabilities
 import cn.coostack.cooparticlesapi.cparticle.collision.CParticleBlockCollisionGrid
 import cn.coostack.cooparticlesapi.cparticle.force.CParticleForceResourceTable
 import cn.coostack.cooparticlesapi.cparticle.force.CParticleForce
+import cn.coostack.cooparticlesapi.cparticle.force.CParticleTextureResource
+import cn.coostack.cooparticlesapi.cparticle.force.CParticleFluidResource
 import cn.coostack.cooparticlesapi.cparticle.force.ForceCommand
 import cn.coostack.cooparticlesapi.renderer.shader.AdvancedShaderProgramBuilder
 import cn.coostack.cooparticlesapi.renderer.shader.ShaderProgramRegistry
@@ -180,8 +182,8 @@ object CParticleGpuSimulator {
             "[cparticle] ${if (useLegacy) "legacy Force" else "Force Command"} GPU compute program 无效，拒绝回退 CPU"
         }
 
-        val textureBindings = if (useLegacy) emptyList() else system.forceResourceTable.textureBindings()
-        val fluidBindings = if (useLegacy) emptyList() else system.forceResourceTable.fluidBindings()
+        val textureBindings = if (useLegacy) emptyList<CParticleTextureResource>() else system.forceResourceTable.textureBindings()
+        val fluidBindings = if (useLegacy) emptyList<CParticleFluidResource>() else system.forceResourceTable.fluidBindings()
         var dispatched = false
         try {
             compute.useOnContext {

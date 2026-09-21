@@ -417,16 +417,18 @@ object CParticleEmitterBridge {
             val base = index * ForceCommand.STRIDE
             when (val force = command.force) {
                 is CParticleForce.Texture -> {
-                    val slot = textureSlots.getOrPut(force.resource) {
-                        resources.add(force.resource)
+                    val resource = force.resource
+                    val slot = textureSlots.getOrPut(resource) {
+                        resources.add(resource)
                         textureSlots.size
                     }
                     command.pack(packed, base, origin, slot)
                 }
 
                 is CParticleForce.FluidFlow -> {
-                    val slot = fluidSlots.getOrPut(force.resource) {
-                        resources.add(force.resource)
+                    val resource = force.resource
+                    val slot = fluidSlots.getOrPut(resource) {
+                        resources.add(resource)
                         fluidSlots.size
                     }
                     command.pack(packed, base, origin, slot)

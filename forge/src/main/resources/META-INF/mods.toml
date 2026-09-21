@@ -1,0 +1,26 @@
+modLoader="javafml"
+loaderVersion="[46,)"
+license="GPL-3.0"
+
+[[mods]]
+modId="cooparticlesapi"
+version="${file.jarVersion}"
+displayName="CooParticlesAPI"
+authors="CooStack"
+description='''
+CooParticlesAPI made by CooStack
+'''
+
+[[dependencies.cooparticlesapi]]
+modId="forge"
+mandatory=true
+versionRange="[46,)"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.cooparticlesapi]]
+modId="minecraft"
+mandatory=true
+versionRange="[1.20.1,1.21)"
+ordering="NONE"
+side="BOTH"

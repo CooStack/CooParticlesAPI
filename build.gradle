@@ -59,11 +59,13 @@ subprojects {
             inputs.file "../gradle.properties"
     }
     afterEvaluate {
-        tasks.named("sourcesJar") {
-            duplicatesStrategy = DuplicatesStrategy.INCLUDE
+        def sourcesJar = tasks.findByName("sourcesJar")
+        if (sourcesJar != null) {
+            sourcesJar.duplicatesStrategy = DuplicatesStrategy.INCLUDE
         }
-        tasks.named("jar") {
-            duplicatesStrategy = DuplicatesStrategy.INCLUDE
+        def jarTask = tasks.findByName("jar")
+        if (jarTask != null) {
+            jarTask.duplicatesStrategy = DuplicatesStrategy.INCLUDE
         }
     }
 }

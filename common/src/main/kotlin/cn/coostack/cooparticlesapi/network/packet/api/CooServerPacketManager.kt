@@ -12,7 +12,6 @@ import cn.coostack.cooparticlesapi.network.packet.api.envelope.CooPacketEnvelope
 import cn.coostack.cooparticlesapi.performance.PerformanceStatusNetworkEndpoint
 import cn.coostack.cooparticlesapi.performance.PerformanceStatusNetworkMetrics
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
-import net.minecraft.network.protocol.common.custom.CustomPacketPayload
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
 import java.util.UUID
@@ -332,7 +331,7 @@ object CooServerPacketManager {
             CooParticlesConstants.logger.error("CooPacket 编码失败: ${packet::class.java.name}", e)
             return false
         }
-        val envelope: CustomPacketPayload = CooPacketEnvelopeS2C(
+        val envelope = CooPacketEnvelopeS2C(
             kindId = kind.id,
             packetId = packet.id(),
             correlationId = correlationId,
