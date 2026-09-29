@@ -6,6 +6,10 @@ import cn.coostack.cooparticlesapi.cparticle.collision.CParticleBlockCollisionGr
 import cn.coostack.cooparticlesapi.cparticle.force.CParticleForceResourceTable
 import cn.coostack.cooparticlesapi.cparticle.force.CParticleForce
 import cn.coostack.cooparticlesapi.cparticle.force.ForceCommand
+import cn.coostack.cooparticlesapi.cparticle.path.CParticlePathEvaluator
+import cn.coostack.cooparticlesapi.cparticle.path.CParticlePathLibrary
+import cn.coostack.cooparticlesapi.cparticle.path.CooPathCommandAbi
+import cn.coostack.cooparticlesapi.gpudata.CooGpuDataBindingPoints
 import cn.coostack.cooparticlesapi.renderer.shader.AdvancedShaderProgramBuilder
 import cn.coostack.cooparticlesapi.renderer.shader.ShaderProgramRegistry
 import cn.coostack.cooparticlesapi.renderer.shader.api.CooComputeShaderProgram
@@ -36,6 +40,21 @@ object CParticleGpuSimulator {
     private const val COLLISION_BUFFER_BINDING = 1
     private const val METADATA_BUFFER_BINDING = 2
     private const val COMMAND_BUFFER_BINDING = 3
+
+    /**
+     * 路径图层 SSBO binding 点，与 `cparticle_sim.comp` 中路径缓冲的 `binding` 一致。
+     *
+     * 取自 [CooGpuDataBindingPoints]，因为所有路径共用同一张图层与同一个绑定点。
+     */
+    internal val PATH_LAYER_BUFFER_BINDING = CooGpuDataBindingPoints.PATH_LAYER
+
+    /**
+     * 路径结束通道 SSBO binding 点。
+     *
+     * 每个 system 有自己的结束缓冲，但共用同一个绑定点：绑定与恢复都在一次 dispatch 的
+     * try/finally 内完成，不会与其他 system 长期占用冲突。
+     */
+    private const val PATH_END_BUFFER_BINDING = CooGpuDataBindingPoints.PATH_END_CHANNEL
 
     /** v2 Command SSBO kernel. */
     private var program: CooComputeShaderProgram? = null
@@ -182,6 +201,7 @@ object CParticleGpuSimulator {
 
         val textureBindings = if (useLegacy) emptyList() else system.forceResourceTable.textureBindings()
         val fluidBindings = if (useLegacy) emptyList() else system.forceResourceTable.fluidBindings()
+        val usesPathConstraint = !useLegacy && commandUsesPath(commandPacked, commandCount)
         var dispatched = false
         try {
             compute.useOnContext {
@@ -193,6 +213,9 @@ object CParticleGpuSimulator {
                 } else {
                     setInt("uCommandCount", commandCount)
                     setInt("uMetadataEnabled", if (metadataRequired) 1 else 0)
+                    setInt("uPathLayerEnabled", if (usesPathConstraint) 1 else 0)
+                    setInt("uPathEndCapacity", system.pathEndBuffer.listedCapacity)
+                    setFloat("uDeltaTicks", CParticlePathEvaluator.DEFAULT_DELTA_TICKS.toFloat())
                 }
                 setFloat("uSpeedLimit", system.speedLimit)
                 setFloat3(
@@ -238,6 +261,10 @@ object CParticleGpuSimulator {
                     GL43.GL_SHADER_STORAGE_BUFFER_BINDING,
                     COMMAND_BUFFER_BINDING,
                 )
+                val previousPathEndBinding = GL30.glGetIntegeri(
+                    GL43.GL_SHADER_STORAGE_BUFFER_BINDING,
+                    PATH_END_BUFFER_BINDING,
+                )
                 var boundTextureCount = 0
                 var boundFluidCount = 0
                 try {
@@ -259,6 +286,11 @@ object CParticleGpuSimulator {
                     }
                     if (!useLegacy && commandCount > 0) {
                         system.commandGlBuffer.bindShaderStorage(COMMAND_BUFFER_BINDING)
+                    }
+                    // 路径图层始终绑定：命令在 dispatch 内按类型分支读取，避免每帧重新绑定。
+                    CParticlePathLibrary.bind()
+                    if (!useLegacy && usesPathConstraint) {
+                        system.pathEndBuffer.bindShaderStorage(PATH_END_BUFFER_BINDING)
                     }
                     GL43.glDispatchCompute((activeSlotCount + 255) / 256, 1, 1)
                     dispatched = true
@@ -301,6 +333,11 @@ object CParticleGpuSimulator {
                             COLLISION_BUFFER_BINDING,
                             previousCollisionBinding,
                         )
+                        GL43.glBindBufferBase(
+                            GL43.GL_SHADER_STORAGE_BUFFER,
+                            PATH_END_BUFFER_BINDING,
+                            previousPathEndBinding,
+                        )
                         GL15.glBindBuffer(GL43.GL_SHADER_STORAGE_BUFFER, previousStorageBuffer)
                     }
                 }
@@ -321,6 +358,24 @@ object CParticleGpuSimulator {
                     GL43.GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT or
                     GL43.GL_BUFFER_UPDATE_BARRIER_BIT
         )
+    }
+
+    /**
+     * 判断打包结果里是否包含路径位置约束命令。
+     *
+     * 本方法只在 CPU 侧扫描一次命令类型，用来决定是否需要绑定路径结束通道；
+     * 每 tick 一次、命令数上限 128，成本与粒子数无关。
+     *
+     * @param commands 已打包的命令数组
+     * @param commandCount 有效命令数量
+     * @return 包含至少一条路径约束时返回 `true`
+     */
+    private fun commandUsesPath(commands: FloatArray, commandCount: Int): Boolean {
+        for (index in 0 until commandCount) {
+            val type = commands[index * ForceCommand.STRIDE].toRawBits()
+            if (type == CooPathCommandAbi.TYPE_PATH_CONSTRAINT) return true
+        }
+        return false
     }
 
     /**

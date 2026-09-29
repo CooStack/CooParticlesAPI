@@ -38,8 +38,38 @@ object CParticleInstanceFlags {
     /** 新生槽位标记，bit 16。首轮只上传初始状态，模拟器会跳过并清除此位。 */
     internal const val NEWBORN = 1 shl 16
 
+    /**
+     * 路径约束提前结束标记，bit 17。
+     *
+     * 路径命令的到达消失模式在 `maxAge` 之前结束时置位；compute 同时清除 alive 位，
+     * 并把槽位号追加到路径结束通道，供 CPU 账本回收。
+     * Example: GPU 回收阶段扫描到该位时会确认槽位已被 GPU 隐藏。
+     * Forbidden: 不要用它代替 alive 位，渲染端只读取 alive。
+     */
+    const val PATH_ENDED = 1 shl 17
+
+    /**
+     * 路径姿态插值，bit 18；只在显式 faceMotion 的 ROTATION 模式使用。
+     *
+     * 此时 axis.xyz 保存前一 tick 的 pitch/yaw/roll，sizeRot.zw 和 axisRoll.w 保存当前姿态。
+     * 它不是旋转方向或广告牌轴，不能同时开启 ROTATION_DIRECTION。
+     */
+    const val PATH_ROTATION = 1 shl 18
+
     /** 当前已分配位形成的最大值。Example: 可用于 float 精确性测试。Forbidden: 不要把它当成 descriptor 上限。 */
-    const val MAX_PACKED_VALUE = (1 shl 17) - 1
+    const val MAX_PACKED_VALUE = (1 shl 23) - 1
+
+    /** 已预留但尚未出生的 GPU 后继，bit 19；不参与模拟或绘制。 */
+    internal const val RESPAWN_WAITING = 1 shl 19
+
+    /** 生命周期由 GPU 重生通道管理，bit 20；CPU 到期队列不能回收。 */
+    internal const val RESPAWN_OWNED = 1 shl 20
+
+    /** 本次终止不激活后继，bit 21；清理和禁用手动重生时使用。 */
+    internal const val RESPAWN_CANCELED = 1 shl 21
+
+    /** 显式 CALL 终止，bit 22；与自然到期区分。 */
+    internal const val RESPAWN_MANUAL = 1 shl 22
 
     /** float 能精确表示的整数边界。Example: flags 必须小于此值。Forbidden: 不要分配 bit 24。 */
     const val FLOAT_EXACT_INTEGER_LIMIT = 1 shl 24

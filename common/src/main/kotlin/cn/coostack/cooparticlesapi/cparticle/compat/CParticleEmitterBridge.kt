@@ -2,8 +2,10 @@ package cn.coostack.cooparticlesapi.cparticle.compat
 
 import cn.coostack.cooparticlesapi.cparticle.CParticle
 import cn.coostack.cooparticlesapi.cparticle.CParticleCapabilities
+import cn.coostack.cooparticlesapi.cparticle.CParticlePerfProbe
 import cn.coostack.cooparticlesapi.cparticle.CParticleRenderLayer
 import cn.coostack.cooparticlesapi.cparticle.CParticleSystem
+import cn.coostack.cooparticlesapi.cparticle.CParticleRespawnEngine
 import cn.coostack.cooparticlesapi.cparticle.CParticleSystemManager
 import cn.coostack.cooparticlesapi.cparticle.CParticleSystemMode
 import cn.coostack.cooparticlesapi.cparticle.CParticleSystemReuseKey
@@ -15,9 +17,15 @@ import cn.coostack.cooparticlesapi.cparticle.force.CParticleForceResource
 import cn.coostack.cooparticlesapi.cparticle.force.CParticleForceSink
 import cn.coostack.cooparticlesapi.cparticle.force.CParticleTextureResource
 import cn.coostack.cooparticlesapi.cparticle.force.ForceCommand
+import cn.coostack.cooparticlesapi.cparticle.path.CooPathCommandAbi
+import cn.coostack.cooparticlesapi.extend.plus
+import cn.coostack.cooparticlesapi.extend.times
 import cn.coostack.cooparticlesapi.network.particle.emitters.ClassParticleEmitters
 import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableCParticleData
 import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableParticleData
+import cn.coostack.cooparticlesapi.network.particle.emitters.command.ParticleDeathContext
+import cn.coostack.cooparticlesapi.network.particle.emitters.command.ParticlePreparedRespawns
+import cn.coostack.cooparticlesapi.network.particle.emitters.command.ParticleRespawnRequest
 import cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind.GlobalWindDirection
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.world.phys.Vec3
@@ -136,9 +144,11 @@ private class CParticleEmitterSystemCursor(
  * - 方块碰撞窗口通过 [ClassParticleEmitters.cparticleBlockCollisionRange] 声明
  * - 每份 data 使用自己的 effect SpriteSet，并可单独指定额外纹理蒙版
  *
- * 需要 singleParticleAction、精确碰撞或碰撞事件、singleParticleDeathAction 重生，
+ * 需要 singleParticleAction、精确碰撞或碰撞事件、旧版 singleParticleDeathAction，
  * 或非全局/relative 风场的粒子，应继续使用普通 [ControlableParticleData]。
  * 仅需近似完整方块碰撞时，可使用 [ControlableCParticleData.blockCollision]。
+ * 通用死亡重生使用 [ClassParticleEmitters.deathCommand]；GPU 出生时固定后继，死亡时在 GPU 激活。
+ * 只有 GPU 到普通粒子的显式转换才异步回读运动状态。
  */
 object CParticleEmitterBridge {
 
@@ -156,6 +166,40 @@ object CParticleEmitterBridge {
      */
     private val systemCursors = HashMap<UUID, ArrayList<CParticleEmitterSystemCursor>>()
     private val forceStates = HashMap<UUID, EmitterForceState>()
+
+    /** system 遍历完成后再创建后继，避免更改 Manager 正在遍历的系统集合。 */
+    private val pendingRespawns = ArrayDeque<() -> Unit>()
+
+    /** 当前死亡批次中新生成粒子的 system，仅在整批完成后上传一次。 */
+    private val respawnUploads = LinkedHashSet<CParticleSystem>()
+
+    /** 避免普通发射产生额外上传；仅在 Manager tick 末尾的死亡批次内置位。 */
+    private var flushingRespawns = false
+
+    /** 只执行当前批次，回调新增的事件不会在同一次 drain 中递归执行。 */
+    internal fun flushRespawns() {
+        val count = pendingRespawns.size
+        flushingRespawns = true
+        try {
+            repeat(count) {
+                val spawn = pendingRespawns.removeFirstOrNull() ?: return
+                spawn()
+            }
+        } finally {
+            flushingRespawns = false
+            try {
+                respawnUploads.forEach { it.uploadPendingSpawns() }
+            } finally {
+                respawnUploads.clear()
+            }
+        }
+    }
+
+    /** 换世界或关闭时丢弃尚未生成的后继。 */
+    internal fun clearPendingRespawns() {
+        pendingRespawns.clear()
+        respawnUploads.clear()
+    }
 
     /**
      * 尝试把一个粒子交给 GPU 系统.
@@ -184,12 +228,91 @@ object CParticleEmitterBridge {
         }
         CParticleCapabilities.detect()
         CParticleCapabilities.requireGpuParticleRendering()
+        val command = emitter.deathCommand
+        val prepared = if (!CParticleCapabilities.forceCpuSimulation &&
+            command?.acceptsGeneration(data.respawnCount) == true
+        ) ParticlePreparedRespawns(command, data, pos, emitter.pos) else null
+        // 容量按整条 GPU 链预留；不足时不产生残缺的后继树，也不回退普通粒子。
+        val required = 1 + (prepared?.nodes?.count { it.request.data is ControlableCParticleData } ?: 0)
+        if (required > CParticleSystemManager.particleCountLimit - CParticleSystemManager.totalAlive()) return true
+        val root = spawnGpu(emitter, pos, data, capacityHint) ?: return true
+        val (system, slot) = root
+        if (prepared != null && prepared.nodes.isNotEmpty()) {
+            val allocated = arrayListOf(root)
+            try {
+                val gpuNodes = arrayOfNulls<Pair<CParticleSystem, Int>>(prepared.nodes.size)
+                for ((index, node) in prepared.nodes.withIndex()) {
+                    val child = node.request.data as? ControlableCParticleData ?: continue
+                    val target = spawnGpu(emitter, node.referencePosition, child, capacityHint)
+                    if (target == null) {
+                        allocated.asReversed().forEach { (owner, targetSlot) ->
+                            CParticleRespawnEngine.rollback(owner, targetSlot)
+                        }
+                        return true
+                    }
+                    allocated.add(target)
+                    gpuNodes[index] = target
+                }
+                CParticleRespawnEngine.track(system, slot, waiting = false, command!!.includeManualRemoval)
+                for (index in prepared.nodes.indices) {
+                    val (target, childSlot) = gpuNodes[index] ?: continue
+                    CParticleRespawnEngine.track(target, childSlot, waiting = true, command.includeManualRemoval)
+                }
+                val cpuChildren = LinkedHashMap<Int, MutableList<ParticleRespawnRequest>>()
+                for ((index, node) in prepared.nodes.withIndex()) {
+                    val parent = if (node.parent < 0) root else checkNotNull(gpuNodes[node.parent])
+                    val child = gpuNodes[index]
+                    if (child == null) cpuChildren.getOrPut(node.parent) { ArrayList() }.add(node.request)
+                    else CParticleRespawnEngine.link(parent.first, parent.second, child.first, child.second, node.request)
+                }
+                for ((parentIndex, children) in cpuChildren) {
+                    val parent = if (parentIndex < 0) root else checkNotNull(gpuNodes[parentIndex])
+                    CParticleRespawnEngine.onCpuChildren(parent.first, parent.second) { death ->
+                        pendingRespawns.addLast {
+                            val requests = children.map { request ->
+                                request.copy(
+                                    data = request.data.clone().apply {
+                                        respawnCount = request.data.respawnCount
+                                        velocity += death.velocity * request.inheritVelocity
+                                    },
+                                    position = if (request.relativeToDeath) death.position + request.position else request.position,
+                                    relativeToDeath = false, inheritVelocity = 0.0,
+                                )
+                            }
+                            emitter.spawnPreparedDeathParticles(requests, world)
+                        }
+                    }
+                }
+            } catch (error: Throwable) {
+                allocated.asReversed().forEach { (owner, targetSlot) -> CParticleRespawnEngine.rollback(owner, targetSlot) }
+                throw error
+            }
+        } else if (CParticleCapabilities.forceCpuSimulation && command?.acceptsGeneration(data.respawnCount) == true) {
+            val birthData = data.clone().apply { respawnCount = data.respawnCount }
+            system.trackDeath(slot, system.store.generations[slot]) { death ->
+                pendingRespawns.addLast {
+                    emitter.spawnDeathParticles(command, ParticleDeathContext(
+                        birthData, death.position, death.velocity, death.age, death.reason,
+                        emitter.pos, data.respawnCount,
+                    ), world)
+                }
+            }
+        }
+        return true
+    }
 
+    /** 只写入本次生命的静态配置，不递归执行死亡指令。 */
+    private fun spawnGpu(
+        emitter: ClassParticleEmitters, pos: Vec3, data: ControlableCParticleData, capacityHint: Int,
+    ): Pair<CParticleSystem, Int>? {
         val p = CParticle.from(data).also { it.mass = emitter.mass.toFloat() }
         p.pos = pos
-        val resolved = p.resolveTextures(pos)
-        if (!resolved.isValid) return true
-        if (!CParticleSystemManager.hasAvailableParticleCapacity()) return true
+        // 逐粒子的纹理解析与 SoA 写入分开计时：批量生成卡顿时这两段的表现完全不同。
+        val resolved = CParticlePerfProbe.measure(CParticlePerfProbe.Stage.PARTICLE_RESOLVE_TEXTURES) {
+            p.resolveTextures(pos)
+        }
+        if (!resolved.isValid) return null
+        if (!CParticleSystemManager.hasAvailableParticleCapacity()) return null
         val layer = CParticleRenderLayer.fromSheetName(data.getTextureSheet().toString())
         val state = ensureForceState(emitter)
         val system = findAvailableSystem(
@@ -214,8 +337,11 @@ object CParticleEmitterBridge {
             system.visibleRange = data.visibleRange.toDouble()
         }
 
-        system.spawnResolved(p, resolved)
-        return true
+        val slot = CParticlePerfProbe.measure(CParticlePerfProbe.Stage.PARTICLE_SPAWN_BATCH) {
+            system.spawnResolved(p, resolved)
+        }
+        if (slot >= 0 && flushingRespawns) respawnUploads.add(system)
+        return if (slot >= 0) system to slot else null
     }
 
     /**
@@ -320,6 +446,7 @@ object CParticleEmitterBridge {
 
     /** 清除 bridge 持有的 emitter 游标和快照；System 生命周期由 Manager 统一处理。 */
     internal fun clear() {
+        clearPendingRespawns()
         systemCursors.clear()
         forceStates.clear()
     }
@@ -402,6 +529,10 @@ object CParticleEmitterBridge {
      *
      * 资源 Force 只记录稳定资源声明和本地槽位，不触发 GL 资源解析。相同类、位置、碰撞范围和
      * Command 原始位全部一致时，旧粒子才允许继续接受新 emitter 的共享 Command。
+     *
+     * 路径约束**不能**走 [ForceCommand.pack]：它的参数需要打包阶段的图层槽位与重建版本，
+     * 而本方法只用于比较两次快照是否等价。这里改用槽位号与图层版本参与比较，
+     * 两者都变化时接管键自然不相等，语义与其它 Force 的位比较一致。
      */
     internal fun buildSystemReuseKey(
         emitter: ClassParticleEmitters,
@@ -430,6 +561,16 @@ object CParticleEmitterBridge {
                         fluidSlots.size
                     }
                     command.pack(packed, base, origin, slot)
+                }
+
+                is CParticleForce.Path -> {
+                    command.packHeader(packed, base)
+                    val payload = base + CooPathCommandAbi.FORCE_PAYLOAD_OFFSET
+                    // 与 CParticlePathCommandPacker 写入实际命令时相同的两个字段：槽位号与图层版本。
+                    // 两者都相同时，旧粒子的路径命令在新 emitter 下解析到同一条路径，接管才安全。
+                    packed[payload + CooPathCommandAbi.P_SLOT] = Float.fromBits(force.path.slot)
+                    packed[payload + CooPathCommandAbi.P_LAYER_VERSION] =
+                        Float.fromBits(force.path.revision)
                 }
 
                 else -> command.pack(packed, base, origin)

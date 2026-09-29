@@ -9,11 +9,15 @@ import cn.coostack.cooparticlesapi.extend.asVec3
 import cn.coostack.cooparticlesapi.extend.lengthCoerceAtMost
 import cn.coostack.cooparticlesapi.extend.ofFloored
 import cn.coostack.cooparticlesapi.extend.times
+import cn.coostack.cooparticlesapi.network.particle.emitters.command.ParticleDeathCommand
+import cn.coostack.cooparticlesapi.network.particle.emitters.command.ParticleDeathContext
+import cn.coostack.cooparticlesapi.network.particle.emitters.command.ParticleRespawnRequest
 import cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind.GlobalWindDirection
 import cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind.WindDirection
 import cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind.WindDirections
 import cn.coostack.cooparticlesapi.network.particle.emitters.event.*
 import cn.coostack.cooparticlesapi.particles.ControlableParticle
+import cn.coostack.cooparticlesapi.particles.ParticleCameraOption
 import cn.coostack.cooparticlesapi.particles.control.ParticleControler
 import cn.coostack.cooparticlesapi.particles.control.RemoveReason
 import cn.coostack.cooparticlesapi.utils.PhysicsUtil
@@ -30,6 +34,7 @@ import net.minecraft.world.level.Level
 import net.minecraft.world.phys.BlockHitResult
 import net.minecraft.world.phys.HitResult
 import net.minecraft.world.phys.Vec3
+import cn.coostack.cooparticlesapi.cparticle.path.CParticlePathBirth
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.max
@@ -50,6 +55,17 @@ abstract class ClassParticleEmitters(
     override var playing: Boolean = false
     var airDensity = 0.0
     var gravity: Double = 0.0
+
+    /**
+     * 普通粒子和 GPU 粒子共用的死亡指令，默认不启用。
+     *
+     * 示例：`deathCommand = ParticleDeathCommand { listOf(respawn(nextTemplate)) }`。
+     * 设置后替代旧版 [singleParticleDeathAction]，避免同一次死亡重复生成。
+     * 在 emitter 构造或初始化中配置；闭包本身不参与网络同步。
+     * 每颗粒子出生时固定所用指令，默认只重生一代。
+     * CPU 死亡时执行闭包；GPU 出生时预计算后继树，死亡时在 GPU 激活已上传模板。
+     */
+    var deathCommand: ParticleDeathCommand? = null
     private var lastTickPos: Vec3 = pos
     var emitterVelocity: Vec3 = Vec3.ZERO
         private set
@@ -348,6 +364,7 @@ abstract class ClassParticleEmitters(
      * @param respawnCount 重新生成的次数 （0代表第一次从emitter生成）
      * @param reason 粒子移除原因
      * @return 会根据data生成新粒子 第二个pair是和粒子死亡位置的相对位置(不是发射器相对位置)
+     * 该旧入口仅支持普通粒子，保留调用方自行限制代数的语义。跨 CPU/GPU 请使用 [deathCommand]。
      */
     open fun singleParticleDeathAction(
         oldControler: ParticleControler,
@@ -381,6 +398,7 @@ abstract class ClassParticleEmitters(
         effect.controlUUID = data.uuid
         val displayer = data.getDisplayer()
         val control = data.createControler(world, pos, particleLerpProgress, posLerpProgress) as ParticleControler
+        control.recordPathBirth(CParticlePathBirth(pos.subtract(this.pos), data.age.toDouble()))
         // 事件层
         control.addPreTickAction {
             // 针对 ParticleHitEntityEvent
@@ -435,11 +453,25 @@ abstract class ClassParticleEmitters(
         }
         val p = RelativeLocation.of(pos)
         singleParticleAction(control, data, p, world, particleLerpProgress, posLerpProgress)
-        control.applyDestroyAction {
+        val command = deathCommand
+        val birthData = if (command?.acceptsGeneration(data.respawnCount) == true) data.clone() else null
+        var deathHandled = false
+        control.applyDestroyAction { reason ->
+            if (deathHandled) return@applyDestroyAction
+            deathHandled = true
+            if (command != null) {
+                if (birthData != null && reason != RemoveReason.QUEUE) {
+                    spawnDeathParticles(command, ParticleDeathContext(
+                        birthData, loc, data.velocity, currentAge, reason,
+                        this@ClassParticleEmitters.pos, data.respawnCount,
+                    ), world, particleLerpProgress, posLerpProgress)
+                }
+                return@applyDestroyAction
+            }
             // 要有粒子死因
             // 生成新粒子
             val newParticles =
-                singleParticleDeathAction(control, data, data.respawnCount + 1, it)
+                singleParticleDeathAction(control, data, data.respawnCount + 1, reason)
             val respawnCParticleBatchSize = newParticles.count { (newData, _) ->
                 newData is ControlableCParticleData
             }
@@ -458,6 +490,7 @@ abstract class ClassParticleEmitters(
         control.addPreTickAction {
             if (currentAge++ >= lifetime) {
                 remove()
+                return@addPreTickAction
             }
             if (minecraftTick) return@addPreTickAction
             if (bounding.hasNaN()) return@addPreTickAction
@@ -476,6 +509,10 @@ abstract class ClassParticleEmitters(
             onTheGround = clipRes.type != HitResult.Type.MISS && clipRes.direction == Direction.UP
             // 模拟粒子运动 速度
             moveSingleParticleWithVelocity(this, data, prepareMove, clipRes)
+            // 路径位置约束在运动之后生效：默认运动实现会把位置写成 loc + velocity，
+            // 因此必须在这里覆盖，才能保证路径写入后不再叠加一次速度积分。
+            applyPendingPathConstraint(this)
+            if (death) return@addPreTickAction
             if (onTheGround) {
                 // 找方向 velocity
                 handlerList[ParticleOnGroundEvent.EVENT_ID]?.let {
@@ -518,6 +555,36 @@ abstract class ClassParticleEmitters(
         }
         if (displayer.display(p.toVector(), world) == null) {
             control.remove(RemoveReason.QUEUE)
+        }
+    }
+
+    /** 在客户端统一执行死亡指令；新 data 的种类决定普通或 GPU 路径。 */
+    internal fun spawnDeathParticles(
+        command: ParticleDeathCommand,
+        context: ParticleDeathContext,
+        world: ClientLevel,
+        particleLerpProgress: Float = 1F,
+        posLerpProgress: Float = 1F,
+    ) {
+        if (Minecraft.getInstance().level !== world) return
+        val requests = command.createParticles(context.copy(emitterPosition = pos))
+        spawnPreparedDeathParticles(requests, world, particleLerpProgress, posLerpProgress)
+    }
+
+    /** 生成已求值请求；GPU 到 CPU 的异步分支不能再次执行原死亡配置闭包。 */
+    internal fun spawnPreparedDeathParticles(
+        requests: List<ParticleRespawnRequest>, world: ClientLevel,
+        particleLerpProgress: Float = 1F, posLerpProgress: Float = 1F,
+    ) {
+        if (Minecraft.getInstance().level !== world) return
+        val gpuCount = requests.count { it.data is ControlableCParticleData }
+        try {
+            for (request in requests) {
+                spawnParticle(world, request.position, request.data, particleLerpProgress, posLerpProgress, gpuCount)
+            }
+        } finally {
+            // 发射器停止发射后，已出生粒子仍可完成有限重生，尾部 system 不重新常驻。
+            if (canceled) CParticleEmitterBridge.finishEmitter(this)
         }
     }
 
@@ -569,6 +636,47 @@ abstract class ClassParticleEmitters(
         collide: BlockHitResult
     ) {
         particle.teleportTo(to)
+    }
+
+    /**
+     * 应用本 tick 由路径位置约束命令登记的位置与朝向。
+     *
+     * 路径命令在发射器运动之前执行，其求值结果暂存在
+     * [cn.coostack.cooparticlesapi.particles.control.ParticleControler]；这里在位移与碰撞完成后覆盖位置，
+     * 因此路径位置不会被再叠加一次速度积分。隐藏与寿命仍然沿用粒子自己的流程。
+     *
+     * ## 坐标空间
+     * 路径几何位于**持有者的本地空间**，求值结果也是本地偏移。传统 [ControlableParticle] 的
+     * `teleportTo` 接收的是**世界坐标**，因此必须在这里加上发射器位置；直接把本地偏移当世界坐标
+     * 会把粒子送到世界原点附近，而不是发射器周围。
+     * GPU 侧不需要这一步：那里的粒子位置本身就是 system 原点（即发射器位置）相对坐标。
+     *
+     * 朝向仅在命令显式开启时更新，按声明的纹理前向轴求解 XYZ 欧拉角。
+     */
+    private fun applyPendingPathConstraint(particle: ControlableParticle) {
+        val request = particle.controler.consumePendingPathRequest() ?: return
+        if (!request.isActive()) return
+        val target = request.pathPosition().add(pos)
+        if (request.pathWrapped()) {
+            // 循环跳转：同时重置渲染插值的历史位置，避免画出终点到起点的错误穿越轨迹。
+            particle.teleportToResettingInterpolation(target)
+        } else {
+            particle.teleportTo(target)
+        }
+        val direction = request.pathDirection()
+        if (request.pathFacesMotion() && direction.lengthSqr() > 1.0E-12) {
+            particle.cameraOption = ParticleCameraOption.ROTATION
+            request.pathRotation()?.let { rotation ->
+                particle.setPathRotation(rotation, request.pathWrapped())
+            }
+            // 轴通道同时更新，供 AXIS_BILLBOARD 等按轴解释朝向的消费者使用。
+            particle.axis = direction
+            particle.previewAxis = direction
+        }
+        if (request.pathReachedEndAndDisappears()) {
+            // 到达后消失是显式结束模式；走既有的寿命/删除流程，不额外修改 lifetime。
+            particle.controler.remove(RemoveReason.LIFECYCLE)
+        }
     }
 
     /**

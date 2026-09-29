@@ -117,13 +117,4 @@ class TestCParticleComposition(position: Vec3, world: Level? = null) : AutoParti
             status.disable()
         }
     }
-
-    private fun gradientColor(progress: Float): Vector3f {
-        val t = progress.coerceIn(0f, 1f)
-        return Vector3f(
-            colorInner.x + (colorOuter.x - colorInner.x) * t,
-            colorInner.y + (colorOuter.y - colorInner.y) * t,
-            colorInner.z + (colorOuter.z - colorInner.z) * t
-        )
-    }
 }

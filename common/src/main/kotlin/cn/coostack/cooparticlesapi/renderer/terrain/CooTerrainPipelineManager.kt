@@ -1556,15 +1556,6 @@ internal object CooTerrainPipelineManager {
         }
     }
 
-    private fun terrainEffectGroups(pos: BlockPos): List<CooResolvedTerrainEffectGroup> {
-        val level = Minecraft.getInstance().level ?: return emptyList()
-        return CooTerrainEffectRegistry.groupsAt(
-            level.dimension().location(),
-            pos,
-            level.gameTime
-        )
-    }
-
     private fun currentGameTime(): Long = Minecraft.getInstance().level?.gameTime ?: 0L
 
     private fun worldPostAttachments(

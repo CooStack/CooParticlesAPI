@@ -20,6 +20,8 @@ import cn.coostack.cooparticlesapi.cparticle.CParticleTextureSource
 import cn.coostack.cooparticlesapi.cparticle.CParticleColorCurve
 import cn.coostack.cooparticlesapi.cparticle.CParticleCurve
 import cn.coostack.cooparticlesapi.cparticle.CParticleUpdateMode
+import cn.coostack.cooparticlesapi.cparticle.path.CParticlePathGeometry
+import cn.coostack.cooparticlesapi.cparticle.path.CParticlePathOffsetMode
 import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableCParticleData
 import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableParticleData
 import cn.coostack.cooparticlesapi.network.particle.emitters.CompositionEmittersData
@@ -42,6 +44,7 @@ import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.ByteBufCodecs
 import net.minecraft.network.codec.StreamCodec
+import net.minecraft.nbt.CompoundTag
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.state.BlockState
@@ -80,6 +83,8 @@ object CodecHelper {
         register(Byte::class.java, StreamCodec.of({ buf, i -> buf.writeByte(i.toInt()) }, { it.readByte() }))
         register(Boolean::class.java, StreamCodec.of({ buf, i -> buf.writeBoolean(i) }, { it.readBoolean() }))
         register(ByteArray::class.java, StreamCodec.of({ buf, i -> buf.writeByteArray(i) }, { it.readByteArray() }))
+        // 复用原版有界 NBT 解码器，结构协议不允许使用无限额的可信标签入口。
+        register(CompoundTag::class.java, ByteBufCodecs.COMPOUND_TAG.cast<FriendlyByteBuf>())
         register(CooUniformValue::class.java, CooUniformValue.STREAM_CODEC)
         register(Char::class.java, StreamCodec.of({ buf, i -> buf.writeChar(i.code) }, { it.readChar() }))
         register(UUID::class.java, StreamCodec.of({ buf, i -> buf.writeUUID(i) }, { it.readUUID() }))
@@ -119,6 +124,18 @@ object CodecHelper {
             Vec2(it.readFloat(), it.readFloat())
         }))
         register(Vec3::class.java, StreamCodec.of({ buf, i -> buf.writeVec3(i) }, { it.readVec3() }))
+        // 路径几何：任意控制点数量与空间贝塞尔控制柄，因此必须作为数据同步而不是用枚举编号。
+        register(CParticlePathGeometry::class.java, CParticlePathGeometry.STREAM_CODEC)
+        // 发射器的出生偏移模式是同步字段，按固定协议值编码，避免依赖枚举声明顺序。
+        register(CParticlePathOffsetMode::class.java, StreamCodec.of(
+            { buf, mode -> buf.writeByte(mode.wireValue) },
+            { buf ->
+                val wireValue = buf.readUnsignedByte().toInt()
+                requireNotNull(CParticlePathOffsetMode.entries.firstOrNull { it.wireValue == wireValue }) {
+                    "不支持的路径出生偏移模式: $wireValue"
+                }
+            },
+        ))
         register(Quaternionf::class.java, StreamCodec.of({ buf, q -> buf.writeQuaternion(q) }, { it.readQuaternion() }))
         register(AABB::class.java, StreamCodec.of({ buf, i ->
             buf.writeDouble(i.minX)

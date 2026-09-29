@@ -2,6 +2,8 @@ package cn.coostack.cooparticlesapi.items.group
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.items.CooItems
+import cn.coostack.cooparticlesapi.entities.structure.StructureModels
+import cn.coostack.cooparticlesapi.entities.structure.editor.StructureEditor
 import cn.coostack.cooparticlesapi.platform.registry.CommonDeferredRegistry
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import net.minecraft.core.registries.BuiltInRegistries
@@ -23,6 +25,9 @@ object CooItemGroup {
                     .title(Component.translatable("item.coo_group"))
                     .icon { ItemStack(Items.BOW) }
                     .displayItems { _, entries ->
+                        entries.accept(StructureModels.BLOCK_ITEM)
+                        entries.accept(StructureModels.EDITOR)
+                        entries.accept(StructureEditor.ITEM)
                         CooItems.items.forEach {
                             val item = it.getItem()
                             entries.accept { item }

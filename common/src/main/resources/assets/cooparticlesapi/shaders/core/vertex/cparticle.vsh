@@ -81,6 +81,7 @@ flat out uvec2 tfPacked;
 const int FLAG_ALIVE = 1;
 const int FLAG_RANDOM_AGE = 1 << 11;
 const int FLAG_ROTATION_DIRECTION = 1 << 12;
+const int FLAG_PATH_ROTATION = 1 << 18;
 const int FLAG_RANDOM_QUARTER_UV = 1 << 13;
 const int FLAG_MASK_RANDOM_QUARTER_UV = 1 << 14;
 const float FRAME_PROGRESS_RESOLUTION = 4096.0;
@@ -393,6 +394,35 @@ vec3 perpendicularOf(vec3 axis) {
     return normalize(cross(axis, ref));
 }
 
+// 与 rotXYZ 相同的 Rx * Ry * Rz 次序，供路径姿态的四元数插值使用。
+vec4 quaternionXYZ(vec3 angles) {
+    vec3 c = cos(angles * 0.5);
+    vec3 s = sin(angles * 0.5);
+    return vec4(
+        s.x * c.y * c.z + c.x * s.y * s.z,
+        c.x * s.y * c.z - s.x * c.y * s.z,
+        c.x * c.y * s.z + s.x * s.y * c.z,
+        c.x * c.y * c.z - s.x * s.y * s.z
+    );
+}
+
+vec4 shortestSlerp(vec4 previous, vec4 current, float progress) {
+    float cosine = dot(previous, current);
+    if (cosine < 0.0) {
+        current = -current;
+        cosine = -cosine;
+    }
+    float t = clamp(progress, 0.0, 1.0);
+    if (cosine > 0.9995) return normalize(mix(previous, current, t));
+    float angle = acos(clamp(cosine, -1.0, 1.0));
+    return normalize((sin((1.0 - t) * angle) * previous + sin(t * angle) * current) / sin(angle));
+}
+
+vec3 rotateQuaternion(vec4 quaternion, vec3 value) {
+    vec3 crossed = 2.0 * cross(quaternion.xyz, value);
+    return value + quaternion.w * crossed + cross(quaternion.xyz, crossed);
+}
+
 // Rodrigues: v 绕单位轴 axis 旋转 angle
 vec3 rotateAroundAxis(vec3 v, vec3 axis, float angle) {
     float c = cos(angle), s = sin(angle);
@@ -456,6 +486,14 @@ void main() {
         }
         basisX = right;
         basisY = axis;
+    } else if ((flags & FLAG_PATH_ROTATION) != 0) {
+        vec4 rotation = shortestSlerp(
+            quaternionXYZ(iAxisRoll.xyz),
+            quaternionXYZ(vec3(iSizeRot.w, iSizeRot.z, iAxisRoll.w)),
+            uPartial
+        );
+        basisX = rotateQuaternion(rotation, vec3(1.0, 0.0, 0.0));
+        basisY = rotateQuaternion(rotation, vec3(0.0, 1.0, 0.0));
     } else {
         // ROTATION: 自由欧拉角 (对齐 Quaternionf.rotateXYZ(pitch, yaw, roll))
         float pitch = iSizeRot.w;

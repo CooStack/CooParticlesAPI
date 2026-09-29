@@ -171,6 +171,9 @@ object ParticleEmittersManager {
             emitters.tick()
             if (emitters.canceled) {
                 iterator.remove()
+                // 客户端移除走的是“取消”路径，不会经过 emiters.stop()；这里补一次资源释放钩子，
+                // 让发射器持有的外部资源（例如路径图层引用）能和 GPU 系统一起被回收。
+                emitters.releaseOwnedResources()
                 finishClientSystems(emitters)
                 CooEventBus.call(EmitterRemoveEvent(emitters, true))
             }

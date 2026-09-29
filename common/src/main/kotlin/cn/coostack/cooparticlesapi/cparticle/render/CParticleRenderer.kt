@@ -13,6 +13,7 @@ import cn.coostack.cooparticlesapi.cparticle.CParticleSystem
 import cn.coostack.cooparticlesapi.cparticle.CParticleSystemManager
 import cn.coostack.cooparticlesapi.cparticle.CParticleTextureBindingKey
 import cn.coostack.cooparticlesapi.cparticle.CParticleTextureResolver
+import cn.coostack.cooparticlesapi.cparticle.path.CParticlePathLibrary
 import cn.coostack.cooparticlesapi.renderer.post.OpenGlPostEffectExecutionBackend
 import cn.coostack.cooparticlesapi.renderer.shader.AdvancedShaderProgramBuilder
 import cn.coostack.cooparticlesapi.renderer.shader.ShaderProgramRegistry
@@ -118,6 +119,8 @@ object CParticleRenderer {
         partial: Float,
         pass: CParticleRenderPass = CParticleRenderPass.ALL,
     ) {
+        // 路径图层在渲染阶段重新绑定，使同一帧内 RenderEntity 的 shader 也能读到同一份资源。
+        CParticlePathLibrary.bind()
         renderInternal(systems, view, proj, camera, partial, pass, coverageOnly = false, forceDirectShader = false)
     }
 

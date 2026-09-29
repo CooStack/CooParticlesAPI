@@ -1,5 +1,13 @@
 package cn.coostack.cooparticlesapi.cparticle.force
 
+import cn.coostack.cooparticlesapi.cparticle.path.CooPathCommandAbi
+import cn.coostack.cooparticlesapi.cparticle.path.CParticlePathEndMode
+import cn.coostack.cooparticlesapi.cparticle.path.CParticlePathEvaluator
+import cn.coostack.cooparticlesapi.cparticle.path.CParticlePathForwardAxis
+import cn.coostack.cooparticlesapi.cparticle.path.CParticlePathOffsetMode
+import cn.coostack.cooparticlesapi.cparticle.path.CParticlePathPlayMode
+import cn.coostack.cooparticlesapi.cparticle.path.CParticlePathProgressMode
+import cn.coostack.cooparticlesapi.cparticle.path.CParticlePathSlot
 import cn.coostack.cooparticlesapi.network.particle.emitters.PhysicConstant
 import cn.coostack.cooparticlesapi.network.particle.emitters.command.ParticleAttractionCommand
 import cn.coostack.cooparticlesapi.network.particle.emitters.command.ParticleCommand
@@ -9,6 +17,7 @@ import cn.coostack.cooparticlesapi.network.particle.emitters.command.ParticleNoi
 import cn.coostack.cooparticlesapi.network.particle.emitters.command.ParticleRotationForceCommand
 import cn.coostack.cooparticlesapi.network.particle.emitters.command.ParticleVortexCommand
 import net.minecraft.world.phys.Vec3
+import org.joml.Matrix4f
 import java.util.function.Supplier
 import kotlin.math.exp
 
@@ -60,6 +69,15 @@ sealed class CParticleForce {
         const val TYPE_TURBULENCE = 18
         const val TYPE_TEXTURE = 19
         const val TYPE_FLUID_FLOW = 20
+
+        /**
+         * 路径位置约束命令的类型编号。
+         *
+         * 与 1..20 的加速度 / 速度类力不同，本类型**直接写位置**，属于位置约束而不是力场，
+         * 因此 GPU 与 CPU 都要在力循环末尾用求值结果覆盖位置，不能再叠加一次速度积分。
+         * 编号写入 GPU/CPU 共用的 Command ABI，不能重新编号。
+         */
+        const val TYPE_PATH_CONSTRAINT = CooPathCommandAbi.TYPE_PATH_CONSTRAINT
 
         /** 0.5 * ρ * Cd * A * 0.05 — 与 ClassParticleEmitters.updatePhysics 完全一致的阻力系数 */
         @JvmStatic
@@ -472,6 +490,63 @@ sealed class CParticleForce {
         override fun pack(out: FloatArray, base: Int, origin: Vec3) {
             out.type(base, typeId); out.p(base, 1, strength); out.p(base, 3, if (useDensity) 1.0 else 0.0)
             out.p(base, 7, flowDrag); falloff.pack(out, base + 11)
+        }
+    }
+
+    /**
+     * 路径位置约束。
+     *
+     * 这不是力：它按生命周期进度直接求出目标位置（路径位置 + 横截面内的环绕偏移，再按绑定变换
+     * 送到目标空间），并在力循环结束后覆盖粒子位置与朝向。因此它**不**参与速度积分，
+     * 也不能被实现成吸引力、弹簧追踪、最近点吸附或惯性逼近。
+     *
+     * 环绕偏移只由当前进度、半径与相位求值，绝不累加到上一 tick 的位置上，所以动态改点会立即
+     * 体现为新的锁定位置。
+     *
+     * 用 [CParticleForce.fromCommand] 无法转换本类型：它需要路径槽位与图层基址，必须在打包阶段
+     * 通过 [CParticlePathCommandPacker] 解析。
+     *
+     * @property path 要跟随的路径槽位；生命周期由 [CParticlePathLibrary] 管理
+     * @property playMode 播放模式
+     * @property progressMode 播放进度到曲线长度的映射方式
+     * @property endMode 终点处理方式；唯一会提前结束粒子的模式
+     * @property playPeriodTicks 一个完整播放循环的时长（tick）；`<= 0` 表示沿用粒子寿命
+     * @property offsetRadius 环绕半径；`<= 0` 表示不启用环绕偏移
+     * @property phaseRadians 环绕初始相位（弧度）
+     * @property angularVelocityRadiansPerTick 环绕角速度（弧度 / tick）
+     * @property forwardAxis 模型前方轴约定
+     * @property customForwardAxis [CParticlePathForwardAxis.CUSTOM] 时使用的显式前方轴
+     * @property faceMotion 显式开启按前方轴对齐运动方向；默认关闭，仅约束位置
+     * @property offsetMode 出生偏移模式；默认 NONE 保留严格路径，BIRTH_FRAME 可生成分散环绕轨迹
+     * @property binding 路径本地空间到目标空间的变换；`null` 表示恒等
+     */
+    class Path(
+        var path: CParticlePathSlot,
+        var playMode: CParticlePathPlayMode = CParticlePathPlayMode.ONCE,
+        var progressMode: CParticlePathProgressMode = CParticlePathProgressMode.ARC_LENGTH,
+        var endMode: CParticlePathEndMode = CParticlePathEndMode.HOLD,
+        var playPeriodTicks: Double = CParticlePathEvaluator.LIFETIME_PERIOD,
+        var offsetRadius: Double = 0.0,
+        var phaseRadians: Double = 0.0,
+        var angularVelocityRadiansPerTick: Double = 0.0,
+        var forwardAxis: CParticlePathForwardAxis = CParticlePathForwardAxis.MODEL_POSITIVE_X,
+        var customForwardAxis: Vec3? = null,
+        var binding: Matrix4f? = null,
+        var faceMotion: Boolean = false,
+        var offsetMode: CParticlePathOffsetMode = CParticlePathOffsetMode.NONE,
+    ) : CParticleForce() {
+        override val typeId: Int = TYPE_PATH_CONSTRAINT
+
+        /**
+         * 路径约束拒绝旧 uniform 打包入口。
+         *
+         * 未解析图层基址时给出可定位的错误，而不是静默写出一份无法求值的参数。
+         */
+        override fun pack(out: FloatArray, base: Int, origin: Vec3) {
+            error(
+                "CParticleForce.Path must be packed with a resolved path layer slot; " +
+                    "use ForceCommand.pack with a resolved resource slot"
+            )
         }
     }
 }

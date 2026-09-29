@@ -4,31 +4,6 @@ package cn.coostack.cooparticlesapi.performance.client
 internal const val PERFORMANCE_STATUS_MAX_SELECTED_SERIES = 12
 
 /**
- * 返回一个最多包含 maxPoints 个元素的等距只读视图，不复制原始元素。
- *
- * 索引映射始终保留首尾元素，且 get 为 O(1)。图表因此只处理屏幕能够显示的点数；历史时长增加
- * 不会让每帧曲线遍历成本继续增长。放大时间窗口后会重新从原始逐 tick 历史取样。
- */
-internal fun <T> samplePerformanceStatusChartPoints(source: List<T>, maxPoints: Int): List<T> {
-    if (maxPoints <= 0 || source.isEmpty()) return emptyList()
-    if (source.size <= maxPoints) return source
-    val sampledSize = maxPoints
-    return object : AbstractList<T>() {
-        override val size: Int = sampledSize
-
-        override fun get(index: Int): T {
-            if (index !in 0 until size) throw IndexOutOfBoundsException("index=$index, size=$size")
-            val sourceIndex = if (size == 1) {
-                source.lastIndex
-            } else {
-                (index.toLong() * source.lastIndex / (size - 1)).toInt()
-            }
-            return source[sourceIndex]
-        }
-    }
-}
-
-/**
  * 图表图例中数值的显示单位。
  *
  * NUMBER 表示无特殊单位的计数或速率；MILLISECONDS 表示毫秒；BYTES 表示按 IEC 单位格式化的字节数。
@@ -53,10 +28,10 @@ internal enum class PerformanceStatusChartValueKind {
  * 除数为零或缺失的样本不会参与比值统计。
  */
 internal enum class PerformanceStatusChartMetricRole {
-    /** 可作为比值被除数的性能表现指标。 */
+    /** 可作为比值除数的性能表现指标。 */
     PERFORMANCE,
 
-    /** 可作为比值除数的工作量或影响因素指标。 */
+    /** 可作为比值被除数的工作量或影响因素指标。 */
     IMPACT,
 }
 
@@ -69,160 +44,159 @@ internal enum class PerformanceStatusChartMetricRole {
  */
 internal enum class PerformanceStatusChartMetric(
     val label: String,
-    val minimumMaximum: Double,
     val valueKind: PerformanceStatusChartValueKind,
     val extract: (PerformanceStatusSample) -> Double?,
 ) {
-    CLIENT_FPS("FPS", 60.0, PerformanceStatusChartValueKind.NUMBER, { it.client.fps.toDouble() }),
-    CLIENT_FRAME_TIME("帧耗时", 50.0, PerformanceStatusChartValueKind.MILLISECONDS, { it.client.frameTimeMs }),
-    CLIENT_TICK_INTERVAL("客户端 tick 间隔", 50.0, PerformanceStatusChartValueKind.MILLISECONDS, {
+    CLIENT_FPS("FPS", PerformanceStatusChartValueKind.NUMBER, { it.client.fps.toDouble() }),
+    CLIENT_FRAME_TIME("帧耗时", PerformanceStatusChartValueKind.MILLISECONDS, { it.client.frameTimeMs }),
+    CLIENT_TICK_INTERVAL("客户端 tick 间隔", PerformanceStatusChartValueKind.MILLISECONDS, {
         it.client.tickIntervalMs
     }),
-    CLIENT_TPS("客户端 TPS", 20.0, PerformanceStatusChartValueKind.NUMBER, { it.client.clientTps }),
-    CLIENT_PARTICLES("Particles", 1.0, PerformanceStatusChartValueKind.NUMBER, { it.client.particles.toDouble() }),
-    CLIENT_CPARTICLES("CParticles", 1.0, PerformanceStatusChartValueKind.NUMBER, { it.client.cParticles.toDouble() }),
-    CLIENT_CPARTICLE_SYSTEMS("CParticle 系统", 1.0, PerformanceStatusChartValueKind.NUMBER, {
+    CLIENT_TPS("客户端 TPS", PerformanceStatusChartValueKind.NUMBER, { it.client.clientTps }),
+    CLIENT_PARTICLES("Particles", PerformanceStatusChartValueKind.NUMBER, { it.client.particles.toDouble() }),
+    CLIENT_CPARTICLES("CParticles", PerformanceStatusChartValueKind.NUMBER, { it.client.cParticles.toDouble() }),
+    CLIENT_CPARTICLE_SYSTEMS("CParticle 系统", PerformanceStatusChartValueKind.NUMBER, {
         it.client.cParticleSystems.toDouble()
     }),
-    CLIENT_SOUND_INSTANCES("SoundInstances", 1.0, PerformanceStatusChartValueKind.NUMBER, {
+    CLIENT_SOUND_INSTANCES("SoundInstances", PerformanceStatusChartValueKind.NUMBER, {
         it.client.soundInstances.toDouble()
     }),
-    CLIENT_MANAGED_SOUNDS("Coo 声音", 1.0, PerformanceStatusChartValueKind.NUMBER, {
+    CLIENT_MANAGED_SOUNDS("Coo 声音", PerformanceStatusChartValueKind.NUMBER, {
         it.client.managedSoundInstances.toDouble()
     }),
-    CLIENT_SOUND_LOOPS("声音循环", 1.0, PerformanceStatusChartValueKind.NUMBER, {
+    CLIENT_SOUND_LOOPS("声音循环", PerformanceStatusChartValueKind.NUMBER, {
         it.client.soundLoops.toDouble()
     }),
-    CLIENT_RENDER_ENTITIES("客户端 RenderEntities", 1.0, PerformanceStatusChartValueKind.NUMBER, {
+    CLIENT_RENDER_ENTITIES("客户端 RenderEntities", PerformanceStatusChartValueKind.NUMBER, {
         it.client.renderEntities.toDouble()
     }),
-    CLIENT_DISPLAY_ENTITIES("客户端 DisplayEntities", 1.0, PerformanceStatusChartValueKind.NUMBER, {
+    CLIENT_DISPLAY_ENTITIES("客户端 DisplayEntities", PerformanceStatusChartValueKind.NUMBER, {
         it.client.displayEntities.toDouble()
     }),
-    CLIENT_EMITTERS("客户端 Emitters", 1.0, PerformanceStatusChartValueKind.NUMBER, {
+    CLIENT_EMITTERS("客户端 Emitters", PerformanceStatusChartValueKind.NUMBER, {
         it.client.emitters.toDouble()
     }),
-    CLIENT_COMPOSITIONS("客户端 Compositions", 1.0, PerformanceStatusChartValueKind.NUMBER, {
+    CLIENT_COMPOSITIONS("客户端 Compositions", PerformanceStatusChartValueKind.NUMBER, {
         it.client.compositions.toDouble()
     }),
-    CLIENT_COOFX_SCENES("CooFX 场景", 1.0, PerformanceStatusChartValueKind.NUMBER, {
+    CLIENT_COOFX_SCENES("CooFX 场景", PerformanceStatusChartValueKind.NUMBER, {
         it.client.cooFxScenes.toDouble()
     }),
-    CLIENT_COOFX_PARTICLES("CooFX 粒子", 1.0, PerformanceStatusChartValueKind.NUMBER, {
+    CLIENT_COOFX_PARTICLES("CooFX 粒子", PerformanceStatusChartValueKind.NUMBER, {
         it.client.cooFxParticles.toDouble()
     }),
-    CLIENT_COOFX_MODELS("CooFX 模型", 1.0, PerformanceStatusChartValueKind.NUMBER, {
+    CLIENT_COOFX_MODELS("CooFX 模型", PerformanceStatusChartValueKind.NUMBER, {
         it.client.cooFxModels.toDouble()
     }),
-    CLIENT_TERRAIN_GROUPS("地形效果组", 1.0, PerformanceStatusChartValueKind.NUMBER, {
+    CLIENT_TERRAIN_GROUPS("地形效果组", PerformanceStatusChartValueKind.NUMBER, {
         it.client.terrainEffectGroups.toDouble()
     }),
-    CLIENT_TERRAIN_MAPPINGS("地形映射", 1.0, PerformanceStatusChartValueKind.NUMBER, {
+    CLIENT_TERRAIN_MAPPINGS("地形映射", PerformanceStatusChartValueKind.NUMBER, {
         it.client.terrainMappings.toDouble()
     }),
-    CLIENT_POST_EFFECTS("后处理", 1.0, PerformanceStatusChartValueKind.NUMBER, {
+    CLIENT_POST_EFFECTS("后处理", PerformanceStatusChartValueKind.NUMBER, {
         it.client.postEffects.toDouble()
     }),
-    CLIENT_HEAP_USED("客户端堆内存", 1_048_576.0, PerformanceStatusChartValueKind.BYTES, {
+    CLIENT_HEAP_USED("客户端堆内存", PerformanceStatusChartValueKind.BYTES, {
         it.client.heapUsedBytes.toDouble()
     }),
-    CLIENT_GC_COUNT("客户端 GC 次数", 1.0, PerformanceStatusChartValueKind.NUMBER, {
+    CLIENT_GC_COUNT("客户端 GC 次数", PerformanceStatusChartValueKind.NUMBER, {
         it.client.gcCollectionCount.toDouble()
     }),
-    CLIENT_GC_TIME("客户端 GC 耗时", 1.0, PerformanceStatusChartValueKind.MILLISECONDS, {
+    CLIENT_GC_TIME("客户端 GC 耗时", PerformanceStatusChartValueKind.MILLISECONDS, {
         it.client.gcCollectionTimeMs.toDouble()
     }),
 
-    SERVER_TPS("服务端 TPS", 20.0, PerformanceStatusChartValueKind.NUMBER, { it.server?.tps }),
-    SERVER_TARGET_TPS("目标 TPS", 20.0, PerformanceStatusChartValueKind.NUMBER, { it.server?.targetTps }),
-    SERVER_SNAPSHOT_AGE("快照延迟", 1_000.0, PerformanceStatusChartValueKind.MILLISECONDS, {
+    SERVER_TPS("服务端 TPS", PerformanceStatusChartValueKind.NUMBER, { it.server?.tps }),
+    SERVER_TARGET_TPS("目标 TPS", PerformanceStatusChartValueKind.NUMBER, { it.server?.targetTps }),
+    SERVER_SNAPSHOT_AGE("快照延迟", PerformanceStatusChartValueKind.MILLISECONDS, {
         it.serverSnapshotAgeMillis?.toDouble()
     }),
-    SERVER_AVERAGE_MSPT("MSPT 平均", 50.0, PerformanceStatusChartValueKind.MILLISECONDS, {
+    SERVER_AVERAGE_MSPT("MSPT 平均", PerformanceStatusChartValueKind.MILLISECONDS, {
         it.server?.averageMspt
     }),
-    SERVER_P95_MSPT("MSPT P95", 50.0, PerformanceStatusChartValueKind.MILLISECONDS, { it.server?.p95Mspt }),
-    SERVER_MAX_MSPT("MSPT 最大", 50.0, PerformanceStatusChartValueKind.MILLISECONDS, { it.server?.maxMspt }),
-    SERVER_PLAYERS("在线玩家", 1.0, PerformanceStatusChartValueKind.NUMBER, {
+    SERVER_P95_MSPT("MSPT P95", PerformanceStatusChartValueKind.MILLISECONDS, { it.server?.p95Mspt }),
+    SERVER_MAX_MSPT("MSPT 最大", PerformanceStatusChartValueKind.MILLISECONDS, { it.server?.maxMspt }),
+    SERVER_PLAYERS("在线玩家", PerformanceStatusChartValueKind.NUMBER, {
         it.server?.onlinePlayers?.toDouble()
     }),
-    SERVER_PARTICLE_GROUPS("ParticleGroups", 1.0, PerformanceStatusChartValueKind.NUMBER, {
+    SERVER_PARTICLE_GROUPS("ParticleGroups", PerformanceStatusChartValueKind.NUMBER, {
         it.server?.particleGroups?.toDouble()
     }),
-    SERVER_RENDER_ENTITIES("服务端 RenderEntities", 1.0, PerformanceStatusChartValueKind.NUMBER, {
+    SERVER_RENDER_ENTITIES("服务端 RenderEntities", PerformanceStatusChartValueKind.NUMBER, {
         it.server?.renderEntities?.toDouble()
     }),
-    SERVER_DISPLAY_ENTITIES("服务端 DisplayEntities", 1.0, PerformanceStatusChartValueKind.NUMBER, {
+    SERVER_DISPLAY_ENTITIES("服务端 DisplayEntities", PerformanceStatusChartValueKind.NUMBER, {
         it.server?.displayEntities?.toDouble()
     }),
-    SERVER_EMITTERS("服务端 Emitters", 1.0, PerformanceStatusChartValueKind.NUMBER, {
+    SERVER_EMITTERS("服务端 Emitters", PerformanceStatusChartValueKind.NUMBER, {
         it.server?.emitters?.toDouble()
     }),
-    SERVER_COMPOSITIONS("服务端 Compositions", 1.0, PerformanceStatusChartValueKind.NUMBER, {
+    SERVER_COMPOSITIONS("服务端 Compositions", PerformanceStatusChartValueKind.NUMBER, {
         it.server?.compositions?.toDouble()
     }),
-    SERVER_TERRAIN_GROUPS("服务端地形效果组", 1.0, PerformanceStatusChartValueKind.NUMBER, {
+    SERVER_TERRAIN_GROUPS("服务端地形效果组", PerformanceStatusChartValueKind.NUMBER, {
         it.server?.terrainEffectGroups?.toDouble()
     }),
-    SERVER_TERRAIN_MAPPINGS("服务端地形映射", 1.0, PerformanceStatusChartValueKind.NUMBER, {
+    SERVER_TERRAIN_MAPPINGS("服务端地形映射", PerformanceStatusChartValueKind.NUMBER, {
         it.server?.terrainMappings?.toDouble()
     }),
-    SERVER_SOUND_INSTANCES("服务端声音", 1.0, PerformanceStatusChartValueKind.NUMBER, {
+    SERVER_SOUND_INSTANCES("服务端声音", PerformanceStatusChartValueKind.NUMBER, {
         it.server?.soundInstances?.toDouble()
     }),
-    SERVER_SOUND_LOOPS("服务端声音循环", 1.0, PerformanceStatusChartValueKind.NUMBER, {
+    SERVER_SOUND_LOOPS("服务端声音循环", PerformanceStatusChartValueKind.NUMBER, {
         it.server?.soundLoops?.toDouble()
     }),
-    SERVER_BARRAGES("Barrages", 1.0, PerformanceStatusChartValueKind.NUMBER, {
+    SERVER_BARRAGES("Barrages", PerformanceStatusChartValueKind.NUMBER, {
         it.server?.barrages?.toDouble()
     }),
-    SERVER_COOFX_SCENES("服务端 CooFX 场景", 1.0, PerformanceStatusChartValueKind.NUMBER, {
+    SERVER_COOFX_SCENES("服务端 CooFX 场景", PerformanceStatusChartValueKind.NUMBER, {
         it.server?.cooFxScenes?.toDouble()
     }),
-    SERVER_HEAP_USED("服务端堆内存", 1_048_576.0, PerformanceStatusChartValueKind.BYTES, {
+    SERVER_HEAP_USED("服务端堆内存", PerformanceStatusChartValueKind.BYTES, {
         it.server?.heapUsedBytes?.toDouble()
     }),
-    SERVER_GC_COUNT("服务端 GC 次数", 1.0, PerformanceStatusChartValueKind.NUMBER, {
+    SERVER_GC_COUNT("服务端 GC 次数", PerformanceStatusChartValueKind.NUMBER, {
         it.server?.gcCollectionCount?.toDouble()
     }),
-    SERVER_GC_TIME("服务端 GC 耗时", 1.0, PerformanceStatusChartValueKind.MILLISECONDS, {
+    SERVER_GC_TIME("服务端 GC 耗时", PerformanceStatusChartValueKind.MILLISECONDS, {
         it.server?.gcCollectionTimeMs?.toDouble()
     }),
 
-    CLIENT_PACKETS_SENT("CooPacket 上传包/tick", 1.0, PerformanceStatusChartValueKind.NUMBER, {
+    CLIENT_PACKETS_SENT("CooPacket 上传包/tick", PerformanceStatusChartValueKind.NUMBER, {
         it.clientNetworkDelta.sentPackets.toDouble()
     }),
-    CLIENT_BYTES_SENT("CooPacket 上传字节/tick", 1.0, PerformanceStatusChartValueKind.BYTES, {
+    CLIENT_BYTES_SENT("CooPacket 上传字节/tick", PerformanceStatusChartValueKind.BYTES, {
         it.clientNetworkDelta.sentBytes.toDouble()
     }),
-    CLIENT_PACKETS_RECEIVED("CooPacket 下载包/tick", 1.0, PerformanceStatusChartValueKind.NUMBER, {
+    CLIENT_PACKETS_RECEIVED("CooPacket 下载包/tick", PerformanceStatusChartValueKind.NUMBER, {
         it.clientNetworkDelta.receivedPackets.toDouble()
     }),
-    CLIENT_BYTES_RECEIVED("CooPacket 下载字节/tick", 1.0, PerformanceStatusChartValueKind.BYTES, {
+    CLIENT_BYTES_RECEIVED("CooPacket 下载字节/tick", PerformanceStatusChartValueKind.BYTES, {
         it.clientNetworkDelta.receivedBytes.toDouble()
     }),
-    SERVER_PACKETS_SENT("服务端 CooPacket 上传包/快照", 1.0, PerformanceStatusChartValueKind.NUMBER, {
+    SERVER_PACKETS_SENT("服务端 CooPacket 上传包/快照", PerformanceStatusChartValueKind.NUMBER, {
         it.serverNetworkDelta?.sentPackets?.toDouble()
     }),
-    SERVER_BYTES_SENT("服务端 CooPacket 上传字节/快照", 1.0, PerformanceStatusChartValueKind.BYTES, {
+    SERVER_BYTES_SENT("服务端 CooPacket 上传字节/快照", PerformanceStatusChartValueKind.BYTES, {
         it.serverNetworkDelta?.sentBytes?.toDouble()
     }),
-    SERVER_PACKETS_RECEIVED("服务端 CooPacket 下载包/快照", 1.0, PerformanceStatusChartValueKind.NUMBER, {
+    SERVER_PACKETS_RECEIVED("服务端 CooPacket 下载包/快照", PerformanceStatusChartValueKind.NUMBER, {
         it.serverNetworkDelta?.receivedPackets?.toDouble()
     }),
-    SERVER_BYTES_RECEIVED("服务端 CooPacket 下载字节/快照", 1.0, PerformanceStatusChartValueKind.BYTES, {
+    SERVER_BYTES_RECEIVED("服务端 CooPacket 下载字节/快照", PerformanceStatusChartValueKind.BYTES, {
         it.serverNetworkDelta?.receivedBytes?.toDouble()
     }),
-    CLIENT_VANILLA_PACKETS_SENT("原版上传包/聚合窗口", 1.0, PerformanceStatusChartValueKind.NUMBER, {
+    CLIENT_VANILLA_PACKETS_SENT("原版上传包/聚合窗口", PerformanceStatusChartValueKind.NUMBER, {
         it.clientVanillaPacketDelta?.sentPackets?.toDouble()
     }),
-    CLIENT_VANILLA_PACKETS_RECEIVED("原版下载包/聚合窗口", 1.0, PerformanceStatusChartValueKind.NUMBER, {
+    CLIENT_VANILLA_PACKETS_RECEIVED("原版下载包/聚合窗口", PerformanceStatusChartValueKind.NUMBER, {
         it.clientVanillaPacketDelta?.receivedPackets?.toDouble()
     }),
-    SERVER_VANILLA_PACKETS_SENT("服务端原版上传包/快照", 1.0, PerformanceStatusChartValueKind.NUMBER, {
+    SERVER_VANILLA_PACKETS_SENT("服务端原版上传包/快照", PerformanceStatusChartValueKind.NUMBER, {
         it.serverVanillaPacketDelta?.sentPackets?.toDouble()
     }),
-    SERVER_VANILLA_PACKETS_RECEIVED("服务端原版下载包/快照", 1.0, PerformanceStatusChartValueKind.NUMBER, {
+    SERVER_VANILLA_PACKETS_RECEIVED("服务端原版下载包/快照", PerformanceStatusChartValueKind.NUMBER, {
         it.serverVanillaPacketDelta?.receivedPackets?.toDouble()
     });
 
@@ -266,9 +240,6 @@ internal sealed interface PerformanceStatusChartSelection {
     /** 图例中显示的曲线名称。 */
     val label: String
 
-    /** 曲线自动量程的最小上界。 */
-    val minimumMaximum: Double
-
     /** 图例数值格式。 */
     val valueKind: PerformanceStatusChartValueKind
 
@@ -278,7 +249,6 @@ internal sealed interface PerformanceStatusChartSelection {
     /** 一个原始指标曲线。 */
     data class Metric(val metric: PerformanceStatusChartMetric) : PerformanceStatusChartSelection {
         override val label: String = metric.label
-        override val minimumMaximum: Double = metric.minimumMaximum
         override val valueKind: PerformanceStatusChartValueKind = metric.valueKind
 
         override fun extract(sample: PerformanceStatusSample): Double? = metric.extract(sample)
@@ -290,7 +260,6 @@ internal sealed interface PerformanceStatusChartSelection {
         val performance: PerformanceStatusChartMetric,
     ) : PerformanceStatusChartSelection {
         override val label: String = "${impact.label} / ${performance.label}"
-        override val minimumMaximum: Double = 1.0
         override val valueKind: PerformanceStatusChartValueKind = PerformanceStatusChartValueKind.NUMBER
 
         override fun extract(sample: PerformanceStatusSample): Double? {

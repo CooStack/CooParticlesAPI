@@ -3,6 +3,7 @@ package cn.coostack.cooparticlesapi.listener.client
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.CooShaderReloadListenerNeo
 import cn.coostack.cooparticlesapi.key.CooKeyBindingManager
+import cn.coostack.cooparticlesapi.entities.structure.editor.client.StructureEditorClient
 import cn.coostack.cooparticlesapi.performance.client.PerformanceStatusKeyBindings
 import net.neoforged.api.distmarker.Dist
 import net.neoforged.bus.api.SubscribeEvent
@@ -21,6 +22,7 @@ object CooParticlesAPINeoClientRegistration {
         CooKeyBindingManager.setRegistrar { mapping ->
             event.register(mapping)
         }
+        StructureEditorClient.registerKeys()
         PerformanceStatusKeyBindings.mappings().forEach(event::register)
     }
 

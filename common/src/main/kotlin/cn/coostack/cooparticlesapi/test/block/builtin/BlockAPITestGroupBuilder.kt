@@ -1,5 +1,9 @@
 package cn.coostack.cooparticlesapi.test.block.builtin
 
+import cn.coostack.cooparticlesapi.cparticle.path.CParticlePathEndMode
+import cn.coostack.cooparticlesapi.cparticle.path.CParticlePathForwardAxis
+import cn.coostack.cooparticlesapi.cparticle.path.CParticlePathPlayMode
+import cn.coostack.cooparticlesapi.cparticle.path.CParticlePathProgressMode
 import cn.coostack.cooparticlesapi.coofx.server.CooFxSceneMode
 import cn.coostack.cooparticlesapi.extend.asRelative
 import cn.coostack.cooparticlesapi.extend.ofID
@@ -29,6 +33,8 @@ import cn.coostack.cooparticlesapi.test.block.BlockTestGroup
 import cn.coostack.cooparticlesapi.test.block.BlockTexturePropagationTestOption
 import cn.coostack.cooparticlesapi.test.block.CooFxModelBlockTestOption
 import cn.coostack.cooparticlesapi.test.block.OrbitalRailgunBlockTestOption
+import cn.coostack.cooparticlesapi.test.block.PathConstraintBlockTestOption
+import cn.coostack.cooparticlesapi.cparticle.path.CParticlePathOffsetMode
 import cn.coostack.cooparticlesapi.test.block.ProceduralTerrainMappingBlockTestOption
 import cn.coostack.cooparticlesapi.test.block.StarfieldFboBlockTypeTestOption
 import cn.coostack.cooparticlesapi.test.options.display.TestBlockDisplayEntity
@@ -39,11 +45,14 @@ import cn.coostack.cooparticlesapi.test.options.particle.composition.TestComposi
 import cn.coostack.cooparticlesapi.test.options.particle.composition.TestGPURotationComposition
 import cn.coostack.cooparticlesapi.test.options.particle.composition.TestSimpleParticleComposition
 import cn.coostack.cooparticlesapi.test.options.particle.composition.UsefulMagicTestComposition
+import cn.coostack.cooparticlesapi.test.options.particle.emitter.PathConstraintTestPaths
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestAlphaShaderEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestCParticleEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestCommandEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestEventEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestGPUEmitter
+import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestPathCommandEmitter
+import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestPathGPUCParticleEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestSpreadPointEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestTransformGPUEmitter
 import cn.coostack.cooparticlesapi.test.options.particle.emitter.event.TestCollideEventHandler
@@ -151,6 +160,172 @@ class BlockAPITestGroupBuilder(private val player: Player) : TestGroupBuilder {
                         it.template.setTextureSheet(getParam<TextureSheetsEnum>("cp_texture_sheet")!!)
                         it.template.effect = getParam<ControlableParticleEffectBuilder>("effect")!!.build(it.uuid)
                     }
+            }
+            // ===== 路径位置约束：公共 GPU 数据图层 + 路径约束 ---------------------------------
+            // 路径几何作为发射器自己的字段随网络同步，每一侧用它建立本地路径；构造选项不分配路径。
+            // 这几条用例覆盖：沿路径前进、绕路径环绕、朝向对齐实际运动方向、拐角参考基、
+            // 闭合接缝、动态改点、到达消失的槽位回收、PingPong 掉头。
+            .appendOption {
+                PathConstraintBlockTestOption(
+                    player,
+                    PathConstraintTestPaths.orbitArc(),
+                    "路径效果: 随机出生分散螺旋 (GPU)",
+                ) { emitter ->
+                    (emitter as? TestPathGPUCParticleEmitter)?.apply {
+                        spawnPerTick = 8
+                        playPeriodTicks = 120.0
+                        offsetMode = CParticlePathOffsetMode.BIRTH_FRAME
+                        spawnSpreadRadius = 0.9
+                        orbitRadius = 0.0
+                        orbitTurns = 3.0
+                        forwardAxis = CParticlePathForwardAxis.MODEL_POSITIVE_Y
+                        template.maxAge = 120
+                        template.weightSize = 0.035F
+                        template.heightSize = 0.16F
+                    }
+                }
+            }
+            .appendOption {
+                PathConstraintBlockTestOption(
+                    player,
+                    PathConstraintTestPaths.orbitArc(),
+                    "路径效果: 随机出生分散螺旋 (ParticleCommand)",
+                    useCommandPath = true,
+                ) { emitter ->
+                    (emitter as? TestPathCommandEmitter)?.apply {
+                        spawnPerTick = 8
+                        playPeriodTicks = 120.0
+                        offsetMode = CParticlePathOffsetMode.BIRTH_FRAME
+                        spawnSpreadRadius = 0.9
+                        orbitRadius = 0.0
+                        orbitTurns = 3.0
+                        template.maxAge = 120
+                        template.weightSize = 0.035F
+                        template.heightSize = 0.16F
+                    }
+                }
+            }
+            .appendOption {
+                PathConstraintBlockTestOption(
+                    player,
+                    PathConstraintTestPaths.bezierArc(),
+                    "路径约束: 贝塞尔环绕 (GPU)",
+                ) { emitter ->
+                    (emitter as? TestPathGPUCParticleEmitter)?.apply {
+                        spawnPerTick = 24
+                        template.maxAge = 240
+                        orbitRadius = 0.65
+                        orbitTurns = 3.0
+                        playMode = CParticlePathPlayMode.LOOP
+                        progressMode = CParticlePathProgressMode.ARC_LENGTH
+                        endMode = CParticlePathEndMode.HOLD
+                        forwardAxis = CParticlePathForwardAxis.MODEL_POSITIVE_Y
+                    }
+                }
+            }
+            // 传统 ControlableParticle 走 ParticleCommand，与上面同一套路径定义与播放规则。
+            .appendOption {
+                PathConstraintBlockTestOption(
+                    player,
+                    PathConstraintTestPaths.bezierArc(),
+                    "路径约束: 贝塞尔环绕 (传统命令)",
+                    useCommandPath = true,
+                ) { emitter ->
+                    (emitter as? TestPathCommandEmitter)?.apply {
+                        spawnPerTick = 6
+                        template.maxAge = 200
+                        orbitRadius = 0.65
+                        orbitTurns = 3.0
+                        playMode = CParticlePathPlayMode.LOOP
+                        progressMode = CParticlePathProgressMode.ARC_LENGTH
+                        endMode = CParticlePathEndMode.HOLD
+                        forwardAxis = CParticlePathForwardAxis.MODEL_POSITIVE_Y
+                    }
+                }
+            }
+            // 折线急拐角：关闭环绕，检查拐角处横截面参考基是否突然翻转。
+            .appendOption {
+                PathConstraintBlockTestOption(
+                    player,
+                    PathConstraintTestPaths.linearZigzag(),
+                    "路径约束: 折线急拐角 (无环绕)",
+                ) { emitter ->
+                    (emitter as? TestPathGPUCParticleEmitter)?.apply {
+                        spawnPerTick = 30
+                        template.maxAge = 160
+                        // 关闭环绕：只看沿程与拐角，避免环绕掩蔽参考基问题。
+                        orbitRadius = 0.0
+                        orbitTurns = 0.0
+                    }
+                }
+            }
+            // 闭合圆环：检查接缝处是否连续推进，而不是从终点跳回起点。
+            .appendOption {
+                PathConstraintBlockTestOption(
+                    player,
+                    PathConstraintTestPaths.closedRing(),
+                    "路径约束: 闭合圆环",
+                ) { emitter ->
+                    (emitter as? TestPathGPUCParticleEmitter)?.apply {
+                        spawnPerTick = 20
+                        template.maxAge = 180
+                        orbitRadius = 0.45
+                        orbitTurns = 2.0
+                    }
+                }
+            }
+            // 动态改点：位置应当立刻跟随新几何，不应有平滑追赶。
+            .appendOption {
+                PathConstraintBlockTestOption(
+                    player,
+                    PathConstraintTestPaths.bezierArc(),
+                    "路径约束: 动态改点",
+                ) { emitter ->
+                    (emitter as? TestPathGPUCParticleEmitter)?.apply {
+                        spawnPerTick = 24
+                        template.maxAge = 240
+                        orbitRadius = 0.65
+                        orbitTurns = 3.0
+                        // 摆动基准由发射器按同步过来的几何自动记录，这里只需打开开关。
+                        dynamicPoints = true
+                        dynamicAmplitude = 1.2
+                        dynamicPeriodTicks = 160
+                    }
+                }
+            }
+            // 单程 + 到达消失：路径可以在 maxAge 之前结束粒子，槽位应当被回收。
+            .appendOption {
+                PathConstraintBlockTestOption(
+                    player,
+                    PathConstraintTestPaths.bezierArc(),
+                    "路径约束: 到达消失",
+                ) { emitter ->
+                    (emitter as? TestPathGPUCParticleEmitter)?.apply {
+                        spawnPerTick = 30
+                        template.maxAge = 400
+                        orbitRadius = 0.5
+                        orbitTurns = 1.0
+                        playMode = CParticlePathPlayMode.ONCE
+                        endMode = CParticlePathEndMode.DISAPPEAR
+                    }
+                }
+            }
+            // PingPong：端点立即掉头，回程朝向与去程相反。
+            .appendOption {
+                PathConstraintBlockTestOption(
+                    player,
+                    PathConstraintTestPaths.bezierArc(),
+                    "路径约束: PingPong 往返",
+                ) { emitter ->
+                    (emitter as? TestPathGPUCParticleEmitter)?.apply {
+                        spawnPerTick = 24
+                        template.maxAge = 300
+                        orbitRadius = 0.5
+                        orbitTurns = 2.0
+                        playMode = CParticlePathPlayMode.PING_PONG
+                        progressMode = CParticlePathProgressMode.ARC_LENGTH
+                    }
+                }
             }
             .appendOption {
                 // GPU 粒子 composition: 多层旋转法阵, 验证 composition 控制语义仍然生效

@@ -9,6 +9,7 @@ import org.lwjgl.opengl.GL33.*
 import org.lwjgl.opengl.GL43
 import org.lwjgl.system.MemoryUtil
 import java.nio.FloatBuffer
+import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.Arrays
 
@@ -45,6 +46,21 @@ class CParticleGlBuffer(capacity: Int) {
     private companion object {
         const val VISUAL_FLOAT_COUNT = CParticleStore.STRIDE - CParticleStore.OFF_FLAGS
         const val EXPANDED_VERTICES_PER_PARTICLE = 6
+
+        /**
+         * 认为一次 `glBufferSubData` 大致等价于多少个字节的映射写入。
+         *
+         * 这是**用于选择策略的量级估计**，不是实测值：一次 GL 状态切换加命令排队的成本远高于
+         * 几百字节的内存拷贝，取 4 KiB 参与成本估计，不代表跨驱动的性能保证。
+         */
+        const val BYTES_PER_GL_CALL = 4096L
+
+        /**
+         * 在考虑映射前允许直接补写的槽位数量。
+         *
+         * 超过本值才考虑整段映射；日常的少量死亡仍然逐槽上传。
+         */
+        const val PATCH_FLAG_CALL_BUDGET = 64
     }
 
     var vao = 0
@@ -65,6 +81,35 @@ class CParticleGlBuffer(capacity: Int) {
         private set
 
     val initialized: Boolean get() = vao != 0 && vbo != 0
+
+    /**
+     * 只读映射模拟结果，由 system 在第一颗受关注粒子死亡时调用。
+     * 同批死亡共享一次映射，仅访问死亡槽位；调用方必须在任何上传、扩容前解除映射。
+     * 保留调用前的 ARRAY_BUFFER 绑定，不干扰 Iris 或其他渲染流程。
+     */
+    internal fun mapDeathReadback(): ByteBuffer {
+        check(initialized) { "Particle buffer is not initialized" }
+        val previous = glGetInteger(GL_ARRAY_BUFFER_BINDING)
+        glBindBuffer(GL_ARRAY_BUFFER, vbo)
+        try {
+            return checkNotNull(glMapBufferRange(
+                GL_ARRAY_BUFFER, 0L, capacity.toLong() * CParticleStore.BYTE_STRIDE, GL_MAP_READ_BIT,
+            )) { "Unable to map particle death state" }.order(ByteOrder.nativeOrder())
+        } finally {
+            glBindBuffer(GL_ARRAY_BUFFER, previous)
+        }
+    }
+
+    /** 解除死亡快照映射并恢复原绑定；读回失败不静默替换为过期的 CPU 出生数据。 */
+    internal fun unmapDeathReadback() {
+        val previous = glGetInteger(GL_ARRAY_BUFFER_BINDING)
+        glBindBuffer(GL_ARRAY_BUFFER, vbo)
+        try {
+            check(glUnmapBuffer(GL_ARRAY_BUFFER)) { "Particle death readback became invalid" }
+        } finally {
+            glBindBuffer(GL_ARRAY_BUFFER, previous)
+        }
+    }
 
     fun init() {
         if (initialized) return
@@ -276,20 +321,81 @@ class CParticleGlBuffer(capacity: Int) {
         glBindBuffer(GL_ARRAY_BUFFER, prev)
     }
 
+    /**
+     * 大量 flags 补写时，映射整段缓冲并按交错布局写回。
+     *
+     * 逐槽位 `glBufferSubData` 虽然每次只有 4 字节，但每个调用都要走一遍驱动状态切换；
+     * 大量粒子同时死亡或大量生成时，调用次数会直接变成帧耗时。映射一次的成本与缓冲容量成正比、
+     * 因此按待补写槽位数估计逐槽调用成本，再决定是否使用映射。
+     *
+     * @param data 交错粒子数据
+     * @param slots 需要补写的槽位；调用方保证已经排序
+     * @param count [slots] 中有效的元素数量
+     */
+    private fun patchFlagsByMapping(data: FloatArray, slots: IntArray, count: Int) {
+        val mapped = glMapBufferRange(
+            GL_ARRAY_BUFFER,
+            0L,
+            capacity.toLong() * CParticleStore.BYTE_STRIDE,
+            GL_MAP_WRITE_BIT,
+        )
+        if (mapped == null) {
+            patchFlagsIndividually(data, slots, count)
+            return
+        }
+        try {
+            mapped.order(ByteOrder.nativeOrder())
+            for (index in 0 until count) {
+                val offset = slots[index] * CParticleStore.STRIDE + CParticleStore.OFF_FLAGS
+                mapped.putFloat(offset * Float.SIZE_BYTES, data[offset])
+            }
+        } finally {
+            glUnmapBuffer(GL_ARRAY_BUFFER)
+        }
+    }
+
+    /**
+     * 判断一批 flags 补写应该走逐槽上传还是整段映射。
+     *
+     * flags 并非连续数组，即使槽位相邻也需要独立调用。使用容量和调用次数进行启发式成本比较。
+     *
+     * @param count 需要补写的槽位数
+     */
+    private fun shouldMapFlags(count: Int): Boolean {
+        if (count <= PATCH_FLAG_CALL_BUDGET) return false
+        val mapBytes = capacity.toLong() * CParticleStore.BYTE_STRIDE
+        val callSavings = (count - PATCH_FLAG_CALL_BUDGET).toLong() * BYTES_PER_GL_CALL
+        return callSavings > mapBytes
+    }
+
     /** 只补写 alive/light/camera flags，不覆盖 compute 掌管的模拟字段。 */
     fun patchFlags(data: FloatArray, slots: IntArray, count: Int) {
         if (!initialized || count <= 0) return
-        val prev = glGetInteger(GL_ARRAY_BUFFER_BINDING)
+        Arrays.sort(slots, 0, count)
+        val previous = glGetInteger(GL_ARRAY_BUFFER_BINDING)
         glBindBuffer(GL_ARRAY_BUFFER, vbo)
+        try {
+            if (shouldMapFlags(count)) {
+                patchFlagsByMapping(data, slots, count)
+            } else {
+                // flags 按 STRIDE 间隔排列，连续上传标记列表会覆盖运动字段。
+                patchFlagsIndividually(data, slots, count)
+            }
+        } finally {
+            glBindBuffer(GL_ARRAY_BUFFER, previous)
+        }
+    }
+
+    /** [patchFlagsByMapping] 在映射失败时的保守回退：逐个槽位补写。 */
+    private fun patchFlagsIndividually(data: FloatArray, slots: IntArray, count: Int) {
         val s = smallPatchBuffer()
-        for (i in 0 until count) {
-            val offset = slots[i] * CParticleStore.STRIDE + CParticleStore.OFF_FLAGS
+        for (index in 0 until count) {
+            val offset = slots[index] * CParticleStore.STRIDE + CParticleStore.OFF_FLAGS
             s.clear()
             s.put(data[offset])
             s.flip()
-            glBufferSubData(GL_ARRAY_BUFFER, offset.toLong() * 4L, s)
+            glBufferSubData(GL_ARRAY_BUFFER, offset.toLong() * Float.SIZE_BYTES, s)
         }
-        glBindBuffer(GL_ARRAY_BUFFER, prev)
     }
 
     /** compute 模拟: 把本缓冲以 SSBO 身份绑定到 binding 点 */

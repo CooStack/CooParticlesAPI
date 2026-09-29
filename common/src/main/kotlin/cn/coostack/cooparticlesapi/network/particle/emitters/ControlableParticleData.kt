@@ -438,7 +438,7 @@ open class ControlableParticleData : SerializableData {
         target.weightSize = weightSize
         target.heightSize = heightSize
         target.depthSize = depthSize
-        target.color = color
+        target.color = Vector3f(color)
         target.alpha = alpha
         target.visibleRange = visibleRange
         target.age = age

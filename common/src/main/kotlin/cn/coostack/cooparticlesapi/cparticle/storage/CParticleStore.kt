@@ -14,6 +14,7 @@ import cn.coostack.cooparticlesapi.cparticle.CParticleTextureDescriptors
 import cn.coostack.cooparticlesapi.cparticle.CParticleUpdateMode
 import cn.coostack.cooparticlesapi.cparticle.CParticleUv
 import cn.coostack.cooparticlesapi.particles.ParticleCameraOption
+import cn.coostack.cooparticlesapi.particles.control.RemoveReason
 import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
@@ -31,7 +32,7 @@ import kotlin.math.roundToInt
  * vec4 1: prevPos.xyz     maxAge
  * vec4 2: velocity.xyz    flags(位打包整数, 以精确 float 值存储)
  * vec4 3: sizeW sizeH     yaw   pitch
- * vec4 4: axis.xyz        roll
+ * vec4 4: axis.xyz        roll（PATH_ROTATION 时 xyz 为前一 tick 的 pitch/yaw/roll）
  * vec4 5: animationId visualAgeBase seedLow16 seedHigh16
  * vec4 6: r g b a
  * vec4 7: angularVelocity(pitch,yaw,roll) epochTick
@@ -46,6 +47,46 @@ import kotlin.math.roundToInt
  * 死槽位不压缩 — 渲染端对非 alive 实例输出退化三角形, 代价可忽略.
  */
 class CParticleStore(capacity: Int) {
+    /** 仅启用死亡指令时分配；清空存储同时丢弃回调，不在换世界时生成新粒子。 */
+    internal var deathTracker: CParticleDeathTracker? = null
+
+    /** GPU 预提交槽位的移除入口；返回 true 表示等候异步回收，不立即释放。 */
+    internal var preparedDeath: ((Int, RemoveReason) -> Boolean)? = null
+
+    /** 直接清空存储时同步撤销预提交关系，避免旧异步事件作用于复用后的槽位。 */
+    internal var preparedClear: (() -> Unit)? = null
+
+    /**
+     * 将槽位的生命周期交给 GPU，并可把它变成尚未激活的后继。
+     * 预留槽位仍占全局额度；清除 CPU 到期与动态源，防止旧配置覆盖 GPU 出生结果。
+     */
+    internal fun prepareGpuRespawn(slot: Int, waiting: Boolean) {
+        check(isAlive(slot))
+        expirationTicks[slot] = NO_EXPIRATION_TICK
+        val word = slot ushr 6
+        val mask = 1L shl (slot and 63)
+        if (agingBits[word] and mask != 0L) {
+            agingBits[word] = agingBits[word] and mask.inv()
+            agingCount--
+        }
+        releaseDynamicSource(slot)
+        val offset = slot * STRIDE + OFF_FLAGS
+        var flags = data[offset].toInt() or CParticleInstanceFlags.RESPAWN_OWNED
+        if (waiting) flags = (flags and FLAG_ALIVE.inv()) or CParticleInstanceFlags.RESPAWN_WAITING
+        data[offset] = flags.toFloat()
+    }
+
+    /** 只提交终止标记；位置速度仍由 GPU 持有，不能整槽上传 CPU 的旧运动数据。 */
+    internal fun requestPreparedDeath(slot: Int, reason: RemoveReason, cancel: Boolean) {
+        val offset = slot * STRIDE + OFF_FLAGS
+        var flags = data[offset].toInt() and
+            (FLAG_ALIVE or CParticleInstanceFlags.RESPAWN_WAITING).inv()
+        if (cancel) flags = flags or CParticleInstanceFlags.RESPAWN_CANCELED
+        if (reason == RemoveReason.CALL) flags = flags or CParticleInstanceFlags.RESPAWN_MANUAL
+        data[offset] = flags.toFloat()
+        queueKilled(slot)
+    }
+
     companion object {
         /**
          * 创建受 CParticle 全局数量上限约束的存储。
@@ -502,6 +543,7 @@ class CParticleStore(capacity: Int) {
         data[base + OFF_MASK_ANIMATION] = (maskAnimationId ?: 0).toFloat()
         data[base + OFF_MASK_COLOR] = packRgb8(maskColorMultiplier).toFloat()
         metadata.set(slot, sourceId, sign, commandMask, metadataFlags, charge, mass, radius)
+        metadata.setBirth(slot, Vec3(rx.toDouble(), ry.toDouble(), rz.toDouble()), p.age.toDouble())
 
         ages[slot] = p.age
         maxAges[slot] = maxAge
@@ -567,7 +609,13 @@ class CParticleStore(capacity: Int) {
      * @param queueGpuFlag 是否排队补写 GPU alive 标记
      */
     fun kill(slot: Int, queueGpuFlag: Boolean = true) {
+        kill(slot, queueGpuFlag, RemoveReason.CALL)
+    }
+
+    /** 按明确原因回收槽位，保留公开双参数入口的 JVM 签名。 */
+    internal fun kill(slot: Int, queueGpuFlag: Boolean = true, reason: RemoveReason) {
         if (!isAlive(slot)) return
+        if (preparedDeath?.invoke(slot, reason) == true) return
         aliveBits[slot ushr 6] = aliveBits[slot ushr 6] and (1L shl (slot and 63)).inv()
         val agingMask = 1L shl (slot and 63)
         val agingWord = slot ushr 6
@@ -602,6 +650,7 @@ class CParticleStore(capacity: Int) {
                 firstAliveSlot++
             }
         }
+        deathTracker?.record(slot, reason)
     }
 
     /**
@@ -633,7 +682,7 @@ class CParticleStore(capacity: Int) {
                     data[slot * STRIDE + OFF_AGE] = newAge.toFloat()
                 }
                 if (newAge >= maxAges[slot]) {
-                    kill(slot, queueGpuFlag = false)
+                    kill(slot, queueGpuFlag = false, reason = RemoveReason.LIFECYCLE)
                     anyDead = true
                 }
             }
@@ -661,7 +710,7 @@ class CParticleStore(capacity: Int) {
                 val slot = batch.slotAt(index)
                 if (!isAlive(slot) || expirationTicks[slot] != batch.expiryTick) continue
                 expirationTicks[slot] = NO_EXPIRATION_TICK
-                kill(slot, queueGpuFlag = false)
+                kill(slot, queueGpuFlag = false, reason = RemoveReason.LIFECYCLE)
                 anyDead = true
             }
             recycleExpirationBatch(batch)
@@ -820,14 +869,15 @@ class CParticleStore(capacity: Int) {
         data[base + OFF_SIZE + 2] = yaw
         data[base + OFF_SIZE + 3] = pitch
         data[base + OFF_ROLL] = roll
-        val flags = data[base + OFF_FLAGS].toInt() and FLAG_ROTATION_DIRECTION.inv()
+        val flags = data[base + OFF_FLAGS].toInt() and
+            (FLAG_ROTATION_DIRECTION or CParticleInstanceFlags.PATH_ROTATION).inv()
         data[base + OFF_FLAGS] = flags.toFloat()
         markDirty(slot)
     }
 
     fun setRotationDirection(slot: Int, direction: Vector3f?, tick: Int) {
         val base = slot * STRIDE
-        val flags = data[base + OFF_FLAGS].toInt()
+        val flags = data[base + OFF_FLAGS].toInt() and CParticleInstanceFlags.PATH_ROTATION.inv()
         val mode = (flags ushr CAMERA_SHIFT) and 3
         if (mode != ParticleCameraOption.ROTATION.ordinal) return
         val current = currentRotation(slot, tick)
@@ -881,6 +931,8 @@ class CParticleStore(capacity: Int) {
 
     private fun rebaseEpoch(slot: Int, tick: Int) {
         val base = slot * STRIDE
+        data[base + OFF_FLAGS] =
+            (data[base + OFF_FLAGS].toInt() and CParticleInstanceFlags.PATH_ROTATION.inv()).toFloat()
         val current = currentRotation(slot, tick)
         val flags = data[base + OFF_FLAGS].toInt()
         if (flags and FLAG_ROTATION_DIRECTION != 0) {
@@ -904,6 +956,10 @@ class CParticleStore(capacity: Int) {
      * 禁止：对空池重复调用不能减少其他 system 的全局计数。
      */
     fun clear() {
+        preparedClear?.invoke()
+        preparedClear = null
+        deathTracker?.clear()
+        preparedDeath = null
         val releasedCount = aliveCount
         Arrays.fill(aliveBits, 0L)
         Arrays.fill(agingBits, 0L)
@@ -1379,7 +1435,10 @@ class CParticleStore(capacity: Int) {
             null
         }
         val oldPointed = CParticleGpuMath.directionAngles(oldDirection)
-        val definitionChanged = previousCameraMode != cameraMode || state.directionModes[slot] != hasDirection
+        val definitionChanged = previousCameraMode != cameraMode || state.directionModes[slot] != hasDirection ||
+            oldFlags and CParticleInstanceFlags.PATH_ROTATION != 0 ||
+            (oldFlags and FLAG_ROTATION_DIRECTION != 0) != hasDirection ||
+            ((oldFlags ushr CAMERA_SHIFT) and 3) != cameraMode
         val yawChanged = source.yaw != state.snapshots[snapshot + SNAP_YAW]
         val pitchChanged = source.pitch != state.snapshots[snapshot + SNAP_PITCH]
         val orientation = source.rotationDirection.takeIf { hasDirection }
@@ -1430,6 +1489,7 @@ class CParticleStore(capacity: Int) {
         data[base + OFF_EPOCH_TICK] = tick.toFloat()
         var flags = data[base + OFF_FLAGS].toInt()
         flags = if (hasDirection) flags or FLAG_ROTATION_DIRECTION else flags and FLAG_ROTATION_DIRECTION.inv()
+        flags = flags and CParticleInstanceFlags.PATH_ROTATION.inv()
         data[base + OFF_FLAGS] = flags.toFloat()
     }
 

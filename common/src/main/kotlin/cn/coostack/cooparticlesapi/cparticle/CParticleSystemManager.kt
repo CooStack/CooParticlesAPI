@@ -1,7 +1,9 @@
 package cn.coostack.cooparticlesapi.cparticle
 
 import cn.coostack.cooparticlesapi.cparticle.force.CParticleForceResourceRegistry
+import cn.coostack.cooparticlesapi.cparticle.compat.CParticleEmitterBridge
 import cn.coostack.cooparticlesapi.cparticle.force.CParticleForceResource
+import cn.coostack.cooparticlesapi.cparticle.path.CParticlePathLibrary
 import cn.coostack.cooparticlesapi.cparticle.render.CParticleRenderer
 import cn.coostack.cooparticlesapi.cparticle.simulate.CParticleGpuSimulator
 import cn.coostack.cooparticlesapi.cparticle.collision.CParticleBlockCollisionGridManager
@@ -288,7 +290,10 @@ object CParticleSystemManager {
             if (autoReleaseWhenEmpty) autoRelease.add(key)
             return it
         }
-        val system = CParticleSystem(name, capacity, layer, mode, textureBindingKey, maskTextureBindingKey)
+        // 创建大容量 System 的 CPU 峰值先在这一段定位：SoA 数组与空闲栈的分配全部发生在这里。
+        val system = CParticlePerfProbe.measure(CParticlePerfProbe.Stage.SYSTEM_ALLOCATE) {
+            CParticleSystem(name, capacity, layer, mode, textureBindingKey, maskTextureBindingKey)
+        }
         systems[key] = system
         lastNonEmptyTick[key] = currentTick
         if (autoReleaseWhenEmpty) autoRelease.add(key)
@@ -738,6 +743,7 @@ object CParticleSystemManager {
         CParticleBlockCollisionGridManager.beginTick(Minecraft.getInstance().level, currentTick)
         try {
             if (systems.isEmpty()) return
+            CParticleRespawnEngine.poll()
             val toRemove = ArrayList<ManagedCParticleSystemKey>(0)
             for ((key, system) in systems) {
                 system.tick()
@@ -754,7 +760,9 @@ object CParticleSystemManager {
                     toRemove.add(key)
                 }
             }
+            CParticleRespawnEngine.finishTick()
             toRemove.forEach(::removeSystem)
+            CParticleEmitterBridge.flushRespawns()
         } finally {
             CParticleBlockCollisionGridManager.endTick()
         }
@@ -773,6 +781,8 @@ object CParticleSystemManager {
     /** 断线 / 换世界: 清空所有粒子与动态系统 */
     @JvmStatic
     fun clear() {
+        CParticleRespawnEngine.clear()
+        CParticleEmitterBridge.clearPendingRespawns()
         CParticleBlockCollisionGridManager.clear()
         val it = systems.entries.iterator()
         while (it.hasNext()) {
@@ -788,19 +798,34 @@ object CParticleSystemManager {
         autoRelease.removeAll { it !in systems.keys }
         terminalAutoRelease.clear()
         retiredAutoSystemReuseKeys.clear()
+        // 路径槽位由调用方持有；换世界只解除 GL 绑定，定义与槽位在调用方释放前保持有效。
+        CParticlePathLibrary.unbind()
     }
 
     /** 资源重载: 图集 UV 会变, 清空贴图缓存; shader 程序由 registry 自动重建 */
     @JvmStatic
     fun onResourceReload() {
+        CParticleRespawnEngine.releasePrograms()
         CParticleSprites.clearCache()
         CParticleForceResourceRegistry.clearResolvedBindings()
         CParticleGpuSimulator.release()
+        // 路径图层缓冲随 shader 重载一起重建；CPU 侧几何保留，下一次 syncLayer 整段重传。
+        CParticlePathLibrary.invalidateGlResources()
+    }
+
+    /** 彻底释放全部路径资源；仅在断开连接或完全关闭 CParticle 时调用。 */
+    @JvmStatic
+    fun releaseAllPaths() {
+        CParticlePathLibrary.unbind()
+        CParticlePathLibrary.clear()
     }
 
     /** 完全释放 (退出/调试) */
     @JvmStatic
     fun releaseAll() {
+        CParticleRespawnEngine.clear()
+        CParticleRespawnEngine.releasePrograms()
+        CParticleEmitterBridge.clearPendingRespawns()
         systems.values.forEach { it.release() }
         systems.clear()
         lastNonEmptyTick.clear()
@@ -812,5 +837,6 @@ object CParticleSystemManager {
         CParticleBlockCollisionGridManager.clear()
         CParticleSprites.release()
         CParticleForceResourceRegistry.clearResolvedBindings()
+        releaseAllPaths()
     }
 }

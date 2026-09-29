@@ -52,6 +52,19 @@ interface ParticleEmitters : ServerControler<ParticleEmitters>, NetworkDirtyMark
 
     fun stop()
 
+    /**
+     * 释放发射器持有的外部资源（例如路径图层引用）。
+     *
+     * 客户端移除发射器时走的是**取消**路径，不会经过 [stop]；实现类若持有需要回收的外部资源，
+     * 必须在这里释放，否则这些资源会在用例反复切换时累积。
+     *
+     * 默认实现委托 [stop]：对大多数发射器而言“停止”与“释放”是同一件事，
+     * 只有需要区分二者（例如停止后仍要保留资源供复用）的实现才需要覆盖。
+     */
+    fun releaseOwnedResources() {
+        stop()
+    }
+
     fun tick()
 
     fun spawnParticle(pos: Vec3, lerpProgress: Float)

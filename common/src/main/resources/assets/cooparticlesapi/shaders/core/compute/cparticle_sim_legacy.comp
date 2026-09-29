@@ -51,6 +51,7 @@ const int TYPE_NOISE = 8;
 const int TYPE_FLOW_FIELD = 9;
 const int FLAG_BLOCK_COLLISION = 32768;
 const int FLAG_NEWBORN = 1 << 16;
+const int FLAG_PATH_ROTATION = 1 << 18;
 const float COLLISION_SURFACE_OFFSET = 0.07;
 
 bool collisionOccupied(ivec3 cell) {
@@ -182,6 +183,8 @@ void main() {
     }
     uint i = uint(uFirstSlot) + localIndex;
     int flags = int(particles[i].velFlags.w + 0.5);
+    // 离开路径命令后保留当前姿态，不重复播放最后一段旋转。
+    flags &= ~FLAG_PATH_ROTATION;
     if ((flags & 1) == 0) {
         return;
     }

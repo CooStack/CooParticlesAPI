@@ -30,7 +30,16 @@ data class ForceCommand(
         }
     }
 
-    private fun packHeader(out: FloatArray, base: Int) {
+    /**
+     * 写入命令 header（类型与选择器）。
+     *
+     * 供常规打包与“接管键签名”共用：后者只需要 header 加几个用于比较的字段，
+     * 不能走 [pack]，因为路径约束的参数必须由打包阶段解析图层槽位后才能写入。
+     *
+     * @param out 目标 float 数组
+     * @param base [out] 中命令起始下标
+     */
+    internal fun packHeader(out: FloatArray, base: Int) {
         out[base] = Float.fromBits(force.typeId)
         out[base + 1] = Float.fromBits(selector.mode)
         out[base + 2] = Float.fromBits(selector.value)

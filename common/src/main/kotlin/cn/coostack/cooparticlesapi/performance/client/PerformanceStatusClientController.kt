@@ -32,8 +32,6 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
-import java.util.ArrayDeque
-import java.util.ArrayList
 
 /**
  * 客户端 Status 会话、按需服务端请求、实时趋势窗口和流式 CSV 的单一所有者。
@@ -128,10 +126,7 @@ object PerformanceStatusClientController {
     }
 
     /** GUI 使用的按时长裁剪、可随机访问趋势历史。 */
-    private val history = ArrayList<PerformanceStatusSample>()
-
-    /** 趋势历史中第一个有效样本的位置，避免每 tick 移动整个数组。 */
-    private var historyStartIndex = 0
+    private val history = ArrayDeque<PerformanceStatusSample>()
 
     /** 返回当前是否正在持续记录。 */
     fun isRecording(): Boolean = writer != null
@@ -177,10 +172,9 @@ object PerformanceStatusClientController {
     /** 返回最近一行样本。 */
     fun latestSample(): PerformanceStatusSample? = latestSample
 
-    /** 返回当前客户端线程内可随机访问的趋势窗口，不复制完整历史。 */
+    /** 返回客户端线程内的只读历史视图；仅限当前回调使用，不跨 tick 保存。 */
     fun historySnapshot(): List<PerformanceStatusSample> {
-        if (historyStartIndex >= history.size) return emptyList()
-        return history.subList(historyStartIndex, history.size)
+        return history
     }
 
     /** 返回当前或最近一次完成会话的 CSV 路径。 */
@@ -334,7 +328,6 @@ object PerformanceStatusClientController {
         latestServerReceivedAtNanos = 0L
         latestSample = null
         history.clear()
-        historyStartIndex = 0
         requestDelayTicks = 0
         serverRefreshIntervalTicks = null
         cancelPendingRequest()
@@ -477,19 +470,14 @@ object PerformanceStatusClientController {
         writeSample(sample)
     }
 
-    /** 按最新样本的 elapsedMillis 移动有效起点，并分批压缩失效前缀。 */
+    /** 按时间逐个释放过期样本；环形存储避免长窗口定期移动整个有效数组。 */
     private fun trimHistory() {
         val newestElapsedMillis = history.lastOrNull()?.elapsedMillis ?: return
         val maximumDurationMillis = historyDurationSeconds.toDouble() * 1_000.0
-        while (historyStartIndex < history.lastIndex) {
-            val oldest = history[historyStartIndex]
+        while (history.size > 1) {
+            val oldest = history.first()
             if ((newestElapsedMillis - oldest.elapsedMillis).toDouble() <= maximumDurationMillis) break
-            historyStartIndex++
-        }
-        val compactThreshold = 2_048
-        if (historyStartIndex >= compactThreshold) {
-            history.subList(0, historyStartIndex).clear()
-            historyStartIndex = 0
+            history.removeFirst()
         }
     }
 

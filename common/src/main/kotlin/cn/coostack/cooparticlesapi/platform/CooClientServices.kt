@@ -2,13 +2,17 @@ package cn.coostack.cooparticlesapi.platform
 
 import cn.coostack.cooparticlesapi.display.CooRenderTypesProvider
 import cn.coostack.cooparticlesapi.utils.api.ModelPartPointCollector
+import cn.coostack.cooparticlesapi.entities.structure.client.StructureBlockRenderBridge
 
 /**
- * Services whose types are client-only must not be initialized from the common
- * service registry.  Keep this object on the client call path so dedicated
- * servers never resolve PoseStack, ModelPart, or RenderType.
+ * 客户端类型的服务独立加载，专用服务器不能解析 PoseStack、ModelPart 或 RenderType。
  */
 object CooClientServices {
+    /** 按加载器提供结构模型渲染，保留 NeoForge 的模型数据与动态渲染层。 */
+    @JvmField
+    val STRUCTURE_BLOCK_RENDERER: StructureBlockRenderBridge =
+        CooParticlesServices.load(StructureBlockRenderBridge::class.java)
+
     @JvmField
     val RENDER_TYPES_PROVIDER: CooRenderTypesProvider =
         CooParticlesServices.load(CooRenderTypesProvider::class.java)

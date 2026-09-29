@@ -1,15 +1,14 @@
 package cn.coostack.cooparticlesapi.performance.client
 
-import com.mojang.math.Axis
+import com.mojang.blaze3d.vertex.VertexConsumer
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.components.Button
 import net.minecraft.client.gui.components.EditBox
 import net.minecraft.client.gui.screens.Screen
+import net.minecraft.client.renderer.RenderType
 import net.minecraft.network.chat.Component
 import org.lwjgl.glfw.GLFW
 import java.util.Locale
-import kotlin.math.PI
-import kotlin.math.atan2
 import kotlin.math.hypot
 import kotlin.math.roundToInt
 
@@ -44,6 +43,42 @@ class PerformanceStatusScreen : Screen(Component.literal("CooParticles Status"))
     /** 当前图表选择的原始指标和比值曲线。 */
     private val selectedMetrics = PerformanceStatusClientController.selectedChartSelections()
         .toCollection(linkedSetOf())
+
+    /** 图表数据仅随采样或窗口变动更新，不在每帧重新扫描历史。 */
+    private val chartData = PerformanceStatusChartData()
+
+    /** 是否把每条曲线放大到局部数值范围；默认保留零基线。 */
+    private var fitChartScale = false
+
+    /** 最近生成图例的曲线数据身份。 */
+    private var legendSeries: List<PerformanceStatusChartSeries>? = null
+
+    /** 最近生成图例使用的量程模式。 */
+    private var legendFitScale = false
+
+    /** 按曲线顺序缓存格式化后的图例。 */
+    private var legendLabels = emptyList<String>()
+
+    /** 紧凑图例显示名称与当前值，完整统计保留在悬停文本中。 */
+    private var legendCompactLabels = emptyList<String>()
+
+    /** 当前鼠标悬停曲线的完整图例；没有悬停时为 null。 */
+    private var hoveredLegend: String? = null
+
+    /** 按曲线顺序缓存纵轴量程。 */
+    private var chartScales = emptyList<PerformanceStatusChartScale>()
+
+    /** 当前表格缓存对应的采样身份。 */
+    private var tableSample: PerformanceStatusSample? = null
+
+    /** 当前表格缓存对应的页签。 */
+    private var tableView: View? = null
+
+    /** 当前表格缓存对应的曲线选择。 */
+    private var tableSelections = emptyList<PerformanceStatusChartSelection>()
+
+    /** 当前采样的格式化指标行，同一采样期间所有帧共用。 */
+    private var tableRows = emptyList<MetricRow>()
 
     /** 可作为比值除数的性能指标。 */
     private val ratioPerformanceMetrics = PerformanceStatusChartMetric.entries.filter {
@@ -179,7 +214,11 @@ class PerformanceStatusScreen : Screen(Component.literal("CooParticles Status"))
             }
         }
         addRenderableWidget(historyDurationBox)
-        val actionWidth = ((width - 24) / 2).coerceIn(80, 120)
+        addRenderableWidget(Button.builder(Component.literal(if (fitChartScale) "量程: 局部" else "量程: 零起")) { button ->
+            fitChartScale = !fitChartScale
+            button.message = Component.literal(if (fitChartScale) "量程: 局部" else "量程: 零起")
+        }.bounds(120, buttonY, 76, 20).build())
+        val actionWidth = (width - 216).coerceIn(56, 120)
         addRenderableWidget(Button.builder(Component.literal("关闭")) {
             onClose()
         }.bounds(width - actionWidth - 14, buttonY, actionWidth, 20).build())
@@ -189,9 +228,11 @@ class PerformanceStatusScreen : Screen(Component.literal("CooParticles Status"))
     /** Status 界面不暂停单人世界，保证采样和服务端请求继续推进。 */
     override fun isPauseScreen(): Boolean = false
 
+    /** 性能面板不执行菜单模糊或全屏后处理，避免测量工具污染被测场景。 */
+    override fun renderBackground(graphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) = Unit
+
     /** 绘制当前表格、趋势图和输出文件名。 */
     override fun render(graphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
-        renderBackground(graphics, mouseX, mouseY, partialTick)
         graphics.fill(8, 8, width - 8, height - 8, 0xD8101216.toInt())
         graphics.fill(8, 8, width - 8, 10, 0xFF4EA1D3.toInt())
         graphics.drawCenteredString(font, title, width / 2, 14, 0xFFFFFF)
@@ -203,7 +244,7 @@ class PerformanceStatusScreen : Screen(Component.literal("CooParticles Status"))
         val chartBottom = (height - 50).coerceAtLeast(tableTop + chartHeight)
         val chartTop = chartBottom - chartHeight
         renderTable(graphics, sample, tableTop, chartTop - 6)
-        renderChart(graphics, chartTop, chartBottom)
+        renderChart(graphics, chartTop, chartBottom, mouseX, mouseY)
         renderRatioSuggestions(graphics, mouseX, mouseY)
         val outputName = if (PerformanceStatusClientController.isRecording()) {
             PerformanceStatusClientController.outputPath()?.fileName?.toString().orEmpty()
@@ -212,6 +253,9 @@ class PerformanceStatusScreen : Screen(Component.literal("CooParticles Status"))
         }
         if (outputName.isNotEmpty()) {
             graphics.drawString(font, outputName, 14, height - 43, 0xFF9DA7B3.toInt(), false)
+        }
+        hoveredLegend?.let { label ->
+            graphics.renderTooltip(font, font.split(Component.literal(label), (width - 32).coerceAtLeast(1)), mouseX, mouseY)
         }
     }
 
@@ -552,7 +596,15 @@ class PerformanceStatusScreen : Screen(Component.literal("CooParticles Status"))
         top: Int,
         bottom: Int,
     ) {
-        val rows = rows(sample)
+        if (sample !== tableSample || view != tableView ||
+            tableSelections.size != selectedMetrics.size ||
+            selectedMetrics.withIndex().any { tableSelections[it.index] != it.value }) {
+            tableSample = sample
+            tableView = view
+            tableSelections = selectedMetrics.toList()
+            tableRows = rows(sample)
+        }
+        val rows = tableRows
         val rowHeight = 12
         val visibleRows = ((bottom - top) / rowHeight).coerceAtLeast(1)
         maxRowOffset = (rows.size - visibleRows).coerceAtLeast(0)
@@ -695,19 +747,18 @@ class PerformanceStatusScreen : Screen(Component.literal("CooParticles Status"))
     }
 
     /** 绘制最近有限历史中用户选择的多维归一化折线和时间范围条。 */
-    private fun renderChart(graphics: GuiGraphics, top: Int, bottom: Int) {
+    private fun renderChart(graphics: GuiGraphics, top: Int, bottom: Int, mouseX: Int, mouseY: Int) {
+        hoveredLegend = null
         val history = PerformanceStatusClientController.historySnapshot()
         timelineLeft = 18
         timelineRight = width - 18
         timelineTop = bottom - 17
         timelineBottom = bottom - 3
-        val visibleHistory = visibleHistory(history)
         val left = 14
         val right = width - 14
-        val chartPointLimit = 128
-        val chartHistory = samplePerformanceStatusChartPoints(
-            visibleHistory,
-            chartPointLimit,
+        val series = chartData.prepare(
+            history, selectedMetrics, rangeStart, rangeEnd,
+            ((right - left) / 6).coerceIn(1, 128), System.nanoTime(),
         )
         graphics.fill(left, top, right, bottom, 0xD014171C.toInt())
         if (selectedMetrics.isEmpty()) {
@@ -715,7 +766,10 @@ class PerformanceStatusScreen : Screen(Component.literal("CooParticles Status"))
             renderTimeline(graphics, history)
             return
         }
-        val legendBottom = renderChartLegend(graphics, chartHistory, left + 5, right - 5, top + 4)
+        val legendBottom = renderChartLegend(
+            graphics, series, left + 5, right - 5, top + 4,
+            ((bottom - top - 56) / 11).coerceIn(1, 4), mouseX, mouseY,
+        )
         val plotLeft = left + 4
         val plotRight = right - 4
         val plotTop = (legendBottom + 3).coerceAtMost(timelineTop - 8)
@@ -725,31 +779,26 @@ class PerformanceStatusScreen : Screen(Component.literal("CooParticles Status"))
             graphics.hLine(plotLeft, plotRight, y, 0x443E4650)
         }
         graphics.hLine(plotLeft, plotRight, plotBottom, 0xFF59616C.toInt())
-        if (chartHistory.size >= 2 && plotBottom > plotTop) {
-            selectedMetrics.forEachIndexed { index, selection ->
+        if (series.isNotEmpty() && plotBottom > plotTop) {
+            graphics.enableScissor(plotLeft, plotTop, plotRight + 1, plotBottom + 1)
+            val vertices = graphics.bufferSource().getBuffer(RenderType.gui())
+            series.forEachIndexed { index, curve ->
                 drawSeries(
                     graphics = graphics,
-                    samples = chartHistory,
-                    selection = selection,
+                    vertices = vertices,
+                    points = curve.points,
                     left = plotLeft,
                     right = plotRight,
                     top = plotTop,
                     bottom = plotBottom,
-                    maximum = seriesMaximum(chartHistory, selection),
+                    scale = chartScales[index],
                     color = seriesColor(index),
                 )
             }
+            graphics.flush()
+            graphics.disableScissor()
         }
         renderTimeline(graphics, history)
-    }
-
-    /** 根据时间范围把完整历史裁剪为当前主图窗口。 */
-    private fun visibleHistory(history: List<PerformanceStatusSample>): List<PerformanceStatusSample> {
-        if (history.size < 2) return history
-        val lastIndex = history.lastIndex
-        val startIndex = (rangeStart * lastIndex).roundToInt().coerceIn(0, lastIndex - 1)
-        val endIndex = (rangeEnd * lastIndex).roundToInt().coerceIn(startIndex + 1, lastIndex)
-        return history.subList(startIndex, endIndex + 1)
     }
 
     /** 绘制完整历史总览线和当前可视范围的左右拖动把手。 */
@@ -764,8 +813,8 @@ class PerformanceStatusScreen : Screen(Component.literal("CooParticles Status"))
         if (history.size >= 2) {
             val first = history.first().elapsedMillis
             val last = history.last().elapsedMillis
-            val start = history[(rangeStart * history.lastIndex).roundToInt().coerceIn(0, history.lastIndex)].elapsedMillis
-            val end = history[(rangeEnd * history.lastIndex).roundToInt().coerceIn(0, history.lastIndex)].elapsedMillis
+            val start = first + ((last - first) * rangeStart).toLong()
+            val end = first + ((last - first) * rangeEnd).toLong()
             val text = "${formatDuration(end - start)} / ${formatDuration(last - first)}"
             graphics.drawString(font, text, timelineLeft, timelineTop - 10, 0xFF9DA7B3.toInt(), false)
         }
@@ -780,129 +829,81 @@ class PerformanceStatusScreen : Screen(Component.literal("CooParticles Status"))
         }
     }
 
-    /** 绘制颜色图例；数值按“当前 / 本窗口量程上界”显示。 */
+    /** 绘制缓存图例，明确标出真实峰谷及每条曲线独立的纵轴边界。 */
     private fun renderChartLegend(
         graphics: GuiGraphics,
-        samples: List<PerformanceStatusSample>,
+        series: List<PerformanceStatusChartSeries>,
         left: Int,
         right: Int,
         top: Int,
+        maxRows: Int,
+        mouseX: Int,
+        mouseY: Int,
     ): Int {
-        var x = left
-        var y = top
-        selectedMetrics.forEachIndexed { index, selection ->
-            val text = when (selection) {
-                is PerformanceStatusChartSelection.Metric -> {
-                    val current = latestMetricValue(samples, selection)
-                    val maximum = seriesMaximum(samples, selection)
-                    "${selection.label} ${formatChartValue(selection, current)} / ${formatChartValue(selection, maximum)}"
-                }
-                is PerformanceStatusChartSelection.Ratio -> {
-                    val stats = ratioStats(samples, selection)
-                    if (stats == null) {
-                        "${selection.label} 当前 -"
-                    } else {
-                        "${selection.label} 当前 ${formatRatio(stats.current)} 总 ${formatRatio(stats.total)} " +
-                            "高 ${formatRatio(stats.maximum)} 低 ${formatRatio(stats.minimum)}"
-                    }
+        if (series !== legendSeries || fitChartScale != legendFitScale) {
+            legendSeries = series
+            legendFitScale = fitChartScale
+            legendCompactLabels = series.map { curve ->
+                "${curve.selection.label} ${formatChartValue(curve.selection, curve.summary?.last?.value)}"
+            }
+            chartScales = series.map { performanceStatusChartScale(it.summary, fitChartScale) }
+            legendLabels = series.mapIndexed { index, curve ->
+                val selection = curve.selection
+                val stats = curve.summary
+                val scale = chartScales[index]
+                if (stats == null) {
+                    "${selection.label} -"
+                } else {
+                    val total = if (selection is PerformanceStatusChartSelection.Ratio) {
+                        " 总 ${formatRatio(stats.numeratorTotal / stats.denominatorTotal)}"
+                    } else ""
+                    "${selection.label} ${formatChartValue(selection, stats.last.value)}$total" +
+                        " 低 ${formatChartValue(selection, stats.minimum.value)} 高 ${formatChartValue(selection, stats.maximum.value)}" +
+                        " [${formatChartValue(selection, scale.minimum)}..${formatChartValue(selection, scale.maximum)}]"
                 }
             }
-            val itemWidth = 8 + font.width(text) + 9
-            if (x > left && x + itemWidth > right) {
-                x = left
-                y += 11
-            }
+        }
+        // 按可用高度增加列数，选满曲线时也为主图保留高度。
+        val columns = ((series.size + maxRows - 1) / maxRows).coerceAtLeast(1)
+        val cellWidth = (right - left) / columns
+        legendLabels.forEachIndexed { index, label ->
+            val x = left + index % columns * cellWidth
+            val y = top + index / columns * 11
+            val availableWidth = (cellWidth - 15).coerceAtLeast(1)
+            val displayed = if (font.width(label) <= availableWidth) label else legendCompactLabels[index]
+            val text = font.plainSubstrByWidth(displayed, availableWidth)
             graphics.fill(x, y + 2, x + 7, y + 8, seriesColor(index))
             graphics.drawString(font, text, x + 10, y, 0xFFE3E8ED.toInt(), false)
-            x += itemWidth
+            if (mouseX in x until x + cellWidth && mouseY in y until y + 11) hoveredLegend = label
         }
-        return y + 9
-    }
-
-    /** 返回图表窗口内可见值与指标基础量程中的较大值。 */
-    private fun seriesMaximum(
-        samples: List<PerformanceStatusSample>,
-        selection: PerformanceStatusChartSelection,
-    ): Double {
-        var maximum = selection.minimumMaximum
-        samples.forEach { sample ->
-            val value = selection.extract(sample)
-            if (value != null && value.isFinite() && value >= 0.0 && value > maximum) maximum = value
-        }
-        return maximum
-    }
-
-    /** 返回一项曲线最后一个有效样本。 */
-    private fun latestMetricValue(
-        samples: List<PerformanceStatusSample>,
-        selection: PerformanceStatusChartSelection,
-    ): Double? {
-        for (index in samples.lastIndex downTo 0) {
-            selection.extract(samples[index])?.let { value ->
-                if (value.isFinite() && value >= 0.0) return value
-            }
-        }
-        return null
-    }
-
-    /** 计算比值曲线当前窗口的当前、累计、最高和最低值。 */
-    private fun ratioStats(
-        samples: List<PerformanceStatusSample>,
-        ratio: PerformanceStatusChartSelection.Ratio,
-    ): RatioStats? {
-        var performanceTotal = 0.0
-        var impactTotal = 0.0
-        var minimum = Double.POSITIVE_INFINITY
-        var maximum = Double.NEGATIVE_INFINITY
-        var current: Double? = null
-        samples.forEach { sample ->
-            val impactValue = ratio.impact.extract(sample)
-            val performanceValue = ratio.performance.extract(sample)
-            if (impactValue == null || performanceValue == null || performanceValue <= 0.0) return@forEach
-            if (!impactValue.isFinite() || !performanceValue.isFinite()) return@forEach
-            val value = impactValue / performanceValue
-            if (!value.isFinite() || value < 0.0) return@forEach
-            performanceTotal += performanceValue
-            impactTotal += impactValue
-            minimum = minOf(minimum, value)
-            maximum = maxOf(maximum, value)
-            current = value
-        }
-        if (performanceTotal <= 0.0 || !minimum.isFinite() || !maximum.isFinite()) return null
-        return RatioStats(
-            current = current ?: return null,
-            total = impactTotal / performanceTotal,
-            minimum = minimum,
-            maximum = maximum,
-        )
+        return top + ((series.size + columns - 1) / columns) * 11
     }
 
     /** 绘制一条原始指标或比值曲线。 */
     private fun drawSeries(
         graphics: GuiGraphics,
-        samples: List<PerformanceStatusSample>,
-        selection: PerformanceStatusChartSelection,
+        vertices: VertexConsumer,
+        points: List<PerformanceStatusChartPoint>,
         left: Int,
         right: Int,
         top: Int,
         bottom: Int,
-        maximum: Double,
+        scale: PerformanceStatusChartScale,
         color: Int,
     ) {
-        val denominator = (samples.size - 1).coerceAtLeast(1)
+        val duration = (chartData.lastMillis - chartData.firstMillis).coerceAtLeast(1L)
         var previousX: Int? = null
         var previousY: Int? = null
-        samples.forEachIndexed { index, sample ->
-            val value = selection.extract(sample) ?: return@forEachIndexed
-            if (!value.isFinite() || value < 0.0) return@forEachIndexed
-            val x = left + index * (right - left) / denominator
-            if (x == previousX && index != samples.lastIndex) return@forEachIndexed
-            val normalized = (value / maximum).coerceIn(0.0, 1.0)
+        points.forEach { point ->
+            val x = left + ((point.elapsedMillis - chartData.firstMillis).toDouble() / duration * (right - left)).roundToInt()
+            val normalized = ((point.value - scale.minimum) / (scale.maximum - scale.minimum)).coerceIn(0.0, 1.0)
             val y = bottom - (normalized * (bottom - top)).roundToInt()
             val startX = previousX
             val startY = previousY
             if (startX != null && startY != null) {
-                drawLineSegment(graphics, startX, startY, x, y, color)
+                drawLineSegment(graphics, vertices, startX, startY, x, y, color)
+            } else {
+                drawLineSegment(graphics, vertices, x - 1, y, x + 1, y, color)
             }
             previousX = x
             previousY = y
@@ -912,6 +913,7 @@ class PerformanceStatusScreen : Screen(Component.literal("CooParticles Status"))
     /** 绘制一个两像素粗的任意角度 GUI 线段。 */
     private fun drawLineSegment(
         graphics: GuiGraphics,
+        vertices: VertexConsumer,
         startX: Int,
         startY: Int,
         endX: Int,
@@ -920,13 +922,16 @@ class PerformanceStatusScreen : Screen(Component.literal("CooParticles Status"))
     ) {
         val deltaX = endX - startX
         val deltaY = endY - startY
-        val length = hypot(deltaX.toDouble(), deltaY.toDouble()).roundToInt().coerceAtLeast(1)
-        val angle = (atan2(deltaY.toDouble(), deltaX.toDouble()) * 180.0 / PI).toFloat()
-        graphics.pose().pushPose()
-        graphics.pose().translate(startX.toFloat(), startY.toFloat(), 0F)
-        graphics.pose().mulPose(Axis.ZP.rotationDegrees(angle))
-        graphics.fill(0, -1, length + 1, 1, color)
-        graphics.pose().popPose()
+        val length = hypot(deltaX.toDouble(), deltaY.toDouble())
+        if (length == 0.0) return
+        // 垂直于线段的单位向量给出两像素线宽；所有线段写入同一个原版 GUI 批次。
+        val offsetX = (-deltaY / length).toFloat()
+        val offsetY = (deltaX / length).toFloat()
+        val pose = graphics.pose().last().pose()
+        vertices.addVertex(pose, startX + offsetX, startY + offsetY, 0F).setColor(color)
+        vertices.addVertex(pose, endX + offsetX, endY + offsetY, 0F).setColor(color)
+        vertices.addVertex(pose, endX - offsetX, endY - offsetY, 0F).setColor(color)
+        vertices.addVertex(pose, startX - offsetX, startY - offsetY, 0F).setColor(color)
     }
 
     /** 返回选择顺序对应的 12 色高对比度曲线颜色。 */
@@ -950,6 +955,7 @@ class PerformanceStatusScreen : Screen(Component.literal("CooParticles Status"))
     /** 按曲线单位格式化图例值。 */
     private fun formatChartValue(selection: PerformanceStatusChartSelection, value: Double?): String {
         value ?: return "-"
+        if (selection is PerformanceStatusChartSelection.Ratio) return formatRatio(value)
         return when (selection.valueKind) {
             PerformanceStatusChartValueKind.NUMBER -> {
                 if (value == value.toLong().toDouble()) value.toLong().toString() else format(value)
@@ -967,14 +973,6 @@ class PerformanceStatusScreen : Screen(Component.literal("CooParticles Status"))
             String.format(Locale.ROOT, "%.4f", value)
         }
     }
-
-    /** 比值曲线的窗口统计结果。 */
-    private data class RatioStats(
-        val current: Double,
-        val total: Double,
-        val minimum: Double,
-        val maximum: Double,
-    )
 
     /** 格式化整数或长整数指标。 */
     private fun format(value: Number?): String {
@@ -1025,7 +1023,7 @@ class PerformanceStatusScreen : Screen(Component.literal("CooParticles Status"))
         val selection: PerformanceStatusChartSelection? = null,
     )
 
-    /** Status 表格分段。 */
+    /** Status 表格分段：CLIENT 显示客户端，SERVER 显示服务端，NETWORK 显示流量，CORRELATION 显示负载比值；仅在当前面板内切换。 */
     private enum class View {
         CLIENT,
         SERVER,

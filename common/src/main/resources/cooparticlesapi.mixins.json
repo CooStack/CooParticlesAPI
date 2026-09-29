@@ -4,6 +4,12 @@
   "plugin": "cn.coostack.cooparticlesapi.mixin.plugin.CooParticleMixinLoaderPlugin",
   "compatibilityLevel": "JAVA_18",
   "mixins": [
+    "structure.TorchParticleAccess",
+    "structure.StructureItemStackMixin",
+    "structure.StructureItemExchangeMixin",
+    "entity.IrregularCollisionMixin",
+    "entity.IrregularEntityIndexMixin",
+    "entity.IrregularRaycastMixin",
     "events.entity.EntityMixin",
     "events.entity.player.PlayerListMixin",
     "events.entity.player.ServerPlayerGameModeMixin",
@@ -14,6 +20,14 @@
     "defaultRequire": 1
   },
   "client": [
+    "events.StructureBlockOutlineMixin",
+    "events.StructureClientInputMixin",
+    "events.StructureClientLifecycleMixin",
+    "events.StructureFrameMixin",
+    "events.StructureResourceReloadMixin",
+    "structure.StructureItemRendererMixin",
+    "structure.StructureModelLightMixin",
+    "entity.IrregularDebugMixin",
     "CooParticleCameraMixin",
     "CooFxCameraMouseMixin",
     "GameRendererCooFxCameraMixin",

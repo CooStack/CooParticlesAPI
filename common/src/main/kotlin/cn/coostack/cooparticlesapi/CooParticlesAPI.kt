@@ -8,6 +8,8 @@ import cn.coostack.cooparticlesapi.data.holder.DataHolderManager
 import cn.coostack.cooparticlesapi.display.DisplayEntityManager
 import cn.coostack.cooparticlesapi.enums.DistType
 import cn.coostack.cooparticlesapi.event.CooEventBus
+import cn.coostack.cooparticlesapi.entities.structure.StructureModels
+import cn.coostack.cooparticlesapi.event.events.server.ServerStoppedEvent
 import cn.coostack.cooparticlesapi.network.particle.ServerParticleGroupManager
 import cn.coostack.cooparticlesapi.network.packet.api.CooServerPacketManager
 import cn.coostack.cooparticlesapi.network.particle.composition.manager.ParticleCompositionManager
@@ -82,6 +84,7 @@ object CooParticlesAPI {
         CooParticlesConstants.logger.info("eval api {}", builder.value)
         CooParticlesServices.API_CONFIG_MANAGER.loadConfig()
         CooBlocks.registerAll()
+        StructureModels.init()
         WindDirections.init()
         ParticleEventHandlerManager.register(TestCollideEventHandler)
         registerTest()
@@ -112,6 +115,7 @@ object CooParticlesAPI {
     }
 
     fun onServerStop() {
+        CooEventBus.call(ServerStoppedEvent())
         clearServerState()
         PerformanceStatusServerRequestGate.clear()
         activeServer = null

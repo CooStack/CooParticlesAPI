@@ -7,14 +7,19 @@ import cn.coostack.cooparticlesapi.cparticle.force.CParticleForceSink
 import cn.coostack.cooparticlesapi.cparticle.force.CParticleForceResourceTable
 import cn.coostack.cooparticlesapi.cparticle.force.ForceCommand
 import cn.coostack.cooparticlesapi.cparticle.collision.CParticleBlockCollisionGridManager
+import cn.coostack.cooparticlesapi.cparticle.path.CParticlePathCommandPacker
+import cn.coostack.cooparticlesapi.cparticle.path.CParticlePathLibrary
 import cn.coostack.cooparticlesapi.cparticle.render.CParticleGlBuffer
 import cn.coostack.cooparticlesapi.cparticle.simulate.CParticleCpuSimulator
 import cn.coostack.cooparticlesapi.cparticle.simulate.CParticleGpuSimulator
 import cn.coostack.cooparticlesapi.cparticle.storage.CParticleStore
 import cn.coostack.cooparticlesapi.cparticle.storage.CParticleMetadataGlBuffer
 import cn.coostack.cooparticlesapi.cparticle.storage.CParticleCommandGlBuffer
+import cn.coostack.cooparticlesapi.cparticle.storage.CParticlePathEndBuffer
+import cn.coostack.cooparticlesapi.cparticle.storage.CParticleDeathTracker
 import cn.coostack.cooparticlesapi.extend.plus
 import cn.coostack.cooparticlesapi.particles.ParticleCameraOption
+import cn.coostack.cooparticlesapi.particles.control.RemoveReason
 import net.minecraft.client.Minecraft
 import net.minecraft.client.renderer.LevelRenderer
 import net.minecraft.core.BlockPos
@@ -24,6 +29,7 @@ import org.joml.Matrix4fc
 import org.joml.Vector3f
 import org.joml.Vector3fc
 import java.util.concurrent.atomic.AtomicInteger
+import java.nio.ByteBuffer
 import kotlin.math.sqrt
 
 /**
@@ -109,6 +115,68 @@ class CParticleSystem(
     internal val commandGlBuffer = CParticleCommandGlBuffer()
     internal val forceResourceTable = CParticleForceResourceTable()
 
+    /**
+     * 路径约束“到达后消失”的 GPU → CPU 结束通知通道。
+     *
+     * 容量按 [PATH_END_RECORD_CAPACITY] 固定：列表只记录结束槽位号，溢出时计数器仍然增长，
+     * CPU 会发现漏收并做一次兜底扫描，因此不需要按粒子容量分配。
+     */
+    internal val pathEndBuffer = CParticlePathEndBuffer(PATH_END_RECORD_CAPACITY)
+
+    /** 当前死亡批次共享的只读 GPU 映射，未发生需捕获的死亡时保持为空。 */
+    private var deathReadback: ByteBuffer? = null
+
+    /** GPU 完成模拟后的回收窗口；窗口内所有死亡共用一次映射。 */
+    private var collectingGpuDeaths = false
+
+    /** 为有效槽位注册单次死亡回调；槽位世代失效时拒绝绑定。 */
+    internal fun trackDeath(slot: Int, generation: Int, action: (CParticleDeathState) -> Unit) {
+        check(checkHandle(slot, generation)) { "Cannot track an expired particle handle" }
+        val tracker = store.deathTracker ?: CParticleDeathTracker(::captureDeathState).also {
+            store.deathTracker = it
+        }
+        tracker.track(slot, action)
+    }
+
+    /** 捕获已回收但尚未复用的槽位；GPU 模式不读取 CPU 中过期的位置和速度。 */
+    private fun captureDeathState(slot: Int, reason: RemoveReason): CParticleDeathState {
+        val gpu = mode == CParticleSystemMode.SIMULATED && !CParticleCapabilities.forceCpuSimulation &&
+            glBuffer.initialized && !store.isPendingSpawn(slot)
+        try {
+            val mapped = if (gpu) deathReadback ?: glBuffer.mapDeathReadback().also {
+                deathReadback = it
+            } else null
+            val base = slot * CParticleStore.STRIDE
+            fun value(offset: Int): Float = mapped?.getFloat((base + offset) * Float.SIZE_BYTES)
+                ?: store.data[base + offset]
+            val position = Vector3f(value(0), value(1), value(2))
+            val velocity = Vector3f(
+                value(CParticleStore.OFF_VEL), value(CParticleStore.OFF_VEL + 1),
+                value(CParticleStore.OFF_VEL + 2),
+            )
+            // 槽位是相对 system 原点的局部坐标；回调始终获得世界坐标。
+            groupTransform.transformPosition(position)
+            groupTransform.transformDirection(velocity)
+            return CParticleDeathState(
+                origin.add(position.x.toDouble(), position.y.toDouble(), position.z.toDouble()),
+                Vec3(velocity.x.toDouble(), velocity.y.toDouble(), velocity.z.toDouble()),
+                if (gpu) value(CParticleStore.OFF_AGE).toInt() else store.ages[slot],
+                reason,
+            )
+        } finally {
+            if (!collectingGpuDeaths) closeDeathReadback()
+        }
+    }
+
+    private fun closeDeathReadback() {
+        if (deathReadback == null) return
+        deathReadback = null
+        glBuffer.unmapDeathReadback()
+    }
+
+    /** 本 tick 打包路径命令时使用的图层重建版本。 */
+    private var currentPathLayerVersion = 0
+
     /** 本 system 的运行时来源 ID；同一兼容分组的存活粒子共用该值。 */
     val sourceId: Int = nextSourceId()
 
@@ -123,9 +191,14 @@ class CParticleSystem(
         require(newCapacity > capacity) {
             "newCapacity must be greater than capacity: $newCapacity <= $capacity"
         }
-        glBuffer.growTo(newCapacity)
-        metadataGlBuffer.growTo(newCapacity)
-        store.growTo(newCapacity)
+        // GPU 复制与 CPU 数组复制是两个独立的成本来源，分开计时才能定位峰值。
+        CParticlePerfProbe.measure(CParticlePerfProbe.Stage.SYSTEM_GROW_GPU) {
+            glBuffer.growTo(newCapacity)
+            metadataGlBuffer.growTo(newCapacity)
+        }
+        CParticlePerfProbe.measure(CParticlePerfProbe.Stage.SYSTEM_GROW_CPU) {
+            store.growTo(newCapacity)
+        }
     }
 
     /**
@@ -877,6 +950,7 @@ class CParticleSystem(
             clearFinishedResetTransition()
             if (store.aliveCount == 0 && store.spawnedCount == 0 && store.killedCount == 0) {
                 store.clearDirty()
+                store.deathTracker?.drain()
                 return
             }
             ensureGl()
@@ -887,6 +961,7 @@ class CParticleSystem(
         } finally {
             tickCount++
         }
+        store.deathTracker?.drain()
     }
 
     /**
@@ -913,9 +988,17 @@ class CParticleSystem(
     }
 
     private fun tickSimulated() {
+        // 路径几何必须在打包命令之前同步到共享图层，否则命令会引用到上一版基址。
+        CParticlePerfProbe.measure(CParticlePerfProbe.Stage.PATH_SYNC) {
+            CParticlePathLibrary.syncLayer()
+        }
         // 旧 1..9 且 selector=All 的批次保留 uniform 快路径；其数学仍等价于 Command。
         val legacyForceCount = packLegacyForces()
-        val commandCount = if (legacyForceCount >= 0) 0 else packCommands()
+        val commandCount = if (legacyForceCount >= 0) {
+            0
+        } else {
+            CParticlePerfProbe.measure(CParticlePerfProbe.Stage.COMMAND_PACK) { packCommands() }
+        }
         val simulationTransform = currentGroupTransform.takeIf {
             transformsSimulatedParticleSpace && !isIdentityTransform(it)
         }
@@ -928,7 +1011,9 @@ class CParticleSystem(
         // 能力探测只记录诊断信息；GPU 请求不能在 shader 编译前静默改成 CPU。
         // 只有显式 forceCpuSimulation=true 才允许 CPU 模拟。
         val useGpu = !CParticleCapabilities.forceCpuSimulation
-        if (store.spawnedCount > 0 && (!useGpu || legacyForceCount >= 0 || !packedCommandsNeedMetadata)) {
+        val prepared = CParticleRespawnEngine.owns(this)
+        check(useGpu || !prepared) { "Clear prepared GPU lifetimes before switching simulation backend" }
+        if (!prepared && store.spawnedCount > 0 && (!useGpu || legacyForceCount >= 0 || !packedCommandsNeedMetadata)) {
             // metadata 未在本 tick 上传；以后重新启用 selector/Charge 时必须整段重传。
             metadataGpuSynchronized = false
         }
@@ -940,18 +1025,26 @@ class CParticleSystem(
             if (store.spawnedCount > 0) {
                 glBuffer.uploadSlots(store.data, store.spawnedSlots, store.spawnedCount)
             }
+            if (prepared) {
+                ensureRespawnMetadata()
+                if (store.spawnedCount > 0) metadataGlBuffer.uploadSlots(store.metadata, store.spawnedSlots, store.spawnedCount)
+            }
             if (legacyForceCount < 0 && commandCount > 0) {
                 ensureCommandGl(packedCommandsNeedMetadata)
                 var fullMetadataUpload = false
                 if (packedCommandsNeedMetadata && !metadataGpuSynchronized && store.aliveCount > 0) {
-                    metadataGlBuffer.uploadRange(store.metadata, store.firstAliveSlot, store.highWater - 1)
+                    CParticlePerfProbe.measure(CParticlePerfProbe.Stage.METADATA_FIRST_UPLOAD) {
+                        metadataGlBuffer.uploadRange(store.metadata, store.firstAliveSlot, store.highWater - 1)
+                    }
                     metadataGpuSynchronized = true
                     fullMetadataUpload = true
                 }
-                if (packedCommandsNeedMetadata && store.spawnedCount > 0 && !fullMetadataUpload) {
+                if (!prepared && packedCommandsNeedMetadata && store.spawnedCount > 0 && !fullMetadataUpload) {
                     metadataGlBuffer.uploadSlots(store.metadata, store.spawnedSlots, store.spawnedCount)
                 }
                 commandGlBuffer.upload(packedCommands, commandCount)
+                // 路径结束通道必须在 dispatch 前清零，否则 CPU 会重复回收上一 tick 的槽位。
+                pathEndBuffer.resetCounter()
             }
             CParticleGpuSimulator.simulate(
                 this,
@@ -964,7 +1057,15 @@ class CParticleSystem(
                 simulationTransform,
                 inverseSimulationTransform,
             )
-            store.tickGpuAges(tickCount)
+            // compute 已经写过内存屏障，此时读回结束槽位与 CPU 账本一致。
+            collectingGpuDeaths = true
+            try {
+                if (legacyForceCount < 0 && CParticleRespawnEngine.requiresPathReadback(this)) drainPathEndedSlots()
+                store.tickGpuAges(tickCount)
+            } finally {
+                collectingGpuDeaths = false
+                closeDeathReadback()
+            }
             store.publishDynamicAges()
             store.clearSpawned()
             store.clearKilled()
@@ -1033,6 +1134,47 @@ class CParticleSystem(
         store.clearDirty()
     }
 
+    /**
+     * 死亡批次处理后只上传新生槽位，使其当前帧可见，不额外推进模拟或年龄。
+     * 保留 spawned 标记，下一 tick 的 compute 仍按既有 newborn 语义处理。
+     */
+    internal fun uploadPendingSpawns() {
+        if (released || store.spawnedCount == 0) return
+        ensureGl()
+        glBuffer.uploadSlots(store.data, store.spawnedSlots, store.spawnedCount)
+    }
+
+    /**
+     * 回收 GPU 侧因路径到达终点而提前结束的槽位。
+     *
+     * 通道只回读一个 4 字节计数器，没有结束事件时不读取列表；计数器溢出时做一次兜底扫描，
+     * 保证槽位不会被长期占住。回收走与正常死亡完全相同的 [CParticleStore.kill] 路径，
+     * 因此全局容量统计、世代与复用机制保持一致。
+     */
+    private fun drainPathEndedSlots() {
+        if (!pathEndBuffer.initialized) return
+        pathEndBuffer.drain { slot -> releasePathEndedSlot(slot) }
+        if (!pathEndBuffer.overflowed) return
+        val data = store.data
+        for (slot in store.firstAliveSlot until store.highWater) {
+            if (!store.isAlive(slot)) continue
+            if (data[slot * CParticleStore.STRIDE + CParticleStore.OFF_FLAGS].toInt() and
+                CParticleInstanceFlags.PATH_ENDED == 0
+            ) {
+                continue
+            }
+            releasePathEndedSlot(slot)
+        }
+    }
+
+    private fun releasePathEndedSlot(slot: Int) {
+        if (slot !in 0 until store.capacity) return
+        if (!store.isAlive(slot)) return
+        if (store.data[slot * CParticleStore.STRIDE + CParticleStore.OFF_FLAGS].toInt() and
+            CParticleInstanceFlags.RESPAWN_OWNED != 0) return
+        store.kill(slot, queueGpuFlag = false, reason = RemoveReason.LIFECYCLE)
+    }
+
     /** 每个渲染帧只补写一次 DYNAMIC 粒子的渲染字段。 */
     internal fun prepareDynamicVisuals(frameId: Long) {
         if (released || lastDynamicPrepareFrame == frameId) return
@@ -1057,15 +1199,20 @@ class CParticleSystem(
         packedCommands.fill(0F)
         packedCommandsNeedMetadata = false
         forceResourceTable.clear()
+        currentPathLayerVersion = CParticlePathLibrary.layerRevision
         var count = 0
         for (force in forces) {
             if (count >= ForceCommand.MAX_COMMANDS) break
-            packCommand(ForceCommand(force), count * ForceCommand.STRIDE)
+            if (packCommand(ForceCommand(force), count * ForceCommand.STRIDE)) {
+                packedCommandsNeedMetadata = true
+            }
             count++
         }
         forceSink.forEach { command ->
             if (count < ForceCommand.MAX_COMMANDS) {
-                packCommand(command, count * ForceCommand.STRIDE)
+                if (packCommand(command, count * ForceCommand.STRIDE)) {
+                    packedCommandsNeedMetadata = true
+                }
                 count++
             }
         }
@@ -1075,8 +1222,8 @@ class CParticleSystem(
     /**
      * 尝试把全部 Force 编码为旧 uniform ABI。
      *
-     * 返回 `-1` 表示当前批次包含 selector、新 Force、资源 Force 或超过旧上限，必须使用
-     * Command SSBO；非负返回值表示可以安全走旧 1..9 kernel。
+     * 返回 `-1` 表示当前批次包含 selector、新 Force、资源 Force、路径约束或超过旧上限，
+     * 必须使用 Command SSBO；非负返回值表示可以安全走旧 1..9 kernel。
      */
     private fun packLegacyForces(): Int {
         packedForces.fill(0F)
@@ -1103,13 +1250,19 @@ class CParticleSystem(
         return if (compatible) count else -1
     }
 
-    private fun packCommand(command: ForceCommand, base: Int) {
-        if (command.selector.mode != CParticleSelector.All.mode ||
+    /**
+     * 打包一条 Command。
+     *
+     * 路径位置约束需要解析路径图层槽位与图层重建版本，因此单独走一个分支；
+     * 其余力沿用原有 ABI。
+     *
+     * @return 本命令是否让 kernel 需要读取粒子 metadata
+     */
+    private fun packCommand(command: ForceCommand, base: Int): Boolean {
+        var needsMetadata = command.selector.mode != CParticleSelector.All.mode ||
             command.force.typeId == CParticleForce.TYPE_CHARGE ||
-            command.force.typeId == CParticleForce.TYPE_LENNARD_JONES
-        ) {
-            packedCommandsNeedMetadata = true
-        }
+            command.force.typeId == CParticleForce.TYPE_LENNARD_JONES ||
+            command.force.typeId == CParticleForce.TYPE_PATH_CONSTRAINT
         when (val force = command.force) {
             is CParticleForce.Texture -> command.pack(
                 packedCommands,
@@ -1117,14 +1270,21 @@ class CParticleSystem(
                 origin,
                 forceResourceTable.slotFor(force.resource),
             )
+
             is CParticleForce.FluidFlow -> command.pack(
                 packedCommands,
                 base,
                 origin,
                 forceResourceTable.slotFor(force.resource),
             )
+
+            is CParticleForce.Path -> {
+                CParticlePathCommandPacker.pack(packedCommands, base, command, currentPathLayerVersion)
+            }
+
             else -> command.pack(packedCommands, base, origin)
         }
+        return needsMetadata
     }
 
     private fun simulationCenter(): Vec3 {
@@ -1142,11 +1302,18 @@ class CParticleSystem(
     /** 首次使用时创建 GL 资源 (渲染线程) */
     fun ensureGl() {
         if (!glBuffer.initialized) {
-            glBuffer.init()
-            metadataGpuSynchronized = false
-            // 新缓冲: 把当前 CPU 侧数据整体上传 (含 shader 重载后重建的场景)
-            if (store.aliveCount > 0) {
-                glBuffer.uploadRange(store.data, store.firstAliveSlot, store.highWater - 1)
+            CParticlePerfProbe.measure(CParticlePerfProbe.Stage.GL_ALLOCATE) {
+                glBuffer.init()
+                metadataGpuSynchronized = false
+                // 新缓冲: 把当前 CPU 侧数据整体上传 (含 shader 重载后重建的场景)
+                if (store.aliveCount > 0) {
+                    glBuffer.uploadRange(store.data, store.firstAliveSlot, store.highWater - 1)
+                }
+            }
+        }
+        if (!pathEndBuffer.initialized) {
+            CParticlePerfProbe.measure(CParticlePerfProbe.Stage.GL_ALLOCATE) {
+                pathEndBuffer.init()
             }
         }
     }
@@ -1156,8 +1323,19 @@ class CParticleSystem(
         if (!commandGlBuffer.initialized) commandGlBuffer.init()
     }
 
+    /** 预提交的出生 metadata 始终保留在 GPU，避免后续 selector 首次启用时覆盖它。 */
+    internal fun ensureRespawnMetadata() {
+        ensureGl()
+        if (!metadataGlBuffer.initialized) metadataGlBuffer.init()
+        if (!metadataGpuSynchronized) {
+            if (store.aliveCount > 0) metadataGlBuffer.uploadRange(store.metadata, store.firstAliveSlot, store.highWater - 1)
+            metadataGpuSynchronized = true
+        }
+    }
+
     /** 清空全部粒子 (保留 GL 资源) */
     fun clearParticles() {
+        CParticleRespawnEngine.clearSystem(this)
         val prevHigh = store.highWater
         store.clear()
         metadataGpuSynchronized = false
@@ -1172,14 +1350,18 @@ class CParticleSystem(
 
     /** 仅释放 GL 资源 (shader/资源重载时; CPU 数据保留, 下次 ensureGl 重传) */
     fun releaseGl() {
+        // GPU 预提交生命没有 CPU 运动镜像；显式释放缓冲时取消整条链，不能重播旧出生状态。
+        if (CParticleRespawnEngine.owns(this)) clearParticles()
         glBuffer.release()
         metadataGlBuffer.release()
         commandGlBuffer.release()
+        pathEndBuffer.release()
         metadataGpuSynchronized = false
     }
 
-    /** 彻底销毁 */
+    /** 完全释放 (退出/调试) */
     fun release() {
+        CParticleRespawnEngine.clearSystem(this)
         released = true
         store.clear()
         metadataGpuSynchronized = false
@@ -1187,6 +1369,7 @@ class CParticleSystem(
         glBuffer.release()
         metadataGlBuffer.dispose()
         commandGlBuffer.dispose()
+        pathEndBuffer.dispose()
     }
 
     /** 粗可见性：LOCAL emitter 使用变换后中心，放大时同步扩展可见半径。 */
@@ -1212,6 +1395,14 @@ class CParticleSystem(
 }
 
 private val cParticleNextSourceId = AtomicInteger(1)
+
+/**
+ * 单个 system 每 tick 最多记录的路径提前结束槽位数量。
+ *
+ * 列表只记录结束槽位号，溢出时 GPU 继续增长计数器但不追加，CPU 会据此做一次兜底扫描，
+ * 因此不需要按粒子容量分配。65536 个 int 为 256 KiB。
+ */
+private const val PATH_END_RECORD_CAPACITY = 65536
 
 private fun nextSourceId(): Int {
     var id = cParticleNextSourceId.getAndIncrement()

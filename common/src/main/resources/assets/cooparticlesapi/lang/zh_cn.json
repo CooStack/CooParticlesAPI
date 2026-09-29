@@ -9,5 +9,11 @@
   "item.cooparticlesapi.test_tick": "§aTick 粒子测试工具",
   "key.categories.cooparticlesapi": "CooParticlesAPI",
   "key.cooparticlesapi.status_modifier": "Status 修饰键",
-  "key.cooparticlesapi.status_open": "打开 Status 面板"
+  "key.cooparticlesapi.status_open": "打开 Status 面板",
+  "block.cooparticlesapi.structure_model": "结构模型方块",
+  "entity.cooparticlesapi.structure_model": "结构模型",
+  "item.cooparticlesapi.structure_model_editor": "结构模型编辑器",
+  "item.cooparticlesapi.structure_editor": "结构方块编辑器",
+  "item.cooparticlesapi.held_structure_model": "结构模型",
+  "key.cooparticlesapi.structure_editor": "打开结构保存界面"
 }

@@ -302,6 +302,13 @@ abstract class ControlableParticle(
     private var lastPreview = pos
     private var update = false
 
+    /**
+     * 本 tick 是否需要在写入新位置后把渲染插值的历史位置一并对齐。
+     *
+     * 由 [teleportToResettingInterpolation] 置位、[tick] 消费，用于路径约束的循环跳转。
+     */
+    private var resetInterpolation = false
+
 
     fun teleportTo(pos: Vec3) {
         lastPreview = pos
@@ -313,6 +320,24 @@ abstract class ControlableParticle(
         update = true
     }
 
+    /**
+     * 传送到目标位置，并同时重置渲染插值的历史位置。
+     *
+     * 示例：路径位置约束的循环跳转会让粒子从终点瞬间回到起点；此时若保留上一 tick 的历史位置，
+     * 插值会画出一条穿过整条路径的虚假轨迹。本方法把 `previous` 一起对齐到目标位置。
+     * 禁止：常规的逐帧位移不要使用本方法，否则会丢失正常的插值平滑。
+     *
+     * 历史位置的对齐必须延迟到本 tick 真正写入 [loc] 之后：本方法由 pre-tick action 调用，
+     * 而 [tick] 会在那之后无条件执行 `xo = x`，当场写入的 `xo` 会被旧坐标覆盖，
+     * 重置因此失效。这里只登记意图，由 [tick] 在应用位移后统一对齐。
+     *
+     * @param target 目标世界坐标
+     */
+    fun teleportToResettingInterpolation(target: Vec3) {
+        resetInterpolation = true
+        teleportTo(target)
+    }
+
     init {
         controler.loadParticle(this)
         controler.particleInit()
@@ -320,6 +345,28 @@ abstract class ControlableParticle(
 
     var lastRotate = Vector3f(previewPitch, previewYaw, previewRoll)
     var updateRotate = false
+    /** 前一 tick 是否使用路径姿态，决定下一次请求能否连续插值。 */
+    private var interpolatePathRotation = false
+    /** 本次路径请求是否要求首帧或回绕时直接对齐姿态。 */
+    private var resetPathRotation = false
+    /** 当前 tick 是否收到了新的路径姿态请求。 */
+    private var pathRotationQueued = false
+
+    /**
+     * 排队应用路径姿态，tick 结束时先保留旧姿态，再写入目标姿态。
+     *
+     * 示例：`particle.setPathRotation(rotation, request.pathWrapped())`。
+     * 在粒子 tick action 中调用，tick 尾部应用；渲染阶段只读取前后姿态。
+     * @param rotation 目标俯仰、偏航和滚转，单位为弧度
+     * @param reset 回绕时直接对齐前后姿态，避免跨路径端点插值
+     */
+    fun setPathRotation(rotation: Vector3f, reset: Boolean) {
+        resetPathRotation = reset || !interpolatePathRotation
+        interpolatePathRotation = true
+        pathRotationQueued = true
+        lastRotate.set(rotation)
+        updateRotate = true
+    }
     fun rotateParticleTo(target: RelativeLocation) {
         rotateParticleTo(Vector3f(target.x.toFloat(), target.y.toFloat(), target.z.toFloat()))
     }
@@ -329,6 +376,9 @@ abstract class ControlableParticle(
     }
 
     fun rotateParticleTo(target: Vector3f) {
+        interpolatePathRotation = false
+        pathRotationQueued = false
+        resetPathRotation = false
         val (x, y, z) = Math3DUtil.calculateEulerAnglesToPoint(target)
         updateRotate = true
         lastRotate = Vector3f(x, y, z)
@@ -432,6 +482,14 @@ abstract class ControlableParticle(
             }
             this.loc = lastPreview
             update = false
+            if (resetInterpolation) {
+                // 路径循环跳转：此时 x/y/z 已是跳转后的位置，把历史位置一并对齐，
+                // 否则渲染插值会从前一位置画出一条穿越路径的虚假轨迹。
+                xo = x
+                yo = y
+                zo = z
+                resetInterpolation = false
+            }
         }
         previewPitch = currentPitch
         previewYaw = currentYaw
@@ -440,8 +498,16 @@ abstract class ControlableParticle(
             currentPitch = lastRotate.x
             currentYaw = lastRotate.y
             currentRoll = lastRotate.z
+            if (resetPathRotation) {
+                previewPitch = currentPitch
+                previewYaw = currentYaw
+                previewRoll = currentRoll
+                resetPathRotation = false
+            }
             updateRotate = false
         }
+        interpolatePathRotation = pathRotationQueued
+        pathRotationQueued = false
     }
 
     fun setInterpolator(newInterpolator: ParticleLerpInterpolator): ControlableParticle {
@@ -500,11 +566,18 @@ abstract class ControlableParticle(
             }
 
             ParticleCameraOption.ROTATION -> {
-                q.rotateXYZ(
-                    Mth.lerp(tickDelta, this.previewPitch, this.currentPitch),
-                    Mth.lerp(tickDelta, this.previewYaw, this.currentYaw),
-                    Mth.lerp(tickDelta, this.previewRoll, this.currentRoll)
-                )
+                if (interpolatePathRotation) {
+                    q.rotationXYZ(previewPitch, previewYaw, previewRoll).slerp(
+                        Quaternionf().rotationXYZ(currentPitch, currentYaw, currentRoll),
+                        tickDelta.coerceIn(0F, 1F),
+                    )
+                } else {
+                    q.rotateXYZ(
+                        Mth.lerp(tickDelta, this.previewPitch, this.currentPitch),
+                        Mth.lerp(tickDelta, this.previewYaw, this.currentYaw),
+                        Mth.lerp(tickDelta, this.previewRoll, this.currentRoll)
+                    )
+                }
             }
         }
         // 构建顶点几何

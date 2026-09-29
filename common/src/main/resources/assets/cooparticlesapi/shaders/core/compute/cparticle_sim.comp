@@ -3,6 +3,9 @@
 // ================= cparticle GPU 粒子模拟 - compute =================
 // 每 tick dispatch 一次: prev=cur → 力场累加 → 限速 → 积分 → age+1
 // 力场打包与 CParticleForce / CParticleCpuSimulator 完全一致
+// 路径位置约束（TYPE_PATH_CONSTRAINT）直接写位置与朝向，详见 include 文件。
+// Coo 的 #coo_import 只接受文件名，include 目录固定为 assets/<ns>/shader/include/。
+#coo_import <path_constraint.glsl>
 
 layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
@@ -79,6 +82,13 @@ const int TYPE_TEXTURE = 19;
 const int TYPE_FLUID_FLOW = 20;
 const int FLAG_BLOCK_COLLISION = 32768;
 const int FLAG_NEWBORN = 1 << 16;
+// 朝向方向位，与 CParticleInstanceFlags.ROTATION_DIRECTION 一致：
+// 置位后轴通道存放方向向量，由渲染端按 ROTATION 模式使用。
+const int FLAG_ROTATION_DIRECTION = 1 << 12;
+const int FLAG_PATH_ROTATION = 1 << 18;
+// 相机模式在 flags 的 bit 1..2；值 2 表示 ROTATION（由方向向量决定朝向）。
+const int CAMERA_SHIFT = 1;
+const int CAMERA_ROTATION = 2;
 const float COLLISION_SURFACE_OFFSET = 0.07;
 
 bool collisionOccupied(ivec3 cell) {
@@ -279,17 +289,33 @@ void main() {
         : storageVelocity;
     vec3 prev = storagePos;
 
+    // 路径位置约束的状态：路径是位置约束而不是力，写入独立的累加器，循环结束后统一生效。
+    // 同一粒子匹配到多条路径命令时，后一条覆盖前一条，符合既有命令顺序语义。
+    bool hadPathRotation = (flags & FLAG_PATH_ROTATION) != 0;
+    flags &= ~FLAG_PATH_ROTATION;
+    bool pathActive = false;
+    bool pathFaceMotion = false;
+    int pathForwardAxis = 0;
+    bool pathWrapped = false;
+    bool pathEnded = false;
+    vec3 pathPosition = vec3(0.0);
+    vec3 pathDirection = vec3(0.0);
+    vec3 direction = vec3(0.0);
+
     if (uCommandCount > 0) {
         ivec4 identity = ivec4(0);
         vec4 physical = vec4(uintBitsToFloat(0x7fc00000u), 1.0, 0.0, 0.0);
+        vec4 birth = vec4(0.0);
         if (uMetadataEnabled != 0) {
             identity = ivec4(
-                floatBitsToInt(metadataRaw[i * 2u].x),
-                floatBitsToInt(metadataRaw[i * 2u].y),
-                floatBitsToInt(metadataRaw[i * 2u].z),
-                floatBitsToInt(metadataRaw[i * 2u].w)
+                floatBitsToInt(metadataRaw[i * 3u].x),
+                floatBitsToInt(metadataRaw[i * 3u].y),
+                floatBitsToInt(metadataRaw[i * 3u].z),
+                floatBitsToInt(metadataRaw[i * 3u].w)
             );
-            physical = metadataRaw[i * 2u + 1u];
+            physical = metadataRaw[i * 3u + 1u];
+            birth = metadataRaw[i * 3u + 2u];
+            if (uTransformSimulation != 0) birth.xyz = (uSimulationTransform * vec4(birth.xyz, 1.0)).xyz;
         }
         for (int ci = 0; ci < uCommandCount; ci++) {
             int cb = ci * 5;
@@ -307,6 +333,59 @@ void main() {
             vec4 p2 = commandCache[cb + 3];
             vec4 p3 = commandCache[cb + 4];
             int type = floatBitsToInt(header.x);
+            if (type == TYPE_PATH_CONSTRAINT) {
+                if (uPathLayerEnabled == 0) continue;
+                int pathSlot = pathIntAt(p0.x);
+                if (pathSlot < 0 || pathSlot >= PATH_SLOT_TABLE) continue;
+                int payloadBase = pathIntAt(pathLayer[PATH_SLOT_TABLE + pathSlot]);
+                if (payloadBase <= 0) continue;
+                // 图层版本不一致说明基址已被重新分配，整条命令跳过而不是读到别的路径。
+                if (pathIntAt(p0.w) != pathPayloadRevision(payloadBase)) continue;
+                int modePack = pathIntAt(p0.y);
+                // 播放参数全部来自**命令 payload**（p0..p3），不能拿路径负载基址去索引路径图层：
+                // 两者属于不同的 SSBO，混用会读到几何表头并让半径、周期与绑定变换整体失真。
+                // 布局见 CooPathCommandAbi：p0 = 槽位/模式/半径/版本，p1 = 周期/相位/角速度/角速度倍率，
+                // p2 = 绑定四元数，p3 = 绑定缩放。
+                vec3 localPosition;
+                vec3 boundPosition;
+                vec3 evaluatedDirection;
+                bool reachedEnd;
+                bool wrapped;
+                bool evaluated = pathEvaluate(
+                    payloadBase,
+                    age,
+                    maxAge,
+                    modePack & PATH_MODE_MASK,
+                    (modePack >> PATH_SHIFT_PROGRESS) & PATH_MODE_MASK,
+                    (modePack >> PATH_SHIFT_FORWARD) & PATH_MODE_MASK,
+                    p1.x,
+                    p0.z,
+                    p1.y,
+                    p1.z,
+                    p1.w,
+                    p2,
+                    p3.xyz,
+                    (modePack >> PATH_SHIFT_OFFSET) & PATH_MODE_MASK,
+                    birth,
+                    localPosition,
+                    evaluatedDirection,
+                    boundPosition,
+                    reachedEnd,
+                    wrapped
+                );
+                if (evaluated) {
+                    pathActive = true;
+                    pathDirection = evaluatedDirection;
+                    pathFaceMotion = p3.w > 0.5;
+                    pathForwardAxis = (modePack >> PATH_SHIFT_FORWARD) & PATH_MODE_MASK;
+                    pathPosition = boundPosition;
+                    pathWrapped = wrapped;
+                    // HOLD 只停在终点；只有 DISAPPEAR 才提前结束生命并触发死亡重生。
+                    pathEnded = reachedEnd &&
+                        ((modePack >> PATH_SHIFT_END) & PATH_MODE_MASK) == PATH_END_DISAPPEAR;
+                }
+                continue;
+            }
             // 旧的全局力大多不需要位置差；不要为每个粒子、每条命令无条件执行 length。
             // Vortex/Rotation 与新 ABI 的径向力才需要这组值。
             vec3 r = vec3(0.0);
@@ -474,16 +553,42 @@ void main() {
         vel *= effectiveSpeedLimit / sp;
     }
 
-    float collisionTime;
-    vec3 collisionNormal;
-    if (uCollisionEnabled != 0 &&
-        (flags & FLAG_BLOCK_COLLISION) != 0 &&
-        traceCollisionGrid(pos + uCollisionOffset, vel, collisionTime, collisionNormal)
-    ) {
-        pos += vel * collisionTime + collisionNormal * COLLISION_SURFACE_OFFSET;
-        vel -= collisionNormal * dot(vel, collisionNormal);
+    // 路径位置约束：直接写位置与朝向，不再执行一次速度积分，避免重复位移。
+    // previous 位置在循环回绕时被重置，防止渲染插值画出终点到起点的错误穿越轨迹。
+    if (pathActive) {
+        pos = pathPosition;
+        vel = vec3(0.0);
+        prev = pathWrapped ? pathPosition : storagePos;
+        if (pathFaceMotion && dot(pathDirection, pathDirection) > 1.0e-12) {
+            direction = pathSafeNormalize(pathDirection);
+            flags &= ~FLAG_ROTATION_DIRECTION;
+            flags |= FLAG_PATH_ROTATION;
+            // 显式跟随写入完整欧拉角，不再叠加旧方向转换。
+            flags = (flags & ~(3 << CAMERA_SHIFT)) | (CAMERA_ROTATION << CAMERA_SHIFT);
+        }
+        if (pathEnded) {
+            flags |= PATH_FLAG_ENDED;
+            flags &= ~1;
+            // 预提交生命由独立的异步回收通道处理，不让 CPU 路径队列干预重生。
+            if ((flags & (1 << 20)) == 0) {
+                int endIndex = atomicAdd(pathEndState[0], 1);
+                if (endIndex < uPathEndCapacity) {
+                    pathEndState[1 + endIndex] = int(i);
+                }
+            }
+        }
     } else {
-        pos += vel;
+        float collisionTime;
+        vec3 collisionNormal;
+        if (uCollisionEnabled != 0 &&
+            (flags & FLAG_BLOCK_COLLISION) != 0 &&
+            traceCollisionGrid(pos + uCollisionOffset, vel, collisionTime, collisionNormal)
+        ) {
+            pos += vel * collisionTime + collisionNormal * COLLISION_SURFACE_OFFSET;
+            vel -= collisionNormal * dot(vel, collisionNormal);
+        } else {
+            pos += vel;
+        }
     }
     age += 1.0;
     if (age >= maxAge) {
@@ -499,4 +604,13 @@ void main() {
     particles[i].posAge = vec4(outputPos, age);
     particles[i].prevMaxAge = vec4(prev, maxAge);
     particles[i].velFlags = vec4(outputVelocity, float(flags));
+    if (pathActive && dot(direction, direction) > 1.0e-12) {
+        vec3 rotation = pathOrientationAngles(direction, pathForwardAxis);
+        vec3 previousRotation = hadPathRotation && !pathWrapped
+            ? vec3(particles[i].sizeRot.w, particles[i].sizeRot.z, particles[i].axisRoll.w)
+            : rotation;
+        particles[i].axisRoll = vec4(previousRotation, rotation.z);
+        particles[i].sizeRot = vec4(particles[i].sizeRot.xy, rotation.y, rotation.x);
+        particles[i].angularEpoch.xyz = vec3(0.0);
+    }
 }

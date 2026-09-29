@@ -3,6 +3,8 @@ package cn.coostack.cooparticlesapi
 import cn.coostack.cooparticlesapi.key.CooKeyBindingManager
 import cn.coostack.cooparticlesapi.coofx.client.CooFXClient
 import cn.coostack.cooparticlesapi.entities.CooModEntityTypes
+import cn.coostack.cooparticlesapi.entities.structure.client.StructureModelRenderer
+import cn.coostack.cooparticlesapi.entities.structure.editor.client.StructureEditorClient
 import cn.coostack.cooparticlesapi.entities.renderer.TestRenderEntityRenderer
 import cn.coostack.cooparticlesapi.event.CooEventBus
 import cn.coostack.cooparticlesapi.event.events.client.ClientPostTickEvent
@@ -73,6 +75,7 @@ import net.minecraft.core.particles.ParticleType
 object CooParticlesAPIFabricClient : ClientModInitializer {
     override fun onInitializeClient() {
         CooKeyBindingManager.setRegistrar { KeyBindingHelper.registerKeyBinding(it) }
+        StructureEditorClient.registerKeys()
         PerformanceStatusKeyBindings.mappings().forEach { mapping ->
             KeyBindingHelper.registerKeyBinding(mapping)
         }
@@ -162,6 +165,7 @@ object CooParticlesAPIFabricClient : ClientModInitializer {
 
 
     private fun registerEntityRenderer() {
+        EntityRendererRegistry.register(CooModEntityTypes.STRUCTURE_MODEL.get(), ::StructureModelRenderer)
         EntityRendererRegistry.register(CooModEntityTypes.TEST_RENDER.get(), ::TestRenderEntityRenderer)
     }
 

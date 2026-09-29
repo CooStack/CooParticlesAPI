@@ -1,8 +1,10 @@
 package cn.coostack.cooparticlesapi.renderer.shader.glsl
 
+import cn.coostack.cooparticlesapi.renderer.shader.CooShaderSourceLoader
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlShader
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlShaderType
 import cn.coostack.cooparticlesapi.renderer.shader.utils.GlslUtil
+import net.minecraft.client.Minecraft
 import net.minecraft.resources.ResourceLocation
 import org.lwjgl.opengl.GL33.*
 
@@ -60,8 +62,27 @@ class IdentifierShader(val id: ResourceLocation, override val type: GlShaderType
      */
     override fun sourceLocation(): ResourceLocation = id
 
-    private fun readFromJar(): String {
-        return GlslUtil.readGlslCodeFromJar(id)
-    }
+    private fun readFromJar(): String = readWithCooImports()
 
+    /**
+     * 通过 Coo 源码加载器读取本 shader，并展开 `#coo_import` 指令。
+     *
+     * Coo 框架要求所有自有 shader 的 `#` 预处理指令都由本框架的解析器处理，不能用原版加载规则。
+     * 资源管理器可用时读取资源包内容，否则回退到 classpath；**两条路径都会展开 include**，
+     * 只做 jar 直读会让驱动收到未知的 `#coo_import` 指令并直接编译失败。
+     *
+     * @return 展开后的源码
+     * @throws IllegalArgumentException 程序自身或任一 include 都不存在时抛出
+     */
+    private fun readWithCooImports(): String {
+        val resources = runCatching { Minecraft.getInstance().resourceManager }.getOrNull()
+        if (resources != null) {
+            // 资源管理器用的是真实资源路径，必须带上 shaders/ 前缀。
+            val located = ResourceLocation.fromNamespaceAndPath(id.namespace, "shaders/${id.path}")
+            if (resources.getResource(located).isPresent) {
+                return CooShaderSourceLoader.load(resources, located)
+            }
+        }
+        return CooShaderSourceLoader.loadFromClasspath(id)
+    }
 }

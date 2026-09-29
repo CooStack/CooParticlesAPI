@@ -3,6 +3,7 @@ package cn.coostack.cooparticlesapi.particles.control
 import cn.coostack.cooparticlesapi.api.controler.Controlable
 import cn.coostack.cooparticlesapi.api.controler.Tickable
 import cn.coostack.cooparticlesapi.particles.ControlableParticle
+import cn.coostack.cooparticlesapi.cparticle.path.CParticlePathBirth
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
@@ -18,6 +19,15 @@ class ParticleControler(private val uuid: UUID) : Controlable<ControlableParticl
         private set
 
     private var init = false
+    /** 发射器创建粒子时记录的不可变出生参考，不能用命令首次执行的位置替代。 */
+    internal var pathBirth: CParticlePathBirth? = null
+        private set
+
+    /** 仅允许出生流程记录一次，随控制器释放而回收。 */
+    internal fun recordPathBirth(birth: CParticlePathBirth) {
+        check(pathBirth == null) { "Particle birth reference is immutable" }
+        pathBirth = birth
+    }
     private val invokeQueue = mutableListOf<ControlableParticle.() -> Unit>()
     private val postInvokeQueue = mutableListOf<ControlableParticle.() -> Unit>()
 
@@ -28,6 +38,32 @@ class ParticleControler(private val uuid: UUID) : Controlable<ControlableParticl
      * 参数缓存 (tick 级)
      */
     val bufferedData = ConcurrentHashMap<String, Any>()
+
+    /**
+     * 本 tick 待应用的路径位置约束。
+     *
+     * 路径命令在发射器运动**之前**执行，而默认运动实现会把位置改写成 `当前位置 + 速度`。
+     * 命令把求值结果放在这里，由发射器在完成位移与碰撞后统一应用，从而保证路径位置写入后
+     * 不再叠加一次速度积分。
+     *
+     * 命令实例由同一发射器的所有粒子共享，但每个粒子有各自的 [ParticleControler]，
+     * 因此这里是逐粒子状态；取用即清空，不会把结果带到下一个 tick。
+     */
+    var pendingPathRequest: CParticlePathRequest? = null
+        private set
+
+    /** 记录本 tick 待应用的路径位置约束。 */
+    fun setPendingPathRequest(request: CParticlePathRequest) {
+        pendingPathRequest = request
+    }
+
+    /** 取走并清空本 tick 待应用的路径位置约束；没有请求时返回 `null`。 */
+    fun consumePendingPathRequest(): CParticlePathRequest? {
+        val request = pendingPathRequest ?: return null
+        pendingPathRequest = null
+        return request
+    }
+
     private var initInvoker: ControlableParticle.() -> Unit = {}
     private var destroyInvoker: ControlableParticle.(RemoveReason) -> Unit = {}
 

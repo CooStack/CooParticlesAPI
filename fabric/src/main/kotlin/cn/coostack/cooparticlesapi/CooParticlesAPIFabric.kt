@@ -2,6 +2,9 @@ package cn.coostack.cooparticlesapi
 
 import cn.coostack.cooparticlesapi.commands.APICommand
 import cn.coostack.cooparticlesapi.entities.CooModEntityTypes
+import cn.coostack.cooparticlesapi.entities.structure.StructureModelEntity
+import cn.coostack.cooparticlesapi.listener.StructureInteractionEvents
+import net.fabricmc.fabric.api.`object`.builder.v1.entity.FabricDefaultAttributeRegistry
 import cn.coostack.cooparticlesapi.event.CooEventBus
 import cn.coostack.cooparticlesapi.event.events.entity.EntityPrePlaceBlockEvent
 import cn.coostack.cooparticlesapi.event.events.entity.player.ServerPlayerDeathEvent
@@ -111,6 +114,7 @@ object CooParticlesAPIFabric : ModInitializer {
     }
 
     private fun initEvents() {
+        StructureInteractionEvents.register()
         CommandRegistrationCallback.EVENT.register { dispatcher, _, _ ->
             APICommand.register(dispatcher)
         }
@@ -168,6 +172,7 @@ object CooParticlesAPIFabric : ModInitializer {
         CooModEntityTypes.types.forEach {
             Registry.register(BuiltInRegistries.ENTITY_TYPE, it.id, it.get())
         }
+        FabricDefaultAttributeRegistry.register(CooModEntityTypes.STRUCTURE_MODEL.get(), StructureModelEntity.createAttributes())
     }
 
 }

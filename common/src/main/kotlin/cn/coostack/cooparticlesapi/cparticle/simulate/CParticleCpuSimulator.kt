@@ -1,10 +1,24 @@
 package cn.coostack.cooparticlesapi.cparticle.simulate
 
+import cn.coostack.cooparticlesapi.particles.control.RemoveReason
+
 import cn.coostack.cooparticlesapi.cparticle.force.CParticleForce
 import cn.coostack.cooparticlesapi.cparticle.force.CParticleSelector
 import cn.coostack.cooparticlesapi.cparticle.CParticleInstanceFlags
 import cn.coostack.cooparticlesapi.cparticle.collision.CParticleBlockCollisionGrid
 import cn.coostack.cooparticlesapi.cparticle.collision.CParticleVoxelCollision
+import cn.coostack.cooparticlesapi.cparticle.path.CooPathCommandAbi
+import cn.coostack.cooparticlesapi.cparticle.path.CooPathLayer
+import cn.coostack.cooparticlesapi.cparticle.path.CParticlePathCpuEvaluator
+import cn.coostack.cooparticlesapi.cparticle.path.CParticlePathEndMode
+import cn.coostack.cooparticlesapi.cparticle.path.CParticlePathEvaluation
+import cn.coostack.cooparticlesapi.cparticle.path.CParticlePathEvaluator
+import cn.coostack.cooparticlesapi.cparticle.path.CParticlePathForwardAxis
+import cn.coostack.cooparticlesapi.cparticle.path.CParticlePathOrientation
+import cn.coostack.cooparticlesapi.cparticle.path.CParticlePathBirth
+import cn.coostack.cooparticlesapi.cparticle.path.CParticlePathLibrary
+import cn.coostack.cooparticlesapi.cparticle.path.CParticlePathPlayMode
+import cn.coostack.cooparticlesapi.cparticle.path.CParticlePathProgressMode
 import cn.coostack.cooparticlesapi.cparticle.storage.CParticleStore
 import cn.coostack.cooparticlesapi.cparticle.storage.CParticleMetadataStore
 import cn.coostack.cooparticlesapi.cparticle.force.CParticleForceResourceTable
@@ -13,6 +27,8 @@ import cn.coostack.cooparticlesapi.cparticle.storage.CParticleStore.Companion.OF
 import cn.coostack.cooparticlesapi.cparticle.storage.CParticleStore.Companion.OFF_PREV
 import cn.coostack.cooparticlesapi.cparticle.storage.CParticleStore.Companion.OFF_VEL
 import cn.coostack.cooparticlesapi.cparticle.storage.CParticleStore.Companion.STRIDE
+import cn.coostack.cooparticlesapi.particles.ParticleCameraOption
+import net.minecraft.world.phys.Vec3
 import org.joml.Matrix4fc
 import org.joml.Vector3f
 import java.util.concurrent.ForkJoinPool
@@ -23,6 +39,7 @@ import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.floor
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.PI
 import kotlin.math.pow
 import kotlin.math.sin
@@ -39,6 +56,9 @@ object CParticleCpuSimulator {
 
     private const val PARALLEL_THRESHOLD = 8192
     private const val CHUNK = 16384
+
+    /** 路径提前结束收集器的初始容量；只有真正提前结束的粒子才会被记录。 */
+    private const val TERMINATION_INITIAL_CAPACITY = 64
 
     /**
      * 推进一个 tick.
@@ -168,11 +188,17 @@ object CParticleCpuSimulator {
         val first = store.firstAliveSlot
         val high = store.highWater
         if (store.aliveCount <= 0) return
+        // 路径数据从 CPU 侧同版本图层求值，不从 GPU 回读路径纹理或粒子位置。
+        val pathLayer = CParticlePathLibrary.currentLayerData()
+        val terminations = ArrayList<PathTerminationCollector>()
         if (store.aliveCount < PARALLEL_THRESHOLD) {
+            val collector = PathTerminationCollector()
+            terminations.add(collector)
             simulateRange(
                 store, commandPacked, commandCount, resourceTable,
                 originX, originY, originZ, speedLimit,
                 collisionGrid, simulationTransform, inverseSimulationTransform, first, high,
+                pathLayer, collector,
             )
         } else {
             val tasks = ArrayList<ForkJoinTask<*>>()
@@ -180,18 +206,44 @@ object CParticleCpuSimulator {
             while (start < high) {
                 val s = start
                 val e = minOf(start + CHUNK, high)
+                val collector = PathTerminationCollector()
+                terminations.add(collector)
                 tasks.add(ForkJoinPool.commonPool().submit {
                     simulateRange(
                         store, commandPacked, commandCount, resourceTable,
                         originX, originY, originZ, speedLimit,
                         collisionGrid, simulationTransform, inverseSimulationTransform, s, e,
+                        pathLayer, collector,
                     )
                 })
                 start = e
             }
             tasks.forEach { it.join() }
         }
+        // 到达消失模式可以早于寿命结束；回收走与正常死亡完全相同的槽位账本入口。
+        for (collector in terminations) {
+            for (index in 0 until collector.count) {
+                val slot = collector.slots[index]
+                if (store.isAlive(slot)) store.kill(slot, reason = RemoveReason.LIFECYCLE)
+            }
+        }
         store.markAllAliveDirty()
+    }
+
+    /**
+     * 单个分块内收集到的路径提前结束槽位。
+     *
+     * 由收集器容量而非粒子容量决定内存：只有真正提前结束的粒子才会被记录，
+     * 因此不需要为百万粒子预留数组。
+     */
+    private class PathTerminationCollector {
+        var slots = IntArray(TERMINATION_INITIAL_CAPACITY)
+        var count = 0
+
+        fun add(slot: Int) {
+            if (count == slots.size) slots = slots.copyOf(slots.size * 2)
+            slots[count++] = slot
+        }
     }
 
     private fun simulateRange(
@@ -205,6 +257,8 @@ object CParticleCpuSimulator {
         simulationTransform: Matrix4fc?,
         inverseSimulationTransform: Matrix4fc?,
         from: Int, to: Int,
+        pathLayer: FloatArray?,
+        pathTerminated: PathTerminationCollector,
     ) {
         val data = store.data
         val bits = store.aliveBits
@@ -229,6 +283,9 @@ object CParticleCpuSimulator {
                 continue
             }
             var px = data[base]
+            // 每 tick 由本次有效命令重新声明插值；不再跟随时停在当前姿态。
+            data[base + CParticleStore.OFF_FLAGS] =
+                (flags and CParticleInstanceFlags.PATH_ROTATION.inv()).toFloat()
             var py = data[base + 1]
             var pz = data[base + 2]
             var vx = data[base + OFF_VEL]
@@ -257,6 +314,20 @@ object CParticleCpuSimulator {
             data[base + OFF_PREV + 1] = previousStorageY
             data[base + OFF_PREV + 2] = previousStorageZ
 
+            // 路径位置约束的状态：路径是位置约束而不是力，写入独立的累加器，循环结束后统一生效。
+            // 同一粒子匹配到多条路径命令时，后一条覆盖前一条，符合既有命令顺序语义。
+            var pathActive = false
+            var pathWrapped = false
+            var pathEnded = false
+            var pathFaceMotion = false
+            var pathForwardAxis = CParticlePathForwardAxis.MODEL_POSITIVE_X
+            var pathX = 0F
+            var pathY = 0F
+            var pathZ = 0F
+            var directionX = 0F
+            var directionY = 0F
+            var directionZ = 0F
+
             if (commandCount > 0) {
                 val source = store.metadata.sourceId(slot)
                 val sign = store.metadata.sign(slot)
@@ -276,6 +347,42 @@ object CParticleCpuSimulator {
                         else -> false
                     }
                     if (!selected) continue
+                    if (commandPacked[cb].toRawBits() == CParticleForce.TYPE_PATH_CONSTRAINT) {
+                        var birth = store.metadata.birth(slot)
+                        if (simulationTransform != null) {
+                            simulationTransform.transformPosition(
+                                birth.position.x.toFloat(), birth.position.y.toFloat(), birth.position.z.toFloat(),
+                                transformedPosition,
+                            )
+                            birth = birth.copy(position = Vec3(
+                                transformedPosition.x.toDouble(),
+                                transformedPosition.y.toDouble(),
+                                transformedPosition.z.toDouble(),
+                            ))
+                        }
+                        val evaluated = evaluatePath(commandPacked, cb, age, maxAge, pathLayer, birth)
+                        if (evaluated == null) continue
+                        pathActive = true
+                        val payload = cb + CooPathCommandAbi.FORCE_PAYLOAD_OFFSET
+                        pathFaceMotion = commandPacked[payload + CooPathCommandAbi.P_FACE_MOTION] > 0.5F
+                        pathForwardAxis = CParticlePathForwardAxis.entries.getOrElse(
+                            CooPathCommandAbi.forwardAxisModeOf(commandPacked[payload + CooPathCommandAbi.P_MODE_PACK].toInt()),
+                        ) { CParticlePathForwardAxis.MODEL_POSITIVE_X }
+                        pathWrapped = evaluated.wrapped
+                        pathEnded = evaluated.reachedEnd &&
+                            CooPathCommandAbi.endModeOf(
+                                commandPacked[cb + CooPathCommandAbi.FORCE_PAYLOAD_OFFSET +
+                                    CooPathCommandAbi.P_MODE_PACK].toInt(),
+                            ) == CooPathCommandAbi.END_DISAPPEAR
+                        pathX = evaluated.position.x.toFloat()
+                        pathY = evaluated.position.y.toFloat()
+                        pathZ = evaluated.position.z.toFloat()
+                        val direction = evaluated.direction
+                        directionX = direction.x.toFloat()
+                        directionY = direction.y.toFloat()
+                        directionZ = direction.z.toFloat()
+                        continue
+                    }
                     applyCommand(
                         commandPacked,
                         cb,
@@ -302,45 +409,90 @@ object CParticleCpuSimulator {
                 }
             }
 
-            // 每粒子限速优先；负数哨兵沿用 system 限速
-            val sp2 = vx * vx + vy * vy + vz * vz
-            if (sp2 > effectiveSpeedLimit * effectiveSpeedLimit && sp2 > 1e-12F) {
-                val m = effectiveSpeedLimit / sqrt(sp2)
-                vx *= m; vy *= m; vz *= m
+            if (pathEnded) {
+                pathTerminated.add(slot)
             }
 
-            // 积分；碰撞只为当前 worker 分配一个复用结果数组，不产生逐粒子对象。
-            val collided = collisionGrid != null && collisionResult != null &&
-                    data[base + CParticleStore.OFF_FLAGS].toInt() and
-                    CParticleInstanceFlags.BLOCK_COLLISION != 0 &&
-                    CParticleVoxelCollision.trace(
-                        collisionGrid,
-                        px + collisionOffsetX,
-                        py + collisionOffsetY,
-                        pz + collisionOffsetZ,
-                        vx,
-                        vy,
-                        vz,
-                        collisionResult,
-                    )
-            if (collided) {
-                val hitTime = collisionResult[CParticleVoxelCollision.RESULT_TIME]
-                val normal = collisionResult[CParticleVoxelCollision.RESULT_NORMAL].toInt()
-                px += vx * hitTime
-                py += vy * hitTime
-                pz += vz * hitTime
-                when (normal) {
-                    -1 -> { px -= CParticleVoxelCollision.SURFACE_OFFSET; vx = 0F }
-                    1 -> { px += CParticleVoxelCollision.SURFACE_OFFSET; vx = 0F }
-                    -2 -> { py -= CParticleVoxelCollision.SURFACE_OFFSET; vy = 0F }
-                    2 -> { py += CParticleVoxelCollision.SURFACE_OFFSET; vy = 0F }
-                    -3 -> { pz -= CParticleVoxelCollision.SURFACE_OFFSET; vz = 0F }
-                    3 -> { pz += CParticleVoxelCollision.SURFACE_OFFSET; vz = 0F }
+            if (pathActive) {
+                // 路径直接写位置，不再执行速度积分与碰撞，避免重复位移。
+                px = pathX
+                py = pathY
+                pz = pathZ
+                vx = 0F
+                vy = 0F
+                vz = 0F
+                if (pathWrapped) {
+                    // 循环跳转时重置 previous，避免渲染插值画出终点到起点的错误穿越轨迹。
+                    data[base + OFF_PREV] = pathX
+                    data[base + OFF_PREV + 1] = pathY
+                    data[base + OFF_PREV + 2] = pathZ
+                }
+                val directionLengthSquared = directionX * directionX + directionY * directionY + directionZ * directionZ
+                if (pathFaceMotion && directionLengthSquared > 1.0E-12F) {
+                    val rotation = CParticlePathOrientation.angles(
+                        Vec3(directionX.toDouble(), directionY.toDouble(), directionZ.toDouble()), pathForwardAxis,
+                    )!!
+                    val interpolate = flags and CParticleInstanceFlags.PATH_ROTATION != 0 && !pathWrapped
+                    data[base + CParticleStore.OFF_AXIS] =
+                        if (interpolate) data[base + CParticleStore.OFF_SIZE + 3] else rotation.x
+                    data[base + CParticleStore.OFF_AXIS + 1] =
+                        if (interpolate) data[base + CParticleStore.OFF_SIZE + 2] else rotation.y
+                    data[base + CParticleStore.OFF_AXIS + 2] =
+                        if (interpolate) data[base + CParticleStore.OFF_ROLL] else rotation.z
+                    data[base + CParticleStore.OFF_SIZE + 2] = rotation.y
+                    data[base + CParticleStore.OFF_SIZE + 3] = rotation.x
+                    data[base + CParticleStore.OFF_AXIS + 3] = rotation.z
+                    data[base + CParticleStore.OFF_ANGULAR_VELOCITY] = 0F
+                    data[base + CParticleStore.OFF_ANGULAR_VELOCITY + 1] = 0F
+                    data[base + CParticleStore.OFF_ANGULAR_VELOCITY + 2] = 0F
+                    var pathFlags = data[base + CParticleStore.OFF_FLAGS].toInt()
+                    pathFlags = pathFlags and CParticleStore.FLAG_ROTATION_DIRECTION.inv()
+                    pathFlags = pathFlags or CParticleInstanceFlags.PATH_ROTATION
+                    pathFlags = (pathFlags and (3 shl CParticleStore.CAMERA_SHIFT).inv()) or
+                        (ParticleCameraOption.ROTATION.ordinal shl CParticleStore.CAMERA_SHIFT)
+                    data[base + CParticleStore.OFF_FLAGS] = pathFlags.toFloat()
                 }
             } else {
-                px += vx
-                py += vy
-                pz += vz
+                // 每粒子限速优先；负数哨兵沿用 system 限速
+                val sp2 = vx * vx + vy * vy + vz * vz
+                if (sp2 > effectiveSpeedLimit * effectiveSpeedLimit && sp2 > 1e-12F) {
+                    val m = effectiveSpeedLimit / sqrt(sp2)
+                    vx *= m; vy *= m; vz *= m
+                }
+
+                // 积分；碰撞只为当前 worker 分配一个复用结果数组，不产生逐粒子对象。
+                val collided = collisionGrid != null && collisionResult != null &&
+                        data[base + CParticleStore.OFF_FLAGS].toInt() and
+                        CParticleInstanceFlags.BLOCK_COLLISION != 0 &&
+                        CParticleVoxelCollision.trace(
+                            collisionGrid,
+                            px + collisionOffsetX,
+                            py + collisionOffsetY,
+                            pz + collisionOffsetZ,
+                            vx,
+                            vy,
+                            vz,
+                            collisionResult,
+                        )
+                if (collided) {
+                    val hitTime = collisionResult[CParticleVoxelCollision.RESULT_TIME]
+                    val normal = collisionResult[CParticleVoxelCollision.RESULT_NORMAL].toInt()
+                    px += vx * hitTime
+                    py += vy * hitTime
+                    pz += vz * hitTime
+                    when (normal) {
+                        -1 -> { px -= CParticleVoxelCollision.SURFACE_OFFSET; vx = 0F }
+                        1 -> { px += CParticleVoxelCollision.SURFACE_OFFSET; vx = 0F }
+                        -2 -> { py -= CParticleVoxelCollision.SURFACE_OFFSET; vy = 0F }
+                        2 -> { py += CParticleVoxelCollision.SURFACE_OFFSET; vy = 0F }
+                        -3 -> { pz -= CParticleVoxelCollision.SURFACE_OFFSET; vz = 0F }
+                        3 -> { pz += CParticleVoxelCollision.SURFACE_OFFSET; vz = 0F }
+                    }
+                } else {
+                    px += vx
+                    py += vy
+                    pz += vz
+                }
             }
             if (inverseSimulationTransform != null) {
                 inverseSimulationTransform.transformPosition(px, py, pz, transformedPosition)
@@ -629,6 +781,65 @@ object CParticleCpuSimulator {
 
     private fun textureLuminance(sample: FloatArray): Float {
         return (sample[0] + sample[1] + sample[2]) / 3F
+    }
+
+    // ---------------------------------------------------------------- 路径位置约束
+
+    /**
+     * 在 CPU 侧求值一条路径位置约束命令。
+     *
+     * 与 `cparticle_sim.comp` 中 path_constraint.glsl 的数学完全一致：位置取“下一 tick 的进度”，
+     * 方向取该处的前向差分，环绕偏移只由当前进度、半径与相位求值。路径数据来自 CPU 侧同版本
+     * 图层，不从 GPU 回读。
+     *
+     * 求值实现集中在 [CParticlePathCpuEvaluator]：显式 CPU 模拟与传统 `ParticleCommand` 共用同一份
+     * 数学，避免两条 CPU 路线的路径语义各自漂移。
+     *
+     * @return 求值结果；图层版本不匹配、图层缺失或路径几何不可用时返回 `null`
+     */
+    private fun evaluatePath(
+        commands: FloatArray,
+        base: Int,
+        age: Float,
+        maxAge: Float,
+        pathLayer: FloatArray?,
+        birth: CParticlePathBirth,
+    ): CParticlePathCpuEvaluator.Result? {
+        val payloadBase = base + CooPathCommandAbi.FORCE_PAYLOAD_OFFSET
+        val pathSlot = commands[payloadBase + CooPathCommandAbi.P_SLOT].toInt()
+        val layerRevision = commands[payloadBase + CooPathCommandAbi.P_LAYER_VERSION].toInt()
+        // 图层版本不一致说明基址已被重新分配，整条命令跳过而不是读到别的路径。
+        if (!CParticlePathCpuEvaluator.revisionMatches(pathLayer, pathSlot, layerRevision)) return null
+        val modePack = commands[payloadBase + CooPathCommandAbi.P_MODE_PACK].toInt()
+        val input = CParticlePathCpuEvaluator.Input(
+            offsetMode = CooPathCommandAbi.offsetModeOf(modePack),
+            birth = birth,
+            progressMode = CParticlePathProgressMode.entries.getOrElse(
+                CooPathCommandAbi.progressModeOf(modePack),
+            ) { CParticlePathProgressMode.ARC_LENGTH },
+            playMode = CParticlePathPlayMode.entries.getOrElse(
+                CooPathCommandAbi.playModeOf(modePack),
+            ) { CParticlePathPlayMode.ONCE },
+            offsetRadius = commands[payloadBase + CooPathCommandAbi.P_OFFSET_RADIUS].toDouble(),
+            playPeriodTicks = commands[payloadBase + CooPathCommandAbi.P_PLAY_PERIOD].toDouble(),
+            phaseRadians = commands[payloadBase + CooPathCommandAbi.P_PHASE].toDouble(),
+            angularVelocityRadiansPerTick =
+                commands[payloadBase + CooPathCommandAbi.P_ANGULAR_VELOCITY].toDouble(),
+            angularVelocityScale = commands[payloadBase + CooPathCommandAbi.P_ANGULAR_SCALE].toDouble(),
+            forwardAxis = CParticlePathForwardAxis.entries.getOrElse(
+                CooPathCommandAbi.forwardAxisModeOf(modePack),
+            ) { CParticlePathForwardAxis.MODEL_POSITIVE_X },
+            bindingQuaternion = CParticlePathEvaluator.readQuaternion(
+                commands,
+                payloadBase + CooPathCommandAbi.P_BINDING_QUAT,
+            ),
+            bindingScale = Vec3(
+                commands[payloadBase + CooPathCommandAbi.P_BINDING_SCALE].toDouble(),
+                commands[payloadBase + CooPathCommandAbi.P_BINDING_SCALE + 1].toDouble(),
+                commands[payloadBase + CooPathCommandAbi.P_BINDING_SCALE + 2].toDouble(),
+            ),
+        )
+        return CParticlePathCpuEvaluator.evaluate(pathLayer, pathSlot, age.toDouble(), maxAge.toDouble(), input)
     }
 
     private fun blenderFalloff(

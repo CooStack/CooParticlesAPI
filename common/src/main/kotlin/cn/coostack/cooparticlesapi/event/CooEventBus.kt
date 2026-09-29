@@ -41,14 +41,16 @@ object CooEventBus {
         loaded = true
         val start = System.currentTimeMillis()
         // class path
-        CooAPIScanner.getClassesWithAnnotation(EventListener::class.java)
-            .forEach {
-                val value = it.getAnnotation(EventListener::class.java)
+        CooAPIScanner.getWithAnnotation(EventListener::class.java)
+            .forEach { info ->
+                // 先读取注解并过滤运行侧，不能在专用服务器执行客户端对象的静态初始化。
+                val type = info.toClass(false)
+                val value = type.getAnnotation(EventListener::class.java)
                 val dist = value?.dist ?: DistType.BOTH
                 if (dist != DistType.BOTH && dist != CooParticlesServices.PLATFORM.getDistType()) {
                     return@forEach
                 }
-                appendListenerTarget(value?.modId ?: CooParticlesConstants.MOD_ID, it.name)
+                appendListenerTarget(value?.modId ?: CooParticlesConstants.MOD_ID, type.name)
             }
         val end = System.currentTimeMillis()
         CooParticlesConstants.logger.info("事件扫描完毕 耗时 ${end - start} ms")

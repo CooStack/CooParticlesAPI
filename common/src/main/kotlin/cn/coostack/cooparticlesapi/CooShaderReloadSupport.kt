@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi
 
+import cn.coostack.cooparticlesapi.renderer.shader.CooShaderSourceLoader
 import cn.coostack.cooparticlesapi.renderer.shader.ShaderCompileUpdate
 import cn.coostack.cooparticlesapi.renderer.shader.ShaderReloadBus
 import cn.coostack.cooparticlesapi.renderer.shader.ShaderReloadDispatchResult
@@ -15,6 +16,21 @@ object CooShaderReloadSupport {
     fun reload(resourceManager: ResourceManager) {
         ShaderReloadBus.dispatch(ShaderReloadSignal.FullReload(resourceManager))
     }
+
+    /**
+     * 读取一个 Coo shader 源码，并展开其中的 `#coo_import`。
+     *
+     * 与 GPU 编译路径使用同一个加载器，因此调用方拿到的是**驱动真正会编译的文本**。
+     * 需要在不启动客户端的情况下检查 shader 语法（例如编译回归测试）时使用本入口，
+     * 不要直接按原版规则读取源码文件——那样会拿到未展开的 `#coo_import`，导致驱动报未知指令。
+     *
+     * @param source 程序自身的资源位置；path 不含 `shaders/` 前缀
+     * @return 展开后的源码
+     * @throws IllegalArgumentException 程序自身或任一 include 在 classpath 上不存在时抛出
+     */
+    @JvmStatic
+    fun loadShaderSource(source: ResourceLocation): String =
+        CooShaderSourceLoader.loadFromClasspath(source)
 
     @JvmStatic
     fun refreshProgramsById(ids: Set<ResourceLocation>): Int {
