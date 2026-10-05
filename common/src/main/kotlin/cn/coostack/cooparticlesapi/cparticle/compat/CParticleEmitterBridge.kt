@@ -13,6 +13,7 @@ import cn.coostack.cooparticlesapi.cparticle.CParticleTextureResolver
 import cn.coostack.cooparticlesapi.cparticle.CParticleSystemReuseKey
 import cn.coostack.cooparticlesapi.cparticle.CParticleTextureBindingKey
 import cn.coostack.cooparticlesapi.cparticle.CParticleTextureSource
+import cn.coostack.cooparticlesapi.cparticle.CParticleUpdateMode
 import cn.coostack.cooparticlesapi.cparticle.resolveTextures
 import cn.coostack.cooparticlesapi.cparticle.force.CParticleFluidResource
 import cn.coostack.cooparticlesapi.cparticle.force.CParticleForce
@@ -229,22 +230,58 @@ object CParticleEmitterBridge {
 
     internal class ForceSnapshotSignature(
         bits: IntArray,
-        val resources: List<CParticleForceResource>,
-        val dropped: Int,
+        resources: List<CParticleForceResource>,
+        dropped: Int,
     ) {
-        private val bits = bits.copyOf()
+        private var bits = bits.copyOf()
+        private var mutableResources = ArrayList(resources)
+        private var mutableDropped = dropped
+        val resources: List<CParticleForceResource>
+            get() = mutableResources
+        val dropped: Int
+            get() = mutableDropped
 
         override fun equals(other: Any?): Boolean =
             other is ForceSnapshotSignature &&
-                dropped == other.dropped &&
+                mutableDropped == other.mutableDropped &&
                 bits.contentEquals(other.bits) &&
-                resources == other.resources
+                mutableResources == other.mutableResources
 
         override fun hashCode(): Int {
             var result = bits.contentHashCode()
-            result = 31 * result + resources.hashCode()
-            result = 31 * result + dropped
+            result = 31 * result + mutableResources.hashCode()
+            result = 31 * result + mutableDropped
             return result
+        }
+
+        /**
+         * 用复用的打包结果比较签名，避免每个 emitter 每 tick 创建 IntArray 和资源映射。
+         */
+        fun matches(
+            packed: FloatArray,
+            packedCount: Int,
+            resources: List<CParticleForceResource>,
+            dropped: Int,
+        ): Boolean {
+            if (mutableDropped != dropped || bits.size != packedCount || mutableResources != resources) return false
+            for (index in 0 until packedCount) {
+                if (bits[index] != packed[index].toRawBits()) return false
+            }
+            return true
+        }
+
+        /** 只在内容变化时更新已有签名对象，保持 force state 的长期零分配。 */
+        fun update(
+            packed: FloatArray,
+            packedCount: Int,
+            resources: List<CParticleForceResource>,
+            dropped: Int,
+        ) {
+            if (bits.size != packedCount) bits = IntArray(packedCount)
+            for (index in 0 until packedCount) bits[index] = packed[index].toRawBits()
+            mutableResources.clear()
+            mutableResources.addAll(resources)
+            mutableDropped = dropped
         }
     }
 
@@ -256,6 +293,8 @@ object CParticleEmitterBridge {
         var blockCollisionRange = Int.MIN_VALUE
         var signature: ForceSnapshotSignature? = null
         val snapshot = CParticleForceSink()
+        val signaturePacked = FloatArray(ForceCommand.MAX_COMMANDS * ForceCommand.STRIDE)
+        val signatureResources = ArrayList<CParticleForceResource>(8)
     }
 
     /**
@@ -273,6 +312,11 @@ object CParticleEmitterBridge {
     private val systemCursorLookup = HashMap<UUID, EmitterSystemCursorLookup>()
     private val textureResolveCaches = HashMap<UUID, EmitterTextureResolveCache>()
     private val forceStates = HashMap<UUID, EmitterForceState>()
+    /**
+     * STATIC GPU 粒子在写入 SoA 后不会再读取描述对象，因此每个 emitter 只需一个
+     * 可复用转换对象。DYNAMIC 粒子仍在 spawnGpu 内独立创建并交给 store 持有。
+     */
+    private val staticParticleScratch = HashMap<UUID, CParticle>()
 
     /** 标记一次 genParticles 结果的开始；每个渲染分组只预留一次批次数量。 */
     internal fun beginBatch(emitterId: UUID) {
@@ -419,7 +463,13 @@ object CParticleEmitterBridge {
         emitter: ClassParticleEmitters, pos: Vec3, data: ControlableCParticleData, capacityHint: Int,
         requiredSlots: Int = 1,
     ): Pair<CParticleSystem, Int>? {
-        val p = CParticle.from(data).also { it.mass = emitter.mass.toFloat() }
+        // STATIC 粒子的描述只在出生时读取；复用一个 scratch 可避免百万粒子生成时
+        // 为每颗粒子创建 CParticle、颜色和旋转向量。DYNAMIC 仍保留独立对象供 store 持有。
+        val p = if (data.updateMode == CParticleUpdateMode.STATIC) {
+            staticParticleScratch.getOrPut(emitter.uuid, ::CParticle).also { it.copyFrom(data) }
+        } else {
+            CParticle.from(data)
+        }.also { it.mass = emitter.mass.toFloat() }
         p.pos = pos
         // 逐粒子的纹理解析与 SoA 写入分开计时：批量生成卡顿时这两段的表现完全不同。
         val resolved = CParticlePerfProbe.measure(CParticlePerfProbe.Stage.PARTICLE_RESOLVE_TEXTURES) {
@@ -556,6 +606,7 @@ object CParticleEmitterBridge {
         val cursors = systemCursors.remove(emitter.uuid)
         systemCursorLookup.remove(emitter.uuid)
         textureResolveCaches.remove(emitter.uuid)
+        staticParticleScratch.remove(emitter.uuid)
         val state = forceStates.remove(emitter.uuid)
         if (cursors.isNullOrEmpty()) return
         val snapshot = state?.snapshot ?: CParticleForceSink().also { target ->
@@ -576,6 +627,7 @@ object CParticleEmitterBridge {
         systemCursors.clear()
         systemCursorLookup.clear()
         textureResolveCaches.clear()
+        staticParticleScratch.clear()
         forceStates.clear()
     }
 
@@ -669,11 +721,21 @@ object CParticleEmitterBridge {
         val blockCollisionRange = CParticleSystemManager.normalizeBlockCollisionRange(
             emitter.cparticleBlockCollisionRange(),
         )
-        val signature = buildForceSnapshotSignature(state.snapshot, emitter.pos)
+        val packedCount = packForceSnapshotSignature(
+            state.snapshot,
+            emitter.pos,
+            state.signaturePacked,
+            state.signatureResources,
+        )
         // 自定义 submitCParticleForces 可能每 tick 创建新的 Force 对象，因此不能比较对象
         // 引用；接管键使用打包后的实际参数和动态中心，能安全识别“内容未变”的快照。
         if (state.initialized &&
-            signature == state.signature &&
+            state.signature?.matches(
+                state.signaturePacked,
+                packedCount,
+                state.signatureResources,
+                state.snapshot.dropped,
+            ) == true &&
             blockCollisionRange == state.blockCollisionRange
         ) {
             return state
@@ -681,11 +743,72 @@ object CParticleEmitterBridge {
         state.initialized = true
         state.revision++
         state.blockCollisionRange = blockCollisionRange
-        state.signature = signature
+        val previousSignature = state.signature
+        if (previousSignature == null) {
+            state.signature = ForceSnapshotSignature(
+                IntArray(packedCount) { state.signaturePacked[it].toRawBits() },
+                state.signatureResources,
+                state.snapshot.dropped,
+            )
+        } else {
+            previousSignature.update(
+                state.signaturePacked,
+                packedCount,
+                state.signatureResources,
+                state.snapshot.dropped,
+            )
+        }
         systemCursors[emitter.uuid]?.forEach { cursor ->
             cursor.syncState(state.snapshot, state.revision, blockCollisionRange)
         }
         return state
+    }
+
+    /**
+     * 将 Force snapshot 写入可复用缓冲，供每 tick 的内容比较使用。
+     *
+     * 资源槽位只在本次 scratch 列表中做线性查找；资源型 Force 数量通常很少，
+     * 这样可以消除每个 emitter 的 LinkedHashMap/FloatArray/IntArray 分配。
+     */
+    private fun packForceSnapshotSignature(
+        snapshot: CParticleForceSink,
+        origin: Vec3,
+        packed: FloatArray,
+        resources: ArrayList<CParticleForceResource>,
+    ): Int {
+        resources.clear()
+        var index = 0
+        snapshot.commands().forEach { command ->
+            val base = index * ForceCommand.STRIDE
+            when (val force = command.force) {
+                is CParticleForce.Texture -> {
+                    val slot = resources.indexOf(force.resource).let { existing ->
+                        if (existing >= 0) existing else resources.apply {
+                            add(force.resource)
+                        }.lastIndex
+                    }
+                    command.pack(packed, base, origin, slot)
+                }
+                is CParticleForce.FluidFlow -> {
+                    val slot = resources.indexOf(force.resource).let { existing ->
+                        if (existing >= 0) existing else resources.apply {
+                            add(force.resource)
+                        }.lastIndex
+                    }
+                    command.pack(packed, base, origin, slot)
+                }
+                is CParticleForce.Path -> {
+                    command.packHeader(packed, base)
+                    val payload = base + CooPathCommandAbi.FORCE_PAYLOAD_OFFSET
+                    packed[payload + CooPathCommandAbi.P_SLOT] = Float.fromBits(force.path.slot)
+                    packed[payload + CooPathCommandAbi.P_LAYER_VERSION] =
+                        Float.fromBits(force.path.revision)
+                }
+                else -> command.pack(packed, base, origin)
+            }
+            index++
+        }
+        return index * ForceCommand.STRIDE
     }
 
     /**

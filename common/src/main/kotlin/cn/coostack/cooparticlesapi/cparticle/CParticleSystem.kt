@@ -217,15 +217,17 @@ class CParticleSystem(
     /**
      * 自适应模拟路由是否已经切换到 GPU。
      *
-     * 小型 system 首次运行走 CPU，避免多 emitter 场景中数百次小 compute dispatch；
-     * 一旦池规模超过阈值，只允许 CPU -> GPU，避免没有 GPU 状态镜像时反向切换。
+     * 默认直接走 GPU；只有调用方显式设置小池 CPU 阈值时，才允许尚未切换过 GPU 的小池
+     * 走 CPU SoA。切换到 GPU 后保持粘滞，避免在两个后端之间搬运状态。
      */
     private var gpuSimulationSelected = false
 
     private fun shouldUseGpuSimulation(prepared: Boolean): Boolean {
         if (CParticleCapabilities.forceCpuSimulation) return false
         if (prepared || gpuSimulationSelected) return true
-        if (store.activeSlotCount > CParticleSystemManager.smallSystemCpuThreshold) {
+        if (CParticleSystemManager.shouldPreferGpuForSmallSystems() ||
+            store.activeSlotCount > CParticleSystemManager.smallSystemCpuThreshold
+        ) {
             gpuSimulationSelected = true
             return true
         }
@@ -242,6 +244,7 @@ class CParticleSystem(
         if (mode != CParticleSystemMode.SIMULATED || CParticleCapabilities.forceCpuSimulation) return false
         return gpuSimulationSelected ||
             CParticleRespawnEngine.owns(this) ||
+            CParticleSystemManager.shouldPreferGpuForSmallSystems() ||
             store.activeSlotCount > CParticleSystemManager.smallSystemCpuThreshold
     }
 
@@ -1043,8 +1046,7 @@ class CParticleSystem(
             null
         }
         val prepared = CParticleRespawnEngine.owns(this)
-        // 小 system 首次运行使用 CPU，避免多 emitter 场景中的固定 dispatch 成本；
-        // 预提交重生链和超过阈值的 system 仍保持 GPU。
+        // GPU 是 CParticle 的默认模拟后端；只有显式配置小池 CPU 阈值时才允许回退。
         val useGpu = shouldUseGpuSimulation(prepared)
         check(useGpu || !prepared) { "Clear prepared GPU lifetimes before switching simulation backend" }
         if (!prepared && store.spawnedCount > 0 && (!useGpu || legacyForceCount >= 0 || !packedCommandsNeedMetadata)) {

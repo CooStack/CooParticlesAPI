@@ -432,6 +432,59 @@ open class CParticle {
         dynamicDataSource?.age = age
     }
 
+    /**
+     * 把 emitter data 填充到当前描述对象。
+     *
+     * STATIC GPU 粒子在写入 SoA 后不会再读取描述对象，因此 bridge 可以复用一个
+     * scratch，避免每颗粒子都创建 CParticle、颜色和旋转向量。DYNAMIC 必须保留
+     * 独立对象，由 store 继续持有其外观来源。
+     */
+    internal fun copyFrom(data: ControlableParticleData) {
+        velocity = data.velocity
+        uniformSize = data.uniformSize
+        weightSize = data.weightSize
+        heightSize = data.heightSize
+        color.set(data.color)
+        alpha = data.alpha
+        age = data.age
+        maxAge = data.maxAge
+        light = data.light
+        cameraOption = data.cameraOption
+        axis = data.axis
+        yaw = data.yaw
+        pitch = data.pitch
+        roll = data.roll
+        effect = data.effect
+        sign = data.sign
+        if (data is ControlableCParticleData) {
+            updateMode = data.updateMode
+            textureSource = data.textureSource
+            alphaCurve = data.alphaCurve
+            scaleCurve = data.scaleCurve
+            scaleXCurve = data.scaleXCurve
+            scaleYCurve = data.scaleYCurve
+            colorCurve = data.colorCurve
+            val direction = data.rotationDirection
+            rotationDirection = when {
+                direction == null -> null
+                rotationDirection == null -> Vector3f(direction)
+                else -> rotationDirection!!.set(direction)
+            }
+            angularVelocity.set(data.angularVelocity)
+            randomAgePreTick = data.randomAgePreTick
+            randomSeed = data.randomSeed
+            blockCollision = data.blockCollision
+            speedLimit = data.speedLimit.toFloat().coerceAtLeast(0F)
+            commandMask = data.commandMask
+            metadataFlags = data.metadataFlags
+            charge = data.charge
+            radius = data.radius
+            dynamicDataSource = data.takeIf { data.updateMode == CParticleUpdateMode.DYNAMIC }
+        } else {
+            dynamicDataSource = null
+        }
+    }
+
     companion object {
         /**
          * 从现有 emitter 数据 ([ControlableParticleData]) 转换.
@@ -439,46 +492,7 @@ open class CParticle {
          */
         @JvmStatic
         fun from(data: ControlableParticleData): CParticle {
-            return CParticle().also {
-                it.velocity = data.velocity
-                it.uniformSize = data.uniformSize
-                it.weightSize = data.weightSize
-                it.heightSize = data.heightSize
-                it.color = Vector3f(data.color)
-                it.alpha = data.alpha
-                it.age = data.age
-                it.maxAge = data.maxAge
-                it.light = data.light
-                it.cameraOption = data.cameraOption
-                it.axis = data.axis
-                it.yaw = data.yaw
-                it.pitch = data.pitch
-                it.roll = data.roll
-                it.effect = data.effect
-                it.sign = data.sign
-                if (data is ControlableCParticleData) {
-                    it.updateMode = data.updateMode
-                    it.textureSource = data.textureSource
-                    it.alphaCurve = data.alphaCurve
-                    it.scaleCurve = data.scaleCurve
-                    it.scaleXCurve = data.scaleXCurve
-                    it.scaleYCurve = data.scaleYCurve
-                    it.colorCurve = data.colorCurve
-                    it.rotationDirection = data.rotationDirection?.let(::Vector3f)
-                    it.angularVelocity = Vector3f(data.angularVelocity)
-                    it.randomAgePreTick = data.randomAgePreTick
-                    it.randomSeed = data.randomSeed
-                    it.blockCollision = data.blockCollision
-                    it.speedLimit = data.speedLimit.toFloat().coerceAtLeast(0F)
-                    it.commandMask = data.commandMask
-                    it.metadataFlags = data.metadataFlags
-                    it.charge = data.charge
-                    it.radius = data.radius
-                    if (data.updateMode == CParticleUpdateMode.DYNAMIC) {
-                        it.dynamicDataSource = data
-                    }
-                }
-            }
+            return CParticle().also { it.copyFrom(data) }
         }
     }
 }

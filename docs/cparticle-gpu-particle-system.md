@@ -233,9 +233,11 @@ system.colorCurve = colorShift
 - tick 成本: GPU 模式按 system 各 1 次 compute dispatch + 仅新生成粒子的增量上传；
   大量 emitter 且每个 system 粒子很少时，dispatch、program/uniform 和 SSBO 绑定的固定成本会按
   system 数量线性叠加，不能只用总粒子数估算。为此，未使用预提交 GPU 重生链且活动槽位不超过
-  `CParticleSystemManager.smallSystemCpuThreshold` 的 system 首次走 CPU SoA；超过阈值后只允许
-  CPU → GPU 粘滞切换，避免每 tick 在 CPU/GPU 间搬运整池状态。预提交重生链始终走 GPU。
-  CPU 回退 = ForkJoin 分块 ~1‑3ms + 整段 `glBufferSubData` (~11MB/tick, 224MB/s)
+  GPU compute 可用时默认所有 SIMULATED system 都在 GPU 上模拟；不会因为 system 较小而把
+  CParticle 偷换成 CPU 逐粒子计算。仅当调用方显式把
+  `CParticleSystemManager.smallSystemCpuThreshold` 设为正数时，尚未切换到 GPU 的小池才允许
+  CPU SoA 回退。硬件不支持 compute 或显式强制回退时，才会使用 ForkJoin 分块与整段上传。
+  多 emitter 的固定成本仍来自每 system 一次 dispatch；后续应通过共享 arena/批 dispatch 进一步消除。
 - 热路径零分配: 力场打包数组 / 上传 scratch / SoA 全部复用
 - 方块碰撞: 每份共享网格使用 32KB CPU 位图、32KB 可复用上传缓冲和 32KB SSBO; 网格刷新成本与 64³ 单元有关, 与粒子数无关
 - `ADDITION_BLEND*` 层无排序需求; `TRANSLUCENT` 层不做逐粒子深度排序 (与原版同级限制)

@@ -124,16 +124,32 @@ object CParticleSystemManager {
         private set
 
     /**
-     * 小型 GPU system 的 CPU 路由阈值。
+     * 可选的小型 system CPU 回退阈值。
      *
-     * 首次运行且活动槽位不超过该值的 system 使用 CPU SoA，避免大量小池分别提交
-     * compute dispatch；system 超过阈值后会粘滞切换到 GPU。该值可由客户端性能配置调整。
+     * 默认值为 0：GPU compute 可用时所有 CParticle 都在 GPU 上模拟。
+     * 只有显式设置为正数时，才允许未切换过 GPU 的小池走 CPU SoA；这不是 GPU 粒子的默认路径。
      */
     @JvmStatic
-    var smallSystemCpuThreshold = 2048
+    var smallSystemCpuThreshold = 0
         set(value) {
             field = value.coerceAtLeast(0)
         }
+
+    /**
+     * 多 emitter 合计达到该活跃槽位数后，小 system 也切换到 GPU。
+     *
+     * 该阈值只影响调用方显式开启小池 CPU 回退的场景；默认值为 0，表示无论总量如何都优先 GPU。
+     */
+    @JvmStatic
+    var smallSystemAggregateGpuThreshold = 0
+        set(value) {
+            field = value.coerceAtLeast(0)
+        }
+
+    @Volatile
+    private var preferGpuForSmallSystems = false
+
+    internal fun shouldPreferGpuForSmallSystems(): Boolean = preferGpuForSmallSystems
 
     /** 把 emitter 声明限制到碰撞网格支持的安全范围。 */
     internal fun normalizeBlockCollisionRange(range: Int): Int =
@@ -164,6 +180,10 @@ object CParticleSystemManager {
     /** 空池缓存的槽位总容量，用于限制 CPU 数组和 GPU 缓冲的保留规模。 */
     private var idleAutoSystemSlots = 0
     private var autoSystemNameSequence = 0L
+    /** 分批释放已经归零的 emitter system，避免同一 tick 集中 glDeleteBuffers 造成长停顿。 */
+    private val pendingAutoRemovals = ArrayDeque<ManagedCParticleSystemKey>()
+    private val pendingAutoRemovalSet = HashSet<ManagedCParticleSystemKey>()
+    private const val MAX_AUTO_REMOVALS_PER_TICK = 8
 
     // ------------------------------------------------------------ 系统管理
 
@@ -487,6 +507,7 @@ object CParticleSystemManager {
     }
 
     private fun removeSystem(key: ManagedCParticleSystemKey) {
+        pendingAutoRemovalSet.remove(key)
         val system = systems.remove(key)
         if (idleAutoSystems.remove(key)) idleAutoSystemSlots -= system?.capacity ?: 0
         system?.release()
@@ -838,6 +859,11 @@ object CParticleSystemManager {
             val toRemove = ArrayList<ManagedCParticleSystemKey>(0)
             // 只有本 tick 至少有一个 system 确实会走 GPU，才读取并维护跨 system 的 GL 状态。
             // 全是阈值以内的小池时，批次本身也会成为额外的固定开销。
+            val aggregateSimulatedParticles = systems.values.asSequence()
+                .filter { it.mode == CParticleSystemMode.SIMULATED }
+                .sumOf { it.store.activeSlotCount }
+            preferGpuForSmallSystems =
+                aggregateSimulatedParticles >= smallSystemAggregateGpuThreshold
             val gpuBatch = systems.values.any { it.willUseGpuSimulation() }
             if (gpuBatch) CParticleGpuSimulator.beginBatch()
             try {
@@ -866,13 +892,30 @@ object CParticleSystemManager {
             }
             CParticleRespawnEngine.finishTick()
             for (key in toRemove) {
-                // 先完成本 tick 的死亡激活，再重置旧池，避免清理尚未处理的后继链。
-                if (key in retiredAutoSystemReuseKeys && cacheIdleAutoSystem(key)) continue
-                removeSystem(key)
+                if (pendingAutoRemovalSet.add(key)) pendingAutoRemovals.addLast(key)
             }
+            drainPendingAutoRemovals()
             CParticleEmitterBridge.flushRespawns()
         } finally {
+            preferGpuForSmallSystems = false
             CParticleBlockCollisionGridManager.endTick()
+        }
+    }
+
+    /**
+     * 分批执行 emitter system 的退休清理。
+     *
+     * glDeleteBuffers、空池重置和大数组回收都可能让渲染线程出现毫秒级尖峰；
+     * 归零 system 已经不会参与绘制，因此把清理摊到多个 tick 不改变可见结果。
+     */
+    private fun drainPendingAutoRemovals() {
+        repeat(MAX_AUTO_REMOVALS_PER_TICK) {
+            val key = pendingAutoRemovals.removeFirstOrNull() ?: return
+            pendingAutoRemovalSet.remove(key)
+            if (key !in systems) return@repeat
+            // 先完成本 tick 的死亡激活，再重置旧池，避免清理尚未处理的后继链。
+            if (key in retiredAutoSystemReuseKeys && cacheIdleAutoSystem(key)) return@repeat
+            removeSystem(key)
         }
     }
 
@@ -908,6 +951,8 @@ object CParticleSystemManager {
         retiredAutoSystemReuseKeys.clear()
         idleAutoSystems.clear()
         idleAutoSystemSlots = 0
+        pendingAutoRemovals.clear()
+        pendingAutoRemovalSet.clear()
         // 路径槽位由调用方持有；换世界只解除 GL 绑定，定义与槽位在调用方释放前保持有效。
         CParticlePathLibrary.unbind()
     }
@@ -944,6 +989,8 @@ object CParticleSystemManager {
         retiredAutoSystemReuseKeys.clear()
         idleAutoSystems.clear()
         idleAutoSystemSlots = 0
+        pendingAutoRemovals.clear()
+        pendingAutoRemovalSet.clear()
         CParticleRenderer.release()
         CParticleGpuSimulator.release()
         CParticleBlockCollisionGridManager.clear()
