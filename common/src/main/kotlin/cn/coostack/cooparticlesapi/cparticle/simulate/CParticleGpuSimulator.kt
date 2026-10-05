@@ -17,7 +17,9 @@ import org.joml.Matrix4f
 import org.joml.Vector3f
 import org.lwjgl.opengl.GL11
 import org.lwjgl.opengl.GL15
+import org.lwjgl.opengl.GL20
 import org.lwjgl.opengl.GL20.glIsProgram
+import org.lwjgl.opengl.GL20.glUseProgram
 import org.lwjgl.opengl.GL30
 import org.lwjgl.opengl.GL43
 
@@ -62,6 +64,178 @@ object CParticleGpuSimulator {
     private var legacyProgram: CooComputeShaderProgram? = null
     private val tmpOrigin = Vector3f()
     private val tmpCollisionOffset = Vector3f()
+
+    /**
+     * 同一客户端 tick 的多个 system 共用一个 compute 上下文。
+     *
+     * 原实现每次 [simulate] 都通过 `useOnContext` 保存/恢复当前 program，并查询/恢复
+     * 多个 SSBO binding。emitter 数量上升后，这些固定 GL 调用会按 system 数量线性放大，
+     * 而真正的粒子 dispatch 反而只处理很小的工作组。批次只在首尾保存外部状态，中间
+     * 允许后一个 system 覆盖前一个 system 的 CParticle binding。
+     */
+    private var batchActive = false
+    private var batchPreviousProgram = 0
+    private var batchBoundProgram = 0
+    private var batchPreviousStorageBuffer = 0
+    private val batchPreviousIndexedBindings = IntArray(CooGpuDataBindingPoints.REGISTERED_COUNT)
+    private val batchValidatedPrograms = HashSet<Int>(2)
+    private var batchBoundCollisionGrid: CParticleBlockCollisionGrid? = null
+    private var batchPathLayerBound = false
+
+    /**
+     * 批次内的 uniform 快照。
+     *
+     * 多 emitter 通常共享速度上限、碰撞开关、命令开关等值；重复调用 glUniform
+     * 仍然会进入驱动，即使写入的值没有变化。快照只在当前 program 的批次内生效，
+     * program 切换或批次结束时立即清空，不改变普通 shader API 的外部语义。
+     */
+    private class BatchUniformState {
+        private val ints = HashMap<String, Int>()
+        private val floats = HashMap<String, Float>()
+        private val vectors = HashMap<String, FloatArray>()
+        private val arrays = HashMap<String, FloatArray>()
+
+        fun clear() {
+            ints.clear()
+            floats.clear()
+            vectors.clear()
+            arrays.clear()
+        }
+
+        fun setInt(program: CooComputeShaderProgram, key: String, value: Int) {
+            if (ints[key] == value) return
+            ints[key] = value
+            program.setInt(key, value)
+        }
+
+        fun setFloat(program: CooComputeShaderProgram, key: String, value: Float) {
+            if (floats[key] == value) return
+            floats[key] = value
+            program.setFloat(key, value)
+        }
+
+        fun setFloat3(program: CooComputeShaderProgram, key: String, value: Vector3f) {
+            val previous = vectors[key]
+            if (previous != null &&
+                previous[0] == value.x &&
+                previous[1] == value.y &&
+                previous[2] == value.z
+            ) {
+                return
+            }
+            vectors[key] = floatArrayOf(value.x, value.y, value.z)
+            program.setFloat3(key, value)
+        }
+
+        fun setFloat4Array(
+            program: CooComputeShaderProgram,
+            key: String,
+            value: FloatArray,
+            floatCount: Int,
+        ) {
+            val previous = arrays[key]
+            if (previous != null &&
+                previous.size == floatCount &&
+                valuesMatch(previous, value, floatCount)
+            ) {
+                return
+            }
+            arrays[key] = value.copyOf(floatCount)
+            if (floatCount > 0) {
+                program.setFloat4Array(key, arrays[key]!!)
+            }
+        }
+
+        private fun valuesMatch(previous: FloatArray, current: FloatArray, count: Int): Boolean {
+            for (index in 0 until count) {
+                if (previous[index].toRawBits() != current[index].toRawBits()) return false
+            }
+            return true
+        }
+    }
+
+    private val batchUniformState = BatchUniformState()
+
+    /** 开始一个 GPU system dispatch 批次；必须在渲染线程调用。 */
+    internal fun beginBatch() {
+        check(!batchActive) { "CParticle GPU dispatch batch is already active" }
+        batchActive = true
+        batchPreviousProgram = GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM)
+        batchBoundProgram = 0
+        batchValidatedPrograms.clear()
+        batchBoundCollisionGrid = null
+        batchPathLayerBound = false
+        batchUniformState.clear()
+        batchPreviousStorageBuffer = GL11.glGetInteger(GL43.GL_SHADER_STORAGE_BUFFER_BINDING)
+        for (binding in batchPreviousIndexedBindings.indices) {
+            // 路径图层 binding=4 由 CParticlePathLibrary 负责跨阶段保持，不在这里恢复。
+            if (binding == PATH_LAYER_BUFFER_BINDING) continue
+            batchPreviousIndexedBindings[binding] = GL30.glGetIntegeri(
+                GL43.GL_SHADER_STORAGE_BUFFER_BINDING,
+                binding,
+            )
+        }
+    }
+
+    /** 结束 GPU system dispatch 批次并恢复批次开始前的 GL 状态。 */
+    internal fun endBatch() {
+        if (!batchActive) return
+        try {
+            for (binding in batchPreviousIndexedBindings.indices) {
+                if (binding == PATH_LAYER_BUFFER_BINDING) continue
+                GL43.glBindBufferBase(
+                    GL43.GL_SHADER_STORAGE_BUFFER,
+                    binding,
+                    batchPreviousIndexedBindings[binding],
+                )
+            }
+            GL15.glBindBuffer(GL43.GL_SHADER_STORAGE_BUFFER, batchPreviousStorageBuffer)
+            glUseProgram(batchPreviousProgram)
+        } finally {
+            batchActive = false
+            batchPreviousProgram = 0
+            batchBoundProgram = 0
+            batchPreviousStorageBuffer = 0
+            batchPreviousIndexedBindings.fill(0)
+            batchValidatedPrograms.clear()
+            batchBoundCollisionGrid = null
+            batchPathLayerBound = false
+            batchUniformState.clear()
+        }
+    }
+
+    /** 让当前批次绑定正确的 compute program；同一 program 不重复调用 glUseProgram。 */
+    private fun bindBatchProgram(compute: CooComputeShaderProgram) {
+        check(batchActive) { "CParticle GPU batch is not active" }
+        if (batchBoundProgram == compute.program) return
+        glUseProgram(compute.program)
+        batchBoundProgram = compute.program
+        batchUniformState.clear()
+    }
+
+    private fun CooComputeShaderProgram.setBatchInt(key: String, value: Int) {
+        if (batchActive) batchUniformState.setInt(this, key, value) else setInt(key, value)
+    }
+
+    private fun CooComputeShaderProgram.setBatchFloat(key: String, value: Float) {
+        if (batchActive) batchUniformState.setFloat(this, key, value) else setFloat(key, value)
+    }
+
+    private fun CooComputeShaderProgram.setBatchFloat3(key: String, value: Vector3f) {
+        if (batchActive) batchUniformState.setFloat3(this, key, value) else setFloat3(key, value)
+    }
+
+    private fun CooComputeShaderProgram.setBatchFloat4Array(
+        key: String,
+        value: FloatArray,
+        floatCount: Int,
+    ) {
+        if (batchActive) {
+            batchUniformState.setFloat4Array(this, key, value, floatCount)
+        } else if (floatCount > 0) {
+            setFloat4Array(key, value.copyOf(floatCount))
+        }
+    }
 
     /**
      * 把 CParticle compute program 加入统一注册表，不触发 GL 编译。
@@ -162,6 +336,7 @@ object CParticleGpuSimulator {
         collisionGrid: CParticleBlockCollisionGrid?,
         simulationTransform: Matrix4f?,
         inverseSimulationTransform: Matrix4f?,
+        deferMemoryBarrier: Boolean = false,
     ): Boolean {
         require((simulationTransform == null) == (inverseSimulationTransform == null)) {
             "simulation transform and inverse must be supplied together"
@@ -195,7 +370,9 @@ object CParticleGpuSimulator {
         val compute = checkNotNull(ensureProgram(useLegacy)) {
             "[cparticle] ${if (useLegacy) "legacy Force" else "Force Command"} GPU compute program 不可用"
         }
-        check(compute.program != 0 && glIsProgram(compute.program)) {
+        check(compute.program != 0 && (!batchActive || batchValidatedPrograms.add(compute.program)).let {
+            it || glIsProgram(compute.program)
+        }) {
             "[cparticle] ${if (useLegacy) "legacy Force" else "Force Command"} GPU compute program 无效，拒绝回退 CPU"
         }
 
@@ -203,152 +380,193 @@ object CParticleGpuSimulator {
         val fluidBindings = if (useLegacy) emptyList() else system.forceResourceTable.fluidBindings()
         val usesPathConstraint = !useLegacy && commandUsesPath(commandPacked, commandCount)
         var dispatched = false
-        try {
-            compute.useOnContext {
-                setInt("uFirstSlot", store.firstAliveSlot)
-                setInt("uCount", activeSlotCount)
-                if (useLegacy) {
-                    setInt("uForceCount", legacyForceCount)
-                    setFloat4Array("uForces", legacyPacked)
-                } else {
-                    setInt("uCommandCount", commandCount)
-                    setInt("uMetadataEnabled", if (metadataRequired) 1 else 0)
-                    setInt("uPathLayerEnabled", if (usesPathConstraint) 1 else 0)
-                    setInt("uPathEndCapacity", system.pathEndBuffer.listedCapacity)
-                    setFloat("uDeltaTicks", CParticlePathEvaluator.DEFAULT_DELTA_TICKS.toFloat())
-                }
-                setFloat("uSpeedLimit", system.speedLimit)
-                setFloat3(
-                    "uOrigin", tmpOrigin.set(
-                        system.origin.x.toFloat(),
-                        system.origin.y.toFloat(),
-                        system.origin.z.toFloat(),
+        val dispatchBody: CooComputeShaderProgram.() -> Unit = {
+            setBatchInt("uFirstSlot", store.firstAliveSlot)
+            setBatchInt("uCount", activeSlotCount)
+            if (useLegacy) {
+                setBatchInt("uForceCount", legacyForceCount)
+                // 只上传有效力，避免每个小 system 都重复传输固定的 64 个 vec4。
+                setBatchFloat4Array(
+                    "uForces",
+                    legacyPacked,
+                    legacyForceCount * CParticleForce.STRIDE,
+                )
+            } else {
+                setBatchInt("uCommandCount", commandCount)
+                setBatchInt("uMetadataEnabled", if (metadataRequired) 1 else 0)
+                setBatchInt("uPathLayerEnabled", if (usesPathConstraint) 1 else 0)
+                setBatchInt("uPathEndCapacity", system.pathEndBuffer.listedCapacity)
+                setBatchFloat("uDeltaTicks", CParticlePathEvaluator.DEFAULT_DELTA_TICKS.toFloat())
+            }
+            setBatchFloat("uSpeedLimit", system.speedLimit)
+            setBatchFloat3(
+                "uOrigin", tmpOrigin.set(
+                    system.origin.x.toFloat(),
+                    system.origin.y.toFloat(),
+                    system.origin.z.toFloat(),
+                )
+            )
+            setBatchInt("uTransformSimulation", if (simulationTransform == null) 0 else 1)
+            if (simulationTransform != null && inverseSimulationTransform != null) {
+                setMatrix4("uSimulationTransform", simulationTransform)
+                setMatrix4("uInverseSimulationTransform", inverseSimulationTransform)
+            }
+            setBatchInt("uCollisionEnabled", if (collisionGrid != null) 1 else 0)
+            setBatchInt("uCollisionSize", collisionGrid?.size ?: CParticleBlockCollisionGrid.SIZE)
+            if (collisionGrid != null) {
+                setBatchFloat3(
+                    "uCollisionOffset",
+                    tmpCollisionOffset.set(
+                        (system.origin.x - collisionGrid.minX).toFloat(),
+                        (system.origin.y - collisionGrid.minY).toFloat(),
+                        (system.origin.z - collisionGrid.minZ).toFloat(),
                     )
                 )
-                setInt("uTransformSimulation", if (simulationTransform == null) 0 else 1)
-                if (simulationTransform != null && inverseSimulationTransform != null) {
-                    setMatrix4("uSimulationTransform", simulationTransform)
-                    setMatrix4("uInverseSimulationTransform", inverseSimulationTransform)
+            } else {
+                setBatchFloat3("uCollisionOffset", tmpCollisionOffset.zero())
+            }
+            val previousStorageBuffer = if (batchActive) 0 else
+                GL11.glGetInteger(GL43.GL_SHADER_STORAGE_BUFFER_BINDING)
+            val previousParticleBinding = if (batchActive) 0 else GL30.glGetIntegeri(
+                GL43.GL_SHADER_STORAGE_BUFFER_BINDING,
+                PARTICLE_BUFFER_BINDING,
+            )
+            val previousCollisionBinding = if (batchActive || collisionGrid == null) 0 else GL30.glGetIntegeri(
+                GL43.GL_SHADER_STORAGE_BUFFER_BINDING,
+                COLLISION_BUFFER_BINDING,
+            )
+            val previousMetadataBinding = if (batchActive || useLegacy || !metadataRequired) 0 else GL30.glGetIntegeri(
+                GL43.GL_SHADER_STORAGE_BUFFER_BINDING,
+                METADATA_BUFFER_BINDING,
+            )
+            val previousCommandBinding = if (batchActive || useLegacy || commandCount <= 0) 0 else GL30.glGetIntegeri(
+                GL43.GL_SHADER_STORAGE_BUFFER_BINDING,
+                COMMAND_BUFFER_BINDING,
+            )
+            val previousPathEndBinding = if (batchActive || useLegacy || !usesPathConstraint) 0 else GL30.glGetIntegeri(
+                GL43.GL_SHADER_STORAGE_BUFFER_BINDING,
+                PATH_END_BUFFER_BINDING,
+            )
+            var boundTextureCount = 0
+            var boundFluidCount = 0
+            try {
+                for (index in textureBindings.indices) {
+                    textureBindings[index].bindCompute(index)
+                    boundTextureCount++
+                    setInt("uTextureResources[$index]", index)
                 }
-                setInt("uCollisionEnabled", if (collisionGrid != null) 1 else 0)
-                setInt("uCollisionSize", collisionGrid?.size ?: CParticleBlockCollisionGrid.SIZE)
-                if (collisionGrid != null) {
-                    setFloat3(
-                        "uCollisionOffset",
-                        tmpCollisionOffset.set(
-                            (system.origin.x - collisionGrid.minX).toFloat(),
-                            (system.origin.y - collisionGrid.minY).toFloat(),
-                            (system.origin.z - collisionGrid.minZ).toFloat(),
-                        )
-                    )
-                } else {
-                    setFloat3("uCollisionOffset", tmpCollisionOffset.zero())
+                for (index in fluidBindings.indices) {
+                    val textureUnit = CParticleForceResourceTable.MAX_TEXTURE_RESOURCES + index
+                    fluidBindings[index].bindCompute(textureUnit)
+                    boundFluidCount++
+                    setInt("uFluidResources[$index]", textureUnit)
                 }
-                val previousStorageBuffer = GL11.glGetInteger(GL43.GL_SHADER_STORAGE_BUFFER_BINDING)
-                val previousParticleBinding = GL30.glGetIntegeri(
-                    GL43.GL_SHADER_STORAGE_BUFFER_BINDING,
-                    PARTICLE_BUFFER_BINDING,
-                )
-                val previousCollisionBinding = GL30.glGetIntegeri(
-                    GL43.GL_SHADER_STORAGE_BUFFER_BINDING,
-                    COLLISION_BUFFER_BINDING,
-                )
-                val previousMetadataBinding = GL30.glGetIntegeri(
-                    GL43.GL_SHADER_STORAGE_BUFFER_BINDING,
-                    METADATA_BUFFER_BINDING,
-                )
-                val previousCommandBinding = GL30.glGetIntegeri(
-                    GL43.GL_SHADER_STORAGE_BUFFER_BINDING,
-                    COMMAND_BUFFER_BINDING,
-                )
-                val previousPathEndBinding = GL30.glGetIntegeri(
-                    GL43.GL_SHADER_STORAGE_BUFFER_BINDING,
-                    PATH_END_BUFFER_BINDING,
-                )
-                var boundTextureCount = 0
-                var boundFluidCount = 0
-                try {
-                    for (index in textureBindings.indices) {
-                        textureBindings[index].bindCompute(index)
-                        boundTextureCount++
-                        setInt("uTextureResources[$index]", index)
-                    }
-                    for (index in fluidBindings.indices) {
-                        val textureUnit = CParticleForceResourceTable.MAX_TEXTURE_RESOURCES + index
-                        fluidBindings[index].bindCompute(textureUnit)
-                        boundFluidCount++
-                        setInt("uFluidResources[$index]", textureUnit)
-                    }
-                    system.glBuffer.bindShaderStorage(PARTICLE_BUFFER_BINDING)
-                    collisionGrid?.bindShaderStorage(COLLISION_BUFFER_BINDING)
-                    if (!useLegacy && metadataRequired) {
-                        system.metadataGlBuffer.bindShaderStorage(METADATA_BUFFER_BINDING)
-                    }
-                    if (!useLegacy && commandCount > 0) {
-                        system.commandGlBuffer.bindShaderStorage(COMMAND_BUFFER_BINDING)
-                    }
-                    // 路径图层始终绑定：命令在 dispatch 内按类型分支读取，避免每帧重新绑定。
+                system.glBuffer.bindShaderStorage(PARTICLE_BUFFER_BINDING)
+                if (collisionGrid != null &&
+                    (!batchActive || batchBoundCollisionGrid !== collisionGrid)
+                ) {
+                    collisionGrid.bindShaderStorage(COLLISION_BUFFER_BINDING)
+                    if (batchActive) batchBoundCollisionGrid = collisionGrid
+                }
+                if (!useLegacy && metadataRequired) {
+                    system.metadataGlBuffer.bindShaderStorage(METADATA_BUFFER_BINDING)
+                }
+                if (!useLegacy && commandCount > 0) {
+                    system.commandGlBuffer.bindShaderStorage(COMMAND_BUFFER_BINDING)
+                }
+                // 没有路径约束时不需要绑定共享路径图层；多 emitter 场景避免无效 bind。
+                if (usesPathConstraint && (!batchActive || !batchPathLayerBound)) {
                     CParticlePathLibrary.bind()
-                    if (!useLegacy && usesPathConstraint) {
-                        system.pathEndBuffer.bindShaderStorage(PATH_END_BUFFER_BINDING)
+                    if (batchActive) batchPathLayerBound = true
+                }
+                if (!useLegacy && usesPathConstraint) {
+                    system.pathEndBuffer.bindShaderStorage(PATH_END_BUFFER_BINDING)
+                }
+                GL43.glDispatchCompute((activeSlotCount + 255) / 256, 1, 1)
+                dispatched = true
+            } finally {
+                try {
+                    var resetFailure: RuntimeException? = null
+                    for (index in boundFluidCount - 1 downTo 0) {
+                        try {
+                            fluidBindings[index].resetCompute()
+                        } catch (error: RuntimeException) {
+                            if (resetFailure == null) resetFailure = error else resetFailure.addSuppressed(error)
+                        }
                     }
-                    GL43.glDispatchCompute((activeSlotCount + 255) / 256, 1, 1)
-                    dispatched = true
+                    for (index in boundTextureCount - 1 downTo 0) {
+                        try {
+                            textureBindings[index].resetCompute()
+                        } catch (error: RuntimeException) {
+                            if (resetFailure == null) resetFailure = error else resetFailure.addSuppressed(error)
+                        }
+                    }
+                    if (resetFailure != null) throw resetFailure
                 } finally {
-                    try {
-                        var resetFailure: RuntimeException? = null
-                        for (index in boundFluidCount - 1 downTo 0) {
-                            try {
-                                fluidBindings[index].resetCompute()
-                            } catch (error: RuntimeException) {
-                                if (resetFailure == null) resetFailure = error else resetFailure.addSuppressed(error)
-                            }
-                        }
-                        for (index in boundTextureCount - 1 downTo 0) {
-                            try {
-                                textureBindings[index].resetCompute()
-                            } catch (error: RuntimeException) {
-                                if (resetFailure == null) resetFailure = error else resetFailure.addSuppressed(error)
-                            }
-                        }
-                        if (resetFailure != null) throw resetFailure
-                    } finally {
+                    if (!batchActive) {
                         GL43.glBindBufferBase(
                             GL43.GL_SHADER_STORAGE_BUFFER,
                             PARTICLE_BUFFER_BINDING,
                             previousParticleBinding,
                         )
-                        GL43.glBindBufferBase(
-                            GL43.GL_SHADER_STORAGE_BUFFER,
-                            METADATA_BUFFER_BINDING,
-                            previousMetadataBinding,
-                        )
-                        GL43.glBindBufferBase(
-                            GL43.GL_SHADER_STORAGE_BUFFER,
-                            COMMAND_BUFFER_BINDING,
-                            previousCommandBinding,
-                        )
-                        GL43.glBindBufferBase(
-                            GL43.GL_SHADER_STORAGE_BUFFER,
-                            COLLISION_BUFFER_BINDING,
-                            previousCollisionBinding,
-                        )
-                        GL43.glBindBufferBase(
-                            GL43.GL_SHADER_STORAGE_BUFFER,
-                            PATH_END_BUFFER_BINDING,
-                            previousPathEndBinding,
-                        )
+                        if (!useLegacy && metadataRequired) {
+                            GL43.glBindBufferBase(
+                                GL43.GL_SHADER_STORAGE_BUFFER,
+                                METADATA_BUFFER_BINDING,
+                                previousMetadataBinding,
+                            )
+                        }
+                        if (!useLegacy && commandCount > 0) {
+                            GL43.glBindBufferBase(
+                                GL43.GL_SHADER_STORAGE_BUFFER,
+                                COMMAND_BUFFER_BINDING,
+                                previousCommandBinding,
+                            )
+                        }
+                        if (collisionGrid != null) {
+                            GL43.glBindBufferBase(
+                                GL43.GL_SHADER_STORAGE_BUFFER,
+                                COLLISION_BUFFER_BINDING,
+                                previousCollisionBinding,
+                            )
+                        }
+                        if (!useLegacy && usesPathConstraint) {
+                            GL43.glBindBufferBase(
+                                GL43.GL_SHADER_STORAGE_BUFFER,
+                                PATH_END_BUFFER_BINDING,
+                                previousPathEndBinding,
+                            )
+                        }
                         GL15.glBindBuffer(GL43.GL_SHADER_STORAGE_BUFFER, previousStorageBuffer)
                     }
                 }
             }
+        }
+        try {
+            if (batchActive) {
+                bindBatchProgram(compute)
+                compute.dispatchBody()
+            } else {
+                compute.useOnContext(dispatchBody)
+            }
         } finally {
-            if (dispatched) memoryBarrier()
+            if (dispatched && !deferMemoryBarrier) memoryBarrier()
         }
         check(dispatched) {
             "[cparticle] Force Command GPU compute 未执行 dispatch，拒绝回退 CPU"
         }
         return true
+    }
+
+    /**
+     * 发布本 tick 所有 compute dispatch 的 SSBO 写入。
+     *
+     * 多 emitter 场景会在同一 tick 连续 dispatch 大量小 system。单个 system
+     * 立即 barrier 会把驱动同步成本放大为 system 数量；Manager 在整批 dispatch
+     * 完成后调用一次即可满足后续渲染和 respawn compute 的依赖。
+     */
+    internal fun publishMemoryBarrier() {
+        memoryBarrier()
     }
 
     /** 发布 compute 对 SSBO 的写入，供后续实例属性读取和缓冲更新使用。 */

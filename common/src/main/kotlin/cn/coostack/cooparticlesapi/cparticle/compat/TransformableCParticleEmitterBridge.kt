@@ -33,7 +33,7 @@ import java.util.UUID
  * @property textureBindingKey 基础纹理 binding
  * @property maskTextureBindingKey 可选蒙版纹理 binding
  * @property space 粒子模拟坐标空间
- * @property capacityHint 当前批次粒子数，只用于首次分配
+ * @property capacityHint 当前批次粒子数，用于首次分配和批次预留
  * @property globalLimit 当前全局存活数量上限
  * @property onSystem 新 system 创建或重新取得后的登记回调
  */
@@ -48,6 +48,8 @@ private class TransformableEmitterSystemCursor(
     private val onSystem: (CParticleSystem) -> Unit,
 ) {
     private var system: CParticleSystem? = null
+    /** 同一批次只消费一次整批容量提示。 */
+    var reserveBatchCapacity = true
 
     fun matches(
         layer: CParticleRenderLayer,
@@ -62,10 +64,9 @@ private class TransformableEmitterSystemCursor(
     fun findAvailable(): CParticleSystem {
         val current = system?.takeUnless(CParticleSystem::released)
             ?: getOrCreateSystem().also { system = it }
-        if (current.store.isFull()) {
-            val nextCapacity = CParticleEmitterBridge.nextSystemCapacity(current.capacity, globalLimit)
-            if (nextCapacity > current.capacity) current.growTo(nextCapacity)
-        }
+        val additional = if (reserveBatchCapacity) capacityHint else 1
+        CParticleEmitterBridge.reserveSystemCapacity(current, additional, globalLimit)
+        reserveBatchCapacity = false
         return current
     }
 
@@ -97,14 +98,57 @@ private class TransformableEmitterSystemCursor(
  * [CParticleSystem.groupTransform] 负责整体变换；WORLD 粒子保存世界位置并始终使用单位矩阵。
  */
 object TransformableCParticleEmitterBridge {
+    /** 标记一次 genParticles 批次的开始，允许已有 system 提前扩容。 */
+    internal fun beginBatch(emitterId: UUID) {
+        emitterSystems[emitterId]?.cursors?.forEach { it.reserveBatchCapacity = true }
+    }
+
     private data class EmitterSystems(
         val cursors: ArrayList<TransformableEmitterSystemCursor> = ArrayList(2),
         val systems: LinkedHashMap<CParticleSystem, CParticleEmitterSpace> = LinkedHashMap(),
         val forceSnapshot: CParticleForceSink = CParticleForceSink(),
         var forceTick: Int = Int.MIN_VALUE,
+        var forceRevision: Int = 0,
+        var forceSignature: CParticleEmitterBridge.ForceSnapshotSignature? = null,
+        var blockCollisionRange: Int = Int.MIN_VALUE,
+        var transformSnapshot: TransformSnapshot? = null,
     )
 
     private val emitterSystems = HashMap<UUID, EmitterSystems>()
+
+    private data class TransformSnapshot(
+        val pos: Vec3,
+        val emitterRotationX: Float,
+        val emitterRotationY: Float,
+        val emitterRotationZ: Float,
+        val emitterRotationW: Float,
+        val particleRotationX: Float,
+        val particleRotationY: Float,
+        val particleRotationZ: Float,
+        val particleRotationW: Float,
+        val scale: Double,
+        val space: CParticleEmitterSpace,
+    ) {
+        companion object {
+            fun capture(emitter: TransformableCParticleEmitter): TransformSnapshot {
+                val emitterRotation = emitter.emitterRotation
+                val particleRotation = emitter.particleRotation
+                return TransformSnapshot(
+                    emitter.pos,
+                    emitterRotation.x,
+                    emitterRotation.y,
+                    emitterRotation.z,
+                    emitterRotation.w,
+                    particleRotation.x,
+                    particleRotation.y,
+                    particleRotation.z,
+                    particleRotation.w,
+                    emitter.scale,
+                    emitter.space,
+                )
+            }
+        }
+    }
 
     /**
      * 把一份可控 GPU data 生成到当前坐标空间。
@@ -181,10 +225,16 @@ object TransformableCParticleEmitterBridge {
     internal fun syncSystems(emitter: TransformableCParticleEmitter) {
         val systems = emitterSystems[emitter.uuid] ?: return
         systems.systems.entries.removeIf { it.key.released }
+        val transformSnapshot = TransformSnapshot.capture(emitter)
+        val transformChanged = systems.transformSnapshot != transformSnapshot
         ensureForceSnapshot(emitter, systems)
         systems.systems.forEach { (system, space) ->
-            configureSystem(system, emitter, space)
+            if (transformChanged) {
+                applyTransform(system, emitter, space)
+            }
+            if (system.forcesSyncTick != systems.forceRevision) applyForce(system, systems)
         }
+        systems.transformSnapshot = transformSnapshot
     }
 
     /** 停止接收新粒子，并在存活数量归零后释放这个 emitter 的全部 systems。 */
@@ -227,6 +277,19 @@ object TransformableCParticleEmitterBridge {
         emitter: TransformableCParticleEmitter,
         space: CParticleEmitterSpace,
     ) {
+        applyTransform(system, emitter, space)
+        val emitterState = emitterSystems.getValue(emitter.uuid)
+        ensureForceSnapshot(emitter, emitterState)
+        if (system.forcesSyncTick != emitterState.forceRevision) {
+            applyForce(system, emitterState)
+        }
+    }
+
+    private fun applyTransform(
+        system: CParticleSystem,
+        emitter: TransformableCParticleEmitter,
+        space: CParticleEmitterSpace,
+    ) {
         system.setOriginIfEmpty(emitter.pos)
         if (space == CParticleEmitterSpace.LOCAL) {
             system.transformsSimulatedParticleSpace = true
@@ -235,16 +298,50 @@ object TransformableCParticleEmitterBridge {
             system.transformsSimulatedParticleSpace = false
             system.groupTransform.identity()
         }
+    }
 
-        val emitterState = emitterSystems.getValue(emitter.uuid)
-        ensureForceSnapshot(emitter, emitterState)
-        if (system.forcesSyncTick != emitterState.forceTick) {
-            CParticleEmitterBridge.applyForceSnapshot(
-                system,
-                emitterState.forceSnapshot,
-                emitterState.forceTick,
-            )
+    private fun applyForce(system: CParticleSystem, state: EmitterSystems) {
+        CParticleEmitterBridge.applyForceSnapshot(
+            system,
+            state.forceSnapshot,
+            state.forceRevision,
+        )
+        system.blockCollisionRange = state.blockCollisionRange
+    }
+
+    private fun ensureForceSnapshot(
+        emitter: TransformableCParticleEmitter,
+        state: EmitterSystems,
+    ) {
+        if (state.forceTick == emitter.tick) return
+        state.forceTick = emitter.tick
+        val target = state.forceSnapshot
+        target.clear()
+        if (emitter.gravity != 0.0) {
+            target.submit(CParticleForce.Gravity(emitter.gravity))
         }
+        if (emitter.airDensity > 0.0) {
+            target.submit(CParticleForce.EnvDrag(emitter.airDensity))
+        }
+        val wind = emitter.wind
+        if (wind is GlobalWindDirection && !wind.relative && wind.direction.lengthSqr() > 1e-12) {
+            target.submit(CParticleForce.Wind({ wind.direction }, emitter.airDensity.coerceAtLeast(1e-4)))
+        }
+        emitter.submitCParticleForces(target)
+        val blockCollisionRange = CParticleSystemManager.normalizeBlockCollisionRange(
+            emitter.cparticleBlockCollisionRange(),
+        )
+        val signature = CParticleEmitterBridge.buildForceSnapshotSignature(target, emitter.pos)
+        if (signature == state.forceSignature && blockCollisionRange == state.blockCollisionRange) {
+            return
+        }
+        state.forceSignature = signature
+        state.blockCollisionRange = blockCollisionRange
+        state.forceRevision++
+        CParticleSystemManager.updateBlockCollisionRange(
+            "transformable_emitter/${emitter.uuid}/",
+            state.blockCollisionRange,
+        )
     }
 
     private fun resolveStoragePosition(
@@ -301,34 +398,4 @@ object TransformableCParticleEmitterBridge {
             .scale(emitter.scale.toFloat())
     }
 
-    /** 每个 emitter tick 只构建一次共享 Command 快照。 */
-    private fun ensureForceSnapshot(
-        emitter: TransformableCParticleEmitter,
-        state: EmitterSystems,
-    ) {
-        if (state.forceTick == emitter.tick) return
-        state.forceTick = emitter.tick
-        val target = state.forceSnapshot
-        target.clear()
-        if (emitter.gravity != 0.0) {
-            target.submit(CParticleForce.Gravity(emitter.gravity))
-        }
-        if (emitter.airDensity > 0.0) {
-            target.submit(CParticleForce.EnvDrag(emitter.airDensity))
-        }
-        val wind = emitter.wind
-        if (wind is GlobalWindDirection && !wind.relative && wind.direction.lengthSqr() > 1e-12) {
-            target.submit(CParticleForce.Wind({ wind.direction }, emitter.airDensity.coerceAtLeast(1e-4)))
-        }
-        emitter.submitCParticleForces(target)
-        CParticleSystemManager.updateBlockCollisionRange(
-            "transformable_emitter/${emitter.uuid}/",
-            emitter.cparticleBlockCollisionRange(),
-        )
-        state.systems.keys.forEach { system ->
-            if (!system.released) {
-                CParticleEmitterBridge.applyForceSnapshot(system, target, state.forceTick)
-            }
-        }
-    }
 }

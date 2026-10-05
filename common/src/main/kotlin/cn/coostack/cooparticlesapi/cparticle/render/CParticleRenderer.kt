@@ -56,6 +56,9 @@ object CParticleRenderer {
         CParticleRenderLayer.ADDITION_BLEND,
         CParticleRenderLayer.ADDITION_BLEND_TRANSLUCENT_NO_DEPTH_WRITE,
     )
+    private val systemSortComparator = compareBy<CParticleSystem>(
+        CParticleSystem::textureBindingKey,
+    ).thenBy(CParticleSystem::maskTextureBindingKey)
 
     /**
      * 把 CParticle 图形 program 加入统一注册表，不触发 GL 编译。
@@ -180,6 +183,7 @@ object CParticleRenderer {
             pass.accepts(it.layer) && !it.released && it.store.highWater > 0 && it.isVisible(cameraPos)
         }
         if (visibleSystems.isEmpty()) return coverageOnly
+        val visibleBuckets = VisibleSystemBuckets(visibleSystems)
 
         val shader = ensureProgram()
         if (shader.program == 0) return false
@@ -287,12 +291,18 @@ object CParticleRenderer {
             glFrontFace(GL_CCW)
 
             if (coverageOnly) {
-                return renderCoverage(shader, visibleSystems, cameraPos, partial, uniformScratch)
+                return renderCoverage(
+                    shader,
+                    visibleBuckets.globallySorted,
+                    cameraPos,
+                    partial,
+                    uniformScratch,
+                )
             }
             if (useIrisParticleShader) {
                 renderWithIrisParticleShader(
                     shader,
-                    visibleSystems,
+                    visibleBuckets,
                     view,
                     proj,
                     cameraPos,
@@ -306,11 +316,7 @@ object CParticleRenderer {
                 val deferredDepthSystems = ArrayList<CParticleSystem>()
                 for (layer in drawLayers) {
                     if (!pass.accepts(layer)) continue
-                    val layerSystems = visibleSystems.asSequence()
-                        .filter { it.layer == layer }
-                        .sortedWith(compareBy(CParticleSystem::textureBindingKey)
-                            .thenBy(CParticleSystem::maskTextureBindingKey))
-                        .toList()
+                    val layerSystems = visibleBuckets.forLayer(layer)
                     if (layerSystems.isEmpty()) continue
                     if (forceDirectShader && irisShaderPackActive) {
                         layer.applyIndexedState(0)
@@ -463,7 +469,14 @@ object CParticleRenderer {
             glCullFace(GL_BACK)
             glFrontFace(GL_CCW)
             try {
-                drawInstancedSystems(shader, systems, cameraPos, partial, uniformScratch)
+                drawInstancedSystems(
+                    shader,
+                    systems,
+                    cameraPos,
+                    partial,
+                    uniformScratch,
+                    alreadySorted = true,
+                )
             } finally {
                 shader.setInt("uCoverageMask", 0)
             }
@@ -486,7 +499,7 @@ object CParticleRenderer {
      */
     private fun renderWithIrisParticleShader(
         shader: CooShaderProgram,
-        systems: List<CParticleSystem>,
+        visibleBuckets: VisibleSystemBuckets,
         view: Matrix4f,
         proj: Matrix4f,
         cameraPos: Vec3,
@@ -496,14 +509,14 @@ object CParticleRenderer {
     ) {
         shader.setInt("uIrisExpansion", 1)
         shader.setInt("uPremultiplyRgbByAlpha", 0)
-        for (system in systems) {
+        for (system in visibleBuckets.original) {
             if (system.layer.premultiplyRgbByAlpha) continue
             applySystemUniforms(shader, system, cameraPos, partial, uniformScratch)
             system.glBuffer.expandForParticleShader(system.store.highWater)
         }
         shader.setInt("uIrisExpansion", 0)
 
-        val firstTexture = systems.firstOrNull()?.textureBindingKey ?: return
+        val firstTexture = visibleBuckets.original.firstOrNull()?.textureBindingKey ?: return
         RenderSystem.setShaderTexture(0, CParticleTextureResolver.textureId(firstTexture))
         IrisCompat.runWithParticleShader(pass, view, proj) {
             val irisParticleProgram = glGetInteger(GL_CURRENT_PROGRAM)
@@ -511,11 +524,7 @@ object CParticleRenderer {
             val deferredDirectSystems = ArrayList<CParticleSystem>()
             for (layer in drawLayers) {
                 if (!pass.accepts(layer)) continue
-                val layerSystems = systems.asSequence()
-                    .filter { it.layer == layer }
-                    .sortedWith(compareBy(CParticleSystem::textureBindingKey)
-                        .thenBy(CParticleSystem::maskTextureBindingKey))
-                    .toList()
+                val layerSystems = visibleBuckets.forLayer(layer)
                 if (layerSystems.isEmpty()) continue
 
                 layer.applyIndexedState(0)
@@ -544,6 +553,7 @@ object CParticleRenderer {
                                 cameraPos,
                                 partial,
                                 uniformScratch,
+                                alreadySorted = true,
                             )
                         }
                     } finally {
@@ -551,7 +561,7 @@ object CParticleRenderer {
                         glUseProgram(irisParticleProgram)
                     }
                 } else {
-                    drawExpandedSystems(layerSystems)
+                    drawExpandedSystems(layerSystems, alreadySorted = true)
                 }
             }
 
@@ -594,13 +604,12 @@ object CParticleRenderer {
         cameraPos: Vec3,
         partial: Float,
         uniformScratch: UniformScratch,
+        alreadySorted: Boolean = false,
     ) {
         var boundMainTexture: CParticleTextureBindingKey? = null
         var boundMaskTexture: CParticleTextureBindingKey? = null
-        for (system in systems.sortedWith(
-            compareBy(CParticleSystem::textureBindingKey)
-                .thenBy(CParticleSystem::maskTextureBindingKey)
-        )) {
+        val orderedSystems = if (alreadySorted) systems else systems.sortedWith(systemSortComparator)
+        for (system in orderedSystems) {
             if (system.textureBindingKey != boundMainTexture) {
                 RenderSystem.activeTexture(GL_TEXTURE0)
                 RenderSystem.bindTexture(CParticleTextureResolver.textureId(system.textureBindingKey))
@@ -617,9 +626,34 @@ object CParticleRenderer {
         }
     }
 
-    private fun drawExpandedSystems(systems: Collection<CParticleSystem>) {
+    /**
+     * 当前 render pass 的可见系统索引。
+     *
+     * `original` 保留调用方顺序，供 Iris transform feedback 按原顺序准备粒子顶点；
+     * 其余视图只从同一份全局纹理排序结果切出 layer，避免每层重复 filter/sort/toList。
+     */
+    private class VisibleSystemBuckets(systems: List<CParticleSystem>) {
+        val original: List<CParticleSystem> = systems
+        val globallySorted: List<CParticleSystem> = systems.sortedWith(CParticleRenderer.systemSortComparator)
+        private val systemsByLayer: Map<CParticleRenderLayer, List<CParticleSystem>> =
+            globallySorted.groupBy(CParticleSystem::layer)
+
+        fun forLayer(layer: CParticleRenderLayer): List<CParticleSystem> {
+            return systemsByLayer[layer].orEmpty()
+        }
+    }
+
+    private fun drawExpandedSystems(
+        systems: Collection<CParticleSystem>,
+        alreadySorted: Boolean = false,
+    ) {
         var boundMainTexture: CParticleTextureBindingKey? = null
-        for (system in systems.sortedBy(CParticleSystem::textureBindingKey)) {
+        val orderedSystems = if (alreadySorted) {
+            systems
+        } else {
+            systems.sortedBy(CParticleSystem::textureBindingKey)
+        }
+        for (system in orderedSystems) {
             if (system.textureBindingKey != boundMainTexture) {
                 val textureId = CParticleTextureResolver.textureId(system.textureBindingKey)
                 RenderSystem.setShaderTexture(0, textureId)
@@ -684,9 +718,9 @@ object CParticleRenderer {
             if (system.transformsSimulatedParticleSpace) 1 else 0,
         )
 
-        setScalarCurve(shader, "uAlpha", system.alphaCurve)
-        setScalarCurve(shader, "uScale", system.scaleCurve)
-        setColorCurve(shader, "uColor", system.colorCurve)
+        setScalarCurve(shader, "uAlpha", system.alphaCurve, uniformScratch)
+        setScalarCurve(shader, "uScale", system.scaleCurve, uniformScratch)
+        setColorCurve(shader, "uColor", system.colorCurve, uniformScratch)
         val systemTime = system.tickCount + partial
         shader.setFloat("uSystemTime", systemTime)
         shader.setInt("uSystemTick", system.tickCount)
@@ -698,8 +732,8 @@ object CParticleRenderer {
         val transition = system.visualTransition
         val transitionProgress = transition?.progressAt(systemTime)
         shader.setInt("uTransitionEnabled", if (transitionProgress == null) 0 else 1)
-        setScalarCurve(shader, "uTransitionAlpha", transition?.alphaCurve)
-        setScalarCurve(shader, "uTransitionScale", transition?.scaleCurve)
+        setScalarCurve(shader, "uTransitionAlpha", transition?.alphaCurve, uniformScratch)
+        setScalarCurve(shader, "uTransitionScale", transition?.scaleCurve, uniformScratch)
         if (transition != null && transitionProgress != null) {
             shader.setFloat4(
                 "uTransitionParams",
@@ -721,6 +755,7 @@ object CParticleRenderer {
             shader,
             "uAlphaTransition",
             alphaTransition?.alphaCurve?.takeIf { alphaTransitionProgress != null },
+            uniformScratch,
         )
         shader.setFloat("uAlphaTransitionProgress", alphaTransitionProgress ?: 0F)
     }
@@ -735,7 +770,13 @@ object CParticleRenderer {
      * @param prefix uniform 组的前缀
      * @param curve 要上传的曲线；`null` 会上传 0 个关键帧，由对应 shader 路径使用默认值
      */
-    private fun setScalarCurve(shader: CooShaderProgram, prefix: String, curve: CParticleCurve?) {
+    private fun setScalarCurve(
+        shader: CooShaderProgram,
+        prefix: String,
+        curve: CParticleCurve?,
+        uniformScratch: UniformScratch,
+    ) {
+        if (!uniformScratch.shouldUploadScalarCurve(prefix, curve)) return
         shader.setInt("${prefix}Keys", curve?.keyCount ?: 0)
         shader.setInt("${prefix}CurveType", curve?.interpolation?.wireId ?: 0)
         shader.setFloatArray("${prefix}Curve", curve?.packedData ?: emptyCurve)
@@ -752,7 +793,13 @@ object CParticleRenderer {
      * @param prefix uniform 组的前缀
      * @param curve 要上传的曲线；`null` 表示 RGB 倍率恒为 1
      */
-    private fun setColorCurve(shader: CooShaderProgram, prefix: String, curve: CParticleColorCurve?) {
+    private fun setColorCurve(
+        shader: CooShaderProgram,
+        prefix: String,
+        curve: CParticleColorCurve?,
+        uniformScratch: UniformScratch,
+    ) {
+        if (!uniformScratch.shouldUploadColorCurve(prefix, curve)) return
         shader.setInt("${prefix}Keys", curve?.keyCount ?: 0)
         shader.setInt("${prefix}CurveType", curve?.interpolation?.wireId ?: 0)
         shader.setFloatArray("${prefix}CurveTimes", curve?.packedTimeData ?: emptyColorTimes)
@@ -764,6 +811,26 @@ object CParticleRenderer {
     private class UniformScratch {
         val origin = Vector3f()
         val params = Vector4f()
+        private val scalarCurves = HashMap<String, CParticleCurve?>()
+        private val colorCurves = HashMap<String, CParticleColorCurve?>()
+
+        /**
+         * 同一 render pass 内按曲线对象身份去重。
+         *
+         * 曲线创建后按不可变数据使用；system 通常共享同一曲线实例。以身份而不是数组内容
+         * 做比较，避免每个 emitter 重复扫描和上传几十个固定 float。
+         */
+        fun shouldUploadScalarCurve(prefix: String, curve: CParticleCurve?): Boolean {
+            if (scalarCurves.containsKey(prefix) && scalarCurves[prefix] === curve) return false
+            scalarCurves[prefix] = curve
+            return true
+        }
+
+        fun shouldUploadColorCurve(prefix: String, curve: CParticleColorCurve?): Boolean {
+            if (colorCurves.containsKey(prefix) && colorCurves[prefix] === curve) return false
+            colorCurves[prefix] = curve
+            return true
+        }
     }
 
     /**

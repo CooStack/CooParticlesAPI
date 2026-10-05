@@ -9,6 +9,38 @@ import org.joml.Vector2f
 import org.joml.Vector3f
 import org.joml.Vector4f
 import org.lwjgl.opengl.GL40.*
+import java.util.WeakHashMap
+
+/**
+ * Uniform location 在 program 链接后保持稳定。
+ *
+ * CParticle 多 emitter 场景会对同一个 compute program 重复设置同一批 uniform；如果每次
+ * 都调用 glGetUniformLocation，驱动查询开销会按 system 数量放大。按 owner 和 program id
+ * 缓存，program 重新链接或释放后自动切换到新的 location 表。
+ */
+private object CooUniformLocationCache {
+    private data class Entry(
+        val program: Int,
+        val locations: HashMap<String, Int>,
+    )
+
+    private val entries = WeakHashMap<CooProgramUniformAccess, Entry>()
+
+    fun get(owner: CooProgramUniformAccess, key: String): Int? {
+        val program = owner.program
+        if (program <= 0) return null
+        val entry = entries[owner]
+        val active = if (entry == null || entry.program != program) {
+            Entry(program, HashMap()).also { entries[owner] = it }
+        } else {
+            entry
+        }
+        val location = active.locations[key] ?: glGetUniformLocation(program, key).also {
+            active.locations[key] = it
+        }
+        return location.takeUnless { it == -1 }
+    }
+}
 
 /**
  * 提供 OpenGL 普通 uniform 写入能力的基础接口。
@@ -197,8 +229,7 @@ interface CooProgramUniformAccess {
     }
 
     private fun getUniformLocation(key: String): Int? {
-        val location = glGetUniformLocation(program, key)
-        return location.takeUnless { it == -1 }
+        return CooUniformLocationCache.get(this, key)
     }
 
     private fun getArrayLocation(key: String): Int? {

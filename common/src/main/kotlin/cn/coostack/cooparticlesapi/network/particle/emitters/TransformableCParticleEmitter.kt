@@ -209,6 +209,7 @@ abstract class TransformableCParticleEmitter(
         val player = Minecraft.getInstance().player ?: return
         val particles = genParticles(lerpProgress)
         val batchSize = particles.size
+        TransformableCParticleEmitterBridge.beginBatch(uuid)
         particles.forEach { (data, relative) ->
             val worldPosition = TransformableCParticleEmitterBridge.resolveWorldPosition(
                 this,

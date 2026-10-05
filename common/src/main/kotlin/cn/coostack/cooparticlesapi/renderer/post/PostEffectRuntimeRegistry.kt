@@ -3,6 +3,7 @@ package cn.coostack.cooparticlesapi.renderer.post
 import cn.coostack.cooparticlesapi.renderer.effects.RenderEffectDescriptor
 import cn.coostack.cooparticlesapi.renderer.effects.RenderEffectExecutor
 import cn.coostack.cooparticlesapi.renderer.effects.RenderEffectRegistry
+import net.minecraft.resources.ResourceLocation
 
 /**
  * 把 post effect 类型接入通用 [RenderEffectRegistry] 的桥。
@@ -12,9 +13,11 @@ import cn.coostack.cooparticlesapi.renderer.effects.RenderEffectRegistry
  * 交给 [PostEffectFrameExecutor] 生成 pass plan 并执行。
  *
  * 这个对象替代调用方为每个 post type 单独注册一个 RenderEffectExecutor 的样板。
+ * 类型注册、查询和客户端初始化共用对象锁，允许加载阶段的并行注册。
  */
 internal object PostEffectRuntimeRegistry {
-    private val types = LinkedHashMap<net.minecraft.resources.ResourceLocation, PostEffectType>()
+    /** 按注册顺序保存类型；所有访问都必须持有当前对象的锁。 */
+    private val types = LinkedHashMap<ResourceLocation, PostEffectType>()
     private val genericExecutor = RenderEffectExecutor { context, effects ->
         val instances = effects.mapNotNull { it.toPostEffectInstance() }
         if (instances.isEmpty()) {
@@ -24,13 +27,15 @@ internal object PostEffectRuntimeRegistry {
     }
 
     /** 客户端初始化入口：把启动阶段已编译的 Pipeline 类型接入执行器。 */
+    @Synchronized
     fun initOnClient() {
         types.values.forEach { type ->
-            registerType(type)
+            RenderEffectRegistry.register(type.id, genericExecutor)
         }
     }
 
     /** 把单个 post type 的 id 映射到通用 post executor。 */
+    @Synchronized
     internal fun registerType(type: PostEffectType) {
         types[type.id] = type
         RenderEffectRegistry.register(type.id, genericExecutor)
@@ -45,7 +50,8 @@ internal object PostEffectRuntimeRegistry {
      *
      * @return 匹配当前条件的对象或状态；可空返回值表示没有可用结果
      */
-    internal fun getType(id: net.minecraft.resources.ResourceLocation): PostEffectType? = types[id]
+    @Synchronized
+    internal fun getType(id: ResourceLocation): PostEffectType? = types[id]
 
     /**
      * 执行 `PostEffectRuntimeRegistry` 定义的 `containsType` 操作；输入和返回值用于该组件当前的渲染职责。
@@ -56,7 +62,8 @@ internal object PostEffectRuntimeRegistry {
      *
      * @return 当前操作计算、更新或查询得到的结果
      */
-    internal fun containsType(id: net.minecraft.resources.ResourceLocation): Boolean = id in types
+    @Synchronized
+    internal fun containsType(id: ResourceLocation): Boolean = id in types
 
     private fun RenderEffectDescriptor.toPostEffectInstance(): PostEffectInstance? {
         return payload as? PostEffectInstance

@@ -1112,7 +1112,7 @@ class CParticleComputeShaderCompileTest {
     }
 
     @Test
-    fun `growing an initialized system preserves particle and metadata buffers`() {
+    fun `advance growth of initialized system preserves particle and metadata buffers`() {
         withOpenGl43Context {
             val computeSupportedField = CParticleCapabilities::class.java
                 .getDeclaredField("computeSupported")
@@ -1121,7 +1121,7 @@ class CParticleComputeShaderCompileTest {
             val previousForceCpuSimulation = CParticleCapabilities.forceCpuSimulation
             val system = CParticleSystem(
                 "gpu-growth-test",
-                1,
+                4,
                 CParticleRenderLayer.TRANSLUCENT,
                 CParticleSystemMode.SIMULATED,
             )
@@ -1150,8 +1150,8 @@ class CParticleComputeShaderCompileTest {
                 assertTrue(system.commandGlBuffer.initialized)
                 assertTrue(system.metadataGlBuffer.initialized)
 
-                system.growTo(2)
-                assertEquals(2, system.capacity)
+                system.growTo(8)
+                assertEquals(8, system.capacity)
                 assertEquals(5, system.store.metadata.sign(0))
 
                 val second = CParticle().apply {

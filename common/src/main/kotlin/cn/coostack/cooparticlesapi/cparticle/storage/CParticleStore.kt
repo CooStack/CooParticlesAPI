@@ -342,19 +342,16 @@ class CParticleStore(capacity: Int) {
     fun isFull(): Boolean = freeTop <= 0
 
     /**
-     * 在池满时扩大槽位数组，保留存活位、句柄世代、出生队列和 metadata。
+     * 扩大槽位数组，保留存活位、句柄世代、出生队列、已有空闲槽和 metadata。
      *
      * 扩容只增加空槽，不改变存活数量，也不会重新申请全局粒子额度。
      *
      * @param newCapacity 新槽位容量，必须大于当前容量
-     * @throws IllegalStateException 当前仍有空槽时抛出
      */
     internal fun growTo(newCapacity: Int) {
         require(newCapacity > capacity) {
             "newCapacity must be greater than capacity: $newCapacity <= $capacity"
         }
-        check(isFull()) { "CParticleStore can grow only after all current slots are occupied" }
-
         val oldCapacity = capacity
         data = data.copyOf(newCapacity * STRIDE)
         metadata.growTo(newCapacity)
@@ -372,8 +369,12 @@ class CParticleStore(capacity: Int) {
         writeTicks = writeTicks.copyOf(newCapacity).also {
             it.fill(Int.MIN_VALUE, oldCapacity, newCapacity)
         }
-        freeStack = IntArray(newCapacity) { newCapacity - 1 - it }
-        freeTop = newCapacity - oldCapacity
+        val addedSlots = newCapacity - oldCapacity
+        val expandedFreeStack = IntArray(newCapacity)
+        repeat(addedSlots) { expandedFreeStack[it] = newCapacity - 1 - it }
+        freeStack.copyInto(expandedFreeStack, addedSlots, 0, freeTop)
+        freeStack = expandedFreeStack
+        freeTop += addedSlots
         dynamicState = dynamicState?.copyToCapacity(newCapacity)
         killedState = killedState?.copyToCapacity(newCapacity)
         capacity = newCapacity
@@ -1027,6 +1028,20 @@ class CParticleStore(capacity: Int) {
             spawnedBits[word] = spawnedBits[word] and mask.inv()
             newbornBits[word] = newbornBits[word] and mask.inv()
         }
+        spawnedCount = 0
+    }
+
+    /**
+     * GPU compute 已经在实例 SSBO 中清除了 NEWBORN 标记时使用的廉价路径。
+     *
+     * GPU 模式不再需要逐槽修改 CPU 镜像中的 flags：下一次真正写入该槽位时，
+     * [spawnWithMask] 会完整覆盖 flags。这里只清理 CPU 侧的 pending 位图，避免百万级
+     * 批次出生后又做一次逐槽循环。
+     */
+    internal fun clearSpawnedAfterGpu() {
+        if (spawnedCount == 0) return
+        java.util.Arrays.fill(spawnedBits, 0L)
+        java.util.Arrays.fill(newbornBits, 0L)
         spawnedCount = 0
     }
 

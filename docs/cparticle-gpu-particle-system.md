@@ -230,7 +230,11 @@ system.colorCurve = colorShift
 ## 性能要点
 
 - 帧成本: 每系统 1 次 instanced draw + ~15 个 uniform; 400k 顶点对 GPU 可忽略
-- tick 成本: GPU 模式 1 次 compute dispatch (100k 线程) + 仅新生成粒子的增量上传;
+- tick 成本: GPU 模式按 system 各 1 次 compute dispatch + 仅新生成粒子的增量上传；
+  大量 emitter 且每个 system 粒子很少时，dispatch、program/uniform 和 SSBO 绑定的固定成本会按
+  system 数量线性叠加，不能只用总粒子数估算。为此，未使用预提交 GPU 重生链且活动槽位不超过
+  `CParticleSystemManager.smallSystemCpuThreshold` 的 system 首次走 CPU SoA；超过阈值后只允许
+  CPU → GPU 粘滞切换，避免每 tick 在 CPU/GPU 间搬运整池状态。预提交重生链始终走 GPU。
   CPU 回退 = ForkJoin 分块 ~1‑3ms + 整段 `glBufferSubData` (~11MB/tick, 224MB/s)
 - 热路径零分配: 力场打包数组 / 上传 scratch / SoA 全部复用
 - 方块碰撞: 每份共享网格使用 32KB CPU 位图、32KB 可复用上传缓冲和 32KB SSBO; 网格刷新成本与 64³ 单元有关, 与粒子数无关
@@ -259,8 +263,15 @@ system.colorCurve = colorShift
 系统查找键至少包含逻辑 system、`CParticleSystemMode`、`CParticleRenderLayer`、基础 binding 和可选蒙版
 binding。同一 binding 内不同 sprite、BlockState、ItemStack 和 descriptor 仍在同一次实例化 draw 中；
 不同 atlas 或独立纹理拆分 system。renderer 先按 layer，再按基础/蒙版 binding 排序，只在 binding
-变化时绑定纹理，不会逐粒子 bind。不同逻辑 system 即使 binding 相同仍各自 draw。Emitter 根据当次生成的
-CParticle 数量选择 segment 容量，下限为 16384，单段上限为 32767；写满后才会增加 system 和 draw。
+变化时绑定纹理，不会逐粒子 bind。不同逻辑 system 即使 binding 相同仍各自 draw。Emitter 为每个
+`layer + base binding + mask binding` 保留一个可扩容游标：小批次从 256 槽位起步，批次开始时按
+已知数量预留，并在需要时按二次幂增长，不再因为写满而机械拆成更多 system/draw。短命 emitter
+结束后，小型空池可在有界缓存中复用；复用只接受相同的渲染 binding 和生命周期所有权。
+
+同一 emitter 的一批 GPU 粒子会复用位置无关的纹理解析结果，避免每粒子重复解析相同的
+`ParticleEffect`、atlas 或 custom 来源。Block 来源仍逐粒子解析，以保留位置相关的 tint、亮度和
+随机裁剪语义；资源重载或批次结束会使缓存失效。这个缓存只减少 CPU 侧纹理解析，不能合并不同
+system 的 compute dispatch 或 instanced draw。
 
 ## 生命周期挂载点
 

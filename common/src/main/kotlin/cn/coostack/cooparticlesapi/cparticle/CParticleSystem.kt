@@ -140,7 +140,7 @@ class CParticleSystem(
 
     /** 捕获已回收但尚未复用的槽位；GPU 模式不读取 CPU 中过期的位置和速度。 */
     private fun captureDeathState(slot: Int, reason: RemoveReason): CParticleDeathState {
-        val gpu = mode == CParticleSystemMode.SIMULATED && !CParticleCapabilities.forceCpuSimulation &&
+        val gpu = mode == CParticleSystemMode.SIMULATED && gpuSimulationSelected &&
             glBuffer.initialized && !store.isPendingSpawn(slot)
         try {
             val mapped = if (gpu) deathReadback ?: glBuffer.mapDeathReadback().also {
@@ -181,13 +181,12 @@ class CParticleSystem(
     val sourceId: Int = nextSourceId()
 
     /**
-     * 扩大一个已经写满的 system，保留 CPU 账本和 GPU 模拟结果。
+     * 提前扩大 system，保留 CPU 账本、已有空闲槽和 GPU 模拟结果。
      *
      * @param newCapacity 新槽位容量，必须大于当前容量
      */
     internal fun growTo(newCapacity: Int) {
         check(!released) { "released CParticleSystem cannot grow: $name" }
-        check(store.isFull()) { "CParticleSystem can grow only after all current slots are occupied: $name" }
         require(newCapacity > capacity) {
             "newCapacity must be greater than capacity: $newCapacity <= $capacity"
         }
@@ -214,6 +213,37 @@ class CParticleSystem(
     /** 所有 Force 的统一 Command sink；bridge 只在 emitter tick 边界更新一次快照。 */
     internal val forceSink = CParticleForceSink(ForceCommand.MAX_COMMANDS)
     private var metadataGpuSynchronized = false
+
+    /**
+     * 自适应模拟路由是否已经切换到 GPU。
+     *
+     * 小型 system 首次运行走 CPU，避免多 emitter 场景中数百次小 compute dispatch；
+     * 一旦池规模超过阈值，只允许 CPU -> GPU，避免没有 GPU 状态镜像时反向切换。
+     */
+    private var gpuSimulationSelected = false
+
+    private fun shouldUseGpuSimulation(prepared: Boolean): Boolean {
+        if (CParticleCapabilities.forceCpuSimulation) return false
+        if (prepared || gpuSimulationSelected) return true
+        if (store.activeSlotCount > CParticleSystemManager.smallSystemCpuThreshold) {
+            gpuSimulationSelected = true
+            return true
+        }
+        return false
+    }
+
+    /**
+     * 预判本 tick 是否会进入 GPU 模拟。
+     *
+     * Manager 用它决定是否需要开启跨 system 的 GL 批次；不能把所有未强制 CPU
+     * 的 system 都当作 GPU system，否则全是小池时仍会产生无意义的 GL 状态读写。
+     */
+    internal fun willUseGpuSimulation(): Boolean {
+        if (mode != CParticleSystemMode.SIMULATED || CParticleCapabilities.forceCpuSimulation) return false
+        return gpuSimulationSelected ||
+            CParticleRespawnEngine.owns(this) ||
+            store.activeSlotCount > CParticleSystemManager.smallSystemCpuThreshold
+    }
 
     /** emitter 桥接: 上次同步力场和视觉配置的 emitter tick (避免同 tick 重复重建) */
     var forcesSyncTick = Int.MIN_VALUE
@@ -943,7 +973,7 @@ class CParticleSystem(
      * 写入盖章用的是当前值, [rollPrevForUnwritten] 必须用同一个值比较 —
      * 否则本 tick 刚写入的槽位会被误滚动 prev, 破坏插值.
      */
-    fun tick() {
+    fun tick(deferGpuMemoryBarrier: Boolean = false) {
         if (released) return
         prepareGroupTransformForTick()
         try {
@@ -955,11 +985,19 @@ class CParticleSystem(
             }
             ensureGl()
             when (mode) {
-                CParticleSystemMode.SIMULATED -> tickSimulated()
+                CParticleSystemMode.SIMULATED -> tickSimulated(deferGpuMemoryBarrier)
                 CParticleSystemMode.SCRIPTED -> tickScripted()
             }
         } finally {
             tickCount++
+        }
+        // 死亡回调可能映射 GPU VBO 读取最终位置；延迟 barrier 时在回调前发布。
+        if (deferGpuMemoryBarrier &&
+            mode == CParticleSystemMode.SIMULATED &&
+            gpuSimulationSelected &&
+            store.deathTracker != null
+        ) {
+            CParticleGpuSimulator.publishMemoryBarrier()
         }
         store.deathTracker?.drain()
     }
@@ -987,11 +1025,7 @@ class CParticleSystem(
         return transition.takeIf { tickCount - it.startTick < it.durationTicks }
     }
 
-    private fun tickSimulated() {
-        // 路径几何必须在打包命令之前同步到共享图层，否则命令会引用到上一版基址。
-        CParticlePerfProbe.measure(CParticlePerfProbe.Stage.PATH_SYNC) {
-            CParticlePathLibrary.syncLayer()
-        }
+    private fun tickSimulated(deferGpuMemoryBarrier: Boolean) {
         // 旧 1..9 且 selector=All 的批次保留 uniform 快路径；其数学仍等价于 Command。
         val legacyForceCount = packLegacyForces()
         val commandCount = if (legacyForceCount >= 0) {
@@ -1008,10 +1042,10 @@ class CParticleSystem(
         } else {
             null
         }
-        // 能力探测只记录诊断信息；GPU 请求不能在 shader 编译前静默改成 CPU。
-        // 只有显式 forceCpuSimulation=true 才允许 CPU 模拟。
-        val useGpu = !CParticleCapabilities.forceCpuSimulation
         val prepared = CParticleRespawnEngine.owns(this)
+        // 小 system 首次运行使用 CPU，避免多 emitter 场景中的固定 dispatch 成本；
+        // 预提交重生链和超过阈值的 system 仍保持 GPU。
+        val useGpu = shouldUseGpuSimulation(prepared)
         check(useGpu || !prepared) { "Clear prepared GPU lifetimes before switching simulation backend" }
         if (!prepared && store.spawnedCount > 0 && (!useGpu || legacyForceCount >= 0 || !packedCommandsNeedMetadata)) {
             // metadata 未在本 tick 上传；以后重新启用 selector/Charge 时必须整段重传。
@@ -1056,7 +1090,15 @@ class CParticleSystem(
                 collisionGrid,
                 simulationTransform,
                 inverseSimulationTransform,
+                deferMemoryBarrier = deferGpuMemoryBarrier,
             )
+            // 路径结束列表是 GPU→CPU 的读回通道；延迟 barrier 时必须在读取前发布。
+            if (deferGpuMemoryBarrier &&
+                legacyForceCount < 0 &&
+                CParticleRespawnEngine.requiresPathReadback(this)
+            ) {
+                CParticleGpuSimulator.publishMemoryBarrier()
+            }
             // compute 已经写过内存屏障，此时读回结束槽位与 CPU 账本一致。
             collectingGpuDeaths = true
             try {
@@ -1067,7 +1109,8 @@ class CParticleSystem(
                 closeDeathReadback()
             }
             store.publishDynamicAges()
-            store.clearSpawned()
+            // compute 已经在 GPU SSBO 中清除了 NEWBORN；CPU 侧只需批量清空 pending 位图。
+            store.clearSpawnedAfterGpu()
             store.clearKilled()
             store.clearDirty()
         } else {
@@ -1346,6 +1389,38 @@ class CParticleSystem(
             // 同步清掉 GPU 侧 alive 位
             glBuffer.uploadRange(store.data, 0, prevHigh - 1)
         }
+    }
+
+    /**
+     * 将已空的普通 emitter system 恢复到新建状态，同时保留 CPU 数组和 GL 缓冲。
+     * Manager 在放入空池缓存前调用；不得用于仍有粒子或后继生命的系统。
+     * 清空槽位世代、死亡关联和命令引用，防止下一 emitter 继承上一实例的状态。
+     */
+    internal fun resetForEmitterReuse() {
+        check(!released && store.aliveCount == 0 && mode == CParticleSystemMode.SIMULATED)
+        clearParticles()
+        forces.clear()
+        forceSink.clear()
+        forceResourceTable.clear()
+        forcesSyncTick = Int.MIN_VALUE
+        origin = Vec3.ZERO
+        speedLimit = 32F
+        blockCollisionRange = CParticleSystemManager.DEFAULT_BLOCK_COLLISION_RANGE
+        alphaCurve = null
+        scaleCurve = null
+        colorCurve = null
+        curveCycleTicks = 0F
+        colorCycleTicks = 0F
+        colorCycleSpatialScale = 0F
+        visualTransition = null
+        alphaTransition = null
+        transformsSimulatedParticleSpace = false
+        groupTransform.identity()
+        snapGroupTransform()
+        visibleRange = 256.0
+        tickCount = 0
+        gpuSimulationSelected = false
+        warnedBindingMismatches.clear()
     }
 
     /** 仅释放 GL 资源 (shader/资源重载时; CPU 数据保留, 下次 ensureGl 重传) */

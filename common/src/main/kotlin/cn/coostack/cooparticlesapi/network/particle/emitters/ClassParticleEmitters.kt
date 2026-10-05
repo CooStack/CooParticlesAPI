@@ -301,6 +301,7 @@ abstract class ClassParticleEmitters(
         val particles = genParticles(lerpProgress)
         val total = particles.size
         val cparticleBatchSize = particles.count { it.first is ControlableCParticleData }
+        CParticleEmitterBridge.beginBatch(uuid)
         particles.forEach {
             spawnedCount++
             spawnParticle(
