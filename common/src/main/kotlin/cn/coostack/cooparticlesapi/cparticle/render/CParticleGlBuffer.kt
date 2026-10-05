@@ -253,7 +253,7 @@ class CParticleGlBuffer(capacity: Int) {
      */
     fun uploadSlots(data: FloatArray, slots: IntArray, count: Int) {
         if (!initialized || count <= 0) return
-        Arrays.sort(slots, 0, count)
+        sortSlotsIfNeeded(slots, count)
         val prev = glGetInteger(GL_ARRAY_BUFFER_BINDING)
         glBindBuffer(GL_ARRAY_BUFFER, vbo)
         var i = 0
@@ -371,7 +371,7 @@ class CParticleGlBuffer(capacity: Int) {
     /** 只补写 alive/light/camera flags，不覆盖 compute 掌管的模拟字段。 */
     fun patchFlags(data: FloatArray, slots: IntArray, count: Int) {
         if (!initialized || count <= 0) return
-        Arrays.sort(slots, 0, count)
+        sortSlotsIfNeeded(slots, count)
         val previous = glGetInteger(GL_ARRAY_BUFFER_BINDING)
         glBindBuffer(GL_ARRAY_BUFFER, vbo)
         try {
@@ -395,6 +395,23 @@ class CParticleGlBuffer(capacity: Int) {
             s.put(data[offset])
             s.flip()
             glBufferSubData(GL_ARRAY_BUFFER, offset.toLong() * Float.SIZE_BYTES, s)
+        }
+    }
+
+    /**
+     * 新生/死亡槽位通常由连续的 freeStack 或同一到期批次产生，天然已经递增。
+     * 先做一次线性有序检查，避免百万粒子上传前无条件进入 O(n log n) 排序；
+     * 只有槽位被手动 kill 或交错复用后真正乱序时才调用 Arrays.sort。
+     */
+    private fun sortSlotsIfNeeded(slots: IntArray, count: Int) {
+        var previous = slots[0]
+        for (index in 1 until count) {
+            val current = slots[index]
+            if (current < previous) {
+                Arrays.sort(slots, 0, count)
+                return
+            }
+            previous = current
         }
     }
 

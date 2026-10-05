@@ -319,6 +319,8 @@ class CParticleStore(capacity: Int) {
 
     private var dynamicState: DynamicState? = null
     private var killedState: KilledState? = null
+    /** GPU 到期批量回收时延迟维护边界，避免每个 kill 都扫描位图。 */
+    private var bulkKilling = false
 
     /**
      * 该存储中的存活槽位是否计入 CParticle 全局上限。
@@ -639,16 +641,18 @@ class CParticleStore(capacity: Int) {
         data[base + OFF_FLAGS] = (flags and FLAG_ALIVE.inv()).toFloat()
         if (queueGpuFlag) queueKilled(slot)
         markDirty(slot)
-        if (slot + 1 == highWater) {
-            while (highWater > 0 && !isAlive(highWater - 1)) {
-                highWater--
+        if (!bulkKilling) {
+            if (slot + 1 == highWater) {
+                while (highWater > 0 && !isAlive(highWater - 1)) {
+                    highWater--
+                }
             }
-        }
-        if (aliveCount == 0) {
-            firstAliveSlot = 0
-        } else if (slot == firstAliveSlot) {
-            while (firstAliveSlot < highWater && !isAlive(firstAliveSlot)) {
-                firstAliveSlot++
+            if (aliveCount == 0) {
+                firstAliveSlot = 0
+            } else if (slot == firstAliveSlot) {
+                while (firstAliveSlot < highWater && !isAlive(firstAliveSlot)) {
+                    firstAliveSlot++
+                }
             }
         }
         deathTracker?.record(slot, reason)
@@ -707,12 +711,18 @@ class CParticleStore(capacity: Int) {
             val batch = expirationBatchHeap[0] ?: break
             if (batch.expiryTick > now) break
             popExpirationBatch()
-            for (index in 0 until batch.size) {
-                val slot = batch.slotAt(index)
-                if (!isAlive(slot) || expirationTicks[slot] != batch.expiryTick) continue
-                expirationTicks[slot] = NO_EXPIRATION_TICK
-                kill(slot, queueGpuFlag = false, reason = RemoveReason.LIFECYCLE)
-                anyDead = true
+            bulkKilling = true
+            try {
+                for (index in 0 until batch.size) {
+                    val slot = batch.slotAt(index)
+                    if (!isAlive(slot) || expirationTicks[slot] != batch.expiryTick) continue
+                    expirationTicks[slot] = NO_EXPIRATION_TICK
+                    kill(slot, queueGpuFlag = false, reason = RemoveReason.LIFECYCLE)
+                    anyDead = true
+                }
+            } finally {
+                bulkKilling = false
+                recomputeAliveBounds()
             }
             recycleExpirationBatch(batch)
         }
@@ -730,6 +740,19 @@ class CParticleStore(capacity: Int) {
             }
         }
         return anyDead
+    }
+
+    /** 批量回收后一次性收缩连续尾部并定位第一个存活槽位。 */
+    private fun recomputeAliveBounds() {
+        if (aliveCount == 0) {
+            highWater = 0
+            firstAliveSlot = 0
+            return
+        }
+        while (highWater > 0 && !isAlive(highWater - 1)) highWater--
+        var first = firstAliveSlot.coerceAtMost(highWater)
+        while (first < highWater && !isAlive(first)) first++
+        firstAliveSlot = first
     }
 
     private fun scheduleExpiration(slot: Int, expiryTick: Long) {
