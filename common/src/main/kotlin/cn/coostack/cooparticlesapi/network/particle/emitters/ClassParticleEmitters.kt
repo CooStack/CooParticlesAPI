@@ -387,7 +387,8 @@ abstract class ClassParticleEmitters(
     ) {
 
         val player = Minecraft.getInstance().player ?: return
-        if (player.position().distanceTo(pos) > data.visibleRange) {
+        val visibleRange = data.visibleRange.toDouble()
+        if (visibleRange < 0.0 || player.position().distanceToSqr(pos) > visibleRange * visibleRange) {
             return
         }
         // cparticle GPU 路径: 数据直接进 GPU 粒子系统, 跳过 controler/事件/碰撞

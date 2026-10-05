@@ -211,13 +211,17 @@ abstract class TransformableCParticleEmitter(
         val particles = genParticles(lerpProgress)
         val batchSize = particles.size
         TransformableCParticleEmitterBridge.beginBatch(uuid)
+        val playerPosition = player.position()
         particles.forEach { (data, relative) ->
             val worldPosition = TransformableCParticleEmitterBridge.resolveWorldPosition(
                 this,
                 pos,
                 relative,
             ) ?: return@forEach
-            if (player.position().distanceTo(worldPosition) > data.visibleRange) return@forEach
+            val visibleRange = data.visibleRange.toDouble()
+            if (visibleRange < 0.0 ||
+                playerPosition.distanceToSqr(worldPosition) > visibleRange * visibleRange
+            ) return@forEach
             TransformableCParticleEmitterBridge.trySpawn(
                 this,
                 level,

@@ -711,7 +711,7 @@ class CParticleStore(capacity: Int) {
      * @param currentTick 当前 system tick，必须与 [CParticleSystem] 的 tickCount 对齐
      * @return 本次是否回收了至少一个粒子
      */
-    internal fun tickGpuAges(currentTick: Int): Boolean {
+    internal fun tickGpuAges(currentTick: Int, queueKilledFlags: Boolean = false): Boolean {
         val now = currentTick.toLong()
         var anyDead = false
         while (expirationBatchCount > 0) {
@@ -724,7 +724,7 @@ class CParticleStore(capacity: Int) {
                     val slot = batch.slotAt(index)
                     if (!isAlive(slot) || expirationTicks[slot] != batch.expiryTick) continue
                     expirationTicks[slot] = NO_EXPIRATION_TICK
-                    kill(slot, queueGpuFlag = false, reason = RemoveReason.LIFECYCLE)
+                    kill(slot, queueGpuFlag = queueKilledFlags, reason = RemoveReason.LIFECYCLE)
                     anyDead = true
                 }
             } finally {

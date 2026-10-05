@@ -440,17 +440,17 @@ class CParticleSystem(
             warnBindingMismatch(resolved.base.bindingKey, resolved.mask?.bindingKey)
             return -1
         }
-        if (!CParticleSystemManager.hasAvailableParticleCapacity()) return -1
         val worldPosition = p.pos
         if (store.aliveCount == 0) snapGroupTransform()
         if (storagePosition == null) {
             rebaseIfNeeded(worldPosition)
         }
         val resolvedStoragePosition = storagePosition ?: resolveStoragePosition(worldPosition) ?: return -1
-        if (p.updateMode != CParticleUpdateMode.STATIC ||
-            p.velocity.lengthSqr() > 1e-12 ||
-            p.angularVelocity.lengthSquared() > 1e-12 ||
-            p.blockCollision
+        if (gpuNoopSimulation &&
+            (p.updateMode != CParticleUpdateMode.STATIC ||
+                p.velocity.lengthSqr() > 1e-12 ||
+                p.angularVelocity.lengthSquared() > 1e-12 ||
+                p.blockCollision)
         ) {
             gpuNoopSimulation = false
         }
@@ -1238,7 +1238,11 @@ class CParticleSystem(
             store.clearSpawnedFlagsForNoop()
             glBuffer.uploadSlots(store.data, store.spawnedSlots, store.spawnedCount)
         }
-        store.tickGpuAges(tickCount)
+        store.tickGpuAges(tickCount, queueKilledFlags = true)
+        if (store.killedCount > 0) {
+            glBuffer.patchFlags(store.data, store.killedSlots, store.killedCount)
+            store.clearKilled()
+        }
         store.clearSpawnedAfterGpu()
         store.clearDirty()
     }

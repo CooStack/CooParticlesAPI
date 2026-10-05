@@ -244,6 +244,11 @@ system.colorCurve = colorShift
 - 纯 STATIC、零速度、无角速度、无碰撞、无 Force/Command 且无变换的 system 只依赖
   `epochTick` 和 CPU expiration ledger，可跳过 compute dispatch；同一 tick 若全部 system 都是此类
   no-op，也不会开启跨 system 的 GL batch 状态保存。
+- `gpuNoopSimulation` 是 system 生命周期内的保守锁存：一旦该池曾经接收 Force/Command、模拟空间
+  变换、碰撞或非静态粒子，就不会在配置后来清空后错误退回 no-op；只有 emitter 空池复用时才重置。
+- `LineEmitterInterpolator.forEachRefined` 为线性发射器提供无中间 `List<RelativeLocation>` 的采样遍历，
+  emitter tick 不再为每个插值点创建 `RelativeLocation` 再调用 `toVector()`；自定义插值器仍通过接口默认实现保持兼容。
+- emitter 出生侧的可见性检查复用当前批次的玩家坐标并使用平方距离，避免每个采样粒子重复创建距离对象和执行平方根。
 - 方块碰撞: 每份共享网格使用 32KB CPU 位图、32KB 可复用上传缓冲和 32KB SSBO; 网格刷新成本与 64³ 单元有关, 与粒子数无关
 - `ADDITION_BLEND*` 层无排序需求; `TRANSLUCENT` 层不做逐粒子深度排序 (与原版同级限制)
 

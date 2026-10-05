@@ -90,6 +90,7 @@ class LineEmitterInterpolator : Interpolator {
         val dz = end.z - start.z
         val distance = sqrt(dx * dx + dy * dy + dz * dz)
         if (distance > limit) {
+            // 与 getRefinedResult 一致：传送跨度过大时只保留上一点，避免拉出长尾。
             consumer.accept(end.x, end.y, end.z, 0, 1)
             return
         }
