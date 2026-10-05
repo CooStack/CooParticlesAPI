@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "cooparticlesapi:block/structure_model"
+    }
+  }
+}

@@ -1,0 +1,44 @@
+#version 430 core
+
+layout(local_size_x = 256) in;
+layout(std430, binding = 0) readonly buffer Deaths { vec4 deaths[]; };
+layout(std430, binding = 1) buffer Particles { vec4 particles[]; };
+layout(std430, binding = 2) buffer Metadata { vec4 metadata[]; };
+struct Link { ivec4 slots; vec4 offsetVelocity; };
+layout(std430, binding = 3) buffer Links { Link links[]; };
+uniform int uCount;
+uniform float uEpoch;
+uniform vec3 uOriginDelta;
+uniform mat4 uSourceTransform;
+uniform mat4 uTargetInverse;
+
+void main() {
+    uint i = gl_GlobalInvocationID.x;
+    if (i >= uint(uCount)) return;
+    Link link = links[i];
+    if (link.slots.x < 0 || link.slots.z != 0) return;
+    int sourceFlags = int(deaths[link.slots.x * 2 + 1].w);
+    if (sourceFlags == 0) return;
+    int target = link.slots.y;
+    int flags = int(particles[target * 9 + 2].w);
+    links[i].slots.z = 1;
+    if ((flags & (1 << 19)) == 0) return;
+    flags &= ~((1 << 19) | (1 << 16));
+    if ((sourceFlags & (1 << 21)) != 0) {
+        particles[target * 9 + 2].w = float(flags | (1 << 21));
+        return;
+    }
+    vec3 worldRelative = link.offsetVelocity.xyz;
+    if (link.slots.w != 0) {
+        worldRelative += (uSourceTransform * vec4(deaths[link.slots.x * 2].xyz, 1.0)).xyz + uOriginDelta;
+    }
+    vec3 position = (uTargetInverse * vec4(worldRelative, 1.0)).xyz;
+    vec3 inherited = (uSourceTransform * vec4(deaths[link.slots.x * 2 + 1].xyz, 0.0)).xyz;
+    vec3 velocity = particles[target * 9 + 2].xyz + inherited * link.offsetVelocity.w;
+    particles[target * 9].xyz = position;
+    particles[target * 9 + 1].xyz = position;
+    particles[target * 9 + 2] = vec4((uTargetInverse * vec4(velocity, 0.0)).xyz, float(flags | 1));
+    particles[target * 9 + 5].y = particles[target * 9].w;
+    particles[target * 9 + 7].w = uEpoch;
+    metadata[target * 3 + 2] = vec4(position, particles[target * 9].w);
+}

@@ -1,0 +1,21 @@
+#version 430 core
+
+layout(local_size_x = 256) in;
+layout(std430, binding = 0) readonly buffer Particles { vec4 particles[]; };
+layout(std430, binding = 1) buffer Deaths { vec4 deaths[]; };
+layout(std430, binding = 2) buffer Ended { uint ended[]; };
+uniform int uFirst;
+uniform int uCount;
+
+void main() {
+    uint index = gl_GlobalInvocationID.x;
+    if (index >= uint(uCount)) return;
+    uint slot = uint(uFirst) + index;
+    int flags = int(particles[slot * 9u + 2u].w);
+    // 已预留的后继不算死亡；快照只在本次生命终止时写一次。
+    if ((flags & (1 << 20)) == 0 || (flags & (1 | (1 << 19))) != 0) return;
+    if (deaths[slot * 2u + 1u].w != 0.0) return;
+    deaths[slot * 2u] = particles[slot * 9u];
+    deaths[slot * 2u + 1u] = vec4(particles[slot * 9u + 2u].xyz, float(flags));
+    atomicOr(ended[slot >> 5u], 1u << (slot & 31u));
+}
