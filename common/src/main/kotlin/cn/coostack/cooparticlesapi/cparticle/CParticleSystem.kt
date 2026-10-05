@@ -242,10 +242,29 @@ class CParticleSystem(
      */
     internal fun willUseGpuSimulation(): Boolean {
         if (mode != CParticleSystemMode.SIMULATED || CParticleCapabilities.forceCpuSimulation) return false
+        if (canSkipGpuDispatch()) return false
         return gpuSimulationSelected ||
             CParticleRespawnEngine.owns(this) ||
             CParticleSystemManager.shouldPreferGpuForSmallSystems() ||
             store.activeSlotCount > CParticleSystemManager.smallSystemCpuThreshold
+    }
+
+    /**
+     * 判断当前 system 是否只包含静态零运动粒子，可以完全跳过 compute dispatch。
+     * Manager 用它避免在整批都是 no-op system 时仍保存/恢复一套 GL batch 状态。
+     */
+    internal fun canSkipGpuDispatch(): Boolean =
+        gpuNoopSimulation &&
+            !CParticleRespawnEngine.owns(this) &&
+            forces.isEmpty() &&
+            forceSink.size == 0 &&
+            !transformsSimulatedParticleSpace &&
+            store.blockCollisionCount == 0 &&
+            store.activeSlotCount > 0
+
+    /** 一旦 system 曾经需要真实模拟，就不能在本生命周期内退回 no-op。 */
+    internal fun disableGpuNoopSimulation() {
+        gpuNoopSimulation = false
     }
 
     /** emitter 桥接: 上次同步力场和视觉配置的 emitter tick (避免同 tick 重复重建) */
@@ -297,6 +316,10 @@ class CParticleSystem(
 
     /** 让 SIMULATED 粒子的模拟坐标和顶点几何都经过整组矩阵；仅供可变换 emitter 使用。 */
     internal var transformsSimulatedParticleSpace = false
+        set(value) {
+            if (value) disableGpuNoopSimulation()
+            field = value
+        }
 
     /** 渲染用的前后 tick 整组变换，由 shader 按 partial tick 插值。 */
     internal val previousGroupTransform = Matrix4f()
@@ -316,6 +339,15 @@ class CParticleSystem(
     private val packedForces = FloatArray(CParticleForce.MAX_FORCES * CParticleForce.STRIDE)
     private val packedCommands = FloatArray(ForceCommand.MAX_COMMANDS * ForceCommand.STRIDE)
     private var packedCommandsNeedMetadata = false
+    /** emitter Force snapshot 未变化时复用已打包的 GPU payload，避免每个 system 每 tick 重复编码。 */
+    private var packedPayloadRevision = Int.MIN_VALUE
+    private var packedPayloadPathRevision = Int.MIN_VALUE
+    private var packedPayloadOrigin: Vec3? = null
+    private var packedPayloadLegacyCount = Int.MIN_VALUE
+    private var packedPayloadCommandCount = 0
+    private var packedPayloadNeedsMetadata = false
+    /** 仅含静态零速度粒子的 system 可跳过 GPU 位移 dispatch。 */
+    private var gpuNoopSimulation = true
     private val warnedBindingMismatches = HashSet<Pair<CParticleTextureBindingKey, CParticleTextureBindingKey?>>()
 
     internal var lastDynamicPrepareFrame = Long.MIN_VALUE
@@ -415,6 +447,13 @@ class CParticleSystem(
             rebaseIfNeeded(worldPosition)
         }
         val resolvedStoragePosition = storagePosition ?: resolveStoragePosition(worldPosition) ?: return -1
+        if (p.updateMode != CParticleUpdateMode.STATIC ||
+            p.velocity.lengthSqr() > 1e-12 ||
+            p.angularVelocity.lengthSquared() > 1e-12 ||
+            p.blockCollision
+        ) {
+            gpuNoopSimulation = false
+        }
         val randomSeed = p.randomSeed ?: CParticleGpuMath.nextAutomaticSeed()
         var block = p.light
         var sky = p.light
@@ -453,6 +492,9 @@ class CParticleSystem(
             charge = p.charge,
             mass = p.mass,
             radius = p.radius,
+            // resolver 已验证基础/蒙版 descriptor，appearance 也由本 system 的 CParticle 描述注册。
+            // 公开低层 Store 入口仍默认保留逐次校验；emitter 热路径跳过重复检查。
+            validateDescriptors = false,
         )
     }
 
@@ -710,6 +752,7 @@ class CParticleSystem(
     /** scripted: 写位置 (世界坐标); 同 tick 首次写入自动滚动 prev 实现插值 */
     fun scriptedSetPos(slot: Int, generation: Int, pos: Vec3) {
         if (!checkHandle(slot, generation)) return
+        if (mode == CParticleSystemMode.SIMULATED) disableGpuNoopSimulation()
         val relativeX = (pos.x - origin.x).toFloat()
         val relativeY = (pos.y - origin.y).toFloat()
         val relativeZ = (pos.z - origin.z).toFloat()
@@ -736,6 +779,7 @@ class CParticleSystem(
 
     fun scriptedSetColor(slot: Int, generation: Int, r: Float, g: Float, b: Float) {
         if (!checkHandle(slot, generation)) return
+        if (mode == CParticleSystemMode.SIMULATED) disableGpuNoopSimulation()
         val base = slot * CParticleStore.STRIDE + CParticleStore.OFF_COLOR
         store.data[base] = r; store.data[base + 1] = g; store.data[base + 2] = b
         store.markDirty(slot)
@@ -743,12 +787,14 @@ class CParticleSystem(
 
     fun scriptedSetAlpha(slot: Int, generation: Int, alpha: Float) {
         if (!checkHandle(slot, generation)) return
+        if (mode == CParticleSystemMode.SIMULATED) disableGpuNoopSimulation()
         store.data[slot * CParticleStore.STRIDE + CParticleStore.OFF_COLOR + 3] = alpha.coerceIn(0F, 1F)
         store.markDirty(slot)
     }
 
     fun scriptedSetSize(slot: Int, generation: Int, w: Float, h: Float) {
         if (!checkHandle(slot, generation)) return
+        if (mode == CParticleSystemMode.SIMULATED) disableGpuNoopSimulation()
         val base = slot * CParticleStore.STRIDE + CParticleStore.OFF_SIZE
         store.data[base] = w; store.data[base + 1] = h
         store.markDirty(slot)
@@ -756,26 +802,31 @@ class CParticleSystem(
 
     fun scriptedSetAge(slot: Int, generation: Int, age: Int) {
         if (!checkHandle(slot, generation)) return
+        if (mode == CParticleSystemMode.SIMULATED) disableGpuNoopSimulation()
         store.setAge(slot, age, lifecycleEpochTick(slot))
     }
 
     fun scriptedSetRotation(slot: Int, generation: Int, yaw: Float, pitch: Float, roll: Float) {
         if (!checkHandle(slot, generation)) return
+        if (mode == CParticleSystemMode.SIMULATED) disableGpuNoopSimulation()
         store.setBaseRotation(slot, pitch, yaw, roll, lifecycleEpochTick(slot))
     }
 
     fun scriptedSetRotationDirection(slot: Int, generation: Int, direction: Vector3f?) {
         if (!checkHandle(slot, generation)) return
+        if (mode == CParticleSystemMode.SIMULATED) disableGpuNoopSimulation()
         store.setRotationDirection(slot, direction, lifecycleEpochTick(slot))
     }
 
     fun scriptedSetAngularVelocity(slot: Int, generation: Int, velocity: Vector3f) {
         if (!checkHandle(slot, generation)) return
+        if (mode == CParticleSystemMode.SIMULATED) disableGpuNoopSimulation()
         store.setAngularVelocity(slot, velocity, lifecycleEpochTick(slot))
     }
 
     fun scriptedAddRoll(slot: Int, generation: Int, radians: Float) {
         if (!checkHandle(slot, generation)) return
+        if (mode == CParticleSystemMode.SIMULATED) disableGpuNoopSimulation()
         store.addRoll(slot, radians, lifecycleEpochTick(slot))
     }
 
@@ -799,6 +850,7 @@ class CParticleSystem(
 
     fun scriptedSetVelocity(slot: Int, generation: Int, velocity: Vec3) {
         if (!checkHandle(slot, generation)) return
+        if (mode == CParticleSystemMode.SIMULATED) disableGpuNoopSimulation()
         val localVelocity = if (hasIdentityGroupTransform()) {
             null
         } else {
@@ -1029,12 +1081,47 @@ class CParticleSystem(
     }
 
     private fun tickSimulated(deferGpuMemoryBarrier: Boolean) {
+        // no-op 只能覆盖从未执行过真实模拟的静态池。即使本 tick 的 Force/变换后来被清空，
+        // 旧粒子的 GPU 位置和速度也可能已经改变，不能把它们误当成静态粒子。
+        if (forces.isNotEmpty() || forceSink.size > 0 ||
+            transformsSimulatedParticleSpace || store.blockCollisionCount > 0 ||
+            CParticleRespawnEngine.owns(this)
+        ) {
+            disableGpuNoopSimulation()
+        }
+        // 纯静态零运动池无需打包 Force、查询碰撞网格或进入 compute batch；
+        // 顶点 shader 通过 epochTick 推导视觉年龄，CPU ledger 负责到期回收。
+        if (!CParticleCapabilities.forceCpuSimulation && canSkipGpuDispatch() && store.killedCount == 0) {
+            tickNoopSimulation()
+            return
+        }
         // 旧 1..9 且 selector=All 的批次保留 uniform 快路径；其数学仍等价于 Command。
-        val legacyForceCount = packLegacyForces()
-        val commandCount = if (legacyForceCount >= 0) {
-            0
+        val payloadCached = forcesSyncTick != Int.MIN_VALUE &&
+            packedPayloadRevision == forcesSyncTick &&
+            packedPayloadPathRevision == CParticlePathLibrary.layerRevision &&
+            packedPayloadOrigin == origin
+        val legacyForceCount: Int
+        val commandCount: Int
+        if (payloadCached) {
+            legacyForceCount = packedPayloadLegacyCount
+            commandCount = packedPayloadCommandCount
+            packedCommandsNeedMetadata = if (legacyForceCount >= 0) false else packedPayloadNeedsMetadata
         } else {
-            CParticlePerfProbe.measure(CParticlePerfProbe.Stage.COMMAND_PACK) { packCommands() }
+            legacyForceCount = packLegacyForces()
+            commandCount = if (legacyForceCount >= 0) {
+                packedCommandsNeedMetadata = false
+                0
+            } else {
+                CParticlePerfProbe.measure(CParticlePerfProbe.Stage.COMMAND_PACK) { packCommands() }
+            }
+            if (forcesSyncTick != Int.MIN_VALUE) {
+                packedPayloadRevision = forcesSyncTick
+                packedPayloadPathRevision = CParticlePathLibrary.layerRevision
+                packedPayloadOrigin = origin
+                packedPayloadLegacyCount = legacyForceCount
+                packedPayloadCommandCount = commandCount
+                packedPayloadNeedsMetadata = packedCommandsNeedMetadata
+            }
         }
         val simulationTransform = currentGroupTransform.takeIf {
             transformsSimulatedParticleSpace && !isIdentityTransform(it)
@@ -1054,6 +1141,13 @@ class CParticleSystem(
             metadataGpuSynchronized = false
         }
         if (useGpu) {
+            val noopSimulation = gpuNoopSimulation &&
+                !prepared && simulationTransform == null && collisionGrid == null &&
+                legacyForceCount == 0 && commandCount == 0
+            if (noopSimulation && store.killedCount == 0) {
+                tickNoopSimulation()
+                return
+            }
             // compute 必须先看到本 tick 的死亡和新生成槽位，否则 CPU age 会领先 GPU 一 tick。
             if (store.killedCount > 0) {
                 glBuffer.patchFlags(store.data, store.killedSlots, store.killedCount)
@@ -1136,6 +1230,17 @@ class CParticleSystem(
             uploadDirty()
             store.clearKilled()
         }
+    }
+
+    /** 处理 no-op 静态池的出生上传与 CPU 生命周期，不触碰 compute/Force/碰撞路径。 */
+    private fun tickNoopSimulation() {
+        if (store.spawnedCount > 0) {
+            store.clearSpawnedFlagsForNoop()
+            glBuffer.uploadSlots(store.data, store.spawnedSlots, store.spawnedCount)
+        }
+        store.tickGpuAges(tickCount)
+        store.clearSpawnedAfterGpu()
+        store.clearDirty()
     }
 
     private fun tickScripted() {
@@ -1422,6 +1527,7 @@ class CParticleSystem(
         visibleRange = 256.0
         tickCount = 0
         gpuSimulationSelected = false
+        gpuNoopSimulation = true
         warnedBindingMismatches.clear()
     }
 

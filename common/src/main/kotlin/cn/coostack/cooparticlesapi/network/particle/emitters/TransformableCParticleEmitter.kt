@@ -3,6 +3,7 @@ package cn.coostack.cooparticlesapi.network.particle.emitters
 import cn.coostack.cooparticlesapi.annotations.emitter.handle.ParticleEmittersRegistryHelper
 import cn.coostack.cooparticlesapi.cparticle.CParticleSystemManager
 import cn.coostack.cooparticlesapi.cparticle.compat.TransformableCParticleEmitterBridge
+import cn.coostack.cooparticlesapi.cparticle.CParticlePerfProbe
 import cn.coostack.cooparticlesapi.cparticle.force.CParticleForce
 import cn.coostack.cooparticlesapi.cparticle.force.CParticleForceSink
 import cn.coostack.cooparticlesapi.extend.minus
@@ -189,13 +190,13 @@ abstract class TransformableCParticleEmitter(
         }
         if (tick % max(1, delay) == 0) {
             if (enableInterpolator) {
-                val refined = emittersInterpolator.getRefinedResult()
-                val denominator = (refined.size - 1).coerceAtLeast(1).toFloat()
-                refined.forEachIndexed { index, location ->
-                    val spawnPos = location.toVector()
-                    val lerpProgress = if (refined.size == 1) 1F else index / denominator
-                    doSubtick(spawnPos, lerpProgress)
-                    spawnParticle(spawnPos, lerpProgress)
+                CParticlePerfProbe.measure(CParticlePerfProbe.Stage.EMITTER_INTERPOLATION) {
+                    emittersInterpolator.forEachRefined { x, y, z, index, count ->
+                        val spawnPos = Vec3(x, y, z)
+                        val lerpProgress = if (count <= 1) 1F else index.toFloat() / (count - 1F)
+                        doSubtick(spawnPos, lerpProgress)
+                        spawnParticle(spawnPos, lerpProgress)
+                    }
                 }
             } else {
                 spawnParticle(pos, 1F)

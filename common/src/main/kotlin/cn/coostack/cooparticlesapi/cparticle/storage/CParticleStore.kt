@@ -343,6 +343,10 @@ class CParticleStore(capacity: Int) {
 
     fun isFull(): Boolean = freeTop <= 0
 
+    /** 当前可直接写入的空槽位数量，供 emitter 批次热路由跳过重复扩容查询。 */
+    internal val availableSlotCount: Int
+        get() = freeTop
+
     /**
      * 扩大槽位数组，保留存活位、句柄世代、出生队列、已有空闲槽和 metadata。
      *
@@ -484,10 +488,13 @@ class CParticleStore(capacity: Int) {
         mass: Float = p.mass,
         radius: Float = p.radius,
         lifecycleTick: Long = epochTick.toLong() - 1L,
+        validateDescriptors: Boolean = true,
     ): Int {
-        CParticleTextureDescriptors.requireValidDescriptorId(animationId)
-        maskAnimationId?.let(CParticleTextureDescriptors::requireValidDescriptorId)
-        CParticleAppearanceDescriptors.requireValidDescriptorId(appearanceDescriptorId)
+        if (validateDescriptors) {
+            CParticleTextureDescriptors.requireValidDescriptorId(animationId)
+            maskAnimationId?.let(CParticleTextureDescriptors::requireValidDescriptorId)
+            CParticleAppearanceDescriptors.requireValidDescriptorId(appearanceDescriptorId)
+        }
         if (freeTop <= 0) return -1
         if (countsTowardGlobalLimit && !CParticleSystemManager.tryAcquireParticleSlot()) return -1
         val slot = freeStack[--freeTop]
@@ -546,7 +553,7 @@ class CParticleStore(capacity: Int) {
         data[base + OFF_MASK_ANIMATION] = (maskAnimationId ?: 0).toFloat()
         data[base + OFF_MASK_COLOR] = packRgb8(maskColorMultiplier).toFloat()
         metadata.set(slot, sourceId, sign, commandMask, metadataFlags, charge, mass, radius)
-        metadata.setBirth(slot, Vec3(rx.toDouble(), ry.toDouble(), rz.toDouble()), p.age.toDouble())
+        metadata.setBirth(slot, rx, ry, rz, p.age.toFloat())
 
         ages[slot] = p.age
         maxAges[slot] = maxAge
@@ -1066,6 +1073,21 @@ class CParticleStore(capacity: Int) {
         java.util.Arrays.fill(spawnedBits, 0L)
         java.util.Arrays.fill(newbornBits, 0L)
         spawnedCount = 0
+    }
+
+    /**
+     * 无模拟 dispatch 的静态池清除 newborn 标志。
+     *
+     * 顶点 shader 直接使用 epochTick 推导视觉年龄；这类池跳过 compute 后仍需清掉
+     * CPU/GPU 镜像中的 newborn，避免之后重新启用 Force 时旧粒子被误判为刚出生。
+     */
+    internal fun clearSpawnedFlagsForNoop(): Int {
+        for (index in 0 until spawnedCount) {
+            val slot = spawnedSlots[index]
+            val offset = slot * STRIDE + OFF_FLAGS
+            data[offset] = (data[offset].toInt() and FLAG_NEWBORN.inv()).toFloat()
+        }
+        return spawnedCount
     }
 
     internal fun isPendingSpawn(slot: Int): Boolean {

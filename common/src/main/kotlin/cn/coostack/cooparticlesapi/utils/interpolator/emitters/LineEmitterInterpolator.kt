@@ -4,8 +4,11 @@ import cn.coostack.cooparticlesapi.utils.CircularQueue
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import cn.coostack.cooparticlesapi.utils.interpolator.Interpolator
+import cn.coostack.cooparticlesapi.utils.interpolator.RefinedPointConsumer
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
+import kotlin.math.roundToInt
+import kotlin.math.sqrt
 
 /**
  * 线段插值器
@@ -66,5 +69,47 @@ class LineEmitterInterpolator : Interpolator {
             return arrayListOf(queue[1])
         }
         return Math3DUtil.fillLine(queue[0], queue[1], refinerCount)
+    }
+
+    /**
+     * 线性插值热路径：不创建中间 List/RelativeLocation，直接回调每个采样点。
+     * 点序和 [getRefinedResult] 完全一致（当前点、内部点、上一点）。
+     */
+    override fun forEachRefined(consumer: RefinedPointConsumer) {
+        if (queue.empty()) return
+        if (queue.notNullSize() == 1) {
+            val point = queue[0]
+            consumer.accept(point.x, point.y, point.z, 0, 1)
+            return
+        }
+
+        val start = queue[0]
+        val end = queue[1]
+        val dx = end.x - start.x
+        val dy = end.y - start.y
+        val dz = end.z - start.z
+        val distance = sqrt(dx * dx + dy * dy + dz * dz)
+        if (distance > limit) {
+            consumer.accept(end.x, end.y, end.z, 0, 1)
+            return
+        }
+
+        // Math3DUtil.fillLine 使用 roundToInt 后生成 count + 1 个点。
+        // count=0 时旧实现仍返回起点和终点，因此这里保留至少两个采样点。
+        val segments = (distance * refinerCount).roundToInt()
+        val safeSegments = segments.coerceAtLeast(1)
+        val count = safeSegments + 1
+        consumer.accept(start.x, start.y, start.z, 0, count)
+        for (index in 1 until safeSegments) {
+            val progress = index.toDouble() / safeSegments.toDouble()
+            consumer.accept(
+                start.x + dx * progress,
+                start.y + dy * progress,
+                start.z + dz * progress,
+                index,
+                count,
+            )
+        }
+        consumer.accept(end.x, end.y, end.z, safeSegments, count)
     }
 }

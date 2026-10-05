@@ -32,6 +32,7 @@ import cn.coostack.cooparticlesapi.network.particle.emitters.command.ParticlePre
 import cn.coostack.cooparticlesapi.network.particle.emitters.command.ParticleRespawnRequest
 import cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind.GlobalWindDirection
 import net.minecraft.client.multiplayer.ClientLevel
+import net.minecraft.client.particle.ParticleRenderType
 import net.minecraft.world.phys.Vec3
 import java.util.EnumMap
 import java.util.UUID
@@ -317,11 +318,30 @@ object CParticleEmitterBridge {
      * 可复用转换对象。DYNAMIC 粒子仍在 spawnGpu 内独立创建并交给 store 持有。
      */
     private val staticParticleScratch = HashMap<UUID, CParticle>()
+    /** 当前 genParticles 批次最后使用的渲染分组，避免连续同纹理粒子重复查找 cursor。 */
+    private val batchHotSystems = HashMap<UUID, BatchHotSystem>()
+    private val batchRenderLayers = HashMap<UUID, BatchRenderLayer>()
+    /** GL 能力在客户端上下文建立后不会随单颗粒子变化；避免百万次出生重复探测。 */
+    private var gpuRenderingValidated = false
+
+    private data class BatchHotSystem(
+        val layer: CParticleRenderLayer,
+        val binding: CParticleTextureBindingKey,
+        val maskBinding: CParticleTextureBindingKey?,
+        val system: CParticleSystem,
+    )
+
+    private data class BatchRenderLayer(
+        val renderType: ParticleRenderType,
+        val layer: CParticleRenderLayer,
+    )
 
     /** 标记一次 genParticles 结果的开始；每个渲染分组只预留一次批次数量。 */
     internal fun beginBatch(emitterId: UUID) {
         systemCursors[emitterId]?.forEach { it.reserveBatchCapacity = true }
         textureResolveCaches.getOrPut(emitterId) { EmitterTextureResolveCache() }.beginBatch()
+        batchHotSystems.remove(emitterId)
+        batchRenderLayers.remove(emitterId)
     }
 
     /** system 遍历完成后再创建后继，避免更改 Manager 正在遍历的系统集合。 */
@@ -383,15 +403,21 @@ object CParticleEmitterBridge {
         check(CParticleSystemManager.enabled) {
             "[cparticle] CParticleSystemManager.enabled=false，拒绝把 GPU 粒子回退到 CPU"
         }
-        CParticleCapabilities.detect()
-        CParticleCapabilities.requireGpuParticleRendering()
+        if (!gpuRenderingValidated) {
+            CParticleCapabilities.detect()
+            CParticleCapabilities.requireGpuParticleRendering()
+            gpuRenderingValidated = true
+        }
         val command = emitter.deathCommand
         val prepared = if (!CParticleCapabilities.forceCpuSimulation &&
             command?.acceptsGeneration(data.respawnCount) == true
         ) ParticlePreparedRespawns(command, data, pos, emitter.pos) else null
         // 容量按整条 GPU 链预留；不足时不产生残缺的后继树，也不回退普通粒子。
         val required = 1 + (prepared?.nodes?.count { it.request.data is ControlableCParticleData } ?: 0)
-        if (required > CParticleSystemManager.particleCountLimit - CParticleSystemManager.totalAlive()) return true
+        // 单粒子请求由 store 的原子额度申请统一处理；只有预提交后继树才需要提前检查整棵链。
+        if (required > 1 &&
+            required > CParticleSystemManager.particleCountLimit - CParticleSystemManager.totalAlive()
+        ) return true
         val root = spawnGpu(emitter, pos, data, capacityHint, required) ?: return true
         val (system, slot) = root
         if (prepared != null && prepared.nodes.isNotEmpty()) {
@@ -478,19 +504,35 @@ object CParticleEmitterBridge {
                 .resolve(p, pos)
         }
         if (!resolved.isValid) return null
-        if (!CParticleSystemManager.hasAvailableParticleCapacity()) return null
-        val layer = CParticleRenderLayer.fromSheetName(data.getTextureSheet().toString())
+        val renderType = data.getTextureSheet()
+        val layer = batchRenderLayers[emitter.uuid]
+            ?.takeIf { it.renderType === renderType }
+            ?.layer
+            ?: CParticleRenderLayer.fromSheetName(renderType.toString()).also {
+                batchRenderLayers[emitter.uuid] = BatchRenderLayer(renderType, it)
+            }
         val state = ensureForceState(emitter)
-        val system = findAvailableSystem(
-            emitter,
-            layer,
-            resolved.base.bindingKey,
-            resolved.mask?.bindingKey,
-            capacityHint,
-            state.snapshot,
-            requiredSlots,
-        )
-        system.setOriginIfEmpty(emitter.pos)
+        val binding = resolved.base.bindingKey
+        val maskBinding = resolved.mask?.bindingKey
+        val hot = batchHotSystems[emitter.uuid]
+        val system = if (hot != null && hot.layer == layer && hot.binding == binding &&
+            hot.maskBinding == maskBinding && hot.system.store.availableSlotCount >= requiredSlots
+        ) {
+            hot.system
+        } else {
+            findAvailableSystem(
+                emitter,
+                layer,
+                binding,
+                maskBinding,
+                capacityHint,
+                state.snapshot,
+                requiredSlots,
+            ).also {
+                batchHotSystems[emitter.uuid] = BatchHotSystem(layer, binding, maskBinding, it)
+            }
+        }
+        if (hot == null || hot.system !== system) system.setOriginIfEmpty(emitter.pos)
 
         // 新 system 在首次写入前补齐当前 tick 的共享 Force 快照。
         if (system.forcesSyncTick != state.revision) {
@@ -607,6 +649,8 @@ object CParticleEmitterBridge {
         systemCursorLookup.remove(emitter.uuid)
         textureResolveCaches.remove(emitter.uuid)
         staticParticleScratch.remove(emitter.uuid)
+        batchHotSystems.remove(emitter.uuid)
+        batchRenderLayers.remove(emitter.uuid)
         val state = forceStates.remove(emitter.uuid)
         if (cursors.isNullOrEmpty()) return
         val snapshot = state?.snapshot ?: CParticleForceSink().also { target ->
@@ -628,6 +672,8 @@ object CParticleEmitterBridge {
         systemCursorLookup.clear()
         textureResolveCaches.clear()
         staticParticleScratch.clear()
+        batchHotSystems.clear()
+        batchRenderLayers.clear()
         forceStates.clear()
     }
 
@@ -928,6 +974,7 @@ object CParticleEmitterBridge {
         snapshot: CParticleForceSink,
         tick: Int,
     ) {
+        if (snapshot.size > 0) system.disableGpuNoopSimulation()
         system.forces.clear()
         system.forceSink.replaceWith(snapshot)
         system.forcesSyncTick = tick

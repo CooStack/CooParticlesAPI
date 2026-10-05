@@ -239,6 +239,11 @@ system.colorCurve = colorShift
   CPU SoA 回退。硬件不支持 compute 或显式强制回退时，才会使用 ForkJoin 分块与整段上传。
   多 emitter 的固定成本仍来自每 system 一次 dispatch；后续应通过共享 arena/批 dispatch 进一步消除。
 - 热路径零分配: 力场打包数组 / 上传 scratch / SoA 全部复用
+- emitter 的 Force snapshot 带有 revision；system 在 Force、原点或路径图层版本未变化时复用已打包的
+  legacy/Command payload，不会每 tick 为每个 system 重复编码相同力场。
+- 纯 STATIC、零速度、无角速度、无碰撞、无 Force/Command 且无变换的 system 只依赖
+  `epochTick` 和 CPU expiration ledger，可跳过 compute dispatch；同一 tick 若全部 system 都是此类
+  no-op，也不会开启跨 system 的 GL batch 状态保存。
 - 方块碰撞: 每份共享网格使用 32KB CPU 位图、32KB 可复用上传缓冲和 32KB SSBO; 网格刷新成本与 64³ 单元有关, 与粒子数无关
 - `ADDITION_BLEND*` 层无排序需求; `TRANSLUCENT` 层不做逐粒子深度排序 (与原版同级限制)
 

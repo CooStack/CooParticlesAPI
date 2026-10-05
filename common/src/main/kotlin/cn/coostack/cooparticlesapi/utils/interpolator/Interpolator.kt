@@ -12,6 +12,20 @@ import org.joml.Vector3f
  */
 interface Interpolator {
     /**
+     * 直接遍历插值结果，避免调用方为每个采样点创建结果列表。
+     *
+     * 默认实现保持旧自定义插值器的兼容性；线性发射器会覆盖此方法，直接用标量
+     * 公式回调坐标。回调参数为 x、y、z、当前索引和总点数。
+     */
+    fun forEachRefined(consumer: RefinedPointConsumer) {
+        val result = getRefinedResult()
+        val count = result.size
+        result.forEachIndexed { index, point ->
+            consumer.accept(point.x, point.y, point.z, index, count)
+        }
+    }
+
+    /**
      * 细分程度
      */
     val refinerCount: Double
@@ -40,4 +54,9 @@ interface Interpolator {
      */
     fun getRefinedResult(): List<RelativeLocation>
 
+}
+
+/** 插值采样点回调；坐标使用 Double 以保持旧插值器的精度语义。 */
+fun interface RefinedPointConsumer {
+    fun accept(x: Double, y: Double, z: Double, index: Int, count: Int)
 }

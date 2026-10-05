@@ -10,8 +10,8 @@ import java.util.concurrent.atomic.AtomicLong
  * 用于在真实客户端上区分到底是数组分配、批量生成打包、首次元数据上传、GPU 分配还是扩容复制。
  *
  * ## 成本
- * 每个阶段只做两次 `System.nanoTime()` 与一次 `AtomicLong` 累加。默认开启，因为计时成本
- * 相对这些阶段的真实工作量可以忽略；需要极限压测时可以关闭 [enabled]。
+ * 每个阶段会做两次 `System.nanoTime()` 与计数累加。粒子出生阶段可能每 tick 调用数十万次，
+ * 因此默认关闭；需要定位创建/上传热点时，先显式设置 [enabled] 为 `true`，采样完成后再关闭。
  *
  * ## 用法
  * ```kotlin
@@ -55,11 +55,14 @@ object CParticlePerfProbe {
 
         /** 路径几何同步与上传。 */
         PATH_SYNC("path_sync"),
+
+        /** 发射器路径插值与采样点遍历。 */
+        EMITTER_INTERPOLATION("emitter_interpolation"),
     }
 
-    /** 是否收集计时；关闭后 [measure] 只执行动作，不产生任何计时开销。 */
+    /** 是否收集计时；关闭后 [measure] 只执行动作，不产生计时调用。 */
     @Volatile
-    var enabled: Boolean = true
+    var enabled: Boolean = false
 
     private val nanos = LongArray(Stage.entries.size)
     private val counts = LongArray(Stage.entries.size)

@@ -66,7 +66,7 @@ class CParticleMetadataStore(capacity: Int) {
         data[base + PHYSICAL_MASS] = if (mass.isFinite() && mass > 0F) mass else 1F
         data[base + PHYSICAL_RADIUS] = if (radius.isFinite() && radius >= 0F) radius else 0F
         data[base + PHYSICAL_RESERVED] = 0F
-        data.fill(0F, base + BIRTH_POSITION, base + STRIDE)
+        // 出生位置和年龄由紧随其后的 setBirth 一次性完整覆盖。
     }
 
     /**
@@ -78,12 +78,17 @@ class CParticleMetadataStore(capacity: Int) {
      * @param age 出生时的已有年龄（tick）
      */
     internal fun setBirth(slot: Int, position: Vec3, age: Double) {
+        setBirth(slot, position.x.toFloat(), position.y.toFloat(), position.z.toFloat(), age.toFloat())
+    }
+
+    /** 无临时 Vec3 的出生写入入口，供 GPU emitter 热路径使用。 */
+    internal fun setBirth(slot: Int, x: Float, y: Float, z: Float, age: Float) {
         require(slot in 0 until capacity)
         val base = slot * STRIDE
-        data[base + BIRTH_POSITION] = position.x.toFloat()
-        data[base + BIRTH_POSITION + 1] = position.y.toFloat()
-        data[base + BIRTH_POSITION + 2] = position.z.toFloat()
-        data[base + BIRTH_AGE] = age.toFloat()
+        data[base + BIRTH_POSITION] = x
+        data[base + BIRTH_POSITION + 1] = y
+        data[base + BIRTH_POSITION + 2] = z
+        data[base + BIRTH_AGE] = age
     }
 
     /** 读取逐粒子的不可变出生参考，用于 CPU 路径求值。 */

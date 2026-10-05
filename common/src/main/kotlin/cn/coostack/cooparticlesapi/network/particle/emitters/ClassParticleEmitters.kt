@@ -3,6 +3,7 @@ package cn.coostack.cooparticlesapi.network.particle.emitters
 import cn.coostack.cooparticlesapi.annotations.emitter.handle.ParticleEmittersRegistryHelper
 import cn.coostack.cooparticlesapi.cparticle.CParticleSystemManager
 import cn.coostack.cooparticlesapi.cparticle.compat.CParticleEmitterBridge
+import cn.coostack.cooparticlesapi.cparticle.CParticlePerfProbe
 import cn.coostack.cooparticlesapi.cparticle.force.CParticleForce
 import cn.coostack.cooparticlesapi.cparticle.force.CParticleForceSink
 import cn.coostack.cooparticlesapi.extend.asVec3
@@ -270,13 +271,13 @@ abstract class ClassParticleEmitters(
             // 生成新粒子
             // 进行线性插值
             if (enableInterpolator) {
-                val res = emittersInterpolator.getRefinedResult()
-                val count = res.size
-                res.forEachIndexed { index, it ->
-                    val pos = it.toVector()
-                    val lerpProgress = index / (count - 1F)
-                    doSubtick(pos, lerpProgress) // 用于设置其他插值
-                    spawnParticle(pos, lerpProgress)
+                CParticlePerfProbe.measure(CParticlePerfProbe.Stage.EMITTER_INTERPOLATION) {
+                    emittersInterpolator.forEachRefined { x, y, z, index, count ->
+                        val pos = Vec3(x, y, z)
+                        val lerpProgress = if (count <= 1) 1F else index.toFloat() / (count - 1F)
+                        doSubtick(pos, lerpProgress) // 用于设置其他插值
+                        spawnParticle(pos, lerpProgress)
+                    }
                 }
             } else {
                 spawnParticle(pos, 1F)
