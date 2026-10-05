@@ -859,11 +859,14 @@ object CParticleSystemManager {
             val toRemove = ArrayList<ManagedCParticleSystemKey>(0)
             // 只有本 tick 至少有一个 system 确实会走 GPU，才读取并维护跨 system 的 GL 状态。
             // 全是阈值以内的小池时，批次本身也会成为额外的固定开销。
-            val aggregateSimulatedParticles = systems.values.asSequence()
-                .filter { it.mode == CParticleSystemMode.SIMULATED }
-                .sumOf { it.store.activeSlotCount }
-            preferGpuForSmallSystems =
+            preferGpuForSmallSystems = if (smallSystemAggregateGpuThreshold > 0) {
+                val aggregateSimulatedParticles = systems.values.asSequence()
+                    .filter { it.mode == CParticleSystemMode.SIMULATED }
+                    .sumOf { it.store.activeSlotCount }
                 aggregateSimulatedParticles >= smallSystemAggregateGpuThreshold
+            } else {
+                false
+            }
             val gpuBatch = systems.values.any { it.willUseGpuSimulation() }
             if (gpuBatch) CParticleGpuSimulator.beginBatch()
             try {
