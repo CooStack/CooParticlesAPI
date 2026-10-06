@@ -58,6 +58,9 @@ object CParticlePerfProbe {
 
         /** 发射器路径插值与采样点遍历。 */
         EMITTER_INTERPOLATION("emitter_interpolation"),
+
+        /** GPU compute dispatch 提交；只计 CPU 侧提交调用，不代表 GPU 执行耗时。 */
+        GPU_DISPATCH_SUBMIT("gpu_dispatch_submit"),
     }
 
     /** 是否收集计时；关闭后 [measure] 只执行动作，不产生计时调用。 */

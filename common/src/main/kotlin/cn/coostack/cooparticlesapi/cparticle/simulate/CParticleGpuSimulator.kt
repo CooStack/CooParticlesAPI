@@ -2,6 +2,7 @@ package cn.coostack.cooparticlesapi.cparticle.simulate
 
 import cn.coostack.cooparticlesapi.cparticle.CParticleSystem
 import cn.coostack.cooparticlesapi.cparticle.CParticleCapabilities
+import cn.coostack.cooparticlesapi.cparticle.CParticlePerfProbe
 import cn.coostack.cooparticlesapi.cparticle.collision.CParticleBlockCollisionGrid
 import cn.coostack.cooparticlesapi.cparticle.force.CParticleForceResourceTable
 import cn.coostack.cooparticlesapi.cparticle.force.CParticleForce
@@ -90,40 +91,111 @@ object CParticleGpuSimulator {
      * program 切换或批次结束时立即清空，不改变普通 shader API 的外部语义。
      */
     private class BatchUniformState {
-        private val ints = HashMap<String, Int>()
-        private val floats = HashMap<String, Float>()
-        private val vectors = HashMap<String, FloatArray>()
-        private val arrays = HashMap<String, FloatArray>()
+        private var intMask = 0
+        private var firstSlot = 0
+        private var count = 0
+        private var forceCount = 0
+        private var commandCount = 0
+        private var metadataEnabled = 0
+        private var pathLayerEnabled = 0
+        private var pathEndCapacity = 0
+        private var transformSimulation = 0
+        private var collisionEnabled = 0
+        private var collisionSize = 0
+        private var speedLimit = 0F
+        private var deltaTicks = 0F
+        private var floatMask = 0
+        private val vectorValues = FloatArray(6)
+        private var vectorMask = 0
+        private var forceArray = FloatArray(0)
 
         fun clear() {
-            ints.clear()
-            floats.clear()
-            vectors.clear()
-            arrays.clear()
+            intMask = 0
+            vectorMask = 0
+            floatMask = 0
+            forceArray = FloatArray(0)
         }
 
         fun setInt(program: CooComputeShaderProgram, key: String, value: Int) {
-            if (ints[key] == value) return
-            ints[key] = value
+            val bit = when (key) {
+                "uFirstSlot" -> 1
+                "uCount" -> 2
+                "uForceCount" -> 4
+                "uCommandCount" -> 8
+                "uMetadataEnabled" -> 16
+                "uPathLayerEnabled" -> 32
+                "uPathEndCapacity" -> 64
+                "uTransformSimulation" -> 128
+                "uCollisionEnabled" -> 256
+                "uCollisionSize" -> 512
+                else -> 0
+            }
+            val previous = when (key) {
+                "uFirstSlot" -> firstSlot
+                "uCount" -> count
+                "uForceCount" -> forceCount
+                "uCommandCount" -> commandCount
+                "uMetadataEnabled" -> metadataEnabled
+                "uPathLayerEnabled" -> pathLayerEnabled
+                "uPathEndCapacity" -> pathEndCapacity
+                "uTransformSimulation" -> transformSimulation
+                "uCollisionEnabled" -> collisionEnabled
+                "uCollisionSize" -> collisionSize
+                else -> Int.MIN_VALUE
+            }
+            if (bit != 0 && intMask and bit != 0 && previous == value) return
+            when (key) {
+                "uFirstSlot" -> firstSlot = value
+                "uCount" -> count = value
+                "uForceCount" -> forceCount = value
+                "uCommandCount" -> commandCount = value
+                "uMetadataEnabled" -> metadataEnabled = value
+                "uPathLayerEnabled" -> pathLayerEnabled = value
+                "uPathEndCapacity" -> pathEndCapacity = value
+                "uTransformSimulation" -> transformSimulation = value
+                "uCollisionEnabled" -> collisionEnabled = value
+                "uCollisionSize" -> collisionSize = value
+            }
+            if (bit != 0) intMask = intMask or bit
             program.setInt(key, value)
         }
 
         fun setFloat(program: CooComputeShaderProgram, key: String, value: Float) {
-            if (floats[key] == value) return
-            floats[key] = value
+            val bit = when (key) {
+                "uSpeedLimit" -> 1
+                "uDeltaTicks" -> 2
+                else -> 0
+            }
+            val previous = when (key) {
+                "uSpeedLimit" -> speedLimit
+                "uDeltaTicks" -> deltaTicks
+                else -> Float.NaN
+            }
+            if (bit != 0 && floatMask and bit != 0 && previous == value) return
+            when (key) {
+                "uSpeedLimit" -> speedLimit = value
+                "uDeltaTicks" -> deltaTicks = value
+            }
+            if (bit != 0) floatMask = floatMask or bit
             program.setFloat(key, value)
         }
 
         fun setFloat3(program: CooComputeShaderProgram, key: String, value: Vector3f) {
-            val previous = vectors[key]
-            if (previous != null &&
-                previous[0] == value.x &&
-                previous[1] == value.y &&
-                previous[2] == value.z
-            ) {
-                return
+            val offset = when (key) {
+                "uOrigin" -> 0
+                "uCollisionOffset" -> 3
+                else -> -1
             }
-            vectors[key] = floatArrayOf(value.x, value.y, value.z)
+            if (offset >= 0 && vectorMask and (1 shl (offset / 3)) != 0 &&
+                vectorValues[offset] == value.x && vectorValues[offset + 1] == value.y &&
+                vectorValues[offset + 2] == value.z
+            ) return
+            if (offset >= 0) {
+                vectorValues[offset] = value.x
+                vectorValues[offset + 1] = value.y
+                vectorValues[offset + 2] = value.z
+                vectorMask = vectorMask or (1 shl (offset / 3))
+            }
             program.setFloat3(key, value)
         }
 
@@ -133,16 +205,15 @@ object CParticleGpuSimulator {
             value: FloatArray,
             floatCount: Int,
         ) {
-            val previous = arrays[key]
-            if (previous != null &&
-                previous.size == floatCount &&
-                valuesMatch(previous, value, floatCount)
-            ) {
+            if (key == "uForces" && forceArray.size == floatCount && valuesMatch(forceArray, value, floatCount)) {
                 return
             }
-            arrays[key] = value.copyOf(floatCount)
+            if (key == "uForces") {
+                if (forceArray.size != floatCount) forceArray = FloatArray(floatCount)
+                value.copyInto(forceArray, 0, 0, floatCount)
+            }
             if (floatCount > 0) {
-                program.setFloat4Array(key, arrays[key]!!)
+                program.setFloat4Array(key, if (key == "uForces") forceArray else value.copyOf(floatCount))
             }
         }
 
@@ -370,9 +441,15 @@ object CParticleGpuSimulator {
         val compute = checkNotNull(ensureProgram(useLegacy)) {
             "[cparticle] ${if (useLegacy) "legacy Force" else "Force Command"} GPU compute program 不可用"
         }
-        check(compute.program != 0 && (!batchActive || batchValidatedPrograms.add(compute.program)).let {
-            it || glIsProgram(compute.program)
-        }) {
+        // glIsProgram 是同步的驱动查询。批次内同一 program 会被数百个 system 复用，
+        // 只能在首次遇到该句柄时验证一次；旧写法会在首次之后对每个 system 重复查询，
+        // 粒子计算本身很少时反而会把 CPU 卡在这里。
+        val validProgram = compute.program != 0 && if (batchActive) {
+            if (batchValidatedPrograms.add(compute.program)) glIsProgram(compute.program) else true
+        } else {
+            glIsProgram(compute.program)
+        }
+        check(compute.program != 0 && validProgram) {
             "[cparticle] ${if (useLegacy) "legacy Force" else "Force Command"} GPU compute program 无效，拒绝回退 CPU"
         }
 
@@ -482,7 +559,9 @@ object CParticleGpuSimulator {
                 if (!useLegacy && usesPathConstraint) {
                     system.pathEndBuffer.bindShaderStorage(PATH_END_BUFFER_BINDING)
                 }
-                GL43.glDispatchCompute((activeSlotCount + 255) / 256, 1, 1)
+                CParticlePerfProbe.measure(CParticlePerfProbe.Stage.GPU_DISPATCH_SUBMIT) {
+                    GL43.glDispatchCompute((activeSlotCount + 255) / 256, 1, 1)
+                }
                 dispatched = true
             } finally {
                 try {

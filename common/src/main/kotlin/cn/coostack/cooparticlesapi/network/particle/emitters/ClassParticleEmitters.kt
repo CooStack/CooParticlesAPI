@@ -298,21 +298,27 @@ abstract class ClassParticleEmitters(
         }
         val world = world as ClientLevel
         // 生成粒子样式
-        var spawnedCount = 0F
         val particles = genParticles(lerpProgress)
         val total = particles.size
         val cparticleBatchSize = particles.count { it.first is ControlableCParticleData }
-        CParticleEmitterBridge.beginBatch(uuid)
-        particles.forEach {
-            spawnedCount++
-            spawnParticle(
-                world,
-                pos.add(it.second.toVector()),
-                it.first,
-                spawnedCount / total,
-                lerpProgress,
-                cparticleBatchSize,
-            )
+        val player = Minecraft.getInstance().player ?: return
+        val playerPosition = player.position()
+        CParticleEmitterBridge.beginBatch(this, cparticleBatchSize)
+        try {
+            particles.forEachIndexed { index, particle ->
+                val relative = particle.second
+                spawnParticle(
+                    world,
+                    pos.add(relative.x, relative.y, relative.z),
+                    particle.first,
+                    (index + 1F) / total,
+                    lerpProgress,
+                    cparticleBatchSize,
+                    playerPosition,
+                )
+            }
+        } finally {
+            CParticleEmitterBridge.endBatch()
         }
     }
 
@@ -384,11 +390,12 @@ abstract class ClassParticleEmitters(
         particleLerpProgress: Float,
         posLerpProgress: Float,
         cparticleBatchSize: Int,
+        playerPosition: Vec3? = null,
     ) {
 
-        val player = Minecraft.getInstance().player ?: return
+        val viewerPosition = playerPosition ?: Minecraft.getInstance().player?.position() ?: return
         val visibleRange = data.visibleRange.toDouble()
-        if (visibleRange < 0.0 || player.position().distanceToSqr(pos) > visibleRange * visibleRange) {
+        if (visibleRange < 0.0 || viewerPosition.distanceToSqr(pos) > visibleRange * visibleRange) {
             return
         }
         // cparticle GPU 路径: 数据直接进 GPU 粒子系统, 跳过 controler/事件/碰撞

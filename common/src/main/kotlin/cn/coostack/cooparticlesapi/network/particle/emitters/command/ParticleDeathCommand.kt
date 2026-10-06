@@ -28,6 +28,15 @@ class ParticleDeathCommand(
     val maxPreparedParticles: Int = 4096,
     private val action: ParticleDeathContext.() -> List<ParticleRespawnRequest>,
 ) {
+    /**
+     * GPU 预计算时是否保证只读取 `context.data`，不修改父粒子配置。
+     *
+     * 默认关闭以保留旧行为：预计算会给 action 一个独立父数据副本。只读的 GPU
+     * death command 可以在构造后将其设为 `true`，避免每个根粒子为父数据分配 clone；
+     * CPU 死亡路径始终继续使用独立快照。
+     */
+    var gpuContextDataReadOnly: Boolean = false
+
     init {
         require(maxRespawns >= 0) { "maxRespawns must be non-negative" }
         require(maxPreparedParticles > 0) { "maxPreparedParticles must be positive" }
@@ -52,6 +61,15 @@ class ParticleDeathCommand(
         val requests = action(context)
         if (context.preparingGpu) require(requests.size <= maxPreparedParticles) {
             "GPU respawn requests exceed maxPreparedParticles=$maxPreparedParticles"
+        }
+        // respawn() 已经为每个请求创建了独立 child。GPU 预计算不需要再为这些
+        // owned request 构造 request.copy；直接复用 action 返回的列表可避免每粒子
+        // 后继链产生一组短命 Pair/Request 对象。手工构造的 request 仍走旧 clone 保护。
+        if (context.preparingGpu && requests.all(ParticleRespawnRequest::ownsData)) {
+            requests.forEach { request ->
+                request.data.respawnCount = context.respawnCount + 1
+            }
+            return requests
         }
         return requests.map { request ->
             // respawn() 已经返回独立 clone；GPU 出生预计算直接复用它，避免每颗根粒子

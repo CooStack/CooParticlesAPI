@@ -298,6 +298,11 @@ open class ControlableParticleData : SerializableData {
     // 脑瘫东西设置了客户端专属
     // 粒子渲染方式 只生效一次
     private var textureSheet: String = "PARTICLE_SHEET_TRANSLUCENT"
+    /** 同一 data 在一个批次内通常反复查询渲染层，缓存成功解析结果避免字符串哈希查表。 */
+    @Transient
+    private var cachedTextureSheetName: String? = null
+    @Transient
+    private var cachedTextureSheetType: ParticleRenderType? = null
 
     /**
      * 粒子移动速度
@@ -342,7 +347,13 @@ open class ControlableParticleData : SerializableData {
     }
 
     fun getTextureSheet(): ParticleRenderType {
-        return textureSheetFromString(textureSheet) ?: let {
+        if (cachedTextureSheetName == textureSheet) {
+            cachedTextureSheetType?.let { return it }
+        }
+        return textureSheetFromString(textureSheet)?.also {
+            cachedTextureSheetName = textureSheet
+            cachedTextureSheetType = it
+        } ?: let {
             CooParticlesConstants.logger.error("can not find textureSheet $textureSheet you need use ControlableParticleData.registerRenderType() to register mapper")
             ParticleRenderType.PARTICLE_SHEET_OPAQUE
         }
@@ -358,10 +369,14 @@ open class ControlableParticleData : SerializableData {
      */
     fun setTextureSheet(value: String) {
         this.textureSheet = value
+        cachedTextureSheetName = null
+        cachedTextureSheetType = null
     }
 
     fun setTextureSheet(value: TextureSheetsEnum){
         this.textureSheet = value.name
+        cachedTextureSheetName = null
+        cachedTextureSheetType = null
     }
 
     /**
@@ -374,6 +389,8 @@ open class ControlableParticleData : SerializableData {
      */
     fun setTextureSheet(value: ParticleRenderType) {
         this.textureSheet = value.toString()
+        cachedTextureSheetName = null
+        cachedTextureSheetType = null
     }
 
     override fun getCodec(): StreamCodec<RegistryFriendlyByteBuf, out ControlableParticleData> {

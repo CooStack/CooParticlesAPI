@@ -432,6 +432,7 @@ class CParticleSystem(
         p: CParticle,
         resolved: CParticleResolvedTextures,
         storagePosition: Vec3? = null,
+        textureGeneration: Int = CParticleTextureResolver.generation,
     ): Int {
         if (released || !resolved.isValid) return -1
         if (resolved.base.bindingKey != textureBindingKey ||
@@ -479,7 +480,7 @@ class CParticleSystem(
             colorMultiplier = resolved.base.colorMultiplier,
             randomQuarterUv = resolved.randomBaseQuarterUv,
             textureBindingKey = textureBindingKey,
-            textureGeneration = CParticleTextureResolver.generation,
+            textureGeneration = textureGeneration,
             maskAnimationId = resolved.mask?.let { it.animationId ?: it.descriptorId },
             randomMaskQuarterUv = resolved.randomMaskQuarterUv,
             maskTextureBindingKey = maskTextureBindingKey,

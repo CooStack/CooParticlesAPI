@@ -19,29 +19,58 @@ internal class ParticlePreparedRespawns(
 ) {
     class Node(val parent: Int, val request: ParticleRespawnRequest, val referencePosition: Vec3)
 
-    val nodes = ArrayList<Node>()
+    val nodes: List<Node>
+    private var preparedNodeCount = 0
+    /** 预留容量时直接使用，避免每个根粒子再次遍历 nodes 做类型统计。 */
+    var gpuNodeCount: Int = 0
+        private set
 
     init {
-        fun append(parent: Int, source: ControlableParticleData, reference: Vec3) {
-            if (!command.acceptsGeneration(source.respawnCount)) return
+        fun append(parent: Int, source: ControlableParticleData, reference: Vec3): List<Node> {
+            if (!command.acceptsGeneration(source.respawnCount)) return emptyList()
+            val contextData = if (command.gpuContextDataReadOnly) {
+                source
+            } else {
+                source.clone().apply { respawnCount = source.respawnCount }
+            }
             val requests = command.createParticles(ParticleDeathContext(
-                source.clone().apply { respawnCount = source.respawnCount }, reference, source.velocity,
+                contextData, reference, source.velocity,
                 source.age, RemoveReason.LIFECYCLE, emitterPosition, source.respawnCount, preparingGpu = true,
             ))
-            require(requests.size <= command.maxPreparedParticles - nodes.size) {
+            require(requests.size <= command.maxPreparedParticles - preparedNodeCount) {
                 "GPU respawn tree exceeds maxPreparedParticles=${command.maxPreparedParticles}"
             }
+            if (command.maxRespawns == 1 && parent < 0 && requests.size == 1) {
+                val request = requests[0]
+                val birthReference = if (request.relativeToDeath) reference + request.position else request.position
+                if (request.data is ControlableCParticleData) gpuNodeCount++
+                preparedNodeCount++
+                return listOf(Node(parent, request, birthReference))
+            }
+            val added = ArrayList<Node>(requests.size)
             for (request in requests) {
                 val birthReference = if (request.relativeToDeath) reference + request.position else request.position
-                nodes.add(Node(parent, request, birthReference))
+                added.add(Node(parent, request, birthReference))
+                preparedNodeCount++
+                if (request.data is ControlableCParticleData) gpuNodeCount++
             }
+            return added
         }
-        append(-1, data, position)
-        var index = 0
-        while (index < nodes.size) {
-            val node = nodes[index]
-            if (node.request.data is ControlableCParticleData) append(index, node.request.data, node.referencePosition)
-            index++
+        val first = append(-1, data, position)
+        if (command.maxRespawns == 1 && first.size == 1) {
+            nodes = first
+        } else {
+            val expanded = ArrayList<Node>(first.size)
+            expanded.addAll(first)
+            var index = 0
+            while (index < expanded.size) {
+                val node = expanded[index]
+                if (node.request.data is ControlableCParticleData) {
+                    expanded.addAll(append(index, node.request.data, node.referencePosition))
+                }
+                index++
+            }
+            nodes = expanded
         }
     }
 }

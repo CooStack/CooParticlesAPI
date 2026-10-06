@@ -182,10 +182,16 @@ private class EmitterTextureResolveCache {
     private var generation = Int.MIN_VALUE
     private val values =
         HashMap<CParticleTextureSource, HashMap<CParticleTextureSource?, CParticleResolvedTextures>>()
+    private var hotBase: CParticleTextureSource? = null
+    private var hotMask: CParticleTextureSource? = null
+    private var hotValue: CParticleResolvedTextures? = null
 
     fun beginBatch() {
         generation = CParticleTextureResolver.generation
         values.clear()
+        hotBase = null
+        hotMask = null
+        hotValue = null
     }
 
     fun resolve(
@@ -196,14 +202,21 @@ private class EmitterTextureResolveCache {
         if (generation != currentGeneration) {
             generation = currentGeneration
             values.clear()
+            hotBase = null
+            hotMask = null
+            hotValue = null
         }
         val base = particle.effectiveTextureSource()
         val mask = particle.textureSource
         if (base is CParticleTextureSource.Block || mask is CParticleTextureSource.Block) {
             return particle.resolveTextures(position)
         }
+        if (base === hotBase && mask === hotMask) hotValue?.let { return it }
         values[base]?.get(mask)?.let { return it }
         return particle.resolveTextures(position).also {
+            hotBase = base
+            hotMask = mask
+            hotValue = it
             values.getOrPut(base) { HashMap(1) }[mask] = it
         }
     }
@@ -313,14 +326,23 @@ object CParticleEmitterBridge {
     private val systemCursorLookup = HashMap<UUID, EmitterSystemCursorLookup>()
     private val textureResolveCaches = HashMap<UUID, EmitterTextureResolveCache>()
     private val forceStates = HashMap<UUID, EmitterForceState>()
-    /**
-     * STATIC GPU 粒子在写入 SoA 后不会再读取描述对象，因此每个 emitter 只需一个
-     * 可复用转换对象。DYNAMIC 粒子仍在 spawnGpu 内独立创建并交给 store 持有。
-     */
-    private val staticParticleScratch = HashMap<UUID, CParticle>()
+    /** STATIC GPU 粒子写入 SoA 后不会再读取描述对象，客户端渲染线程可共用一个 scratch。 */
+    private val staticParticleScratch = CParticle()
+    /** 连续出生调用通常属于同一 emitter/tick，绕过 forceStates 的 UUID 哈希查询。 */
+    private var hotForceEmitter: UUID? = null
+    private var hotForceTick = Int.MIN_VALUE
+    private var hotForceState: EmitterForceState? = null
+    private var batchReservedSlots = 0
     /** 当前 genParticles 批次最后使用的渲染分组，避免连续同纹理粒子重复查找 cursor。 */
     private val batchHotSystems = HashMap<UUID, BatchHotSystem>()
     private val batchRenderLayers = HashMap<UUID, BatchRenderLayer>()
+    /** 当前批次的直接引用；标准 emitter 出生路径不再为每颗粒子查询 UUID 哈希表。 */
+    private var activeBatchEmitter: UUID? = null
+    private var activeBatchEmitterObject: ClassParticleEmitters? = null
+    private var activeTextureResolveCache: EmitterTextureResolveCache? = null
+    private var activeBatchForceState: EmitterForceState? = null
+    private var activeBatchHotSystem: BatchHotSystem? = null
+    private var activeBatchRenderLayer: BatchRenderLayer? = null
     /** GL 能力在客户端上下文建立后不会随单颗粒子变化；避免百万次出生重复探测。 */
     private var gpuRenderingValidated = false
 
@@ -337,11 +359,57 @@ object CParticleEmitterBridge {
     )
 
     /** 标记一次 genParticles 结果的开始；每个渲染分组只预留一次批次数量。 */
-    internal fun beginBatch(emitterId: UUID) {
+    internal fun beginBatch(emitterId: UUID, expectedCParticles: Int = 0) {
+        if (batchReservedSlots != 0) {
+            releaseRemainingBatchReservation()
+            batchReservedSlots = 0
+        }
+        batchReservedSlots = CParticleSystemManager.reserveParticleSlots(expectedCParticles)
         systemCursors[emitterId]?.forEach { it.reserveBatchCapacity = true }
-        textureResolveCaches.getOrPut(emitterId) { EmitterTextureResolveCache() }.beginBatch()
+        activeBatchEmitter = emitterId
+        activeBatchEmitterObject = null
+        activeBatchForceState = null
+        activeTextureResolveCache = textureResolveCaches
+            .getOrPut(emitterId) { EmitterTextureResolveCache() }
+            .also { it.beginBatch() }
+        activeBatchHotSystem = null
+        activeBatchRenderLayer = null
         batchHotSystems.remove(emitterId)
         batchRenderLayers.remove(emitterId)
+        if (hotForceEmitter != emitterId) {
+            hotForceEmitter = emitterId
+            hotForceTick = Int.MIN_VALUE
+            hotForceState = null
+        }
+    }
+
+    /** 普通 emitter 的批次入口，同时缓存本 tick 的 Force 快照。 */
+    internal fun beginBatch(emitter: ClassParticleEmitters, expectedCParticles: Int = 0) {
+        beginBatch(emitter.uuid, expectedCParticles)
+        activeBatchEmitterObject = emitter
+        activeBatchForceState = ensureForceState(emitter)
+    }
+
+    /** 结束 emitter 批次并归还未消费的全局额度预留。 */
+    internal fun endBatch() {
+        if (batchReservedSlots != 0) {
+            releaseRemainingBatchReservation()
+            batchReservedSlots = 0
+        }
+        activeBatchEmitter = null
+        activeBatchEmitterObject = null
+        activeTextureResolveCache = null
+        activeBatchForceState = null
+        activeBatchHotSystem = null
+        activeBatchRenderLayer = null
+    }
+
+    /** Store 会逐粒子消费 manager 侧额度，bridge token 只记录本批次的上限。 */
+    private fun releaseRemainingBatchReservation() {
+        val remaining = batchReservedSlots.coerceAtMost(
+            CParticleSystemManager.reservedParticleSlotCount(),
+        )
+        if (remaining > 0) CParticleSystemManager.releaseReservedParticleSlots(remaining)
     }
 
     /** system 遍历完成后再创建后继，避免更改 Manager 正在遍历的系统集合。 */
@@ -412,21 +480,57 @@ object CParticleEmitterBridge {
         val prepared = if (!CParticleCapabilities.forceCpuSimulation &&
             command?.acceptsGeneration(data.respawnCount) == true
         ) ParticlePreparedRespawns(command, data, pos, emitter.pos) else null
+        // 根粒子与本次后继树属于同一个 emitter/tick；Force 快照和碰撞范围无需逐粒子重算。
+        val forceState = if (activeBatchEmitterObject === emitter) {
+            activeBatchForceState ?: ensureForceState(emitter)
+        } else {
+            ensureForceState(emitter)
+        }
+        val textureGeneration = CParticleTextureResolver.generation
         // 容量按整条 GPU 链预留；不足时不产生残缺的后继树，也不回退普通粒子。
-        val required = 1 + (prepared?.nodes?.count { it.request.data is ControlableCParticleData } ?: 0)
+        val required = 1 + (prepared?.gpuNodeCount ?: 0)
         // 单粒子请求由 store 的原子额度申请统一处理；只有预提交后继树才需要提前检查整棵链。
         if (required > 1 &&
             required > CParticleSystemManager.particleCountLimit - CParticleSystemManager.totalAlive()
         ) return true
-        val root = spawnGpu(emitter, pos, data, capacityHint, required) ?: return true
+        val root = spawnGpu(
+            emitter, pos, data, capacityHint, required, forceState, textureGeneration,
+        ) ?: return true
         val (system, slot) = root
         if (prepared != null && prepared.nodes.isNotEmpty()) {
+            // 最常见的拖尾链是“根 -> 一个 GPU 后继”。避免为每颗根粒子创建
+            // allocated/gpuNodes/cpuChildren 三组临时容器；复杂树仍走下面的通用路径。
+            if (prepared.nodes.size == 1 && prepared.gpuNodeCount == 1 && prepared.nodes[0].parent < 0) {
+                val node = prepared.nodes[0]
+                val child = node.request.data as ControlableCParticleData
+                val target = spawnGpu(
+                    emitter, node.referencePosition, child, capacityHint,
+                    forceState = forceState, textureGeneration = textureGeneration,
+                )
+                if (target == null) {
+                    CParticleRespawnEngine.rollback(system, slot)
+                    return true
+                }
+                try {
+                    CParticleRespawnEngine.track(system, slot, waiting = false, command!!.includeManualRemoval)
+                    CParticleRespawnEngine.track(target.first, target.second, waiting = true, command.includeManualRemoval)
+                    CParticleRespawnEngine.link(system, slot, target.first, target.second, node.request)
+                } catch (error: Throwable) {
+                    CParticleRespawnEngine.rollback(target.first, target.second)
+                    CParticleRespawnEngine.rollback(system, slot)
+                    throw error
+                }
+                return true
+            }
             val allocated = arrayListOf(root)
             try {
                 val gpuNodes = arrayOfNulls<Pair<CParticleSystem, Int>>(prepared.nodes.size)
                 for ((index, node) in prepared.nodes.withIndex()) {
                     val child = node.request.data as? ControlableCParticleData ?: continue
-                    val target = spawnGpu(emitter, node.referencePosition, child, capacityHint)
+                    val target = spawnGpu(
+                        emitter, node.referencePosition, child, capacityHint,
+                        forceState = forceState, textureGeneration = textureGeneration,
+                    )
                     if (target == null) {
                         allocated.asReversed().forEach { (owner, targetSlot) ->
                             CParticleRespawnEngine.rollback(owner, targetSlot)
@@ -488,33 +592,54 @@ object CParticleEmitterBridge {
     private fun spawnGpu(
         emitter: ClassParticleEmitters, pos: Vec3, data: ControlableCParticleData, capacityHint: Int,
         requiredSlots: Int = 1,
+        forceState: EmitterForceState,
+        textureGeneration: Int,
     ): Pair<CParticleSystem, Int>? {
         // STATIC 粒子的描述只在出生时读取；复用一个 scratch 可避免百万粒子生成时
         // 为每颗粒子创建 CParticle、颜色和旋转向量。DYNAMIC 仍保留独立对象供 store 持有。
         val p = if (data.updateMode == CParticleUpdateMode.STATIC) {
-            staticParticleScratch.getOrPut(emitter.uuid, ::CParticle).also { it.copyFrom(data) }
+            staticParticleScratch.also { it.copyFrom(data) }
         } else {
             CParticle.from(data)
         }.also { it.mass = emitter.mass.toFloat() }
         p.pos = pos
         // 逐粒子的纹理解析与 SoA 写入分开计时：批量生成卡顿时这两段的表现完全不同。
-        val resolved = CParticlePerfProbe.measure(CParticlePerfProbe.Stage.PARTICLE_RESOLVE_TEXTURES) {
-            textureResolveCaches
+        val inActiveBatch = activeBatchEmitter === emitter.uuid
+        val resolveCache = if (inActiveBatch) {
+            activeTextureResolveCache ?: textureResolveCaches
                 .getOrPut(emitter.uuid) { EmitterTextureResolveCache() }
-                .resolve(p, pos)
+                .also { activeTextureResolveCache = it }
+        } else {
+            textureResolveCaches.getOrPut(emitter.uuid) { EmitterTextureResolveCache() }
+        }
+        val resolved = CParticlePerfProbe.measure(CParticlePerfProbe.Stage.PARTICLE_RESOLVE_TEXTURES) {
+            resolveCache.resolve(p, pos)
         }
         if (!resolved.isValid) return null
         val renderType = data.getTextureSheet()
-        val layer = batchRenderLayers[emitter.uuid]
+        val cachedLayer = if (inActiveBatch) {
+            activeBatchRenderLayer
+        } else {
+            batchRenderLayers[emitter.uuid]
+        }
+        val layer = cachedLayer
             ?.takeIf { it.renderType === renderType }
             ?.layer
             ?: CParticleRenderLayer.fromSheetName(renderType.toString()).also {
-                batchRenderLayers[emitter.uuid] = BatchRenderLayer(renderType, it)
+                val value = BatchRenderLayer(renderType, it)
+                if (inActiveBatch) {
+                    activeBatchRenderLayer = value
+                } else {
+                    batchRenderLayers[emitter.uuid] = value
+                }
             }
-        val state = ensureForceState(emitter)
         val binding = resolved.base.bindingKey
         val maskBinding = resolved.mask?.bindingKey
-        val hot = batchHotSystems[emitter.uuid]
+        val hot = if (inActiveBatch) {
+            activeBatchHotSystem
+        } else {
+            batchHotSystems[emitter.uuid]
+        }
         val system = if (hot != null && hot.layer == layer && hot.binding == binding &&
             hot.maskBinding == maskBinding && hot.system.store.availableSlotCount >= requiredSlots
         ) {
@@ -526,28 +651,36 @@ object CParticleEmitterBridge {
                 binding,
                 maskBinding,
                 capacityHint,
-                state.snapshot,
+                forceState.snapshot,
                 requiredSlots,
             ).also {
-                batchHotSystems[emitter.uuid] = BatchHotSystem(layer, binding, maskBinding, it)
+                val value = BatchHotSystem(layer, binding, maskBinding, it)
+                if (inActiveBatch) {
+                    activeBatchHotSystem = value
+                } else {
+                    batchHotSystems[emitter.uuid] = value
+                }
             }
         }
-        if (hot == null || hot.system !== system) system.setOriginIfEmpty(emitter.pos)
-
-        // 新 system 在首次写入前补齐当前 tick 的共享 Force 快照。
-        if (system.forcesSyncTick != state.revision) {
-            applyForceSnapshot(system, state.snapshot, state.revision)
+        val switchedSystem = hot == null || hot.system !== system
+        if (switchedSystem) {
+            system.setOriginIfEmpty(emitter.pos)
         }
-        system.blockCollisionRange = CParticleSystemManager.normalizeBlockCollisionRange(
-            emitter.cparticleBlockCollisionRange(),
-        )
+        // doSubtick 允许在插值点之间改变 Force；稳定 revision 下只做一次整数比较，
+        // revision 变化时仍立即同步，不能为了批处理冻结动态 emitter 的物理语义。
+        if (switchedSystem || system.forcesSyncTick != forceState.revision) {
+            applyForceSnapshot(system, forceState.snapshot, forceState.revision)
+        }
+        if (switchedSystem || system.blockCollisionRange != forceState.blockCollisionRange) {
+            system.blockCollisionRange = forceState.blockCollisionRange
+        }
         // 粒子生成时已按 data.visibleRange 逐粒子剔除过; 整池剔除范围取最大见过的值
         if (data.visibleRange.toDouble() > system.visibleRange) {
             system.visibleRange = data.visibleRange.toDouble()
         }
 
         val slot = CParticlePerfProbe.measure(CParticlePerfProbe.Stage.PARTICLE_SPAWN_BATCH) {
-            system.spawnResolved(p, resolved)
+            system.spawnResolved(p, resolved, textureGeneration = textureGeneration)
         }
         if (slot >= 0 && flushingRespawns) respawnUploads.add(system)
         return if (slot >= 0) system to slot else null
@@ -645,13 +778,18 @@ object CParticleEmitterBridge {
      * @param emitter 已结束的 emitter
      */
     internal fun finishEmitter(emitter: ClassParticleEmitters) {
+        endBatch()
         val cursors = systemCursors.remove(emitter.uuid)
         systemCursorLookup.remove(emitter.uuid)
         textureResolveCaches.remove(emitter.uuid)
-        staticParticleScratch.remove(emitter.uuid)
         batchHotSystems.remove(emitter.uuid)
         batchRenderLayers.remove(emitter.uuid)
         val state = forceStates.remove(emitter.uuid)
+        if (hotForceEmitter == emitter.uuid) {
+            hotForceEmitter = null
+            hotForceTick = Int.MIN_VALUE
+            hotForceState = null
+        }
         if (cursors.isNullOrEmpty()) return
         val snapshot = state?.snapshot ?: CParticleForceSink().also { target ->
             buildForceSnapshot(target, emitter)
@@ -667,14 +805,20 @@ object CParticleEmitterBridge {
 
     /** 清除 bridge 持有的 emitter 游标和快照；System 生命周期由 Manager 统一处理。 */
     internal fun clear() {
+        endBatch()
+        // Manager.clear() 可能先于 bridge.clear() 将实际预留额度置零；本地 token
+        // 也必须同步失效，避免下一次 emitter 批次误以为仍持有旧额度。
+        batchReservedSlots = 0
         clearPendingRespawns()
         systemCursors.clear()
         systemCursorLookup.clear()
         textureResolveCaches.clear()
-        staticParticleScratch.clear()
         batchHotSystems.clear()
         batchRenderLayers.clear()
         forceStates.clear()
+        hotForceEmitter = null
+        hotForceTick = Int.MIN_VALUE
+        hotForceState = null
     }
 
     /** 在 emitter 客户端 tick 中同步已经创建的 system，即使本 tick 没有生成新粒子。 */
@@ -760,8 +904,16 @@ object CParticleEmitterBridge {
 
     /** 首次进入新 tick 时只构建一次快照，并同步到该 emitter 的全部 system。 */
     private fun ensureForceState(emitter: ClassParticleEmitters): EmitterForceState {
+        if (hotForceEmitter == emitter.uuid && hotForceTick == emitter.tick) {
+            hotForceState?.let { return it }
+        }
         val state = forceStates.getOrPut(emitter.uuid, ::EmitterForceState)
-        if (state.tick == emitter.tick) return state
+        if (state.tick == emitter.tick) {
+            hotForceEmitter = emitter.uuid
+            hotForceTick = emitter.tick
+            hotForceState = state
+            return state
+        }
         state.tick = emitter.tick
         buildForceSnapshot(state.snapshot, emitter)
         val blockCollisionRange = CParticleSystemManager.normalizeBlockCollisionRange(
@@ -784,6 +936,9 @@ object CParticleEmitterBridge {
             ) == true &&
             blockCollisionRange == state.blockCollisionRange
         ) {
+            hotForceEmitter = emitter.uuid
+            hotForceTick = emitter.tick
+            hotForceState = state
             return state
         }
         state.initialized = true
@@ -807,6 +962,9 @@ object CParticleEmitterBridge {
         systemCursors[emitter.uuid]?.forEach { cursor ->
             cursor.syncState(state.snapshot, state.revision, blockCollisionRange)
         }
+        hotForceEmitter = emitter.uuid
+        hotForceTick = emitter.tick
+        hotForceState = state
         return state
     }
 

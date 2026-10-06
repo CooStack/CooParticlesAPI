@@ -238,6 +238,10 @@ system.colorCurve = colorShift
   `CParticleSystemManager.smallSystemCpuThreshold` 设为正数时，尚未切换到 GPU 的小池才允许
   CPU SoA 回退。硬件不支持 compute 或显式强制回退时，才会使用 ForkJoin 分块与整段上传。
   多 emitter 的固定成本仍来自每 system 一次 dispatch；后续应通过共享 arena/批 dispatch 进一步消除。
+- 自动 emitter 结束时，归零 system 会先从 `systems` 活跃索引摘除，再按每 tick 的 GL 释放预算执行
+  `CParticleSystem.release()`。这样大量 emitter 同时消散时不会让空 system 继续参与 tick/render 遍历，
+  也不会把数百次 `glDeleteBuffers` 集中到同一帧；`CParticleSystemManager` 用 identity 反向索引在
+  `retireAutoSystem` 中 O(1) 找回 system key，避免退休数量增长后出现全表扫描。
 - 热路径零分配: 力场打包数组 / 上传 scratch / SoA 全部复用
 - emitter 的 Force snapshot 带有 revision；system 在 Force、原点或路径图层版本未变化时复用已打包的
   legacy/Command payload，不会每 tick 为每个 system 重复编码相同力场。
@@ -249,6 +253,20 @@ system.colorCurve = colorShift
 - `LineEmitterInterpolator.forEachRefined` 为线性发射器提供无中间 `List<RelativeLocation>` 的采样遍历，
   emitter tick 不再为每个插值点创建 `RelativeLocation` 再调用 `toVector()`；自定义插值器仍通过接口默认实现保持兼容。
 - emitter 出生侧的可见性检查复用当前批次的玩家坐标并使用平方距离，避免每个采样粒子重复创建距离对象和执行平方根。
+- GPU death-command 的生命周期账本按 slot 使用分块稀疏直接寻址表，避免 `HashMap<Int, Entry>` 的装箱和节点分配；
+  单父子链的 outgoing/incoming 关系直接内联在 Entry，只有分支树才创建 overflow 列表。复杂树的连接、回滚和
+  异步死亡语义不变。
+- GPU 后继记录上传使用 Batch 复用的 direct FloatBuffer，respawn 参数按标量写入，避免每条关系创建
+  `floatArrayOf`/`copyOfRange` 临时对象。`ParticleDeathCommand.gpuContextDataReadOnly` 默认关闭；只有确认
+  GPU 预计算闭包不会修改父 data 时才可开启，以跳过父快照 clone，CPU 死亡路径仍保留独立快照。
+- 多 system GPU batch 的已知 uniform 使用固定字段快照而不是字符串 HashMap；相同 program、力场和碰撞配置仍会
+  跳过重复 `glUniform`，动态 Force revision 变化时会立即重新同步，不冻结插值点内的物理更新。
+- GPU dispatch 批次内的 compute program 句柄只执行一次 `glIsProgram` 校验；这是同步驱动查询，不能按
+  system 重复执行。`CParticlePerfProbe.Stage.GPU_DISPATCH_SUBMIT` 可单独统计 CPU 提交 dispatch 的次数和耗时，
+  但不等同于 GPU kernel 执行时间。
+- 普通 CParticle instanced render pass 在入口保存一次外部 VAO，system 绘制使用受管控的 `drawBound` 路径，
+  不再为每个 system 查询并恢复 `GL_VERTEX_ARRAY_BINDING`。Iris transform-feedback 展开路径仍保留独立
+  的 VAO/反馈缓冲状态保护；这项优化只减少多 system 渲染的驱动查询，不改变移动拖尾的 GPU 模拟语义。
 - 方块碰撞: 每份共享网格使用 32KB CPU 位图、32KB 可复用上传缓冲和 32KB SSBO; 网格刷新成本与 64³ 单元有关, 与粒子数无关
 - `ADDITION_BLEND*` 层无排序需求; `TRANSLUCENT` 层不做逐粒子深度排序 (与原版同级限制)
 

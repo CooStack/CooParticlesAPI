@@ -16,6 +16,7 @@ import net.minecraft.client.DeltaTracker
 import net.minecraft.client.Minecraft
 import org.joml.Matrix4f
 import net.minecraft.world.phys.Vec3
+import java.util.IdentityHashMap
 
 /**
  * Manager 内部使用的完整批次键。
@@ -31,6 +32,14 @@ import net.minecraft.world.phys.Vec3
  */
 private data class ManagedCParticleSystemKey(
     val name: String,
+    val mode: CParticleSystemMode,
+    val layer: CParticleRenderLayer,
+    val textureBindingKey: CParticleTextureBindingKey,
+    val maskTextureBindingKey: CParticleTextureBindingKey?,
+)
+
+/** 退休池按渲染分组建立的索引键，避免新 emitter 扫描无关的 system。 */
+private data class RetiredAutoRenderKey(
     val mode: CParticleSystemMode,
     val layer: CParticleRenderLayer,
     val textureBindingKey: CParticleTextureBindingKey,
@@ -108,6 +117,8 @@ object CParticleSystemManager {
     const val MAX_BLOCK_COLLISION_RANGE = 96
 
     private val systems = LinkedHashMap<ManagedCParticleSystemKey, CParticleSystem>()
+    /** system -> manager key 的反向索引；退休 emitter 结束时按 identity O(1) 找回 key。 */
+    private val systemKeys = IdentityHashMap<CParticleSystem, ManagedCParticleSystemKey>()
 
     /** 全局开关 */
     @JvmStatic
@@ -162,6 +173,8 @@ object CParticleSystemManager {
      * 禁止：不能从 manager 的 system map 重新求和，否则会漏掉未注册 system。
      */
     private var globalAliveCount = 0
+    /** emitter 批次预留但尚未写入 Store 的额度；仅渲染线程访问。 */
+    private var reservedParticleSlots = 0
 
     private var currentTick = 0
     private var fabricParticlePassIndex = 0
@@ -175,15 +188,25 @@ object CParticleSystemManager {
     private val autoRelease = HashSet<ManagedCParticleSystemKey>()
     private val terminalAutoRelease = HashSet<ManagedCParticleSystemKey>()
     private val retiredAutoSystemReuseKeys = HashMap<ManagedCParticleSystemKey, CParticleSystemReuseKey>()
+    /** retired system 的渲染分组索引；takeRetiredAutoSystem 不再遍历整个退休表。 */
+    private val retiredAutoSystemsByRenderKey =
+        HashMap<RetiredAutoRenderKey, LinkedHashMap<ManagedCParticleSystemKey, CParticleSystem>>()
     /** 已结束的普通 emitter 空池，按进入顺序淘汰；不含仍绑定发射器的空 system。 */
     private val idleAutoSystems = linkedSetOf<ManagedCParticleSystemKey>()
+    /** 空池同样按渲染分组索引，避免 firstOrNull 对全部空池逐个读取 systems[key]。 */
+    private val idleAutoSystemsByRenderKey =
+        HashMap<RetiredAutoRenderKey, LinkedHashMap<ManagedCParticleSystemKey, CParticleSystem>>()
     /** 空池缓存的槽位总容量，用于限制 CPU 数组和 GPU 缓冲的保留规模。 */
     private var idleAutoSystemSlots = 0
     private var autoSystemNameSequence = 0L
+    /** 已从活跃索引摘除、等待执行 GL/大数组释放的 system。 */
+    private val pendingSystemReleases = ArrayDeque<CParticleSystem>()
     /** 分批释放已经归零的 emitter system，避免同一 tick 集中 glDeleteBuffers 造成长停顿。 */
     private val pendingAutoRemovals = ArrayDeque<ManagedCParticleSystemKey>()
     private val pendingAutoRemovalSet = HashSet<ManagedCParticleSystemKey>()
-    private const val MAX_AUTO_REMOVALS_PER_TICK = 8
+    /** tick 内复用的退休 key 列表，避免每帧为零/少量回收创建 ArrayList。 */
+    private val tickRemovals = ArrayList<ManagedCParticleSystemKey>(16)
+    private const val MAX_AUTO_RELEASES_PER_TICK = 512
 
     // ------------------------------------------------------------ 系统管理
 
@@ -221,10 +244,38 @@ object CParticleSystemManager {
      * @return 申请成功时返回 `true`；达到配置上限时返回 `false`
      */
     internal fun tryAcquireParticleSlot(): Boolean {
+        if (reservedParticleSlots > 0) {
+            reservedParticleSlots--
+            return true
+        }
         if (!hasAvailableParticleCapacity()) return false
         globalAliveCount++
         return true
     }
+
+    /** 为一个 emitter 批次预留全局额度；返回实际预留数量。 */
+    internal fun reserveParticleSlots(requested: Int): Int {
+        if (requested <= 0) return 0
+        val available = (particleCountLimit - globalAliveCount).coerceAtLeast(0)
+        val reserved = requested.coerceAtMost(available)
+        globalAliveCount += reserved
+        reservedParticleSlots += reserved
+        return reserved
+    }
+
+    /** 归还批次中因可见性、纹理或本地池容量未消费的预留额度。 */
+    internal fun releaseReservedParticleSlots(count: Int): Int {
+        require(count >= 0) { "Cannot release a negative reserved CParticle slot count: $count" }
+        // clear()/世界切换可能已经撤销 manager 侧预留，而 bridge 仍持有旧批次 token；
+        // 以实际剩余值为准，保证迟到的 finally 不会让客户端崩溃或把全局额度减成负数。
+        val released = count.coerceAtMost(reservedParticleSlots)
+        reservedParticleSlots -= released
+        globalAliveCount = (globalAliveCount - released).coerceAtLeast(0)
+        return released
+    }
+
+    /** 当前仍未被 Store 消费的批次预留额度；仅供 emitter 批次结束时回收剩余额度。 */
+    internal fun reservedParticleSlotCount(): Int = reservedParticleSlots
 
     /**
      * 归还已经释放的全局 GPU 粒子槽位。
@@ -333,6 +384,7 @@ object CParticleSystemManager {
             CParticleSystem(name, capacity, layer, mode, textureBindingKey, maskTextureBindingKey)
         }
         systems[key] = system
+        systemKeys[system] = key
         lastNonEmptyTick[key] = currentTick
         if (autoReleaseWhenEmpty) autoRelease.add(key)
         return system
@@ -399,7 +451,10 @@ object CParticleSystemManager {
 
     /** 显式取得 system 的调用方接管空池，缓存不再拥有该资源或统计其容量。 */
     private fun claimIdleAutoSystem(key: ManagedCParticleSystemKey, system: CParticleSystem) {
-        if (idleAutoSystems.remove(key)) idleAutoSystemSlots -= system.capacity
+        if (idleAutoSystems.remove(key)) {
+            idleAutoSystemSlots -= system.capacity
+            unregisterIdleAutoSystem(key)
+        }
     }
 
     /**
@@ -509,12 +564,32 @@ object CParticleSystemManager {
     private fun removeSystem(key: ManagedCParticleSystemKey) {
         pendingAutoRemovalSet.remove(key)
         val system = systems.remove(key)
-        if (idleAutoSystems.remove(key)) idleAutoSystemSlots -= system?.capacity ?: 0
+        if (system != null) systemKeys.remove(system)
+        if (idleAutoSystems.remove(key)) {
+            idleAutoSystemSlots -= system?.capacity ?: 0
+            unregisterIdleAutoSystem(key)
+        }
         system?.release()
         lastNonEmptyTick.remove(key)
         autoRelease.remove(key)
         terminalAutoRelease.remove(key)
-        retiredAutoSystemReuseKeys.remove(key)
+        unregisterRetiredAutoSystem(key)
+    }
+
+    /** 从活跃索引摘除自动回收 system，但把 GL/大数组释放延后到受控预算。 */
+    private fun detachAutoSystemForRelease(key: ManagedCParticleSystemKey) {
+        pendingAutoRemovalSet.remove(key)
+        val system = systems.remove(key) ?: return
+        systemKeys.remove(system)
+        if (idleAutoSystems.remove(key)) {
+            idleAutoSystemSlots -= system.capacity
+            unregisterIdleAutoSystem(key)
+        }
+        lastNonEmptyTick.remove(key)
+        autoRelease.remove(key)
+        terminalAutoRelease.remove(key)
+        unregisterRetiredAutoSystem(key)
+        pendingSystemReleases.addLast(system)
     }
 
     /**
@@ -531,15 +606,18 @@ object CParticleSystemManager {
         system: CParticleSystem,
         reuseKey: CParticleSystemReuseKey,
     ): Boolean {
-        val key = systems.entries.firstOrNull { it.value === system }?.key ?: return false
+        val key = systemKeys[system] ?: return false
         if (key !in autoRelease) return false
         if (system.store.aliveCount == 0) {
             if (cacheIdleAutoSystem(key)) return true
+            // 直接结束且没有存活粒子的池不需要进入延迟队列；调用方可能立即复用/检查释放状态。
             removeSystem(key)
             return false
         }
         terminalAutoRelease.add(key)
         retiredAutoSystemReuseKeys[key] = reuseKey
+        retiredAutoSystemsByRenderKey
+            .getOrPut(key.retiredRenderKey()) { LinkedHashMap() }[key] = system
         return true
     }
 
@@ -563,9 +641,11 @@ object CParticleSystemManager {
                 idleAutoSystemSlots + system.capacity > maxCachedSlots)
         ) removeSystem(idleAutoSystems.first())
         system.resetForEmitterReuse()
-        retiredAutoSystemReuseKeys.remove(key)
+        unregisterRetiredAutoSystem(key)
         terminalAutoRelease.remove(key)
         idleAutoSystems.add(key)
+        idleAutoSystemsByRenderKey
+            .getOrPut(key.retiredRenderKey()) { LinkedHashMap() }[key] = system
         idleAutoSystemSlots += system.capacity
         lastNonEmptyTick[key] = currentTick
         return true
@@ -594,43 +674,66 @@ object CParticleSystemManager {
         val requestedTargetKey = ManagedCParticleSystemKey(
             name, mode, layer, textureBindingKey, maskTextureBindingKey,
         )
-        val idleKey = idleAutoSystems.firstOrNull { key ->
-            val candidate = systems[key]
-            key.mode == mode && key.layer == layer &&
-                key.textureBindingKey == textureBindingKey &&
-                key.maskTextureBindingKey == maskTextureBindingKey &&
-                candidate?.released == false && candidate.store.aliveCount == 0
+        val renderKey = RetiredAutoRenderKey(mode, layer, textureBindingKey, maskTextureBindingKey)
+        val idleCandidates = idleAutoSystemsByRenderKey[renderKey]
+        val idleEntry = idleCandidates?.entries?.firstOrNull { (_, candidate) ->
+            !candidate.released && candidate.store.aliveCount == 0
         }
+        val idleKey = idleEntry?.key
         if (idleKey != null) {
-            val system = checkNotNull(systems[idleKey])
+            val system = checkNotNull(idleEntry.value)
             // 空池已经清除旧命令、来源绑定和死亡树，不再受原 emitter 位置或类型约束。
             idleAutoSystems.remove(idleKey)
+            unregisterIdleAutoSystem(idleKey)
             idleAutoSystemSlots -= system.capacity
             return adoptAutoSystem(idleKey, requestedTargetKey, system)
         }
-        val iterator = retiredAutoSystemReuseKeys.entries.iterator()
+        val retiredCandidates = retiredAutoSystemsByRenderKey[renderKey] ?: return null
+        val iterator = retiredCandidates.entries.iterator()
         while (iterator.hasNext()) {
             val entry = iterator.next()
             val key = entry.key
-            val system = systems[key]
-            if (system == null || system.released) {
+            val reuseKey = retiredAutoSystemReuseKeys[key]
+            val system = entry.value
+            if (reuseKey == null || system.released) {
                 iterator.remove()
+                retiredAutoSystemReuseKeys.remove(key)
                 terminalAutoRelease.remove(key)
                 continue
             }
-            if (key.mode != mode ||
-                key.layer != layer ||
-                key.textureBindingKey != textureBindingKey ||
-                key.maskTextureBindingKey != maskTextureBindingKey ||
-                !matches(system, entry.value)
-            ) {
+            if (!matches(system, reuseKey)) {
                 continue
             }
             iterator.remove()
-            terminalAutoRelease.remove(key)
+            if (retiredCandidates.isEmpty()) retiredAutoSystemsByRenderKey.remove(renderKey)
+            unregisterRetiredAutoSystem(key)
             return adoptAutoSystem(key, requestedTargetKey, system)
         }
         return null
+    }
+
+    private fun ManagedCParticleSystemKey.retiredRenderKey(): RetiredAutoRenderKey = RetiredAutoRenderKey(
+        mode,
+        layer,
+        textureBindingKey,
+        maskTextureBindingKey,
+    )
+
+    /** 从退休表及其渲染分组索引同时移除一个 system。 */
+    private fun unregisterRetiredAutoSystem(key: ManagedCParticleSystemKey) {
+        retiredAutoSystemReuseKeys.remove(key)
+        retiredAutoSystemsByRenderKey[key.retiredRenderKey()]?.let { candidates ->
+            candidates.remove(key)
+            if (candidates.isEmpty()) retiredAutoSystemsByRenderKey.remove(key.retiredRenderKey())
+        }
+    }
+
+    /** 从空池集合及其渲染分组索引同时移除一个 system。 */
+    private fun unregisterIdleAutoSystem(key: ManagedCParticleSystemKey) {
+        idleAutoSystemsByRenderKey[key.retiredRenderKey()]?.let { candidates ->
+            candidates.remove(key)
+            if (candidates.isEmpty()) idleAutoSystemsByRenderKey.remove(key.retiredRenderKey())
+        }
     }
 
     /** 将已解除旧 emitter 绑定的 system 迁移到新名称，保留纹理分组及所有 CPU/GL 缓冲。 */
@@ -646,10 +749,12 @@ object CParticleSystemManager {
         }
         if (targetKey != key) {
             systems.remove(key)
+            systemKeys.remove(system)
             lastNonEmptyTick.remove(key)
             autoRelease.remove(key)
             terminalAutoRelease.remove(key)
             systems[targetKey] = system
+            systemKeys[system] = targetKey
             system.renameForManager(targetKey.name)
         }
         lastNonEmptyTick[targetKey] = currentTick
@@ -849,27 +954,38 @@ object CParticleSystemManager {
         currentTick++
         CParticleBlockCollisionGridManager.beginTick(Minecraft.getInstance().level, currentTick)
         try {
-            if (systems.isEmpty()) return
+            if (systems.isEmpty()) {
+                drainPendingAutoRemovals()
+                return
+            }
             CParticleRespawnEngine.poll()
             // 所有 system 共用同一份路径图层；必须在任一 system 打包路径命令前完成一次同步。
             // 之前每个 system 都重复调用，多个 emitter 时会把无关的路径遍历和 GL 检查放大。
             CParticlePerfProbe.measure(CParticlePerfProbe.Stage.PATH_SYNC) {
                 CParticlePathLibrary.syncLayer()
             }
-            val toRemove = ArrayList<ManagedCParticleSystemKey>(0)
             // 只有本 tick 至少有一个 system 确实会走 GPU，才读取并维护跨 system 的 GL 状态。
             // 全是阈值以内的小池时，批次本身也会成为额外的固定开销。
-            preferGpuForSmallSystems = if (smallSystemAggregateGpuThreshold > 0) {
-                val aggregateSimulatedParticles = systems.values.asSequence()
-                    .filter { it.mode == CParticleSystemMode.SIMULATED }
-                    .sumOf { it.store.activeSlotCount }
-                aggregateSimulatedParticles >= smallSystemAggregateGpuThreshold
-            } else {
-                false
+            var aggregateSimulatedParticles = 0
+            var gpuBatch = false
+            if (smallSystemAggregateGpuThreshold > 0) {
+                for (system in systems.values) {
+                    if (system.mode == CParticleSystemMode.SIMULATED) {
+                        aggregateSimulatedParticles += system.store.activeSlotCount
+                    }
+                }
             }
-            val gpuBatch = systems.values.any { it.willUseGpuSimulation() }
+            preferGpuForSmallSystems = smallSystemAggregateGpuThreshold > 0 &&
+                aggregateSimulatedParticles >= smallSystemAggregateGpuThreshold
+            for (system in systems.values) {
+                if (system.willUseGpuSimulation()) {
+                    gpuBatch = true
+                    break
+                }
+            }
             if (gpuBatch) CParticleGpuSimulator.beginBatch()
             try {
+                tickRemovals.clear()
                 for ((key, system) in systems) {
                     // 多 emitter 时每个 system 都会单独 dispatch；把 GPU barrier 延迟到整批
                     // system 完成后，避免几百次小 barrier 让驱动在 CPU/GPU 间反复同步。
@@ -884,7 +1000,7 @@ object CParticleSystemManager {
                             idleTicks,
                         )
                     ) {
-                        toRemove.add(key)
+                        tickRemovals.add(key)
                     }
                 }
             } finally {
@@ -894,7 +1010,7 @@ object CParticleSystemManager {
                 CParticleGpuSimulator.publishMemoryBarrier()
             }
             CParticleRespawnEngine.finishTick()
-            for (key in toRemove) {
+            for (key in tickRemovals) {
                 if (pendingAutoRemovalSet.add(key)) pendingAutoRemovals.addLast(key)
             }
             drainPendingAutoRemovals()
@@ -912,13 +1028,19 @@ object CParticleSystemManager {
      * 归零 system 已经不会参与绘制，因此把清理摊到多个 tick 不改变可见结果。
      */
     private fun drainPendingAutoRemovals() {
-        repeat(MAX_AUTO_REMOVALS_PER_TICK) {
+        // 摘除本身只修改哈希表，优先快速清空 backlog，避免空 system 继续进入每 tick/render 遍历。
+        // 真正可能触发 glDeleteBuffers 的 release 则由下面的固定预算分摊。
+        val detachBudget = pendingAutoRemovals.size.coerceAtMost(4096)
+        repeat(detachBudget) {
             val key = pendingAutoRemovals.removeFirstOrNull() ?: return
             pendingAutoRemovalSet.remove(key)
             if (key !in systems) return@repeat
             // 先完成本 tick 的死亡激活，再重置旧池，避免清理尚未处理的后继链。
             if (key in retiredAutoSystemReuseKeys && cacheIdleAutoSystem(key)) return@repeat
-            removeSystem(key)
+            detachAutoSystemForRelease(key)
+        }
+        repeat(MAX_AUTO_RELEASES_PER_TICK) {
+            pendingSystemReleases.removeFirstOrNull()?.release() ?: return
         }
     }
 
@@ -952,10 +1074,19 @@ object CParticleSystemManager {
         autoRelease.removeAll { it !in systems.keys }
         terminalAutoRelease.clear()
         retiredAutoSystemReuseKeys.clear()
+        retiredAutoSystemsByRenderKey.clear()
         idleAutoSystems.clear()
+        idleAutoSystemsByRenderKey.clear()
         idleAutoSystemSlots = 0
         pendingAutoRemovals.clear()
         pendingAutoRemovalSet.clear()
+        while (true) {
+            val system = pendingSystemReleases.removeFirstOrNull() ?: break
+            system.release()
+        }
+        systemKeys.clear()
+        reservedParticleSlots = 0
+        globalAliveCount = 0
         // 路径槽位由调用方持有；换世界只解除 GL 绑定，定义与槽位在调用方释放前保持有效。
         CParticlePathLibrary.unbind()
     }
@@ -986,14 +1117,23 @@ object CParticleSystemManager {
         CParticleEmitterBridge.clearPendingRespawns()
         systems.values.forEach { it.release() }
         systems.clear()
+        while (true) {
+            val system = pendingSystemReleases.removeFirstOrNull() ?: break
+            system.release()
+        }
+        systemKeys.clear()
         lastNonEmptyTick.clear()
         autoRelease.clear()
         terminalAutoRelease.clear()
         retiredAutoSystemReuseKeys.clear()
+        retiredAutoSystemsByRenderKey.clear()
         idleAutoSystems.clear()
+        idleAutoSystemsByRenderKey.clear()
         idleAutoSystemSlots = 0
         pendingAutoRemovals.clear()
         pendingAutoRemovalSet.clear()
+        reservedParticleSlots = 0
+        globalAliveCount = 0
         CParticleRenderer.release()
         CParticleGpuSimulator.release()
         CParticleBlockCollisionGridManager.clear()

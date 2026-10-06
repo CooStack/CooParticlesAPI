@@ -440,6 +440,24 @@ class CParticleGlBuffer(capacity: Int) {
     }
 
     /**
+     * 在 CParticleRenderer 已经接管 VAO 状态时绘制一段实例。
+     *
+     * render pass 会在入口保存一次外部 VAO，并在退出时统一恢复；每个 system 再调用
+     * `glGetInteger(GL_VERTEX_ARRAY_BINDING)` 会产生同步驱动查询，在数百个小 system
+     * 场景下其固定成本可能高于实际粒子计算。普通 [draw] 保留完整的独立状态保护，供
+     * render pass 之外的调用方继续使用。
+     */
+    internal fun drawBound(firstSlot: Int, instances: Int) {
+        if (!initialized || instances <= 0) return
+        require(firstSlot >= 0 && instances <= capacity - firstSlot) {
+            "invalid instance range: first=$firstSlot count=$instances capacity=$capacity"
+        }
+        glBindVertexArray(vao)
+        bindInstanceRange(firstSlot)
+        GL31.glDrawArraysInstanced(GL_TRIANGLES, 0, EXPANDED_VERTICES_PER_PARTICLE, instances)
+    }
+
+    /**
      * 在 GPU 上把实例展开为原版 `DefaultVertexFormat.PARTICLE` 顶点。
      *
      * 示例：Iris 粒子 program 绘制前调用 `expandForParticleShader(firstAliveSlot, activeSlotCount)`。

@@ -194,6 +194,9 @@ object CParticleRenderer {
 
         // ---- 状态快照 ----
         val prevProgram = glGetInteger(GL_CURRENT_PROGRAM)
+        // 普通 instanced draw 会切换到各 system 自己的 VAO，render pass 结束时统一恢复。
+        // 避免 CParticleGlBuffer.draw() 为每个 system 查询并恢复一次外部 VAO。
+        val prevVao = glGetInteger(GL_VERTEX_ARRAY_BINDING)
         val prevShaderTexture0 = RenderSystem.getShaderTexture(0)
         val prevActiveTexture = glGetInteger(GL_ACTIVE_TEXTURE)
         RenderSystem.activeTexture(GL_TEXTURE0)
@@ -345,7 +348,7 @@ object CParticleRenderer {
                             }
 
                             applySystemUniforms(shader, system, cameraPos, partial, uniformScratch)
-                            system.glBuffer.draw(system.store.highWater)
+                            system.glBuffer.drawBound(0, system.store.highWater)
                         }
                     }
                     if (forceDirectShader && irisShaderPackActive) {
@@ -377,7 +380,7 @@ object CParticleRenderer {
                             boundMaskTexture = maskBinding
                         }
                         applySystemUniforms(shader, system, cameraPos, partial, uniformScratch)
-                        system.glBuffer.draw(system.store.highWater)
+                        system.glBuffer.drawBound(0, system.store.highWater)
                     }
                 }
             }
@@ -433,6 +436,7 @@ object CParticleRenderer {
             glCullFace(cullFaceMode)
             glFrontFace(frontFaceMode)
             if (cullEnabled) glEnable(GL_CULL_FACE) else glDisable(GL_CULL_FACE)
+            glBindVertexArray(prevVao)
             if (prevProgram > 0 && glIsProgram(prevProgram)) glUseProgram(prevProgram) else glUseProgram(0)
         }
         return true
@@ -622,7 +626,7 @@ object CParticleRenderer {
                 boundMaskTexture = maskBinding
             }
             applySystemUniforms(shader, system, cameraPos, partial, uniformScratch)
-            system.glBuffer.draw(system.store.highWater)
+            system.glBuffer.drawBound(0, system.store.highWater)
         }
     }
 
@@ -711,9 +715,10 @@ object CParticleRenderer {
                 (system.origin.z - cameraPos.z).toFloat()
             )
         )
-        shader.setMatrix4("uPrevGroupMat", system.previousGroupTransform)
-        shader.setMatrix4("uGroupMat", system.currentGroupTransform)
-        shader.setInt(
+        uniformScratch.setMatrix4(shader, "uPrevGroupMat", system.previousGroupTransform)
+        uniformScratch.setMatrix4(shader, "uGroupMat", system.currentGroupTransform)
+        uniformScratch.setInt(
+            shader,
             "uTransformParticleGeometry",
             if (system.transformsSimulatedParticleSpace) 1 else 0,
         )
@@ -722,16 +727,16 @@ object CParticleRenderer {
         setScalarCurve(shader, "uScale", system.scaleCurve, uniformScratch)
         setColorCurve(shader, "uColor", system.colorCurve, uniformScratch)
         val systemTime = system.tickCount + partial
-        shader.setFloat("uSystemTime", systemTime)
-        shader.setInt("uSystemTick", system.tickCount)
-        shader.setInt("uHasMask", if (system.maskTextureBindingKey == null) 0 else 1)
-        shader.setFloat("uCurveCycleTicks", system.curveCycleTicks)
-        shader.setFloat("uColorCycleTicks", system.colorCycleTicks)
-        shader.setFloat("uColorCycleSpatialScale", system.colorCycleSpatialScale)
+        uniformScratch.setFloat(shader, "uSystemTime", systemTime)
+        uniformScratch.setInt(shader, "uSystemTick", system.tickCount)
+        uniformScratch.setInt(shader, "uHasMask", if (system.maskTextureBindingKey == null) 0 else 1)
+        uniformScratch.setFloat(shader, "uCurveCycleTicks", system.curveCycleTicks)
+        uniformScratch.setFloat(shader, "uColorCycleTicks", system.colorCycleTicks)
+        uniformScratch.setFloat(shader, "uColorCycleSpatialScale", system.colorCycleSpatialScale)
 
         val transition = system.visualTransition
         val transitionProgress = transition?.progressAt(systemTime)
-        shader.setInt("uTransitionEnabled", if (transitionProgress == null) 0 else 1)
+        uniformScratch.setInt(shader, "uTransitionEnabled", if (transitionProgress == null) 0 else 1)
         setScalarCurve(shader, "uTransitionAlpha", transition?.alphaCurve, uniformScratch)
         setScalarCurve(shader, "uTransitionScale", transition?.scaleCurve, uniformScratch)
         if (transition != null && transitionProgress != null) {
@@ -757,7 +762,7 @@ object CParticleRenderer {
             alphaTransition?.alphaCurve?.takeIf { alphaTransitionProgress != null },
             uniformScratch,
         )
-        shader.setFloat("uAlphaTransitionProgress", alphaTransitionProgress ?: 0F)
+        uniformScratch.setFloat(shader, "uAlphaTransitionProgress", alphaTransitionProgress ?: 0F)
     }
 
     /**
@@ -813,6 +818,32 @@ object CParticleRenderer {
         val params = Vector4f()
         private val scalarCurves = HashMap<String, CParticleCurve?>()
         private val colorCurves = HashMap<String, CParticleColorCurve?>()
+        private val intValues = HashMap<String, Int>()
+        private val floatValues = HashMap<String, Int>()
+        private val matrices = HashMap<String, Matrix4f>()
+
+        /** 同一 render pass 内固定字段通常在数百个 system 间完全相同，跳过重复 glUniform。 */
+        fun setInt(shader: CooShaderProgram, key: String, value: Int) {
+            if (intValues[key] == value) return
+            intValues[key] = value
+            shader.setInt(key, value)
+        }
+
+        /** 使用原始位比较，保留 NaN 与带符号零的 uniform 语义。 */
+        fun setFloat(shader: CooShaderProgram, key: String, value: Float) {
+            val bits = value.toRawBits()
+            if (floatValues[key] == bits) return
+            floatValues[key] = bits
+            shader.setFloat(key, value)
+        }
+
+        /** 只在矩阵内容改变时上传；缓存副本避免 system 后续修改矩阵后误判为相同。 */
+        fun setMatrix4(shader: CooShaderProgram, key: String, value: Matrix4f) {
+            val cached = matrices[key]
+            if (cached != null && cached == value) return
+            shader.setMatrix4(key, value)
+            if (cached == null) matrices[key] = Matrix4f(value) else cached.set(value)
+        }
 
         /**
          * 同一 render pass 内按曲线对象身份去重。

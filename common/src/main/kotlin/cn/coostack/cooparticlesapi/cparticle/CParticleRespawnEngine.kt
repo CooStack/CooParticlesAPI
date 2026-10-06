@@ -15,7 +15,9 @@ import org.lwjgl.opengl.GL15
 import org.lwjgl.opengl.GL30
 import org.lwjgl.opengl.GL32
 import org.lwjgl.opengl.GL43
+import org.lwjgl.system.MemoryUtil
 import java.util.BitSet
+import java.nio.FloatBuffer
 
 /**
  * 管理出生时预提交的 GPU 生命及后继关系，仅在客户端渲染线程使用。
@@ -23,10 +25,158 @@ import java.util.BitSet
  * 纯 GPU 重生只异步回读回收位图，不读取运动数据，也不在死亡时执行配置闭包。
  */
 internal object CParticleRespawnEngine {
+    /** 按 GPU slot 直接寻址，避免百万粒子使用 HashMap<Int, Entry> 的 boxing/node 开销。 */
+    private class SlotEntries(initialCapacity: Int) {
+        private companion object {
+            const val PAGE_SHIFT = 8
+            const val PAGE_SIZE = 1 shl PAGE_SHIFT
+            const val PAGE_MASK = PAGE_SIZE - 1
+        }
+
+        // 外层只保存页指针；页本身按实际出现的 slot 懒分配，避免大 system 创建百万引用数组。
+        private var pages = arrayOfNulls<Array<Entry?>>(pageCount(initialCapacity))
+        var size: Int = 0
+            private set
+
+        operator fun get(slot: Int): Entry? {
+            if (slot < 0) return null
+            val page = pages.getOrNull(slot ushr PAGE_SHIFT) ?: return null
+            return page[slot and PAGE_MASK]
+        }
+
+        operator fun contains(slot: Int): Boolean = get(slot) != null
+
+        fun getValue(slot: Int): Entry = get(slot)
+            ?: throw NoSuchElementException("No prepared lifetime for slot $slot")
+
+        operator fun set(slot: Int, entry: Entry) {
+            require(slot >= 0) { "slot must be non-negative" }
+            val pageIndex = slot ushr PAGE_SHIFT
+            if (pageIndex >= pages.size) {
+                var capacity = pages.size.coerceAtLeast(1)
+                while (capacity <= pageIndex) capacity = (capacity * 2).coerceAtLeast(pageIndex + 1)
+                pages = pages.copyOf(capacity)
+            }
+            val page = pages[pageIndex] ?: arrayOfNulls<Entry>(PAGE_SIZE).also { pages[pageIndex] = it }
+            if (page[slot and PAGE_MASK] == null) size++
+            page[slot and PAGE_MASK] = entry
+        }
+
+        fun remove(slot: Int): Entry? {
+            val page = pages.getOrNull(slot ushr PAGE_SHIFT) ?: return null
+            val offset = slot and PAGE_MASK
+            val entry = page[offset] ?: return null
+            page[offset] = null
+            size--
+            return entry
+        }
+
+        fun forEach(action: (Entry) -> Unit) {
+            pages.forEach { page -> page?.forEach { it?.let(action) } }
+        }
+
+        fun isEmpty(): Boolean = size == 0
+
+        fun isNotEmpty(): Boolean = size != 0
+
+        private fun pageCount(capacity: Int): Int =
+            ((capacity.coerceAtLeast(1) + PAGE_SIZE - 1) ushr PAGE_SHIFT).coerceAtLeast(1)
+    }
+
     private class Entry(val generation: Int, val includeManual: Boolean) {
         var cpuAction: ((CParticleDeathState) -> Unit)? = null
-        val links = ArrayList<Pair<Batch, Int>>()
-        val incoming = ArrayList<Pair<Batch, Int>>()
+
+        // 大多数 GPU 后继树节点只有一个 outgoing/incoming link。把这个常见形态
+        // 内联到 Entry，避免每个粒子无条件分配两个 ArrayList 和 Pair；分支树才
+        // 懒创建 overflow 列表。
+        private var linkBatch: Batch? = null
+        private var linkIndex = -1
+        private var linkOverflow: ArrayList<LinkRef>? = null
+        private var incomingBatch: Batch? = null
+        private var incomingIndex = -1
+        private var incomingOverflow: ArrayList<LinkRef>? = null
+
+        private data class LinkRef(val batch: Batch, val index: Int)
+
+        fun addLink(batch: Batch, index: Int, incoming: Boolean) {
+            if (incoming) {
+                incomingOverflow?.let {
+                    it.add(LinkRef(batch, index))
+                    return
+                }
+                val current = incomingBatch
+                if (current == null) {
+                    incomingBatch = batch
+                    incomingIndex = index
+                } else {
+                    val overflow = incomingOverflow ?: ArrayList<LinkRef>(2).also {
+                        it.add(LinkRef(current, incomingIndex))
+                        incomingBatch = null
+                        incomingIndex = -1
+                        incomingOverflow = it
+                    }
+                    overflow.add(LinkRef(batch, index))
+                }
+            } else {
+                linkOverflow?.let {
+                    it.add(LinkRef(batch, index))
+                    return
+                }
+                val current = linkBatch
+                if (current == null) {
+                    linkBatch = batch
+                    linkIndex = index
+                } else {
+                    val overflow = linkOverflow ?: ArrayList<LinkRef>(2).also {
+                        it.add(LinkRef(current, linkIndex))
+                        linkBatch = null
+                        linkIndex = -1
+                        linkOverflow = it
+                    }
+                    overflow.add(LinkRef(batch, index))
+                }
+            }
+        }
+
+        fun forEachLink(incoming: Boolean, action: (Batch, Int) -> Unit) {
+            val batch = if (incoming) incomingBatch else linkBatch
+            if (batch != null) action(batch, if (incoming) incomingIndex else linkIndex)
+            val overflow = if (incoming) incomingOverflow else linkOverflow
+            // unlink() mutates the relation, so only the uncommon overflow case needs a snapshot.
+            overflow?.toList()?.forEach { action(it.batch, it.index) }
+        }
+
+        fun removeLink(batch: Batch, index: Int, incoming: Boolean) {
+            val singleBatch = if (incoming) incomingBatch else linkBatch
+            val singleIndex = if (incoming) incomingIndex else linkIndex
+            if (singleBatch === batch && singleIndex == index) {
+                if (incoming) {
+                    incomingBatch = null
+                    incomingIndex = -1
+                } else {
+                    linkBatch = null
+                    linkIndex = -1
+                }
+                return
+            }
+            val overflow = if (incoming) incomingOverflow else linkOverflow
+            overflow?.removeIf { it.batch === batch && it.index == index }
+        }
+
+        fun removeBatch(batch: Batch, incoming: Boolean) {
+            val singleBatch = if (incoming) incomingBatch else linkBatch
+            if (singleBatch === batch) {
+                if (incoming) {
+                    incomingBatch = null
+                    incomingIndex = -1
+                } else {
+                    linkBatch = null
+                    linkIndex = -1
+                }
+            }
+            val overflow = if (incoming) incomingOverflow else linkOverflow
+            overflow?.removeIf { it.batch === batch }
+        }
     }
 
     private class Readback {
@@ -46,11 +196,23 @@ internal object CParticleRespawnEngine {
         val dirty = BitSet()
         var count = 0
         var live = 0
+        private var uploadScratch: FloatBuffer? = null
+
+        fun release() {
+            uploadScratch?.let(MemoryUtil::memFree)
+            uploadScratch = null
+            buffer.release()
+        }
 
         fun add(parent: Int, child: Int, request: ParticleRespawnRequest): Int {
             val offset = if (request.relativeToDeath) request.position else request.position - target.origin
-            val parameters = floatArrayOf(offset.x.toFloat(), offset.y.toFloat(), offset.z.toFloat(), request.inheritVelocity.toFloat())
-            require(parameters.all { it.isFinite() }) { "Respawn parameters exceed GPU float range" }
+            val offsetX = offset.x.toFloat()
+            val offsetY = offset.y.toFloat()
+            val offsetZ = offset.z.toFloat()
+            val inheritVelocity = request.inheritVelocity.toFloat()
+            require(offsetX.isFinite() && offsetY.isFinite() && offsetZ.isFinite() && inheritVelocity.isFinite()) {
+                "Respawn parameters exceed GPU float range"
+            }
             val index = free.removeLastOrNull() ?: count++
             if (records.size < count * 8) records = records.copyOf(maxOf(count * 8, records.size * 2, 128))
             val base = index * 8
@@ -58,7 +220,10 @@ internal object CParticleRespawnEngine {
             records[base + 1] = Float.fromBits(child)
             records[base + 2] = 0F
             records[base + 3] = Float.fromBits(if (request.relativeToDeath) 1 else 0)
-            parameters.copyInto(records, base + 4)
+            records[base + 4] = offsetX
+            records[base + 5] = offsetY
+            records[base + 6] = offsetZ
+            records[base + 7] = inheritVelocity
             dirty.set(index)
             live++
             return index
@@ -78,7 +243,15 @@ internal object CParticleRespawnEngine {
             var first = dirty.nextSetBit(0)
             while (first >= 0) {
                 val end = dirty.nextClearBit(first)
-                buffer.upload(first * 32L, records.copyOfRange(first * 8, end * 8))
+                val floatCount = (end - first) * 8
+                val scratch = uploadScratch?.takeIf { it.capacity() >= floatCount } ?: run {
+                    uploadScratch?.let(MemoryUtil::memFree)
+                    MemoryUtil.memAllocFloat(floatCount.coerceAtLeast(128)).also { uploadScratch = it }
+                }
+                scratch.clear()
+                scratch.put(records, first * 8, floatCount)
+                scratch.flip()
+                buffer.upload(first * 32L, scratch)
                 first = dirty.nextSetBit(end)
             }
             dirty.clear()
@@ -86,7 +259,7 @@ internal object CParticleRespawnEngine {
     }
 
     private class Channel(val system: CParticleSystem) {
-        val entries = HashMap<Int, Entry>()
+        val entries = SlotEntries(system.capacity)
         val snapshots = CParticleRespawnBuffer()
         val ended = CParticleRespawnBuffer()
         val readbacks = Array(3) { Readback() }
@@ -101,7 +274,7 @@ internal object CParticleRespawnEngine {
             system.store.preparedClear = null
             snapshots.release()
             ended.release()
-            batches.values.forEach { it.buffer.release() }
+            batches.values.forEach(Batch::release)
             readbacks.forEach {
                 if (it.fence != 0L) GL32.glDeleteSync(it.fence)
                 it.buffer.release()
@@ -147,8 +320,8 @@ internal object CParticleRespawnEngine {
         val channel = channels.getValue(source)
         val batch = channel.batches.getOrPut(target) { Batch(source, target) }
         val index = batch.add(parent, child, request)
-        channel.entries.getValue(parent).links.add(batch to index)
-        channels.getValue(target).entries.getValue(child).incoming.add(batch to index)
+        channel.entries.getValue(parent).addLink(batch, index, incoming = false)
+        channels.getValue(target).entries.getValue(child).addLink(batch, index, incoming = true)
     }
 
     /** 双向解除连接，避免提前取消的子槽位复用后被旧父粒子重新激活。 */
@@ -156,8 +329,8 @@ internal object CParticleRespawnEngine {
         val parent = batch.records[index * 8].toRawBits()
         if (parent < 0) return
         val child = batch.records[index * 8 + 1].toRawBits()
-        channels[batch.source]?.entries?.get(parent)?.links?.remove(batch to index)
-        channels[batch.target]?.entries?.get(child)?.incoming?.remove(batch to index)
+        channels[batch.source]?.entries?.get(parent)?.removeLink(batch, index, incoming = false)
+        channels[batch.target]?.entries?.get(child)?.removeLink(batch, index, incoming = true)
         batch.remove(index)
     }
 
@@ -173,8 +346,8 @@ internal object CParticleRespawnEngine {
     fun rollback(system: CParticleSystem, slot: Int) {
         val channel = channels[system]
         channel?.entries?.remove(slot)?.let { entry ->
-            entry.links.toList().forEach { (batch, index) -> unlink(batch, index) }
-            entry.incoming.toList().forEach { (batch, index) -> unlink(batch, index) }
+            entry.forEachLink(incoming = false) { batch, index -> unlink(batch, index) }
+            entry.forEachLink(incoming = true) { batch, index -> unlink(batch, index) }
             if (entry.cpuAction != null) channel.cpuEntries--
         }
         channel?.clearSlots?.clear(slot)
@@ -201,8 +374,8 @@ internal object CParticleRespawnEngine {
                         bits = bits and (bits - 1)
                         val slot = word * 32 + bit
                         val entry = channel.entries.remove(slot) ?: continue
-                        entry.links.toList().forEach { (batch, index) -> unlink(batch, index) }
-                        entry.incoming.toList().forEach { (batch, index) -> unlink(batch, index) }
+                        entry.forEachLink(incoming = false) { batch, index -> unlink(batch, index) }
+                        entry.forEachLink(incoming = true) { batch, index -> unlink(batch, index) }
                         if (entry.cpuAction != null) channel.cpuEntries--
                         if (!channel.system.checkHandle(slot, entry.generation)) continue
                         try {
@@ -329,18 +502,18 @@ internal object CParticleRespawnEngine {
     /** 清理源 system 时取消其尚未确认的后继，避免永久占用预留槽位。 */
     fun clearSystem(system: CParticleSystem) {
         val channel = channels.remove(system) ?: return
-        channel.entries.values.forEach { entry ->
-            entry.links.toList().forEach { (batch, index) ->
+        channel.entries.forEach { entry ->
+            entry.forEachLink(incoming = false) { batch, index ->
                 val targetSlot = batch.records[index * 8 + 1].toRawBits()
                 if (batch.target !== system && !batch.target.released) batch.target.store.kill(targetSlot, reason = RemoveReason.QUEUE)
                 unlink(batch, index)
             }
-            entry.incoming.toList().forEach { (batch, index) -> unlink(batch, index) }
+            entry.forEachLink(incoming = true) { batch, index -> unlink(batch, index) }
         }
         for (other in channels.values) {
             other.batches.remove(system)?.let { batch ->
-                other.entries.values.forEach { it.links.removeAll { link -> link.first === batch } }
-                batch.buffer.release()
+                other.entries.forEach { it.removeBatch(batch, incoming = false) }
+                batch.release()
             }
         }
         channel.release()

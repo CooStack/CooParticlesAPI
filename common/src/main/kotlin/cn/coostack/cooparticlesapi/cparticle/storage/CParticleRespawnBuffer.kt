@@ -5,6 +5,7 @@ import org.lwjgl.opengl.GL15
 import org.lwjgl.opengl.GL30
 import org.lwjgl.opengl.GL31
 import org.lwjgl.opengl.GL43
+import java.nio.FloatBuffer
 
 /** 重生通道的可增长缓冲；扩容只在 GPU 内复制，且恢复调用前的缓冲绑定。 */
 internal class CParticleRespawnBuffer {
@@ -39,6 +40,17 @@ internal class CParticleRespawnBuffer {
     }
 
     fun upload(offset: Long, values: FloatArray) {
+        val previous = GL11.glGetInteger(GL31.GL_COPY_WRITE_BUFFER)
+        try {
+            GL15.glBindBuffer(GL31.GL_COPY_WRITE_BUFFER, id)
+            GL15.glBufferSubData(GL31.GL_COPY_WRITE_BUFFER, offset, values)
+        } finally {
+            GL15.glBindBuffer(GL31.GL_COPY_WRITE_BUFFER, previous)
+        }
+    }
+
+    /** 上传可复用的 direct buffer，调用方负责设置 position=0、limit=元素数。 */
+    fun upload(offset: Long, values: FloatBuffer) {
         val previous = GL11.glGetInteger(GL31.GL_COPY_WRITE_BUFFER)
         try {
             GL15.glBindBuffer(GL31.GL_COPY_WRITE_BUFFER, id)
