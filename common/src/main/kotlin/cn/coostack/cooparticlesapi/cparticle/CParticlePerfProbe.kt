@@ -61,6 +61,18 @@ object CParticlePerfProbe {
 
         /** GPU compute dispatch 提交；只计 CPU 侧提交调用，不代表 GPU 执行耗时。 */
         GPU_DISPATCH_SUBMIT("gpu_dispatch_submit"),
+
+        /** CParticle render pass 内的 CPU 提交总耗时。 */
+        RENDER_PASS_SUBMIT("render_pass_submit"),
+
+        /** 单个 system 的 uniform/state/draw 提交耗时。 */
+        RENDER_SYSTEM_SUBMIT("render_system_submit"),
+
+        /** GPU compute dispatch 提交次数。 */
+        GPU_DISPATCH_COUNT("gpu_dispatch_count"),
+
+        /** GPU dispatch 覆盖的活跃槽位总数。 */
+        GPU_DISPATCH_PARTICLES("gpu_dispatch_particles"),
     }
 
     /** 是否收集计时；关闭后 [measure] 只执行动作，不产生计时调用。 */
@@ -97,6 +109,14 @@ object CParticlePerfProbe {
         nanos[index] += elapsedNanos
         counts[index]++
         if (elapsedNanos > maxNanos[index]) maxNanos[index] = elapsedNanos
+    }
+
+    /** 记录非耗时型计数，复用同一份 snapshot 输出结构。 */
+    @JvmStatic
+    fun count(stage: Stage, amount: Long = 1L) {
+        if (!enabled || amount <= 0L) return
+        val index = stage.ordinal
+        counts[index] += amount
     }
 
     /**

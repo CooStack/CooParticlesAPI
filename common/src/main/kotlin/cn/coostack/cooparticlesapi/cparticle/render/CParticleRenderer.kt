@@ -11,6 +11,7 @@ import cn.coostack.cooparticlesapi.cparticle.CParticleRenderPass
 import cn.coostack.cooparticlesapi.cparticle.CParticleSprites
 import cn.coostack.cooparticlesapi.cparticle.CParticleSystem
 import cn.coostack.cooparticlesapi.cparticle.CParticleSystemManager
+import cn.coostack.cooparticlesapi.cparticle.CParticlePerfProbe
 import cn.coostack.cooparticlesapi.cparticle.CParticleTextureBindingKey
 import cn.coostack.cooparticlesapi.cparticle.CParticleTextureResolver
 import cn.coostack.cooparticlesapi.cparticle.path.CParticlePathLibrary
@@ -348,7 +349,7 @@ object CParticleRenderer {
                             }
 
                             applySystemUniforms(shader, system, cameraPos, partial, uniformScratch)
-                            system.glBuffer.drawBound(0, system.store.highWater)
+                            drawSystem(system)
                         }
                     }
                     if (forceDirectShader && irisShaderPackActive) {
@@ -380,7 +381,7 @@ object CParticleRenderer {
                             boundMaskTexture = maskBinding
                         }
                         applySystemUniforms(shader, system, cameraPos, partial, uniformScratch)
-                        system.glBuffer.drawBound(0, system.store.highWater)
+                        drawSystem(system)
                     }
                 }
             }
@@ -516,7 +517,9 @@ object CParticleRenderer {
         for (system in visibleBuckets.original) {
             if (system.layer.premultiplyRgbByAlpha) continue
             applySystemUniforms(shader, system, cameraPos, partial, uniformScratch)
-            system.glBuffer.expandForParticleShader(system.store.highWater)
+            val first = system.store.firstAliveSlot
+            val count = system.store.highWater - first
+            if (count > 0) system.glBuffer.expandForParticleShader(first, count)
         }
         shader.setInt("uIrisExpansion", 0)
 
@@ -602,6 +605,15 @@ object CParticleRenderer {
         }
     }
 
+    /** Draw only the live slot range; dead slots remain sparse inside the range. */
+    private fun drawSystem(system: CParticleSystem) {
+        CParticlePerfProbe.measure(CParticlePerfProbe.Stage.RENDER_SYSTEM_SUBMIT) {
+            val first = system.store.firstAliveSlot
+            val count = system.store.highWater - first
+            if (count > 0) system.glBuffer.drawBound(first, count)
+        }
+    }
+
     private fun drawInstancedSystems(
         shader: CooShaderProgram,
         systems: Collection<CParticleSystem>,
@@ -626,7 +638,7 @@ object CParticleRenderer {
                 boundMaskTexture = maskBinding
             }
             applySystemUniforms(shader, system, cameraPos, partial, uniformScratch)
-            system.glBuffer.drawBound(0, system.store.highWater)
+            drawSystem(system)
         }
     }
 
@@ -665,7 +677,9 @@ object CParticleRenderer {
                 RenderSystem.bindTexture(textureId)
                 boundMainTexture = system.textureBindingKey
             }
-            system.glBuffer.drawExpanded(system.store.highWater)
+            val first = system.store.firstAliveSlot
+            val count = system.store.highWater - first
+            if (count > 0) system.glBuffer.drawExpanded(count)
         }
     }
 

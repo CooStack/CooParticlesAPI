@@ -562,6 +562,11 @@ object CParticleGpuSimulator {
                 CParticlePerfProbe.measure(CParticlePerfProbe.Stage.GPU_DISPATCH_SUBMIT) {
                     GL43.glDispatchCompute((activeSlotCount + 255) / 256, 1, 1)
                 }
+                CParticlePerfProbe.count(CParticlePerfProbe.Stage.GPU_DISPATCH_COUNT)
+                CParticlePerfProbe.count(
+                    CParticlePerfProbe.Stage.GPU_DISPATCH_PARTICLES,
+                    activeSlotCount.toLong(),
+                )
                 dispatched = true
             } finally {
                 try {
