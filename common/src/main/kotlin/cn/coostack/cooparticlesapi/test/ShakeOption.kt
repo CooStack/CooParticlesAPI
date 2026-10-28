@@ -48,7 +48,7 @@ class ShakeOption @JvmOverloads constructor(
     override fun doTick() {
         tick++
         if (player is ServerPlayer) {
-            ServerCameraUtil.sendShake(player.serverLevel(),
+            ServerCameraUtil.sendShake(player.level(),
                 player.eyePosition, 256.0, 3.0, 10, 300.0, false)
         }
     }

@@ -30,46 +30,58 @@ import net.minecraft.core.Registry
 import net.minecraft.world.inventory.ChestMenu
 import net.minecraft.world.SimpleMenuProvider
 import net.minecraft.server.level.ServerPlayer
+import net.minecraft.server.permissions.Permissions
 import net.minecraft.network.chat.Component
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.InteractionResult
 import net.minecraft.world.InteractionHand
 import net.minecraft.core.BlockPos
+import net.minecraft.core.UUIDUtil
 import net.minecraft.world.phys.Vec3
+import java.util.UUID
 
 /** 结构模型的注册与服务端交互入口，由公共初始化调用 init；所有修改在服务器线程执行。 */
 @EventListener
 object StructureModels {
+    private fun readUuid(tag: CompoundTag, key: String): UUID? =
+        tag.getIntArray(key).orElse(null)?.let { values ->
+            runCatching { UUIDUtil.uuidFromIntArray(values) }.getOrNull()
+        }
+
+    private fun writeUuid(tag: CompoundTag, key: String, value: UUID) {
+        tag.putIntArray(key, UUIDUtil.uuidToIntArray(value))
+    }
+
     /** 方块、物品与实体注册共用的模型 ID。 */
     const val MODEL_ID = "structure_model"
     /** 右键后选择结构的占位方块。 */
     private val blockEntry = CooParticlesServices.COO_REGISTRY.register(CommonDeferredRegistry(
-        BuiltInRegistries.BLOCK, ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, MODEL_ID)
+        BuiltInRegistries.BLOCK, Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, MODEL_ID)
     ) { ModelBlock(BlockBehaviour.Properties.of().strength(1F).noOcclusion()) })
     /** 模型占位方块，在平台注册完成后读取。 */
     val BLOCK: Block get() = blockEntry.get()
     /** 模型方块的持久化存储类型，与方块共享注册标识。 */
     private val blockEntityEntry = CooParticlesServices.COO_REGISTRY.register(CommonDeferredRegistry(
-        BuiltInRegistries.BLOCK_ENTITY_TYPE, ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, MODEL_ID)
-    ) { BlockEntityType.Builder.of(::ModelBlockEntity, BLOCK).build(null) })
+        BuiltInRegistries.BLOCK_ENTITY_TYPE, Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, MODEL_ID)
+    ) { BlockEntityType(::ModelBlockEntity, setOf(BLOCK)) })
     /** 模型方块存储类型，由两个加载器共用。 */
     @Suppress("UNCHECKED_CAST")
     val BLOCK_ENTITY: BlockEntityType<ModelBlockEntity> get() = blockEntityEntry.get() as BlockEntityType<ModelBlockEntity>
     /** 占位方块对应的物品。 */
     private val blockItemEntry = CooParticlesServices.COO_REGISTRY.register(CommonDeferredRegistry(
-        BuiltInRegistries.ITEM, ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, MODEL_ID)
+        BuiltInRegistries.ITEM, Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, MODEL_ID)
     ) { BlockItem(BLOCK, Item.Properties()) })
     /** 模型方块物品的平台注册实例。 */
     val BLOCK_ITEM: Item get() = blockItemEntry.get()
     /** 唯一允许打开实体属性与掉落库存的工具。 */
     private val editorEntry = CooParticlesServices.COO_REGISTRY.register(CommonDeferredRegistry(
-        BuiltInRegistries.ITEM, ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "structure_model_editor")
+        BuiltInRegistries.ITEM, Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "structure_model_editor")
     ) { Item(Item.Properties().stacksTo(1)) })
     /** 编辑已有模型的工具。 */
     val EDITOR: Item get() = editorEntry.get()
     /** 收起后的结构载体，不提供空白创造物品，名称由编辑器设置。 */
     private val heldEntry = CooParticlesServices.COO_REGISTRY.register(CommonDeferredRegistry(
-        BuiltInRegistries.ITEM, ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "held_structure_model")
+        BuiltInRegistries.ITEM, Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "held_structure_model")
     ) { HeldStructureModelItem(Item.Properties().stacksTo(1)) })
     /** 带完整快照的模型物品，不注册空白创造栏物品。 */
     val HELD_MODEL: HeldStructureModelItem get() = heldEntry.get() as HeldStructureModelItem
@@ -121,14 +133,14 @@ object StructureModels {
             if (target is StructureModelEntity && player.isShiftKeyDown && target.settings.pickable) {
                 HELD_MODEL.capture(target, player, hand)
             } else if (player.getItemInHand(hand).`is`(HELD_MODEL)) {
-                HELD_MODEL.use(world, player, hand).result
+                HELD_MODEL.use(world, player, hand)
             } else InteractionResult.PASS
         }
     }
 
     /** 在服务器线程加载模板的独立静态快照；例如 `load(level, id)`，模板不存在时抛出异常。 */
-    fun load(level: ServerLevel, id: ResourceLocation): StructureSnapshot =
-        StructureSnapshot.fromTemplate(level.registryAccess(), level.structureManager.get(id)
+    fun load(level: ServerLevel, id: Identifier): StructureSnapshot =
+        StructureSnapshot.fromTemplate(level.registryAccess(), level.structureTemplateManager.get(id)
             .orElseThrow { IllegalArgumentException("找不到结构模板：$id") })
 
     /**
@@ -163,13 +175,13 @@ object StructureModels {
         val stored = if (model == null) blockStorage(player, pos) else null
         val data = CompoundTag()
         data.putLong("Pos", pos.asLong())
-        if (model != null) data.putUUID("Entity", model.uuid)
+        if (model != null) writeUuid(data, "Entity", model.uuid)
         data.putString("Name", model?.structureName ?: stored?.structureName ?: "")
         data.put("Settings", (model?.settings ?: stored?.settings ?: StructureModelSettings()).toNbt())
         data.putBoolean("SavedBlock", stored?.hasSelectedStructure == true)
         stored?.draft()?.let { data.put("EditorDraft", it) }
         val names = ListTag()
-        player.server.structureManager.listTemplates().use { stream ->
+        player.level().structureTemplateManager.listTemplates().use { stream ->
             stream.limit(4096).sorted().forEach { names.add(StringTag.valueOf(it.toString())) }
         }
         data.put("Names", names)
@@ -178,7 +190,7 @@ object StructureModels {
 
     /** 兼容升级前没有方块实体的空模型方块，仅在服务端为仍存在的方块补建存储。 */
     private fun blockStorage(player: ServerPlayer, pos: BlockPos): ModelBlockEntity? {
-        val world = player.serverLevel()
+        val world = player.level()
         if (!world.hasChunkAt(pos) || !world.getBlockState(pos).`is`(BLOCK)) return null
         return world.getBlockEntity(pos) as? ModelBlockEntity ?: ModelBlockEntity(pos, world.getBlockState(pos)).also {
             world.setBlockEntity(it)
@@ -191,10 +203,10 @@ object StructureModels {
         val stack = player.getItemInHand(hand)
         val result = runCatching {
             require(player.isAlive && !player.isSpectator && player.abilities.mayBuild &&
-                player.canInteractWithBlock(pos, 1.0) && player.serverLevel().mayInteract(player, pos)) { "当前无法转移模型" }
+                player.isWithinBlockInteractionRange(pos, 1.0) && player.level().mayInteract(player, pos)) { "当前无法转移模型" }
             require(stack.count == 1 && (stack.`is`(HELD_MODEL) || ModelItemBehavior.isSkinned(stack))) { "请手持单件模型物品" }
             val stored = requireNotNull(blockStorage(player, pos)) { "模型方块已不存在" }
-            val data = ModelItemBehavior.currentForPlacement(stack, player.serverLevel())
+            val data = ModelItemBehavior.currentForPlacement(stack, player.level())
             stored.receive(data, player.registryAccess())
             stack.shrink(1)
             player.setItemInHand(hand, ItemStack.EMPTY)
@@ -203,7 +215,7 @@ object StructureModels {
             openEditor(player, pos, null)
             InteractionResult.CONSUME
         }, {
-            player.displayClientMessage(Component.literal(it.message ?: "模型转移失败"), true)
+            player.sendOverlayMessage(Component.literal(it.message ?: "模型转移失败"))
             InteractionResult.FAIL
         })
     }
@@ -214,19 +226,21 @@ object StructureModels {
             rejectEdit(player, data, "当前无法编辑模型")
             return
         }
-        val world = player.serverLevel()
-        val pos = BlockPos.of(data.getLong("Pos"))
-        val existing = if (data.hasUUID("Entity")) world.getEntity(data.getUUID("Entity")) as? StructureModelEntity else null
+        val world = player.level()
+        val pos = BlockPos.of(data.getLongOr("Pos", 0L))
+        val entityUuid = readUuid(data, "Entity")
+        val existing = entityUuid?.let { world.getEntity(it) as? StructureModelEntity }
         if (data.contains("Entity") && existing == null) { rejectEdit(player, data, "模型已不存在"); return }
         if (existing != null) {
             if (!existing.canEdit(player)) { rejectEdit(player, data, "请手持结构模型编辑器并靠近模型"); return }
         } else if (!world.hasChunkAt(pos) || !world.getBlockState(pos).`is`(BLOCK) ||
-            !player.canInteractWithBlock(pos, 1.0) || !world.mayInteract(player, pos)) {
+            !player.isWithinBlockInteractionRange(pos, 1.0) || !world.mayInteract(player, pos)) {
             rejectEdit(player, data, "模型方块已改变、距离过远或此处禁止修改")
             return
         }
         val stored = if (existing == null) blockStorage(player, pos) else null
-        if (data.getString("Action") == "import") {
+        val action = data.getStringOr("Action", "")
+        if (action == "import") {
             if (existing != null) { reply(player, false, "只能向空模型方块转移"); return }
             val hand = InteractionHand.entries.firstOrNull {
                 val stack = player.getItemInHand(it)
@@ -236,10 +250,11 @@ object StructureModels {
             else if (transferToBlock(player, pos, hand) == InteractionResult.FAIL) reply(player, false, "转移失败，请检查模型方块是否为空")
             return
         }
-        val preview = data.getString("Action") == "preview"
-        if (!preview && player.cooldowns.isOnCooldown(EDITOR)) { reply(player, false, "请稍后重试"); return }
-        if (!preview) player.cooldowns.addCooldown(EDITOR, 5)
-        if (data.getString("Action") == "drops") {
+        val preview = action == "preview"
+        val editorCooldownStack = ItemStack(EDITOR)
+        if (!preview && player.cooldowns.isOnCooldown(editorCooldownStack)) { reply(player, false, "请稍后重试"); return }
+        if (!preview) player.cooldowns.addCooldown(editorCooldownStack, 5)
+        if (action == "drops") {
             val inventory = existing?.drops ?: stored?.drops ?: return
             player.openMenu(SimpleMenuProvider(
                 { syncId, playerInventory, _ -> ChestMenu.threeRows(syncId, playerInventory, inventory) },
@@ -247,28 +262,31 @@ object StructureModels {
             ))
             return
         }
-        val saveBlock = data.getString("Action") == "save"
-        if (data.getString("Action") != "apply" && !preview && !saveBlock) return
+        val saveBlock = action == "save"
+        if (action != "apply" && !preview && !saveBlock) return
         if (saveBlock && existing != null) { reply(player, false, "实体不能保存为模型方块"); return }
         if (saveBlock) {
             runCatching {
-                val state = data.getCompound("EditorDraft")
+                val state = data.getCompoundOrEmpty("EditorDraft")
                 require(state.sizeInBytes() <= 524288L) { "编辑草稿超过 512 KiB" }
-                val name = ResourceLocation.tryParse(state.getString("Name").trim())
+                val name = Identifier.tryParse(state.getStringOr("Name", "").trim())
                 val snapshot = name?.let { runCatching { resolveSnapshot(player, it, null, stored) }.getOrNull() }
                 requireNotNull(stored).saveDraft(state, snapshot)
             }.onSuccess { reply(player, true, "配置草稿已保存") }
                 .onFailure { reply(player, false, it.message ?: "无法保存配置草稿") }
             return
         }
-        if (preview && !data.hasUUID("PreviewRequest")) return
-        val options = runCatching { StructureModelSettings.fromNbt(data.getCompound("Settings")) }.getOrNull()
+        val previewRequest = readUuid(data, "PreviewRequest")
+        if (preview && previewRequest == null) return
+        val options = runCatching {
+            StructureModelSettings.fromNbt(data.getCompoundOrEmpty("Settings"))
+        }.getOrNull()
         if (options == null || !options.valid()) {
             rejectEdit(player, data, "参数无效；可拾取模型必须填写物品名（最多 64 字符）")
             return
         }
-        val inputName = data.getString("Name").trim()
-        val name = ResourceLocation.tryParse(inputName.take(256))
+        val inputName = data.getStringOr("Name", "").trim()
+        val name = Identifier.tryParse(inputName.take(256))
         if (name == null) { rejectEdit(player, data, "请输入有效的结构 ID"); return }
         val result = runCatching {
             val oldSettings = existing?.settings ?: stored?.settings
@@ -280,17 +298,17 @@ object StructureModels {
                 }) { "模拟物品已不在背包中，请重新选择" }
             }
             if (!preview && options.itemProperties.components != (oldSettings?.itemProperties?.components ?: "{}")) {
-                require(player.hasPermissions(2)) { "修改组件 SNBT 需要管理员权限" }
+                require(player.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER)) { "修改组件 SNBT 需要管理员权限" }
             }
             if (!preview) options.itemProperties.createStack(world.registryAccess(), options.edible)
             val snapshot = resolveSnapshot(player, name, existing, stored)
-            val configured = if (existing == null && !data.getBoolean("ExplicitPivot")) {
+            val configured = if (existing == null && !data.getBooleanOr("ExplicitPivot", false)) {
                 val center = snapshot.defaultPivot
                 options.copy(pivot = listOf(center.x, center.y, center.z), pivotCompensation = listOf(0.0, 0.0, 0.0))
             } else options
             if (preview) {
                 val response = CompoundTag()
-                response.putUUID("PreviewRequest", data.getUUID("PreviewRequest"))
+                writeUuid(response, "PreviewRequest", requireNotNull(previewRequest))
                 response.putString("Name", name.toString())
                 response.put("Structure", snapshot.tag.copy())
                 response.put("Settings", configured.toNbt())
@@ -320,24 +338,25 @@ object StructureModels {
     }
 
     /** 预览、草稿快照缓存和转换共用服务端结构加载规则，客户端不能上传结构或嵌入实体。 */
-    private fun resolveSnapshot(player: ServerPlayer, name: ResourceLocation,
+    private fun resolveSnapshot(player: ServerPlayer, name: Identifier,
                                 existing: StructureModelEntity?, stored: ModelBlockEntity?): StructureSnapshot {
         if (existing != null && existing.structureName == name.toString()) return requireNotNull(existing.snapshot)
         stored?.snapshotFor(name.toString(), player.registryAccess())?.let { return it }
-        val template = player.server.structureManager.get(name).orElse(null) ?: error("找不到已保存结构：$name")
+        val template = player.level().structureTemplateManager.get(name).orElse(null) ?: error("找不到已保存结构：$name")
         return StructureSnapshot.fromTemplate(player.registryAccess(), template)
     }
 
     /** 预览失败必须携带请求标识，不能解锁另一个保存请求或向聊天持续输出输入过程中的错误。 */
     private fun rejectEdit(player: ServerPlayer, request: CompoundTag, message: String) {
-        if (request.getString("Action") != "preview") {
+        val requestName = request.getStringOr("Name", "")
+        if (request.getStringOr("Action", "") != "preview") {
             reply(player, false, message)
             return
         }
-        if (!request.hasUUID("PreviewRequest")) return
+        val previewRequest = readUuid(request, "PreviewRequest") ?: return
         val response = CompoundTag()
-        response.putUUID("PreviewRequest", request.getUUID("PreviewRequest"))
-        response.putString("Name", ResourceLocation.tryParse(request.getString("Name"))?.toString() ?: request.getString("Name"))
+        writeUuid(response, "PreviewRequest", previewRequest)
+        response.putString("Name", Identifier.tryParse(requestName)?.toString() ?: requestName)
         response.putString("Message", message)
         CooServerPacketManager.sendTo(player, ModelEditorPayload(response))
     }
@@ -348,6 +367,6 @@ object StructureModels {
         response.putBoolean("Result", success)
         response.putString("Message", message)
         CooServerPacketManager.sendTo(player, ModelEditorPayload(response))
-        player.displayClientMessage(Component.literal(message), success)
+        player.sendSystemMessage(Component.literal(message), success)
     }
 }

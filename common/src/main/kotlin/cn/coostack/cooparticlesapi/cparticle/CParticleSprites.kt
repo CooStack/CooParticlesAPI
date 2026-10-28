@@ -3,7 +3,7 @@ package cn.coostack.cooparticlesapi.cparticle
 import net.minecraft.core.particles.ParticleOptions
 import net.minecraft.core.particles.ParticleTypes
 import net.minecraft.core.registries.BuiltInRegistries
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import org.joml.Vector3f
 
 /**
@@ -14,10 +14,10 @@ import org.joml.Vector3f
  * Forbidden: 不要在这里重新建立只支持粒子图集的第二套 TBO。
  */
 object CParticleSprites {
-    private data class LegacySpriteKey(val sprite: ResourceLocation)
-    private data class LegacyEffectKey(val typeId: ResourceLocation)
+    private data class LegacySpriteKey(val sprite: Identifier)
+    private data class LegacyEffectKey(val typeId: Identifier)
     private data class RawUvKey(val uv: CParticleUv)
-    private data class ExternalKey(val id: ResourceLocation, val bindingKey: CParticleTextureBindingKey)
+    private data class ExternalKey(val id: Identifier, val bindingKey: CParticleTextureBindingKey)
 
     /**
      * 默认固定 sprite 标识，保留原有 API 值。
@@ -26,7 +26,7 @@ object CParticleSprites {
      * Forbidden: 不要把它当作 ParticleType 的数值 ID。
      */
     @JvmStatic
-    val DEFAULT: ResourceLocation = ResourceLocation.fromNamespaceAndPath("minecraft", "end_rod")
+    val DEFAULT: Identifier = Identifier.fromNamespaceAndPath("minecraft", "end_rod")
 
     /**
      * 旧低层 API 使用的 UV 数据类型。
@@ -61,7 +61,7 @@ object CParticleSprites {
      * @return 当前资源周期的 UV
      */
     @JvmStatic
-    fun resolve(sprite: ResourceLocation?): UvRect {
+    fun resolve(sprite: Identifier?): UvRect {
         if (sprite == null || sprite == DEFAULT) return resolveEffect(ParticleTypes.END_ROD, 0, 1)
         val resolved = CParticleTextureResolver.resolve(textureOfParticleSprite(sprite), net.minecraft.world.phys.Vec3.ZERO)
         return resolved.uv.toLegacy()
@@ -129,7 +129,7 @@ object CParticleSprites {
      * @param effectType 旧 effect 的粒子类型 ID
      * @return 稳定 descriptor ID
      */
-    internal fun animationId(sprite: ResourceLocation?, effectType: ResourceLocation?): Int {
+    internal fun animationId(sprite: Identifier?, effectType: Identifier?): Int {
         if (sprite != null) {
             return CParticleTextureDescriptors.register(
                 LegacySpriteKey(sprite),
@@ -182,7 +182,7 @@ object CParticleSprites {
      * @param effect 原版粒子参数
      * @return 粒子类型资源 ID 或 `null`
      */
-    internal fun effectTypeId(effect: ParticleOptions?): ResourceLocation? =
+    internal fun effectTypeId(effect: ParticleOptions?): Identifier? =
         effect?.let { BuiltInRegistries.PARTICLE_TYPE.getKey(it.type) }
 
     /**
@@ -197,7 +197,7 @@ object CParticleSprites {
      * @return 稳定 descriptor ID
      */
     @JvmStatic
-    fun registerExternalAnimation(id: ResourceLocation, provider: CParticleUvProvider): Int {
+    fun registerExternalAnimation(id: Identifier, provider: CParticleUvProvider): Int {
         val binding = when (provider.textureChannel()) {
             CParticleUvProvider.RESERVED_BLOCK_ATLAS -> CParticleTextureBindingKey.BLOCK_ATLAS
             else -> CParticleTextureBindingKey.PARTICLE_ATLAS

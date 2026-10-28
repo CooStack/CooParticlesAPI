@@ -44,12 +44,15 @@ import cn.coostack.cooparticlesapi.cparticle.CParticleIndexedBlendState
 import cn.coostack.cooparticlesapi.extend.ofVanillaID
 import cn.coostack.cooparticlesapi.renderer.shader.api.CooShaderProgram
 import cn.coostack.cooparticlesapi.renderer.state.CooGLSLStateManager
+import cn.coostack.cooparticlesapi.renderer.backend.glTextureId
+import cn.coostack.cooparticlesapi.renderer.backend.glSamplerId
 import com.mojang.blaze3d.systems.RenderSystem
+import com.mojang.renderpearl.api.textures.FilterMode
+import com.mojang.renderpearl.backend.opengl.GlStateManager
 import net.minecraft.client.Minecraft
-import net.minecraft.client.renderer.LevelRenderer
-import net.minecraft.client.renderer.LightTexture
+import net.minecraft.util.LightCoordsUtil
 import net.minecraft.core.BlockPos
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.server.packs.resources.ResourceManager
 import org.joml.Matrix4f
 import org.joml.Quaternionf
@@ -63,7 +66,7 @@ import org.lwjgl.opengl.GL11.GL_CULL_FACE_MODE
 import org.lwjgl.opengl.GL11.GL_CCW
 import org.lwjgl.opengl.GL11.GL_DEPTH_TEST
 import org.lwjgl.opengl.GL11.GL_FRONT_FACE
-import org.lwjgl.opengl.GL11.GL_LEQUAL
+import org.lwjgl.opengl.GL11.GL_GEQUAL
 import org.lwjgl.opengl.GL11.GL_ONE
 import org.lwjgl.opengl.GL11.GL_TEXTURE_2D
 import org.lwjgl.opengl.GL11.GL_ZERO
@@ -84,6 +87,7 @@ import org.lwjgl.opengl.GL13.GL_TEXTURE2
 import org.lwjgl.opengl.GL13.GL_TEXTURE_BINDING_2D
 import org.lwjgl.opengl.GL20.GL_MAX_DRAW_BUFFERS
 import org.lwjgl.opengl.GL20.glGetUniformLocation
+import org.lwjgl.opengl.GL20.glBlendEquationSeparate
 import org.lwjgl.opengl.GL20.glUniform1f
 import org.lwjgl.opengl.GL20.glUniform1i
 import org.lwjgl.opengl.GL20.glUniform3f
@@ -102,6 +106,8 @@ import org.lwjgl.opengl.GL30.glEnablei
 import org.lwjgl.opengl.GL30.glGetIntegeri
 import org.lwjgl.opengl.GL30.glGetIntegeri_v
 import org.lwjgl.opengl.GL30.glIsEnabledi
+import org.lwjgl.opengl.GL33.GL_SAMPLER_BINDING
+import org.lwjgl.opengl.GL33.glBindSampler
 import java.util.ArrayDeque
 
 /**
@@ -125,8 +131,8 @@ internal class CooFxClientRuntime(
     )
     private val pending = ArrayDeque<PendingPlay>()
     private val pendingModels = ArrayDeque<PendingModelPlay>()
-    private val uploaded = LinkedHashMap<ResourceLocation, UploadedAsset>()
-    private val uploadFailures = LinkedHashMap<ResourceLocation, CooFxFailureTransitionReporter>()
+    private val uploaded = LinkedHashMap<Identifier, UploadedAsset>()
+    private val uploadFailures = LinkedHashMap<Identifier, CooFxFailureTransitionReporter>()
 
     @Volatile
     private var snapshot = PreparedSnapshot(0L, emptyMap(), null)
@@ -137,7 +143,6 @@ internal class CooFxClientRuntime(
     private var shaderUniforms: CooFxShaderUniforms? = null
     private var shaderRevision = -1L
     private var irisShaderPackWarningEmitted = false
-    private var irisEmissiveWarningEmitted = false
 
     init {
         require(maxPendingRequests > 0) { "Pending request limit must be positive" }
@@ -268,7 +273,7 @@ internal class CooFxClientRuntime(
     }
 
     fun sampleCamera(
-        resourceId: ResourceLocation,
+        resourceId: Identifier,
         cameraSelector: String?,
         clipId: String?,
         rawTimeSeconds: Float,
@@ -428,10 +433,10 @@ internal class CooFxClientRuntime(
 
     override fun reloadResources(resourceManager: ResourceManager) {
         val importer = CooFxAssetImporter(MinecraftCooFxResourceProvider(resourceManager))
-        val assets = LinkedHashMap<ResourceLocation, PreparedAsset>()
+        val assets = LinkedHashMap<Identifier, PreparedAsset>()
         resourceManager.listResources("coofx") { location ->
             location.path.endsWith(".coofx.json")
-        }.keys.sortedBy(ResourceLocation::toString).forEach { assetId ->
+        }.keys.sortedBy(Identifier::toString).forEach { assetId ->
             val imported = runCatching { importer.import(assetId) }
                 .getOrElse { failure ->
                     CooParticlesConstants.logger.error("[CooFX-ASSET] 导入 CooFX 资源失败：$assetId", failure)
@@ -472,7 +477,7 @@ internal class CooFxClientRuntime(
         if (RenderSystem.isOnRenderThread()) {
             synchronized(lock) { releaseRenderResourcesOnThread() }
         } else {
-            RenderSystem.recordRenderCall {
+            Minecraft.getInstance().execute {
                 synchronized(lock) { releaseRenderResourcesOnThread() }
             }
         }
@@ -727,6 +732,7 @@ internal class CooFxClientRuntime(
             previousFrontFace = glGetInteger(GL_FRONT_FACE),
             previousActiveTexture = previousActiveTexture,
             previousTextures = previousTextures,
+            previousSamplers = IntArray(3) { glGetIntegeri(GL_SAMPLER_BINDING, it) },
         )
     }
 
@@ -734,9 +740,13 @@ internal class CooFxClientRuntime(
         glCullFace(state.previousCullFace)
         glFrontFace(state.previousFrontFace)
         state.previousTextures.forEachIndexed { index, texture ->
+            GlStateManager._activeTexture(GL_TEXTURE0 + index)
             glActiveTexture(GL_TEXTURE0 + index)
+            GlStateManager._bindTexture(texture)
             glBindTexture(GL_TEXTURE_2D, texture)
+            glBindSampler(index, state.previousSamplers[index])
         }
+        GlStateManager._activeTexture(state.previousActiveTexture)
         glActiveTexture(state.previousActiveTexture)
     }
 
@@ -751,7 +761,7 @@ internal class CooFxClientRuntime(
         glEnable(GL_DEPTH_TEST)
         glDepthFunc(
             when (primitive.material.depthTest) {
-                CooFxDepthTest.LESS_OR_EQUAL -> GL_LEQUAL
+                CooFxDepthTest.LESS_OR_EQUAL -> GL_GEQUAL
                 CooFxDepthTest.ALWAYS -> GL_ALWAYS
             }
         )
@@ -770,20 +780,65 @@ internal class CooFxClientRuntime(
             glDisable(GL_BLEND)
         }
         val minecraft = Minecraft.getInstance()
-        val lightTexture = minecraft.gameRenderer.lightTexture()
-        val lightmapWasEnabled = RenderSystem.getShaderTexture(2) != 0
-        try {
-            if (!lightmapWasEnabled) lightTexture.turnOnLightLayer()
+        run {
             val baseColorTexture = primitive.material.baseColorTexture
             val emissiveTexture = primitive.material.emissiveTexture
-            val baseColorTextureId = baseColorTexture?.let { minecraft.textureManager.getTexture(it).id } ?: 0
-            val emissiveTextureId = emissiveTexture?.let { minecraft.textureManager.getTexture(it).id } ?: 0
+            val baseColorTextureResource = baseColorTexture?.let { minecraft.textureManager.getTexture(it) }
+            val emissiveTextureResource = emissiveTexture?.let { minecraft.textureManager.getTexture(it) }
+            val baseColorTextureId = baseColorTextureResource?.texture?.glTextureId ?: 0
+            val emissiveTextureId = emissiveTextureResource?.texture?.glTextureId ?: 0
             glActiveTexture(GL_TEXTURE0)
             glBindTexture(GL_TEXTURE_2D, baseColorTextureId)
+            glBindSampler(0, baseColorTextureResource?.sampler?.glSamplerId ?: 0)
             glActiveTexture(GL_TEXTURE1)
             glBindTexture(GL_TEXTURE_2D, emissiveTextureId)
+            glBindSampler(1, emissiveTextureResource?.sampler?.glSamplerId ?: 0)
             glActiveTexture(GL_TEXTURE2)
-            glBindTexture(GL_TEXTURE_2D, RenderSystem.getShaderTexture(2))
+            glBindTexture(GL_TEXTURE_2D, minecraft.gameRenderer.lightmap().texture().glTextureId)
+            glBindSampler(2, RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR).glSamplerId)
+            fun drawOwnGeometry(emissiveOnly: Boolean) {
+                glActiveTexture(GL_TEXTURE0)
+                glBindTexture(GL_TEXTURE_2D, baseColorTextureId)
+                glBindSampler(0, baseColorTextureResource?.sampler?.glSamplerId ?: 0)
+                glActiveTexture(GL_TEXTURE1)
+                glBindTexture(GL_TEXTURE_2D, emissiveTextureId)
+                glBindSampler(1, emissiveTextureResource?.sampler?.glSamplerId ?: 0)
+                glActiveTexture(GL_TEXTURE2)
+                glBindTexture(GL_TEXTURE_2D, minecraft.gameRenderer.lightmap().texture().glTextureId)
+                glBindSampler(2, RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR).glSamplerId)
+                CooGLSLStateManager.useState {
+                    if (emissiveOnly) {
+                        // 只累加自发光 RGB，保留目标 alpha 与原深度，不能改写光影包辅助附件。
+                        glDepthMask(false)
+                        if (CParticleIndexedBlendState.isAvailable()) {
+                            glEnablei(GL_BLEND, 0)
+                            CParticleIndexedBlendState.setEquation(0, GL_FUNC_ADD, GL_FUNC_ADD)
+                            CParticleIndexedBlendState.setFactors(0, GL_ONE, GL_ONE, GL_ZERO, GL_ONE)
+                        } else {
+                            glEnable(GL_BLEND)
+                            glBlendEquationSeparate(GL_FUNC_ADD, GL_FUNC_ADD)
+                            glBlendFuncSeparate(GL_ONE, GL_ONE, GL_ZERO, GL_ONE)
+                        }
+                    } else {
+                        glDepthMask(primitive.material.depthWrite)
+                        glDisablei(GL_BLEND, 0)
+                    }
+                    program.useOnContext {
+                        val uniforms = requireNotNull(shaderUniforms)
+                        configureFrameUniforms(request, irisShaderPackActive = false)
+                        uniforms.setMaterial(primitive.material)
+                        uniforms.setEmissiveOnly(emissiveOnly)
+                        try {
+                            withPrimaryColorWriteOnly {
+                                particleRenderer.drawPreparedBatch(batch, primitive.drawBinding)
+                            }
+                        } finally {
+                            uniforms.setEmissiveOnly(false)
+                            configureFrameUniforms(request, irisShaderPackActive = true)
+                        }
+                    }
+                }
+            }
             val expandedEntityVertexCount = if (frameUniformsReady) {
                 drawCooFxBatch(
                     request,
@@ -806,21 +861,24 @@ internal class CooFxClientRuntime(
                 vertexCount
             }
             if (irisShaderPackActive && expandedEntityVertexCount > 0) {
-                val previousShaderTexture0 = RenderSystem.getShaderTexture(0)
-                val previousShaderTexture1 = RenderSystem.getShaderTexture(1)
                 val entityBaseTextureId = if (baseColorTextureId != 0) {
                     baseColorTextureId
                 } else {
-                    minecraft.textureManager.getTexture(ofVanillaID("textures/misc/white.png")).id
+                    minecraft.textureManager.getTexture(ofVanillaID("textures/misc/white.png")).texture.glTextureId
                 }
                 val overlayTexture = minecraft.gameRenderer.overlayTexture()
-                try {
-                    RenderSystem.setShaderTexture(0, entityBaseTextureId)
-                    overlayTexture.setupOverlayColor()
-                    if (primitive.material.emissiveStrength > 0F) {
-                        warnIrisEmissiveDeferred()
-                    }
-                    IrisCompat.runWithRenderEntityShader(
+                run {
+                    glActiveTexture(GL_TEXTURE0)
+                    glBindTexture(GL_TEXTURE_2D, entityBaseTextureId)
+                    glBindSampler(
+                        0,
+                        baseColorTextureResource?.sampler?.glSamplerId
+                            ?: minecraft.textureManager.getTexture(ofVanillaID("textures/misc/white.png")).sampler.glSamplerId,
+                    )
+                    glActiveTexture(GL_TEXTURE1)
+                    glBindTexture(GL_TEXTURE_2D, overlayTexture.textureView.texture().glTextureId)
+                    glBindSampler(1, RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST).glSamplerId)
+                    val submitted = IrisCompat.runWithRenderEntityShader(
                         request.viewMatrix,
                         request.projectionMatrix,
                         shaderKind = if (primitive.material.alphaMode == CooFxAlphaMode.MASK) {
@@ -828,20 +886,42 @@ internal class CooFxClientRuntime(
                         } else {
                             IrisEntityShaderKind.SOLID
                         },
+                        fallback = {
+                            // 保留三角形和实例拓扑，不能把既有 mesh 冒充成光影包的 patch 输入。
+                            drawOwnGeometry(emissiveOnly = false)
+                        },
                     ) {
+                        // Iris 初始化可以改写保留单元；在实际绘制前重新绑定本模型的基础、overlay 和光照。
+                        glActiveTexture(GL_TEXTURE0)
+                        glBindTexture(GL_TEXTURE_2D, entityBaseTextureId)
+                        glBindSampler(
+                            0,
+                            baseColorTextureResource?.sampler?.glSamplerId
+                                ?: minecraft.textureManager.getTexture(ofVanillaID("textures/misc/white.png")).sampler.glSamplerId,
+                        )
+                        glActiveTexture(GL_TEXTURE1)
+                        glBindTexture(GL_TEXTURE_2D, overlayTexture.textureView.texture().glTextureId)
+                        glBindSampler(1, RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST).glSamplerId)
+                        glActiveTexture(GL_TEXTURE2)
+                        glBindTexture(GL_TEXTURE_2D, minecraft.gameRenderer.lightmap().texture().glTextureId)
+                        glBindSampler(2, RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR).glSamplerId)
                         withPrimaryColorWriteOnly {
                             particleRenderer.drawExpandedIrisEntity(expandedEntityVertexCount)
                         }
-                        // emissive 第二次提交待 NEW_ENTITY 专用实现与状态测试后恢复。
+                        if (primitive.material.emissiveStrength > 0F &&
+                            (primitive.material.emissiveFactor.red > 0F ||
+                                primitive.material.emissiveFactor.green > 0F ||
+                                primitive.material.emissiveFactor.blue > 0F)
+                        ) {
+                            drawOwnGeometry(emissiveOnly = true)
+                        }
                     }
-                } finally {
-                    overlayTexture.teardownOverlayColor()
-                    RenderSystem.setShaderTexture(0, previousShaderTexture0)
-                    RenderSystem.setShaderTexture(1, previousShaderTexture1)
+                    if (!submitted) {
+                        // 未取得 pack program 时仍保留调用方有效世界目标中的完整几何与材质。
+                        drawOwnGeometry(emissiveOnly = false)
+                    }
                 }
             }
-        } finally {
-            if (!lightmapWasEnabled) lightTexture.turnOffLightLayer()
         }
     }
 
@@ -875,16 +955,8 @@ internal class CooFxClientRuntime(
     }
 
     private fun packedLightAt(x: Double, y: Double, z: Double): Int {
-        val level = Minecraft.getInstance().level ?: return LightTexture.FULL_BRIGHT
-        return LevelRenderer.getLightColor(level, BlockPos.containing(x, y, z))
-    }
-
-    private fun warnIrisEmissiveDeferred() {
-        if (irisEmissiveWarningEmitted) return
-        irisEmissiveWarningEmitted = true
-        CooParticlesConstants.logger.warn(
-            "Iris emissive second pass deferred: expanded NEW_ENTITY emissive 提交尚未验证，已安全跳过",
-        )
+        val level = Minecraft.getInstance().level ?: return LightCoordsUtil.FULL_BRIGHT
+        return LightCoordsUtil.getLightCoords(level, BlockPos.containing(x, y, z))
     }
 
     private fun <T> withRenderBatchStatePreserved(active: Boolean, block: () -> T): T {
@@ -997,7 +1069,7 @@ internal class CooFxClientRuntime(
     )
 
     private fun failed(
-        resourceId: ResourceLocation,
+        resourceId: Identifier,
         stage: String,
         message: String,
     ): CooFxPlayResult = CooFxPlayResult.Failed(
@@ -1005,7 +1077,7 @@ internal class CooFxClientRuntime(
     )
 
     private fun modelFailed(
-        resourceId: ResourceLocation,
+        resourceId: Identifier,
         stage: String,
         message: String,
     ): CooFxModelPlayResult = CooFxModelPlayResult.Failed(
@@ -1027,7 +1099,7 @@ internal class CooFxClientRuntime(
 
     private data class PreparedSnapshot(
         val revision: Long,
-        val assets: Map<ResourceLocation, PreparedAsset>,
+        val assets: Map<Identifier, PreparedAsset>,
         val shaderSources: CooFxShaderSourceBundle?,
     )
 
@@ -1051,6 +1123,8 @@ internal class CooFxClientRuntime(
         val previousFrontFace: Int,
         val previousActiveTexture: Int,
         val previousTextures: IntArray,
+        /** 本批次实际修改的三个二维采样单元对应的 sampler 绑定。 */
+        val previousSamplers: IntArray,
     )
 
     private data class CooFxDrawBufferState(
@@ -1120,6 +1194,11 @@ internal class CooFxClientRuntime(
             setBoolean(emissiveOnly, false)
             setBoolean(fullBright, material.lightMode == CooFxLightMode.FULL_BRIGHT)
             setFloat(alphaCutoff, material.alphaCutoff)
+        }
+
+        /** 额外的 Iris 自发光 pass 只输出自发光 RGB，基础 pass 始终复原为 false。 */
+        fun setEmissiveOnly(value: Boolean) {
+            setBoolean(emissiveOnly, value)
         }
 
         private fun setMatrix(location: Int, matrix: Matrix4f) {

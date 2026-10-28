@@ -17,17 +17,17 @@ import kotlin.math.pow
  */
 data class TrailRibbonStyle(
     /** 头部宽度（格）。 */
-    val headWidth: Float = 0.24f,
+    val headWidth: Float = 0.24F,
     /** 尾部宽度（格）。 */
-    val tailWidth: Float = 0.02f,
+    val tailWidth: Float = 0.02F,
     /** 头部颜色（RGBA）。 */
-    val headColor: Vector4f = Vector4f(1f, 1f, 1f, 0.9f),
+    val headColor: Vector4f = Vector4f(1F, 1F, 1F, 0.9F),
     /** 尾部颜色（RGBA），通常 alpha 为 0 让尾部淡出。 */
-    val tailColor: Vector4f = Vector4f(1f, 1f, 1f, 0f),
+    val tailColor: Vector4f = Vector4f(1F, 1F, 1F, 0F),
     /** 宽度衰减指数；>1 时前段更饱满、尾段收缩更快。 */
-    val widthEase: Float = 1.0f,
+    val widthEase: Float = 1.0F,
     /** 颜色 / 透明度衰减指数；>1 时前段更亮、尾段更快淡出。 */
-    val fadeEase: Float = 1.0f
+    val fadeEase: Float = 1.0F
 )
 
 /**
@@ -103,12 +103,12 @@ object TrailModelBuilder {
             val side = sideAxis(direction, current.localPosition, cameraLocalPos)
             val widthProgress = ease(current.progress, style.widthEase)
             val fadeProgress = ease(current.progress, style.fadeEase)
-            val halfWidth = (lerp(style.headWidth, style.tailWidth, widthProgress) * 0.5f).coerceAtLeast(0f)
+            val halfWidth = (lerp(style.headWidth, style.tailWidth, widthProgress) * 0.5F).coerceAtLeast(0F)
             val color = Vector4f(style.headColor).lerp(style.tailColor, fadeProgress)
             val offset = Vector3f(side).mul(halfWidth)
             val u = current.progress
-            result += vertex(Vector3f(current.localPosition).add(offset), color, Vector2f(u, 0f), direction)
-            result += vertex(Vector3f(current.localPosition).sub(offset), color, Vector2f(u, 1f), direction)
+            result += vertex(Vector3f(current.localPosition).add(offset), color, Vector2f(u, 0F), direction)
+            result += vertex(Vector3f(current.localPosition).sub(offset), color, Vector2f(u, 1F), direction)
         }
         return result
     }
@@ -129,26 +129,26 @@ object TrailModelBuilder {
     ) {
         val forward = Vector3f(cameraLocalPos).sub(centerLocal)
         if (forward.lengthSquared() <= EPSILON) {
-            forward.set(0f, 0f, 1f)
+            forward.set(0F, 0F, 1F)
         } else {
             forward.normalize()
         }
         val right = Vector3f(forward).cross(UP)
         if (right.lengthSquared() <= EPSILON) {
-            right.set(1f, 0f, 0f)
+            right.set(1F, 0F, 0F)
         } else {
             right.normalize()
         }
         val up = Vector3f(right).cross(forward).normalize()
-        val half = size * 0.5f
+        val half = size * 0.5F
         right.mul(half)
         up.mul(half)
         model.addQuad(
             layer,
-            vertex(Vector3f(centerLocal).sub(right).sub(up), color, Vector2f(0f, 0f), forward),
-            vertex(Vector3f(centerLocal).add(right).sub(up), color, Vector2f(1f, 0f), forward),
-            vertex(Vector3f(centerLocal).add(right).add(up), color, Vector2f(1f, 1f), forward),
-            vertex(Vector3f(centerLocal).sub(right).add(up), color, Vector2f(0f, 1f), forward)
+            vertex(Vector3f(centerLocal).sub(right).sub(up), color, Vector2f(0F, 0F), forward),
+            vertex(Vector3f(centerLocal).add(right).sub(up), color, Vector2f(1F, 0F), forward),
+            vertex(Vector3f(centerLocal).add(right).add(up), color, Vector2f(1F, 1F), forward),
+            vertex(Vector3f(centerLocal).sub(right).add(up), color, Vector2f(0F, 1F), forward)
         )
     }
 
@@ -157,7 +157,7 @@ object TrailModelBuilder {
      */
     @JvmStatic
     fun cameraLocalPos(sample: TrailSample): Vector3f {
-        val camera = Minecraft.getInstance().gameRenderer.mainCamera.position
+        val camera = Minecraft.getInstance().gameRenderer.mainCamera().position()
         return Vector3f(
             (camera.x - sample.origin.x).toFloat(),
             (camera.y - sample.origin.y).toFloat(),
@@ -189,7 +189,7 @@ object TrailModelBuilder {
             direction.add(Vector3f(current).sub(previous))
         }
         if (direction.lengthSquared() <= EPSILON) {
-            direction.set(1f, 0f, 0f)
+            direction.set(1F, 0F, 0F)
         } else {
             direction.normalize()
         }
@@ -206,15 +206,15 @@ object TrailModelBuilder {
         if (fallback.lengthSquared() > EPSILON) {
             return fallback.normalize()
         }
-        return Vector3f(direction).cross(1f, 0f, 0f).normalize()
+        return Vector3f(direction).cross(1F, 0F, 0F).normalize()
     }
 
     private fun ease(progress: Float, exponent: Float): Float {
-        val clamped = progress.coerceIn(0f, 1f)
-        if (exponent == 1.0f) {
+        val clamped = progress.coerceIn(0F, 1F)
+        if (exponent == 1.0F) {
             return clamped
         }
-        return clamped.pow(exponent.coerceAtLeast(1.0E-3f))
+        return clamped.pow(exponent.coerceAtLeast(1.0E-3F))
     }
 
     private fun lerp(from: Float, to: Float, progress: Float): Float {
@@ -235,6 +235,6 @@ object TrailModelBuilder {
         )
     }
 
-    private val UP = Vector3f(0f, 1f, 0f)
-    private const val EPSILON = 1.0E-6f
+    private val UP = Vector3f(0F, 1F, 0F)
+    private const val EPSILON = 1.0E-6F
 }

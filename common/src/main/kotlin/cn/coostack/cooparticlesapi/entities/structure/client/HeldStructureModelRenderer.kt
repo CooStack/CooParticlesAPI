@@ -2,11 +2,11 @@ package cn.coostack.cooparticlesapi.entities.structure.client
 
 import cn.coostack.cooparticlesapi.entities.structure.ModelItemData
 import cn.coostack.cooparticlesapi.entities.structure.StructureModelEntity
-import net.minecraft.client.Minecraft
-import net.minecraft.client.renderer.MultiBufferSource
-import net.minecraft.world.item.ItemDisplayContext
 import com.mojang.blaze3d.vertex.PoseStack
+import net.minecraft.client.Minecraft
+import net.minecraft.client.renderer.SubmitNodeCollector
 import net.minecraft.client.multiplayer.ClientLevel
+import net.minecraft.client.renderer.state.level.CameraRenderState
 import net.minecraft.core.component.DataComponents
 import net.minecraft.world.item.component.CustomData
 import net.minecraft.world.item.ItemStack
@@ -22,13 +22,17 @@ class HeldStructureModelRenderer {
 
     /** 断线或更换世界时释放缓存，防止展示实体保留已经退出的世界。 */
     fun clear() {
+        HeldStructureItemModel.clearTransforms()
         displays.clear()
         cachedWorld = null
     }
 
-    fun render(
-        stack: ItemStack, mode: ItemDisplayContext, matrices: PoseStack,
-        consumers: MultiBufferSource, light: Int, overlay: Int
+    fun submit(
+        stack: ItemStack,
+        matrices: PoseStack,
+        collector: SubmitNodeCollector,
+        cameraState: CameraRenderState,
+        partialTick: Float,
     ) {
         val client = Minecraft.getInstance()
         val world = client.level ?: run { clear(); return }
@@ -52,11 +56,14 @@ class HeldStructureModelRenderer {
         matrices.pushPose()
         try {
             matrices.translate(0.5, 0.5, 0.5)
-            matrices.mulPose(Axis.XP.rotationDegrees(20F))
-            matrices.mulPose(Axis.YP.rotationDegrees(35F))
+            matrices.rotateDegrees(Axis.XP, 20F)
+            matrices.rotateDegrees(Axis.YP, 35F)
             matrices.scale(scale, scale, scale)
             matrices.translate(-center.x, -center.y, -center.z)
-            client.entityRenderDispatcher.getRenderer(model).render(model, 0F, 0F, matrices, consumers, light)
+            val renderer = client.entityRenderDispatcher.getRenderer(model) as? StructureModelRenderer ?: return
+            val state = renderer.createRenderState()
+            renderer.extractRenderState(model, state, partialTick)
+            renderer.submit(state, matrices, collector, cameraState)
         } finally {
             matrices.popPose()
         }

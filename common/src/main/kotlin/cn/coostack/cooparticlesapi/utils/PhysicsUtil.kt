@@ -29,7 +29,11 @@ object PhysicsUtil {
      * @return 修正后的位置(恰好擦边)
      */
     fun fixBeforeCollidePosition(res: BlockHitResult): Vec3 {
-        val offset = res.direction.normal.asVec3()
+        val offset = Vec3(
+            res.direction.stepX.toDouble(),
+            res.direction.stepY.toDouble(),
+            res.direction.stepZ.toDouble()
+        )
         return res.location + offset.normalize() * 0.07
     }
 
@@ -248,7 +252,11 @@ object PhysicsUtil {
      * @return 物理模拟运动后的移动方向
      */
     fun collideMovement(res: BlockHitResult, velocity: Vec3): Vec3 {
-        val normal = res.direction.normal.asVec3()
+        val normal = Vec3(
+            res.direction.stepX.toDouble(),
+            res.direction.stepY.toDouble(),
+            res.direction.stepZ.toDouble()
+        )
         val mulNormal = normal * velocity.asAbs()
         return velocity + mulNormal // normal运动方向本身就是反向的 所以需要相加消除
     }

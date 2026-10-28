@@ -6,9 +6,14 @@ import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.client.particle.Particle
 import net.minecraft.client.particle.ParticleProvider
 import net.minecraft.client.particle.SpriteSet
+import net.minecraft.util.RandomSource
 import net.minecraft.world.phys.Vec3
 import java.util.UUID
 
+/**
+ * 使用附魔动画帧的受控普通粒子。
+ * @property provider 由原版资源系统维护的动态图集帧集
+ */
 class ControlableEnchantmentParticle(
     world: ClientLevel,
     pos: Vec3,
@@ -33,7 +38,12 @@ class ControlableEnchantmentParticle(
         }
     }
 
+    /**
+     * 将附魔选项转换为受控粒子。
+     * @property provider 原版注册回调提供的动态图集帧集
+     */
     class Factory(val provider: SpriteSet) : ParticleProvider<ControlableEnchantmentEffect> {
+        /** 接受 26.3 引擎随机源；动画帧仍由控制器年龄决定。 */
         override fun createParticle(
             parameters: ControlableEnchantmentEffect,
             world: ClientLevel,
@@ -42,7 +52,8 @@ class ControlableEnchantmentParticle(
             z: Double,
             velocityX: Double,
             velocityY: Double,
-            velocityZ: Double
+            velocityZ: Double,
+            random: RandomSource,
         ): Particle {
             return ControlableEnchantmentParticle(
                 world,

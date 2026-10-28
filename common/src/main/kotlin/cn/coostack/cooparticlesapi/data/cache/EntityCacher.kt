@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi.data.cache
 
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import java.util.concurrent.ConcurrentHashMap
 import java.util.function.Supplier
 
@@ -43,7 +43,7 @@ class EntityCacher {
         return caches.containsKey(key)
     }
 
-    fun has(key: ResourceLocation): Boolean {
+    fun has(key: Identifier): Boolean {
         return caches.keys.any { key == it.id }
     }
 
@@ -54,7 +54,7 @@ class EntityCacher {
         return if (removed == null) null else removed as? T
     }
 
-    fun removeAllIfId(id: ResourceLocation) {
+    fun removeAllIfId(id: Identifier) {
         caches.keys.removeIf { it.id == id }
     }
 

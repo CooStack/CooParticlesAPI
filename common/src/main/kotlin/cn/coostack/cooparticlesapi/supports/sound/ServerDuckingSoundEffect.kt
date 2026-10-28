@@ -3,7 +3,7 @@ package cn.coostack.cooparticlesapi.supports.sound
 import cn.coostack.cooparticlesapi.CooParticlesAPI
 import cn.coostack.cooparticlesapi.network.packet.server.PacketSoundInstanceS2C
 import cn.coostack.cooparticlesapi.scheduler.CooScheduler
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.sounds.SoundSource
@@ -24,9 +24,9 @@ class ServerDuckingSoundEffect(
     val key: String,
     world: ServerLevel,
     initialPos: Vec3 = Vec3.ZERO,
-    volumeMultiplier: Float = 0f,
+    volumeMultiplier: Float = 0F,
     range: Double = -1.0,
-    whitelistSounds: Set<ResourceLocation> = emptySet(),
+    whitelistSounds: Set<Identifier> = emptySet(),
     whitelistSources: Set<SoundSource> = emptySet(),
     whitelistKeys: Set<String> = emptySet()
 ) {
@@ -107,11 +107,11 @@ class ServerDuckingSoundEffect(
             position = Vec3(position.x, position.y, value)
         }
 
-    val initialVolumeMultiplier: Float = Mth.clamp(volumeMultiplier, 0f, 1f)
+    val initialVolumeMultiplier: Float = Mth.clamp(volumeMultiplier, 0F, 1F)
 
     var volumeMultiplier: Float = initialVolumeMultiplier
         set(value) {
-            val next = Mth.clamp(value, 0f, 1f)
+            val next = Mth.clamp(value, 0F, 1F)
             if (field == next) {
                 return
             }
@@ -137,7 +137,7 @@ class ServerDuckingSoundEffect(
             markDirty()
         }
 
-    val whitelistSounds: MutableSet<ResourceLocation> = whitelistSounds.toMutableSet()
+    val whitelistSounds: MutableSet<Identifier> = whitelistSounds.toMutableSet()
     val whitelistSources: MutableSet<SoundSource> = whitelistSources.toMutableSet()
     val whitelistKeys: MutableSet<String> = whitelistKeys.toMutableSet()
 
@@ -171,7 +171,7 @@ class ServerDuckingSoundEffect(
     @JvmOverloads
     fun fadeTo(targetVolumeMultiplier: Float, ticks: Int, stopWhenFinished: Boolean = false): CooScheduler.TickRunnable? {
         val fixedTicks = ticks.coerceAtLeast(0)
-        val fixedTarget = Mth.clamp(targetVolumeMultiplier, 0f, 1f)
+        val fixedTarget = Mth.clamp(targetVolumeMultiplier, 0F, 1F)
         if (fixedTicks == 0) {
             volumeMultiplier = fixedTarget
             if (stopWhenFinished) {
@@ -188,7 +188,7 @@ class ServerDuckingSoundEffect(
                 return@runTaskTimerMaxTick
             }
             elapsed++
-            val progress = (elapsed.toFloat() / fixedTicks).coerceIn(0f, 1f)
+            val progress = (elapsed.toFloat() / fixedTicks).coerceIn(0F, 1F)
             volumeMultiplier = startVolume + (fixedTarget - startVolume) * progress
         }.setFinishCallback {
             volumeMultiplier = fixedTarget
@@ -200,14 +200,14 @@ class ServerDuckingSoundEffect(
 
     @JvmOverloads
     fun fadeOut(ticks: Int, stopWhenFinished: Boolean = true): CooScheduler.TickRunnable? {
-        return fadeTo(1f, ticks, stopWhenFinished)
+        return fadeTo(1F, ticks, stopWhenFinished)
     }
 
     @JvmOverloads
     fun fadeIn(
         ticks: Int,
         targetVolumeMultiplier: Float = initialVolumeMultiplier,
-        fromVolumeMultiplier: Float = 1f
+        fromVolumeMultiplier: Float = 1F
     ): CooScheduler.TickRunnable? {
         volumeMultiplier = fromVolumeMultiplier
         return fadeTo(targetVolumeMultiplier, ticks, false)

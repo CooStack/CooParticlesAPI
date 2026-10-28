@@ -3,11 +3,13 @@ package cn.coostack.cooparticlesapi.mixin.compat.iris;
 import cn.coostack.cooparticlesapi.compat.iris.CooIrisRenderState;
 import cn.coostack.cooparticlesapi.renderer.client.ClientRenderPipelineManager;
 import com.mojang.blaze3d.pipeline.RenderTarget;
+import com.mojang.renderpearl.api.textures.GpuTexture;
 import net.minecraft.client.Minecraft;
 import net.irisshaders.iris.gl.framebuffer.GlFramebuffer;
+import net.irisshaders.iris.mixinterface.GpuTextureInterface;
 import net.irisshaders.iris.pipeline.FinalPassRenderer;
-import net.irisshaders.iris.targets.DepthTexture;
 import net.irisshaders.iris.targets.RenderTargets;
+import net.irisshaders.iris.uniforms.CapturedRenderingState;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
@@ -35,8 +37,12 @@ public abstract class IrisRenderingPipelineMixin {
 
     @Inject(method = "beginLevelRendering", at = @At("TAIL"), remap = false)
     private void cooparticlesapi$captureSceneDepth(CallbackInfo ci) {
+        CooIrisRenderState.captureDepthProjection(
+                CapturedRenderingState.INSTANCE.getGbufferModelView(),
+                CapturedRenderingState.INSTANCE.getGbufferProjection()
+        );
         CooIrisRenderState.captureSceneDepth(
-                renderTargets.getDepthTexture(),
+                ((GpuTextureInterface) renderTargets.getDepthTexture()).iris$getGlId(),
                 renderTargets.getCurrentWidth(),
                 renderTargets.getCurrentHeight()
         );
@@ -44,9 +50,9 @@ public abstract class IrisRenderingPipelineMixin {
 
     @Inject(method = "beginTranslucents", at = @At("TAIL"), remap = false)
     private void cooparticlesapi$captureTerrainDepth(CallbackInfo ci) {
-        DepthTexture depth = renderTargets.getDepthTextureNoTranslucents();
+        GpuTexture depth = renderTargets.getDepthTextureNoTranslucents();
         CooIrisRenderState.captureTerrainDepth(
-                depth.getTextureId(),
+                ((GpuTextureInterface) depth).iris$getGlId(),
                 renderTargets.getCurrentWidth(),
                 renderTargets.getCurrentHeight()
         );
@@ -54,9 +60,9 @@ public abstract class IrisRenderingPipelineMixin {
 
     @Inject(method = "beginHand", at = @At("TAIL"), remap = false)
     private void cooparticlesapi$captureNoHandDepth(CallbackInfo ci) {
-        DepthTexture depth = renderTargets.getDepthTextureNoHand();
+        GpuTexture depth = renderTargets.getDepthTextureNoHand();
         CooIrisRenderState.captureNoHandDepth(
-                depth.getTextureId(),
+                ((GpuTextureInterface) depth).iris$getGlId(),
                 renderTargets.getCurrentWidth(),
                 renderTargets.getCurrentHeight()
         );
@@ -85,7 +91,7 @@ public abstract class IrisRenderingPipelineMixin {
     )
     private void cooparticlesapi$captureFinalColorAndRenderPost(CallbackInfo ci) {
         GlFramebuffer colorHolder = ((FinalPassRendererAccessor) finalPassRenderer).getColorHolder();
-        RenderTarget output = Minecraft.getInstance().getMainRenderTarget();
+        RenderTarget output = Minecraft.getInstance().gameRenderer.mainRenderTarget();
         CooIrisRenderState.captureFinalColor(
                 colorHolder.getColorAttachment(0),
                 colorHolder.getId(),

@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi.gui
 
-import net.minecraft.client.gui.GuiGraphics
+import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.minecraft.world.phys.Vec2
 import kotlin.math.abs
 
@@ -150,11 +150,11 @@ object SnapHelper {
     /**
      * 画出一条吸附参考线(贯穿整个屏幕), 用于拖拽时的视觉提示。
      *
-     * @param graphics 当前 GuiGraphics
+     * @param graphics 当前 GuiGraphicsExtractor
      * @param guide 要画的参考线
      * @param color 线颜色(ARGB), 默认半透明青色
      */
-    fun drawGuide(graphics: GuiGraphics, guide: Guide, color: Int = 0xAA00E5FFu.toInt()) {
+    fun drawGuide(graphics: GuiGraphicsExtractor, guide: Guide, color: Int = 0xAA00E5FFu.toInt()) {
         val w = graphics.guiWidth()
         val h = graphics.guiHeight()
         if (guide.vertical) {

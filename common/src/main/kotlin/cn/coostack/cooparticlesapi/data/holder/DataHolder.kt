@@ -3,7 +3,7 @@ package cn.coostack.cooparticlesapi.data.holder
 import cn.coostack.cooparticlesapi.annotations.codec.CodecHelper
 import cn.coostack.cooparticlesapi.network.packet.server.PacketDataHolderS2C
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Entity
 import java.util.concurrent.ConcurrentHashMap
@@ -121,11 +121,11 @@ class DataHolder(private val entity: Entity? = null) {
         return clientData.containsKey(key)
     }
 
-    fun has(key: ResourceLocation): Boolean {
+    fun has(key: Identifier): Boolean {
         return serverData.keys.any { key == it.id }
     }
 
-    fun hasClient(key: ResourceLocation): Boolean {
+    fun hasClient(key: Identifier): Boolean {
         return clientData.keys.any { key == it.id }
     }
 
@@ -151,12 +151,12 @@ class DataHolder(private val entity: Entity? = null) {
         return removed as? T
     }
 
-    fun removeAllIfId(id: ResourceLocation) {
+    fun removeAllIfId(id: Identifier) {
         serverData.keys.removeIf { it.id == id }
         sync(false)
     }
 
-    fun removeAllClientIfId(id: ResourceLocation) {
+    fun removeAllClientIfId(id: Identifier) {
         clientData.keys.removeIf { it.id == id }
     }
 

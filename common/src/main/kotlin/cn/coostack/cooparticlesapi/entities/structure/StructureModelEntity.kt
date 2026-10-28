@@ -5,8 +5,11 @@ import cn.coostack.cooparticlesapi.entities.collision.EntityTransform
 import cn.coostack.cooparticlesapi.entities.collision.IrregularCollisionEntity
 import cn.coostack.cooparticlesapi.entities.collision.OrientedBox
 import net.minecraft.nbt.CompoundTag
+import net.minecraft.nbt.NbtAccounter
+import net.minecraft.network.RegistryFriendlyByteBuf
+import net.minecraft.network.codec.ByteBufCodecs
+import net.minecraft.network.syncher.EntityDataSerializer
 import net.minecraft.network.syncher.EntityDataAccessor
-import net.minecraft.network.syncher.EntityDataSerializers
 import net.minecraft.network.syncher.SynchedEntityData
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.Containers
@@ -16,6 +19,11 @@ import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.EntityType
 import net.minecraft.world.entity.Mob
 import net.minecraft.world.entity.MoverType
+import net.minecraft.world.entity.InterpolationHandler
+import net.minecraft.world.entity.PositionPath
+import net.minecraft.world.item.ItemStack
+import com.mojang.serialization.Codec
+import com.mojang.serialization.codecs.RecordCodecBuilder
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier
 import net.minecraft.world.entity.ai.attributes.Attributes
 import net.minecraft.world.level.Level
@@ -29,6 +37,8 @@ import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResult
 import net.minecraft.core.BlockPos
+import net.minecraft.world.level.storage.ValueInput
+import net.minecraft.world.level.storage.ValueOutput
 
 /**
  * 静态结构是 [IrregularCollisionEntity] 的内置实现，支持生命、掉落、变换与原版风格死亡动画。
@@ -37,9 +47,31 @@ import net.minecraft.core.BlockPos
  */
 class StructureModelEntity(type: EntityType<out StructureModelEntity>, level: Level) :
     Mob(type, level), IrregularCollisionEntity {
+    private data class SavedModelDrop(val slot: Int, val stack: ItemStack)
+
     companion object {
+        /** 两个平台注册的有界结构同步序列化器，复制标签以隔离实体数据快照。 */
+        val MODEL_DATA_SERIALIZER: EntityDataSerializer<CompoundTag> = object : EntityDataSerializer<CompoundTag> {
+            /** 注册后重复使用的只读网络编解码器，解码预算与配置校验一致。 */
+            private val streamCodec = ByteBufCodecs.compoundTagCodec { NbtAccounter.create(1048576L) }
+                .cast<RegistryFriendlyByteBuf>()
+
+            override fun codec() = streamCodec
+            override fun copy(value: CompoundTag): CompoundTag = value.copy()
+        }
+
         /** 快照与设置在同一条有界实体数据中同步，只在配置变化时更新。 */
-        private val MODEL = SynchedEntityData.defineId(StructureModelEntity::class.java, EntityDataSerializers.COMPOUND_TAG)
+        private val MODEL = SynchedEntityData.defineId(StructureModelEntity::class.java, MODEL_DATA_SERIALIZER)
+
+        /** 存取库存共用的只读编解码器，避免每次存档重新构造整条记录映射。 */
+        private val SAVED_MODEL_DROPS_CODEC: Codec<List<SavedModelDrop>> = Codec.list(
+            RecordCodecBuilder.create { instance ->
+                instance.group(
+                    Codec.INT.fieldOf("Slot").forGetter(SavedModelDrop::slot),
+                    ItemStack.MAP_CODEC.forGetter(SavedModelDrop::stack),
+                ).apply(instance, ::SavedModelDrop)
+            },
+        )
 
         /**
          * 提供两个加载器注册所需的静态生物属性。
@@ -147,8 +179,14 @@ class StructureModelEntity(type: EntityType<out StructureModelEntity>, level: Le
         val tag = entityData.get(MODEL)
         if (tag.isEmpty) return
         require(tag.sizeInBytes() <= 1048576L)
-        val data = StructureSnapshot(registryAccess(), tag.getCompound("Structure"))
-        val options = StructureModelSettings.fromNbt(tag.getCompound("Settings"), data.defaultPivot)
+        val data = StructureSnapshot(
+            registryAccess(),
+            tag.getCompound("Structure").orElseThrow { IllegalArgumentException("结构数据缺失") },
+        )
+        val options = StructureModelSettings.fromNbt(
+            tag.getCompound("Settings").orElseThrow { IllegalArgumentException("结构设置缺失") },
+            data.defaultPivot,
+        )
         require(options.valid()) { "结构设置无效" }
         validateBounds(data, options)
         val candidates = data.collision.ifEmpty { data.outline }.ifEmpty { listOf(localVisualBox(data)) }
@@ -157,7 +195,7 @@ class StructureModelEntity(type: EntityType<out StructureModelEntity>, level: Le
         val body = candidates.minBy { it.center.distanceToSqr(center) }
         snapshot = data
         settings = options
-        structureName = tag.getString("Name")
+        structureName = tag.getStringOr("Name", "")
         bodyBounds = body
         bodyOffset = Vec3(body.center.x, body.minY, body.center.z)
         rebuildGeometry()
@@ -193,21 +231,30 @@ class StructureModelEntity(type: EntityType<out StructureModelEntity>, level: Le
         boundingBox = geometryBounds!!
     }
 
-    override fun makeBoundingBox(): AABB =
-        geometryBounds?.move(position().subtract(geometryOrigin ?: position())) ?: super.makeBoundingBox()
+    override fun makeBoundingBox(position: Vec3): AABB =
+        geometryBounds?.move(position.subtract(geometryOrigin ?: position)) ?: super.makeBoundingBox(position)
 
     override fun getX(scale: Double): Double = bodyBounds?.let { x + it.xsize * scale } ?: super.getX(scale)
     override fun getY(scale: Double): Double = bodyBounds?.let { y + it.ysize * scale } ?: super.getY(scale)
     override fun getZ(scale: Double): Double = bodyBounds?.let { z + it.zsize * scale } ?: super.getZ(scale)
 
     /** 静态模型直接接受位置更新，编辑中心不触发旧身体位置到新位置的滑动。 */
-    override fun lerpTo(x: Double, y: Double, z: Double, yRot: Float, xRot: Float, steps: Int) {
-        moveTo(x, y, z, yRot, xRot)
-        rebuildGeometry()
-    }
+    override fun createInterpolationHandler(): InterpolationHandler =
+        object : InterpolationHandler by InterpolationHandler.NO_OP {
+            /** 位置和旋转到达时一并重置上一帧状态，避免静态模型产生短暂滑动。 */
+            override fun interpolateTo(position: PositionPath?, yRot: Float, xRot: Float, hasRotation: Boolean): Boolean {
+                snapTo(
+                    position?.endPosition() ?: this@StructureModelEntity.position(),
+                    if (hasRotation) yRot else this@StructureModelEntity.yRot,
+                    if (hasRotation) xRot else this@StructureModelEntity.xRot,
+                )
+                rebuildGeometry()
+                return true
+            }
+        }
 
     /** 死亡侧翻围绕显式支点，包围范围覆盖外置支点造成的整段旋转。 */
-    override fun getBoundingBoxForCulling(): AABB {
+    val boundingBoxForCulling: AABB get() {
         ensureGeometry()
         val bounds = visualBounds ?: boundingBox
         if (deathTime == 0) return bounds
@@ -230,27 +277,26 @@ class StructureModelEntity(type: EntityType<out StructureModelEntity>, level: Le
     /** 世界权限和距离统一适用于编辑与收起。 */
     private fun canAccess(player: Player): Boolean = isAlive && player.isAlive && !player.isSpectator &&
         player.abilities.mayBuild && player.level() === level() &&
-        level().mayInteract(player, BlockPos.containing(modelOrigin)) && player.canInteractWithEntity(boundingBox, 1.0)
+        level().mayInteract(player, BlockPos.containing(modelOrigin)) && player.isWithinEntityInteractionRange(boundingBox, 1.0)
 
     override fun mobInteract(player: Player, hand: InteractionHand): InteractionResult {
         if (player.isShiftKeyDown && settings.pickable) return StructureModels.HELD_MODEL.capture(this, player, hand)
         if (!player.getItemInHand(hand).`is`(StructureModels.EDITOR) || !canEdit(player)) return InteractionResult.PASS
         if (player is ServerPlayer) StructureModels.openEditor(player, blockPosition(), this)
-        return InteractionResult.sidedSuccess(level().isClientSide)
+        return if (level().isClientSide) InteractionResult.SUCCESS else InteractionResult.SUCCESS_SERVER
     }
 
-    override fun interactAt(player: Player, hit: Vec3, hand: InteractionHand): InteractionResult = mobInteract(player, hand)
     override fun isNoAi(): Boolean = true
     override fun removeWhenFarAway(distance: Double): Boolean = false
     override fun isNoGravity(): Boolean = true
     override fun isPushable(): Boolean = false
     override fun isPushedByFluid(): Boolean = false
-    override fun canBeCollidedWith(): Boolean = false
+    override fun canBeCollidedWith(other: Entity?): Boolean = false
     override fun isPickable(): Boolean = isAlive
     override fun pushEntities() {}
     override fun doPush(entity: Entity) {}
     override fun push(entity: Entity) {}
-    override fun knockback(strength: Double, x: Double, z: Double) {}
+    override fun knockback(strength: Double, x: Double, z: Double, source: DamageSource, damage: Float, comesFromEffect: Boolean) {}
     override fun move(type: MoverType, movement: Vec3) {}
 
     /** 保留生命和死亡计时，但不允许重力、流体或外部速度移动静态模型。 */
@@ -272,18 +318,34 @@ class StructureModelEntity(type: EntityType<out StructureModelEntity>, level: Le
         if (!settings.deathAnimation && !level().isClientSide) discard()
     }
 
-    override fun addAdditionalSaveData(tag: CompoundTag) {
-        super.addAdditionalSaveData(tag)
-        tag.put("StructureModel", entityData.get(MODEL).copy())
-        tag.put("ModelDrops", drops.createTag(registryAccess()))
+    override fun addAdditionalSaveData(output: ValueOutput) {
+        super.addAdditionalSaveData(output)
+        output.store("StructureModel", CompoundTag.CODEC, entityData.get(MODEL).copy())
+        val savedDrops = (0 until drops.containerSize).mapNotNull { slot ->
+            drops.getItem(slot).takeUnless(ItemStack::isEmpty)?.let { SavedModelDrop(slot, it.copy()) }
+        }
+        output.store("ModelDrops", SAVED_MODEL_DROPS_CODEC, savedDrops)
     }
 
     /** 存档位置已经是身体位置，不再次叠加放置锚点偏移，也不重置剩余生命。 */
-    override fun readAdditionalSaveData(tag: CompoundTag) {
-        super.readAdditionalSaveData(tag)
-        entityData.set(MODEL, tag.getCompound("StructureModel"))
+    override fun readAdditionalSaveData(input: ValueInput) {
+        super.readAdditionalSaveData(input)
+        val savedModel = input.read("StructureModel", CompoundTag.CODEC).orElseGet(::CompoundTag)
+        entityData.set(MODEL, savedModel)
         reapplyPosition()
         rebuildGeometry()
-        drops.fromTag(tag.getList("ModelDrops", 10), registryAccess())
+        drops.clearContent()
+        val savedDrops = input.read("ModelDrops", SAVED_MODEL_DROPS_CODEC).orElse(emptyList())
+        require(savedDrops.size <= drops.containerSize) { "模型掉落库存数据过大" }
+        val seenSlots = hashSetOf<Int>()
+        savedDrops.forEach { saved ->
+            require(saved.slot in 0 until drops.containerSize && seenSlots.add(saved.slot)) {
+                "模型掉落库存槽位无效或重复"
+            }
+            require(!saved.stack.isEmpty && saved.stack.count <= saved.stack.maxStackSize) {
+                "模型掉落物数量无效"
+            }
+            drops.setItem(saved.slot, saved.stack)
+        }
     }
 }

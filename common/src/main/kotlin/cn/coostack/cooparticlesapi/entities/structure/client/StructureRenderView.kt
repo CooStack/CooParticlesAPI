@@ -5,14 +5,14 @@ import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.material.FluidState
 import net.minecraft.core.BlockPos
-import net.minecraft.core.Direction
 import net.minecraft.world.phys.Vec3
-import net.minecraft.world.level.BlockAndTintGetter
+import net.minecraft.client.renderer.block.BlockAndTintGetter
 import net.minecraft.world.level.LightLayer
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.ColorResolver
 import net.minecraft.world.level.lighting.LevelLightEngine
-import net.minecraft.client.renderer.LightTexture
+import net.minecraft.util.LightCoordsUtil
+import net.minecraft.world.level.CardinalLighting
 import org.joml.Matrix4f
 import org.joml.Vector3f
 import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap
@@ -35,14 +35,16 @@ class StructureRenderView(private val snapshot: StructureSnapshot, private val w
     private val lightSamples = Long2IntOpenHashMap().apply { defaultReturnValue(-1) }
     /** 按染色器身份隔离，每个局部格在本次绘制只查询一次生物群系颜色。 */
     private val colors = IdentityHashMap<ColorResolver, Long2IntOpenHashMap>()
+    /** 26.3 将客户端染色与面向光照从 Level 拆出；非客户端视图使用原版空视图规则。 */
+    private val tintSource = world as? BlockAndTintGetter ?: BlockAndTintGetter.EMPTY
     /** 当前绘制实际依赖的世界区段，供持久网格精确响应光照失效，不跨帧复用。 */
     internal val sampledSections = LongOpenHashSet()
     override fun getBlockState(pos: BlockPos): BlockState = snapshot.getBlockState(pos)
     override fun getFluidState(pos: BlockPos): FluidState = snapshot.getFluidState(pos)
     override fun getBlockEntity(pos: BlockPos): BlockEntity? = displays[pos]
     override fun getHeight(): Int = snapshot.height
-    override fun getMinBuildHeight(): Int = 0
-    override fun getShade(direction: Direction, shaded: Boolean): Float = world.getShade(direction, shaded)
+    override fun getMinY(): Int = 0
+    override fun cardinalLighting(): CardinalLighting = tintSource.cardinalLighting()
     override fun getLightEngine(): LevelLightEngine = world.lightEngine
     override fun getBlockTint(pos: BlockPos, resolver: ColorResolver): Int {
         val samples = colors.getOrPut(resolver) { Long2IntOpenHashMap() }
@@ -50,27 +52,27 @@ class StructureRenderView(private val snapshot: StructureSnapshot, private val w
         if (samples.containsKey(key)) return samples.get(key)
         val sample = samplePosition(pos)
         sampledSections.add(SectionPos.blockToSection(sample.asLong()))
-        return world.getBlockTint(sample, resolver).also { samples.put(key, it) }
+        return tintSource.getBlockTint(sample, resolver).also { samples.put(key, it) }
     }
 
     /** 保留展示入口指定的天空光和方块光；世界中的结构按变换后位置采样，不复用实体身体亮度。 */
     override fun getBrightness(type: LightLayer, pos: BlockPos): Int {
         displayLight?.let {
-            return if (type == LightLayer.SKY) LightTexture.sky(it)
-                else LightTexture.block(it)
+            return if (type == LightLayer.SKY) LightCoordsUtil.sky(it)
+                else LightCoordsUtil.block(it)
         }
         val key = pos.asLong()
         var packed = lightSamples.get(key)
         if (packed == -1) {
             val sample = samplePosition(pos)
             sampledSections.add(SectionPos.blockToSection(sample.asLong()))
-            packed = LightTexture.pack(
+            packed = LightCoordsUtil.pack(
                 world.getBrightness(LightLayer.BLOCK, sample), world.getBrightness(LightLayer.SKY, sample)
             )
             lightSamples.put(key, packed)
         }
-        return if (type == LightLayer.SKY) LightTexture.sky(packed)
-            else LightTexture.block(packed)
+        return if (type == LightLayer.SKY) LightCoordsUtil.sky(packed)
+            else LightCoordsUtil.block(packed)
     }
 
     /**

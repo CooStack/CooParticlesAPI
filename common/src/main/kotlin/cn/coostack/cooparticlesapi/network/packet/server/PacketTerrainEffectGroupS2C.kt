@@ -11,7 +11,7 @@ import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainEffectRegistry
 import net.minecraft.core.BlockPos
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /**
  * 从服务端向客户端同步一个地形效果组的替换或增量更新。
@@ -27,13 +27,13 @@ class PacketTerrainEffectGroupS2C() : CooPacket() {
     var operation: Int = REPLACE
 
     /** 目标效果组所属的维度 ID。 */
-    var dimension: ResourceLocation = ResourceLocation.withDefaultNamespace("overworld")
+    var dimension: Identifier = Identifier.withDefaultNamespace("overworld")
 
     /** 目标效果组 ID。 */
-    var groupId: ResourceLocation = ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "empty")
+    var groupId: Identifier = Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "empty")
 
     /** 完整替换操作引用的方块 Pipeline ID。 */
-    var pipelineId: ResourceLocation = ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "empty")
+    var pipelineId: Identifier = Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "empty")
 
     /** 完整替换操作中组开始的绝对游戏 tick。 */
     var startedAt: Long = 0L
@@ -64,7 +64,7 @@ class PacketTerrainEffectGroupS2C() : CooPacket() {
     var uniforms: Map<String, CooUniformValue> = emptyMap()
 
     /** @return 地形效果组服务端到客户端协议的固定资源 ID。 */
-    override fun id(): ResourceLocation = ResourceLocation.fromNamespaceAndPath(
+    override fun id(): Identifier = Identifier.fromNamespaceAndPath(
         CooParticlesConstants.MOD_ID,
         PACKET_ID
     )
@@ -157,8 +157,8 @@ class PacketTerrainEffectGroupS2C() : CooPacket() {
         }
 
         internal fun updateOrdering(
-            dimension: ResourceLocation,
-            groupId: ResourceLocation,
+            dimension: Identifier,
+            groupId: Identifier,
             revision: Long,
             priority: Int,
             composition: CooTerrainEffectComposition
@@ -182,8 +182,8 @@ class PacketTerrainEffectGroupS2C() : CooPacket() {
          * @return 位置追加包
          */
         internal fun append(
-            dimension: ResourceLocation,
-            groupId: ResourceLocation,
+            dimension: Identifier,
+            groupId: Identifier,
             revision: Long,
             positions: Map<BlockPos, Long>
         ): PacketTerrainEffectGroupS2C {
@@ -205,8 +205,8 @@ class PacketTerrainEffectGroupS2C() : CooPacket() {
          * @return 整组删除包
          */
         internal fun remove(
-            dimension: ResourceLocation,
-            groupId: ResourceLocation,
+            dimension: Identifier,
+            groupId: Identifier,
             revision: Long
         ): PacketTerrainEffectGroupS2C {
             return PacketTerrainEffectGroupS2C().also {
@@ -227,8 +227,8 @@ class PacketTerrainEffectGroupS2C() : CooPacket() {
          * @return 位置删除包
          */
         internal fun removePositions(
-            dimension: ResourceLocation,
-            groupId: ResourceLocation,
+            dimension: Identifier,
+            groupId: Identifier,
             revision: Long,
             positions: Set<BlockPos>
         ): PacketTerrainEffectGroupS2C {
@@ -251,8 +251,8 @@ class PacketTerrainEffectGroupS2C() : CooPacket() {
          * @return uniform 更新包
          */
         internal fun updateUniforms(
-            dimension: ResourceLocation,
-            groupId: ResourceLocation,
+            dimension: Identifier,
+            groupId: Identifier,
             revision: Long,
             uniforms: Map<String, CooUniformValue>
         ): PacketTerrainEffectGroupS2C {
@@ -268,12 +268,12 @@ class PacketTerrainEffectGroupS2C() : CooPacket() {
         /** 按操作类型写入公共头和对应载荷。 */
         private fun encode(buffer: FriendlyByteBuf, packet: PacketTerrainEffectGroupS2C) {
             buffer.writeByte(packet.operation)
-            buffer.writeResourceLocation(packet.dimension)
-            buffer.writeResourceLocation(packet.groupId)
+            buffer.writeIdentifier(packet.dimension)
+            buffer.writeIdentifier(packet.groupId)
             buffer.writeVarLong(packet.revision)
             when (packet.operation) {
                 REPLACE -> {
-                    buffer.writeResourceLocation(packet.pipelineId)
+                    buffer.writeIdentifier(packet.pipelineId)
                     buffer.writeVarLong(packet.startedAt)
                     buffer.writeVarLong(packet.sequence)
                     buffer.writeVarInt(packet.priority)
@@ -297,12 +297,12 @@ class PacketTerrainEffectGroupS2C() : CooPacket() {
         private fun decode(buffer: FriendlyByteBuf): PacketTerrainEffectGroupS2C {
             val packet = PacketTerrainEffectGroupS2C()
             packet.operation = buffer.readUnsignedByte().toInt()
-            packet.dimension = buffer.readResourceLocation()
-            packet.groupId = buffer.readResourceLocation()
+            packet.dimension = buffer.readIdentifier()
+            packet.groupId = buffer.readIdentifier()
             packet.revision = buffer.readVarLong()
             when (packet.operation) {
                 REPLACE -> {
-                    packet.pipelineId = buffer.readResourceLocation()
+                    packet.pipelineId = buffer.readIdentifier()
                     packet.startedAt = buffer.readVarLong()
                     packet.sequence = buffer.readVarLong()
                     packet.priority = buffer.readVarInt()

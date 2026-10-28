@@ -4,10 +4,10 @@ import cn.coostack.cooparticlesapi.CooParticlesConstants
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import java.util.UUID
 
-class PacketRenderEntityS2C(var uuid: UUID, var entityData: ByteArray, var id: ResourceLocation, var method: Method) :
+class PacketRenderEntityS2C(var uuid: UUID, var entityData: ByteArray, var id: Identifier, var method: Method) :
     CustomPacketPayload {
     enum class Method(val id: Int) {
         CREATE(0),
@@ -28,7 +28,7 @@ class PacketRenderEntityS2C(var uuid: UUID, var entityData: ByteArray, var id: R
 
     companion object {
         private val identifierID =
-            ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "renderer_entity_packet")
+            Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "renderer_entity_packet")
         val payloadID = CustomPacketPayload.Type<PacketRenderEntityS2C>(identifierID)
 
         @JvmStatic
@@ -37,13 +37,13 @@ class PacketRenderEntityS2C(var uuid: UUID, var entityData: ByteArray, var id: R
                 val entity = packet.entityData
                 buf.writeInt(packet.method.id)
                 buf.writeUUID(packet.uuid)
-                buf.writeResourceLocation(packet.id)
+                buf.writeIdentifier(packet.id)
                 buf.writeInt(entity.size)
                 buf.writeBytes(entity)
             }, { buf ->
                 val method = buf.readInt()
                 val uuid = buf.readUUID()
-                val id = buf.readResourceLocation()
+                val id = buf.readIdentifier()
                 val size = buf.readInt()
                 val entity = buf.readBytes(size)
                 val bytes = ByteArray(size)
@@ -54,7 +54,7 @@ class PacketRenderEntityS2C(var uuid: UUID, var entityData: ByteArray, var id: R
             )
     }
 
-    override fun type(): CustomPacketPayload.Type<out CustomPacketPayload?> {
+    override fun type(): CustomPacketPayload.Type<out CustomPacketPayload> {
         return payloadID
     }
 }

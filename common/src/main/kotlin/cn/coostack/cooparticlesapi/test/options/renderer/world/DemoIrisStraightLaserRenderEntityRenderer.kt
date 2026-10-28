@@ -10,8 +10,9 @@ import cn.coostack.cooparticlesapi.renderer.shader.api.CooShaderProgram
 import cn.coostack.cooparticlesapi.renderer.shader.data.CooVertexFormat
 import cn.coostack.cooparticlesapi.renderer.shader.data.VertexData
 import cn.coostack.cooparticlesapi.renderer.shader.vertex.SimpleVertexBuffer
-import com.mojang.blaze3d.systems.RenderSystem
-import net.minecraft.resources.ResourceLocation
+import cn.coostack.cooparticlesapi.renderer.shader.texture.IdentifierTexture
+import cn.coostack.cooparticlesapi.renderer.state.CooGLSLStateManager
+import net.minecraft.resources.Identifier
 import net.minecraft.world.phys.Vec3
 import org.joml.Matrix4f
 import org.joml.Quaternionf
@@ -22,6 +23,7 @@ import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
+import org.lwjgl.opengl.GL33
 
 /** Iris 直线激光演示实体的本地渲染与代理模型 renderer。 */
 @CooAutoRegisterRenderer
@@ -69,15 +71,16 @@ class DemoIrisStraightLaserRenderEntityRenderer : RenderEntityRenderer<DemoIrisS
         phaseProgress: Float,
         collapse: Float,
         time: Float
-    ) {
+    ) = CooGLSLStateManager.useState {
         if (passAlpha <= MIN_VISIBLE_ALPHA) {
-            return
+            return@useState
         }
-        RenderSystem.disableCull()
-        RenderSystem.enableDepthTest()
-        RenderSystem.enableBlend()
-        RenderSystem.depthMask(false)
-        RenderSystem.blendFunc(770, 771)
+        GL33.glDisable(GL33.GL_CULL_FACE)
+        GL33.glEnable(GL33.GL_DEPTH_TEST)
+        GL33.glDepthFunc(GL33.GL_GEQUAL)
+        GL33.glEnable(GL33.GL_BLEND)
+        GL33.glDepthMask(false)
+        GL33.glBlendFunc(GL33.GL_SRC_ALPHA, GL33.GL_ONE_MINUS_SRC_ALPHA)
         drawPass(
             entity = entity,
             modelMatrix = modelMatrix,
@@ -108,7 +111,7 @@ class DemoIrisStraightLaserRenderEntityRenderer : RenderEntityRenderer<DemoIrisS
             time = time,
             layerMode = LAYER_OUTER_TEXTURE
         )
-        RenderSystem.blendFunc(770, 1)
+        GL33.glBlendFunc(GL33.GL_SRC_ALPHA, GL33.GL_ONE)
         drawPass(
             entity = entity,
             modelMatrix = modelMatrix,
@@ -162,13 +165,10 @@ class DemoIrisStraightLaserRenderEntityRenderer : RenderEntityRenderer<DemoIrisS
         ensureBeamGeometry(beamLength)
         beamShader.useOnContext {
             val brightnessScale = entity.brightness.coerceAtLeast(0F)
-            val impactNoiseTexture = ResourceLocation.fromNamespaceAndPath(
-                CooParticlesConstants.MOD_ID,
-                "textures/effect/straight_laser_impact_noise.png"
-            )
-            val previousTexture = RenderSystem.getShaderTexture(0)
+            val previousActiveTexture = GL33.glGetInteger(GL33.GL_ACTIVE_TEXTURE)
+            GL33.glActiveTexture(GL33.GL_TEXTURE0)
+            beamNoiseTexture.useOnCurrent()
             try {
-                RenderSystem.setShaderTexture(0, impactNoiseTexture)
                 setInt("impactNoise", 0)
                 setMatrix4("modelMatrix", modelMatrix)
                 setMatrix4("viewMatrix", viewMatrix)
@@ -184,7 +184,8 @@ class DemoIrisStraightLaserRenderEntityRenderer : RenderEntityRenderer<DemoIrisS
                 setInt("layerMode", layerMode)
                 beamVertexBuffer.draw()
             } finally {
-                RenderSystem.setShaderTexture(0, previousTexture)
+                beamNoiseTexture.reset()
+                GL33.glActiveTexture(previousActiveTexture)
             }
         }
     }
@@ -227,6 +228,8 @@ class DemoIrisStraightLaserRenderEntityRenderer : RenderEntityRenderer<DemoIrisS
 
         private lateinit var beamVertexBuffer: SimpleVertexBuffer
         private lateinit var beamShader: CooShaderProgram
+        /** 借用原版纹理及采样器，按绘制作用域恢复原绑定。 */
+        private lateinit var beamNoiseTexture: IdentifierTexture
         private var initialized = false
         private var beamGeometryConeRatio = -1F
 
@@ -243,6 +246,9 @@ class DemoIrisStraightLaserRenderEntityRenderer : RenderEntityRenderer<DemoIrisS
                 .fragment("core/fragment/straight_laser_beam.fsh")
                 .build()
             beamShader.init()
+            beamNoiseTexture = IdentifierTexture(Identifier.fromNamespaceAndPath(
+                CooParticlesConstants.MOD_ID, "effect/straight_laser_impact_noise.png",
+            )).apply { init() }
             initialized = true
         }
 

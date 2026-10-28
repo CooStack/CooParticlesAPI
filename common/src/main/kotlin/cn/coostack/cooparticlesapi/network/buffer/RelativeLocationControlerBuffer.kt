@@ -3,13 +3,13 @@ package cn.coostack.cooparticlesapi.network.buffer
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import io.netty.buffer.Unpooled
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 class RelativeLocationControlerBuffer : ParticleControlerDataBuffer<RelativeLocation> {
     companion object {
         @JvmStatic
         val id = ParticleControlerDataBuffer.Id(
-            ResourceLocation.fromNamespaceAndPath(
+            Identifier.fromNamespaceAndPath(
                 CooParticlesConstants.MOD_ID, "relative"
             )
         )

@@ -1,17 +1,16 @@
 package cn.coostack.cooparticlesapi.utils
 
 import cn.coostack.cooparticlesapi.extend.minus
-import cn.coostack.cooparticlesapi.mixin.events.world.client.ItemRendererInvoker
 import com.mojang.blaze3d.vertex.PoseStack
+import com.mojang.blaze3d.vertex.PoseStack.Pose
 import com.mojang.blaze3d.vertex.VertexConsumer
 import net.minecraft.client.Camera
 import net.minecraft.client.Minecraft
-import net.minecraft.client.renderer.LightTexture
-import net.minecraft.client.renderer.MultiBufferSource
-import net.minecraft.client.renderer.RenderType
-import net.minecraft.client.renderer.entity.ItemRenderer
-import net.minecraft.client.renderer.texture.OverlayTexture
-import net.minecraft.client.resources.model.BakedModel
+import net.minecraft.client.renderer.SubmitNodeCollector
+import net.minecraft.client.renderer.item.ItemStackRenderState
+import net.minecraft.client.renderer.rendertype.RenderTypes
+import net.minecraft.world.entity.ItemOwner
+import net.minecraft.world.item.ItemDisplayContext
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
@@ -34,6 +33,112 @@ object MinecraftRendererUtil {
         val face: Vec3,
         val right: Vec3
     )
+
+    /**
+     * 将线段几何加入当前帧的 26.3 提交队列。
+     *
+     * 示例：`submitLines(collector, poseStack) { pose, vertices -> ... }`。
+     * 提交回调由渲染队列稍后执行，不能在回调外保留其顶点接收器。
+     *
+     * @param collector 当前阶段的命令收集器
+     * @param poseStack 提交时使用的世界姿势
+     * @param draw 在本次几何提交中写入线段顶点
+     */
+    fun submitLines(
+        collector: SubmitNodeCollector,
+        poseStack: PoseStack,
+        draw: (Pose, VertexConsumer) -> Unit,
+    ) {
+        collector.submitCustomGeometry(poseStack, RenderTypes.lines()) { pose, vertices ->
+            draw(pose, vertices)
+        }
+    }
+
+    /**
+     * 将相机相对包围盒作为线段几何提交。
+     *
+     * 示例：`submitLineBox(collector, poseStack, box, camera, 1F, 0F, 0F, 1F)`。
+     *
+     * @param collector 当前阶段的命令收集器
+     * @param poseStack 提交时使用的世界姿势
+     * @param box 世界坐标包围盒
+     * @param camera 当前帧相机世界位置
+     * @param red 红色分量
+     * @param green 绿色分量
+     * @param blue 蓝色分量
+     * @param alpha 透明度分量
+     */
+    fun submitLineBox(
+        collector: SubmitNodeCollector,
+        poseStack: PoseStack,
+        box: net.minecraft.world.phys.AABB,
+        cameraPos: Vec3,
+        red: Float,
+        green: Float,
+        blue: Float,
+        alpha: Float,
+    ) {
+        val relative = box.move(-cameraPos.x, -cameraPos.y, -cameraPos.z)
+        val corners = arrayOf(
+            Vec3(relative.minX, relative.minY, relative.minZ),
+            Vec3(relative.maxX, relative.minY, relative.minZ),
+            Vec3(relative.maxX, relative.minY, relative.maxZ),
+            Vec3(relative.minX, relative.minY, relative.maxZ),
+            Vec3(relative.minX, relative.maxY, relative.minZ),
+            Vec3(relative.maxX, relative.maxY, relative.minZ),
+            Vec3(relative.maxX, relative.maxY, relative.maxZ),
+            Vec3(relative.minX, relative.maxY, relative.maxZ),
+        )
+        val edges = listOf(
+            0 to 1, 1 to 2, 2 to 3, 3 to 0,
+            4 to 5, 5 to 6, 6 to 7, 7 to 4,
+            0 to 4, 1 to 5, 2 to 6, 3 to 7,
+        )
+        submitLines(collector, poseStack) { pose, vertices ->
+            edges.forEach { (firstIndex, secondIndex) ->
+                val first = corners[firstIndex]
+                val second = corners[secondIndex]
+                vertices.addVertex(pose, first.x.toFloat(), first.y.toFloat(), first.z.toFloat())
+                    .setColor(red, green, blue, alpha)
+                vertices.addVertex(pose, second.x.toFloat(), second.y.toFloat(), second.z.toFloat())
+                    .setColor(red, green, blue, alpha)
+            }
+        }
+    }
+
+    /**
+     * 将一条相机相对线段加入当前帧提交队列。
+     *
+     * @param collector 当前阶段的命令收集器
+     * @param poseStack 提交时使用的世界姿势
+     * @param start 世界坐标起点
+     * @param end 世界坐标终点
+     * @param cameraPos 当前帧相机世界位置
+     * @param red 红色分量
+     * @param green 绿色分量
+     * @param blue 蓝色分量
+     * @param alpha 透明度分量
+     */
+    fun submitLine(
+        collector: SubmitNodeCollector,
+        poseStack: PoseStack,
+        start: Vec3,
+        end: Vec3,
+        cameraPos: Vec3,
+        red: Float,
+        green: Float,
+        blue: Float,
+        alpha: Float,
+    ) {
+        val relativeStart = start.subtract(cameraPos)
+        val relativeEnd = end.subtract(cameraPos)
+        submitLines(collector, poseStack) { pose, vertices ->
+            vertices.addVertex(pose, relativeStart.x.toFloat(), relativeStart.y.toFloat(), relativeStart.z.toFloat())
+                .setColor(red, green, blue, alpha)
+            vertices.addVertex(pose, relativeEnd.x.toFloat(), relativeEnd.y.toFloat(), relativeEnd.z.toFloat())
+                .setColor(red, green, blue, alpha)
+        }
+    }
 
     /**
      * 变换相对渲染位置到世界坐标位置
@@ -60,7 +165,7 @@ object MinecraftRendererUtil {
      * @param invoker 在变换范围内进行操作
      */
     fun transformTo(camera: Camera, to: Vec3, stack: PoseStack, invoker: PoseStack.() -> Unit) {
-        transformTo(camera.position, to, stack, invoker)
+        transformTo(camera.position(), to, stack, invoker)
     }
 
     /**
@@ -79,11 +184,11 @@ object MinecraftRendererUtil {
             .rotateX(-pitch.asFloatRadian())
             .rotateZ(roll.asFloatRadian())
 
-        stack.mulPose(q)
+        stack.rotate(q)
     }
 
     fun applyRotation(stack: PoseStack, q: Quaternionf) {
-        stack.mulPose(q)
+        stack.rotate(q)
     }
 
     /**
@@ -112,7 +217,7 @@ object MinecraftRendererUtil {
             target.x, target.y, target.z
         )
         alignQ.mul(rollQ)
-        stack.mulPose(alignQ)
+        stack.rotate(alignQ)
     }
 
     /**
@@ -149,7 +254,7 @@ object MinecraftRendererUtil {
      * @param originalAxis 模型当前的 “z”轴
      */
     fun resetRotationToZAxis(stack: PoseStack, originalAxis: Vec3, originalRoll: Float) {
-        val yaw = Math3DUtil.getYawFromLocation(originalAxis) * 180 / PI + 90f
+        val yaw = Math3DUtil.getYawFromLocation(originalAxis) * 180 / PI + 90F
         val pitch = Math3DUtil.getPitchFromLocation(originalAxis) * 180 / PI
         applyRotation(stack, -yaw.toFloat(), -pitch.toFloat(), -originalRoll)
     }
@@ -170,7 +275,7 @@ object MinecraftRendererUtil {
     }
 
     fun axialBillboardBasis(axisDirection: Vec3, camera: Camera, center: Vec3): AxialBillboardBasis {
-        return axialBillboardBasis(axisDirection, camera.position, center)
+        return axialBillboardBasis(axisDirection, camera.position(), center)
     }
 
     fun axialBillboardBasis(axisDirection: Vec3, cameraPos: Vec3, center: Vec3): AxialBillboardBasis {
@@ -192,34 +297,46 @@ object MinecraftRendererUtil {
         stack.translate(-point.x, -point.y, -point.z)
     }
 
-    fun renderItemModel(
-        renderer: ItemRenderer,
+    /**
+     * 解析物品模型状态并将它的所有材质层提交到当前帧队列。
+     *
+     * 示例：手持展示可使用 `ItemDisplayContext.FIXED` 和空 owner。
+     *
+     * @param stack 待绘制物品及其数据组件
+     * @param displayContext 原版物品展示上下文
+     * @param world 当前客户端世界
+     * @param owner 提供模型上下文数据的实体，可为空
+     * @param seed 物品模型选择使用的随机种子
+     * @param poseStack 物品模型变换
+     * @param collector 当前帧提交收集器
+     * @param light 打包光照值
+     * @param overlay 原版伤害覆盖坐标
+     */
+    fun submitItem(
         stack: ItemStack,
-        pose: PoseStack,
-        model: BakedModel,
+        displayContext: ItemDisplayContext,
+        world: Level,
+        owner: ItemOwner?,
+        seed: Int,
+        poseStack: PoseStack,
+        collector: SubmitNodeCollector,
         light: Int,
         overlay: Int,
-        consumer: VertexConsumer
     ) {
-        renderer as ItemRendererInvoker
-        renderer.renderModel(model, stack, light, overlay, pose, consumer)
-    }
-
-    fun renderItemModel(
-        renderer: ItemRenderer,
-        stack: ItemStack,
-        pose: PoseStack,
-        model: BakedModel,
-        light: Int,
-        overlay: Int,
-        buffer: MultiBufferSource,
-        type: RenderType
-    ) {
-        renderItemModel(renderer, stack, pose, model, light, overlay, buffer.getBuffer(type))
+        val state = ItemStackRenderState()
+        Minecraft.getInstance().itemModelResolver.updateForTopItem(
+            state,
+            stack,
+            displayContext,
+            world,
+            owner,
+            seed,
+        )
+        state.submit(poseStack, collector, light, overlay, 0)
     }
 
     fun Float.asFloatRadian(): Float {
-        return this * PI.toFloat() / 180f
+        return this * PI.toFloat() / 180F
     }
 
     /**
@@ -265,43 +382,6 @@ object MinecraftRendererUtil {
         sampleTriangle(v0, v1, v2, density, out)
         sampleTriangle(v0, v2, v3, density, out)
         return out
-    }
-
-    /**
-     * 光速渲染一个stack，渲染一个物品模型的重复工作超级的多
-     *
-     * 这里的模型并没有处理过45度的问题， 如果需要初始偏移可能需要其他实现
-     *
-     * @param item 栈物品
-     * @param world 世界
-     * @param consumer 渲染的类型 （从RenderType/RenderLayer获取)
-     * @param modelMatrixStack 模型矩阵
-     */
-    fun fastRenderItem(
-        item: ItemStack,
-        world: Level,
-        consumer: VertexConsumer,
-        modelMatrixStack: PoseStack,
-        yaw: Float,
-        pitch: Float,
-        roll: Float,
-        xScale: Float,
-        yScale: Float,
-        zScale: Float,
-        light: Int = LightTexture.pack(15, 15)
-    ) {
-        val itemRenderer = Minecraft.getInstance().itemRenderer ?: return
-        val model = itemRenderer.getModel(item, world, null, 0)
-        applyRotation(modelMatrixStack, yaw, pitch, roll)
-        modelMatrixStack.scale(xScale, yScale, zScale)
-        applyAtPoint(
-            Vec3(-0.5, -0.5, -0.5), modelMatrixStack
-        ) {
-            renderItemModel(
-                itemRenderer, item, modelMatrixStack, model, light,
-                OverlayTexture.NO_OVERLAY, consumer
-            )
-        }
     }
 
     private fun perpendicular(axis: Vec3): Vec3 {

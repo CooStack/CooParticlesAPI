@@ -3,7 +3,7 @@ package cn.coostack.cooparticlesapi.supports.sound
 import net.minecraft.client.Minecraft
 import net.minecraft.client.resources.sounds.AbstractTickableSoundInstance
 import net.minecraft.client.resources.sounds.SoundInstance
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.sounds.SoundEvent
 import net.minecraft.sounds.SoundSource
 import net.minecraft.world.phys.Vec3
@@ -18,7 +18,7 @@ import net.minecraft.world.phys.Vec3
  */
 class ManagedSoundInstance(
     val key: String,
-    soundId: ResourceLocation,
+    soundId: Identifier,
     source: SoundSource,
     entityId: Int,
     initialPos: Vec3,
@@ -52,7 +52,7 @@ class ManagedSoundInstance(
      */
     var volumeMultiplier: Float = initialVolume
         set(value) {
-            field = value.coerceAtLeast(0f)
+            field = value.coerceAtLeast(0F)
         }
 
     var pitchMultiplier: Float = initialPitch
@@ -186,7 +186,7 @@ class ManagedSoundInstance(
     fun toSpec(): SoundInstanceSpec {
         return SoundInstanceSpec(
             key = key,
-            soundId = location,
+            soundId = identifier,
             source = source,
             entityId = entityId,
             position = position,

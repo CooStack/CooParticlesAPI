@@ -1,7 +1,9 @@
 package cn.coostack.cooparticlesapi.renderer.client
 
 import com.mojang.blaze3d.vertex.VertexConsumer
+import net.minecraft.util.ARGB
 
+/** 转发顶点属性并用配置透明度覆盖所有颜色入口，链式调用始终保留包装器。 */
 class AlphasVertexConsumers(var alpha: Int, val consumer: VertexConsumer) : VertexConsumer {
     /**
      * 把输入对象加入 `AlphasVertexConsumers` 的 `addVertex` 管理范围，后续查询、构建或绘制会使用该绑定。
@@ -21,7 +23,8 @@ class AlphasVertexConsumers(var alpha: Int, val consumer: VertexConsumer) : Vert
         y: Float,
         z: Float
     ): VertexConsumer {
-        return consumer.addVertex(x, y, z)
+        consumer.addVertex(x, y, z)
+        return this
     }
 
     /**
@@ -47,6 +50,11 @@ class AlphasVertexConsumers(var alpha: Int, val consumer: VertexConsumer) : Vert
     ): VertexConsumer {
         consumer.setColor(red, green, blue, this.alpha)
         return this
+    }
+
+    /** 打包 ARGB 颜色也必须经过透明度覆盖，不能返回原始消费者绕过包装器。 */
+    override fun setColor(color: Int): VertexConsumer {
+        return setColor(ARGB.red(color), ARGB.green(color), ARGB.blue(color), alpha)
     }
 
     /**
@@ -94,6 +102,16 @@ class AlphasVertexConsumers(var alpha: Int, val consumer: VertexConsumer) : Vert
      */
     override fun setUv2(u: Int, v: Int): VertexConsumer {
         consumer.setUv2(u, v)
+        return this
+    }
+
+    override fun setUv3(u: Float, v: Float): VertexConsumer {
+        consumer.setUv3(u, v)
+        return this
+    }
+
+    override fun setLineWidth(width: Float): VertexConsumer {
+        consumer.setLineWidth(width)
         return this
     }
 

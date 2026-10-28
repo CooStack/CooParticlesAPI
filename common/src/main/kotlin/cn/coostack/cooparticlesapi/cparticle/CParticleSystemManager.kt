@@ -8,9 +8,11 @@ import cn.coostack.cooparticlesapi.cparticle.render.CParticleRenderer
 import cn.coostack.cooparticlesapi.cparticle.simulate.CParticleGpuSimulator
 import cn.coostack.cooparticlesapi.cparticle.collision.CParticleBlockCollisionGridManager
 import cn.coostack.cooparticlesapi.compat.IrisCompat
+import cn.coostack.cooparticlesapi.particles.IrisControlableParticleRenderer
+import cn.coostack.cooparticlesapi.renderer.post.OpenGlPostEffectExecutionBackend
+import cn.coostack.cooparticlesapi.renderer.backend.bindWrite
 import cn.coostack.cooparticlesapi.renderer.post.PostEffectFrameExecutor
 import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainPipelineManager
-import com.mojang.blaze3d.systems.RenderSystem
 import net.minecraft.client.Camera
 import net.minecraft.client.DeltaTracker
 import net.minecraft.client.Minecraft
@@ -114,7 +116,8 @@ object CParticleSystemManager {
     const val DEFAULT_BLOCK_COLLISION_RANGE = 24
 
     /** 单个 emitter 可声明的最大 CParticle 方块碰撞范围，防止误配置创建超大稠密网格。 */
-    const val MAX_BLOCK_COLLISION_RANGE = 96
+    val MAX_BLOCK_COLLISION_RANGE: Int
+        get() = 96
 
     private val systems = LinkedHashMap<ManagedCParticleSystemKey, CParticleSystem>()
     /** system -> manager key 的反向索引；退休 emitter 结束时按 identity O(1) 找回 key。 */
@@ -206,7 +209,6 @@ object CParticleSystemManager {
     private val pendingAutoRemovalSet = HashSet<ManagedCParticleSystemKey>()
     /** tick 内复用的退休 key 列表，避免每帧为零/少量回收创建 ArrayList。 */
     private val tickRemovals = ArrayList<ManagedCParticleSystemKey>(16)
-    private const val MAX_AUTO_RELEASES_PER_TICK = 512
 
     // ------------------------------------------------------------ 系统管理
 
@@ -859,6 +861,7 @@ object CParticleSystemManager {
     fun beginRenderFrame() {
         fabricParticlePassIndex = 0
         renderFrameId++
+        IrisControlableParticleRenderer.clear()
     }
 
     /** Fabric 的 Iris MIXED 模式会调用两次 ParticleEngine。 */
@@ -895,14 +898,43 @@ object CParticleSystemManager {
             deferredTerrainForegroundScenePost = replayScenePost
             return
         }
+        val cameraState = Minecraft.getInstance().gameRenderer.gameRenderState().levelRenderState.cameraRenderState
         CParticleRenderer.render(
             systems.values,
-            RenderSystem.getModelViewMatrix(),
-            RenderSystem.getProjectionMatrix(),
+            cameraState.viewRotationMatrix,
+            cameraState.projectionMatrix,
             camera,
             partial,
             pass
         )
+    }
+
+    /**
+     * 在 26.3 主 FrameGraph 回调的原版 RenderPass 全部关闭后绘制 GPU 粒子。
+     *
+     * 两端 Mixin 共用此入口。Iris MIXED 保留不透明和透明两组 program，其他模式每帧提交一次。
+     * 此处晚于原版透明绘制，不承诺旧版本两组粒子分别跨越透明地形阶段的排序。
+     * 只绑定主合成颜色与深度，不把 OIT accumulate/transmittance 当作普通颜色附件。
+     * 示例：`LevelRenderer` 的主 pass 回调 TAIL 调用 `renderSubmittedParticlePass()`。
+     */
+    @JvmStatic
+    fun renderSubmittedParticlePass() {
+        if (!ready()) {
+            IrisControlableParticleRenderer.renderSubmitted()
+            return
+        }
+        val renderer = Minecraft.getInstance().gameRenderer
+        val cameraState = renderer.gameRenderState().levelRenderState.cameraRenderState
+        OpenGlPostEffectExecutionBackend.withPreservedGlState {
+            renderer.mainRenderTarget().bindWrite(true)
+            if (IrisCompat.usesMixedParticleRendering()) {
+                renderParticlePass(renderer.mainCamera(), cameraState.cameraEntityPartialTicks, CParticleRenderPass.OPAQUE)
+                renderParticlePass(renderer.mainCamera(), cameraState.cameraEntityPartialTicks, CParticleRenderPass.TRANSLUCENT)
+            } else {
+                renderParticlePass(renderer.mainCamera(), cameraState.cameraEntityPartialTicks, CParticleRenderPass.ALL)
+            }
+            IrisControlableParticleRenderer.renderSubmitted()
+        }
     }
 
     /** 当前帧是否已把 CParticle 从原粒子 pass 延迟到任一 Mapping 后处理阶段。 */
@@ -929,7 +961,7 @@ object CParticleSystemManager {
             systems.values,
             view,
             proj,
-            Minecraft.getInstance().gameRenderer.mainCamera,
+            Minecraft.getInstance().gameRenderer.mainCamera(),
             partial,
         )
         deferredTerrainForegroundFrame = -1L
@@ -942,7 +974,7 @@ object CParticleSystemManager {
             systems.values,
             view,
             proj,
-            Minecraft.getInstance().gameRenderer.mainCamera,
+            Minecraft.getInstance().gameRenderer.mainCamera(),
             partial,
         )
     }
@@ -959,8 +991,8 @@ object CParticleSystemManager {
                 return
             }
             CParticleRespawnEngine.poll()
-            // 所有 system 共用同一份路径图层；必须在任一 system 打包路径命令前完成一次同步。
-            // 之前每个 system 都重复调用，多个 emitter 时会把无关的路径遍历和 GL 检查放大。
+            // CPU 与 GPU 命令都从同版几何打包；这里只更新 CPU 图层，SSBO 在实际 GPU bind 时按需上传。
+            // 全 CPU 模拟时不应查询或绑定 OpenGL 3.3 不支持的着色器存储目标。
             CParticlePerfProbe.measure(CParticlePerfProbe.Stage.PATH_SYNC) {
                 CParticlePathLibrary.syncLayer()
             }
@@ -1039,7 +1071,7 @@ object CParticleSystemManager {
             if (key in retiredAutoSystemReuseKeys && cacheIdleAutoSystem(key)) return@repeat
             detachAutoSystemForRelease(key)
         }
-        repeat(MAX_AUTO_RELEASES_PER_TICK) {
+        repeat(512) {
             pendingSystemReleases.removeFirstOrNull()?.release() ?: return
         }
     }
@@ -1057,6 +1089,7 @@ object CParticleSystemManager {
     /** 断线 / 换世界: 清空所有粒子与动态系统 */
     @JvmStatic
     fun clear() {
+        IrisControlableParticleRenderer.clear()
         CParticleRespawnEngine.clear()
         CParticleEmitterBridge.clearPendingRespawns()
         CParticleBlockCollisionGridManager.clear()
@@ -1094,6 +1127,7 @@ object CParticleSystemManager {
     /** 资源重载: 图集 UV 会变, 清空贴图缓存; shader 程序由 registry 自动重建 */
     @JvmStatic
     fun onResourceReload() {
+        IrisControlableParticleRenderer.release()
         CParticleRespawnEngine.releasePrograms()
         CParticleSprites.clearCache()
         CParticleForceResourceRegistry.clearResolvedBindings()
@@ -1112,6 +1146,7 @@ object CParticleSystemManager {
     /** 完全释放 (退出/调试) */
     @JvmStatic
     fun releaseAll() {
+        IrisControlableParticleRenderer.release()
         CParticleRespawnEngine.clear()
         CParticleRespawnEngine.releasePrograms()
         CParticleEmitterBridge.clearPendingRespawns()

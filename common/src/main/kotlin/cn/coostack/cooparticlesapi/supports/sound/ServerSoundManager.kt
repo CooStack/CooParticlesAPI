@@ -4,7 +4,7 @@ import cn.coostack.cooparticlesapi.CooParticlesAPI
 import cn.coostack.cooparticlesapi.network.packet.server.PacketSoundInstanceS2C
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import cn.coostack.cooparticlesapi.scheduler.CooScheduler
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.sounds.SoundEvent
@@ -45,7 +45,7 @@ object ServerSoundManager {
 
     @JvmStatic
     @JvmOverloads
-    fun builder(sound: ResourceLocation, source: SoundSource = SoundSource.MASTER): SoundInstanceBuilder {
+    fun builder(sound: Identifier, source: SoundSource = SoundSource.MASTER): SoundInstanceBuilder {
         return SoundInstanceBuilder(sound, source)
     }
 
@@ -57,7 +57,7 @@ object ServerSoundManager {
 
     @JvmStatic
     @JvmOverloads
-    fun instance(sound: ResourceLocation, source: SoundSource = SoundSource.MASTER): SoundInstanceBuilder {
+    fun instance(sound: Identifier, source: SoundSource = SoundSource.MASTER): SoundInstanceBuilder {
         return builder(sound, source)
     }
 
@@ -134,7 +134,7 @@ object ServerSoundManager {
         key: String,
         ticks: Int,
         targetVolume: Float,
-        fromVolume: Float = 0f
+        fromVolume: Float = 0F
     ): CooScheduler.TickRunnable? {
         return sounds[key]?.fadeIn(ticks, targetVolume, fromVolume)
     }
@@ -167,7 +167,7 @@ object ServerSoundManager {
         key: String,
         ticks: Int,
         targetVolumeMultiplier: Float,
-        fromVolumeMultiplier: Float = 1f
+        fromVolumeMultiplier: Float = 1F
     ): CooScheduler.TickRunnable? {
         return duckingEffects[key]?.fadeIn(ticks, targetVolumeMultiplier, fromVolumeMultiplier)
     }
@@ -224,8 +224,8 @@ object ServerSoundManager {
         key: String,
         sound: SoundEvent,
         source: SoundSource,
-        volume: Float = 1f,
-        pitch: Float = 1f,
+        volume: Float = 1F,
+        pitch: Float = 1F,
         looping: Boolean = false,
         relative: Boolean = false
     ): ServerManagedSoundInstance {
@@ -236,10 +236,10 @@ object ServerSoundManager {
     fun create(
         player: ServerPlayer,
         key: String,
-        sound: ResourceLocation,
+        sound: Identifier,
         source: SoundSource,
-        volume: Float = 1f,
-        pitch: Float = 1f,
+        volume: Float = 1F,
+        pitch: Float = 1F,
         looping: Boolean = false,
         relative: Boolean = false
     ): ServerManagedSoundInstance {
@@ -265,8 +265,8 @@ object ServerSoundManager {
         key: String,
         sound: SoundEvent,
         source: SoundSource,
-        volume: Float = 1f,
-        pitch: Float = 1f,
+        volume: Float = 1F,
+        pitch: Float = 1F,
         looping: Boolean = false,
         self: Boolean = true,
         relative: Boolean = false
@@ -278,10 +278,10 @@ object ServerSoundManager {
     fun createTrackingEntity(
         entity: Entity,
         key: String,
-        sound: ResourceLocation,
+        sound: Identifier,
         source: SoundSource,
-        volume: Float = 1f,
-        pitch: Float = 1f,
+        volume: Float = 1F,
+        pitch: Float = 1F,
         looping: Boolean = false,
         self: Boolean = true,
         relative: Boolean = false
@@ -310,8 +310,8 @@ object ServerSoundManager {
         key: String,
         sound: SoundEvent,
         source: SoundSource,
-        volume: Float = 1f,
-        pitch: Float = 1f,
+        volume: Float = 1F,
+        pitch: Float = 1F,
         looping: Boolean = false,
         relative: Boolean = false
     ): ServerManagedSoundInstance {
@@ -323,10 +323,10 @@ object ServerSoundManager {
         world: ServerLevel,
         pos: Vec3,
         key: String,
-        sound: ResourceLocation,
+        sound: Identifier,
         source: SoundSource,
-        volume: Float = 1f,
-        pitch: Float = 1f,
+        volume: Float = 1F,
+        pitch: Float = 1F,
         looping: Boolean = false,
         relative: Boolean = false
     ): ServerManagedSoundInstance {
@@ -351,8 +351,8 @@ object ServerSoundManager {
         key: String,
         sound: SoundEvent,
         source: SoundSource,
-        volume: Float = 1f,
-        pitch: Float = 1f,
+        volume: Float = 1F,
+        pitch: Float = 1F,
         looping: Boolean = false,
         relative: Boolean = false
     ): ServerManagedSoundInstance {
@@ -363,10 +363,10 @@ object ServerSoundManager {
     fun play(
         player: ServerPlayer,
         key: String,
-        sound: ResourceLocation,
+        sound: Identifier,
         source: SoundSource,
-        volume: Float = 1f,
-        pitch: Float = 1f,
+        volume: Float = 1F,
+        pitch: Float = 1F,
         looping: Boolean = false,
         relative: Boolean = false
     ): ServerManagedSoundInstance {
@@ -379,8 +379,8 @@ object ServerSoundManager {
         key: String,
         sound: SoundEvent,
         source: SoundSource,
-        volume: Float = 1f,
-        pitch: Float = 1f,
+        volume: Float = 1F,
+        pitch: Float = 1F,
         looping: Boolean = false,
         self: Boolean = true,
         relative: Boolean = false
@@ -392,10 +392,10 @@ object ServerSoundManager {
     fun playTrackingEntity(
         entity: Entity,
         key: String,
-        sound: ResourceLocation,
+        sound: Identifier,
         source: SoundSource,
-        volume: Float = 1f,
-        pitch: Float = 1f,
+        volume: Float = 1F,
+        pitch: Float = 1F,
         looping: Boolean = false,
         self: Boolean = true,
         relative: Boolean = false
@@ -410,8 +410,8 @@ object ServerSoundManager {
         key: String,
         sound: SoundEvent,
         source: SoundSource,
-        volume: Float = 1f,
-        pitch: Float = 1f,
+        volume: Float = 1F,
+        pitch: Float = 1F,
         looping: Boolean = false,
         relative: Boolean = false
     ): Boolean {
@@ -423,10 +423,10 @@ object ServerSoundManager {
         world: ServerLevel,
         pos: Vec3,
         key: String,
-        sound: ResourceLocation,
+        sound: Identifier,
         source: SoundSource,
-        volume: Float = 1f,
-        pitch: Float = 1f,
+        volume: Float = 1F,
+        pitch: Float = 1F,
         looping: Boolean = false,
         relative: Boolean = false
     ): Boolean {
@@ -435,7 +435,7 @@ object ServerSoundManager {
     }
 
     @JvmStatic
-    fun update(player: ServerPlayer, key: String, volume: Float, pitch: Float = 1f) {
+    fun update(player: ServerPlayer, key: String, volume: Float, pitch: Float = 1F) {
         val instance = sounds[key]
         if (instance != null) {
             instance.targetPlayer = player
@@ -456,7 +456,7 @@ object ServerSoundManager {
         entity: Entity,
         key: String,
         volume: Float,
-        pitch: Float = 1f,
+        pitch: Float = 1F,
         self: Boolean = true
     ): Boolean {
         val instance = sounds[key]
@@ -473,7 +473,7 @@ object ServerSoundManager {
     }
 
     @JvmStatic
-    fun updateAt(world: ServerLevel, pos: Vec3, key: String, volume: Float, pitch: Float = 1f) {
+    fun updateAt(world: ServerLevel, pos: Vec3, key: String, volume: Float, pitch: Float = 1F) {
         val instance = sounds[key]
         if (instance != null) {
             instance.world = world
@@ -537,10 +537,10 @@ object ServerSoundManager {
     fun createDucking(
         player: ServerPlayer,
         key: String,
-        volumeMultiplier: Float = 0f,
+        volumeMultiplier: Float = 0F,
         range: Double = -1.0,
         origin: Vec3 = Vec3.ZERO,
-        whitelistSounds: Set<ResourceLocation> = emptySet(),
+        whitelistSounds: Set<Identifier> = emptySet(),
         whitelistSources: Set<SoundSource> = emptySet(),
         whitelistKeys: Set<String> = emptySet()
     ): ServerDuckingSoundEffect {
@@ -562,9 +562,9 @@ object ServerSoundManager {
     fun createDuckingTrackingEntity(
         entity: Entity,
         key: String,
-        volumeMultiplier: Float = 0f,
+        volumeMultiplier: Float = 0F,
         range: Double = -1.0,
-        whitelistSounds: Set<ResourceLocation> = emptySet(),
+        whitelistSounds: Set<Identifier> = emptySet(),
         whitelistSources: Set<SoundSource> = emptySet(),
         whitelistKeys: Set<String> = emptySet(),
         self: Boolean = true
@@ -590,9 +590,9 @@ object ServerSoundManager {
         world: ServerLevel,
         pos: Vec3,
         key: String,
-        volumeMultiplier: Float = 0f,
+        volumeMultiplier: Float = 0F,
         range: Double = -1.0,
-        whitelistSounds: Set<ResourceLocation> = emptySet(),
+        whitelistSounds: Set<Identifier> = emptySet(),
         whitelistSources: Set<SoundSource> = emptySet(),
         whitelistKeys: Set<String> = emptySet()
     ): ServerDuckingSoundEffect {
@@ -614,10 +614,10 @@ object ServerSoundManager {
     fun startDucking(
         player: ServerPlayer,
         key: String,
-        volumeMultiplier: Float = 0f,
+        volumeMultiplier: Float = 0F,
         range: Double = -1.0,
         origin: Vec3 = Vec3.ZERO,
-        whitelistSounds: Set<ResourceLocation> = emptySet(),
+        whitelistSounds: Set<Identifier> = emptySet(),
         whitelistSources: Set<SoundSource> = emptySet(),
         whitelistKeys: Set<String> = emptySet()
     ): ServerDuckingSoundEffect {
@@ -637,9 +637,9 @@ object ServerSoundManager {
     fun startDuckingTrackingEntity(
         entity: Entity,
         key: String,
-        volumeMultiplier: Float = 0f,
+        volumeMultiplier: Float = 0F,
         range: Double = -1.0,
-        whitelistSounds: Set<ResourceLocation> = emptySet(),
+        whitelistSounds: Set<Identifier> = emptySet(),
         whitelistSources: Set<SoundSource> = emptySet(),
         whitelistKeys: Set<String> = emptySet(),
         self: Boolean = true
@@ -663,7 +663,7 @@ object ServerSoundManager {
         volumeMultiplier: Float,
         range: Double = -1.0,
         origin: Vec3 = Vec3.ZERO,
-        whitelistSounds: Set<ResourceLocation> = emptySet(),
+        whitelistSounds: Set<Identifier> = emptySet(),
         whitelistSources: Set<SoundSource> = emptySet(),
         whitelistKeys: Set<String> = emptySet()
     ) {
@@ -702,7 +702,7 @@ object ServerSoundManager {
         key: String,
         volumeMultiplier: Float,
         range: Double = -1.0,
-        whitelistSounds: Set<ResourceLocation> = emptySet(),
+        whitelistSounds: Set<Identifier> = emptySet(),
         whitelistSources: Set<SoundSource> = emptySet(),
         whitelistKeys: Set<String> = emptySet(),
         self: Boolean = true
@@ -741,7 +741,7 @@ object ServerSoundManager {
         key: String,
         volumeMultiplier: Float,
         range: Double = -1.0,
-        whitelistSounds: Set<ResourceLocation> = emptySet(),
+        whitelistSounds: Set<Identifier> = emptySet(),
         whitelistSources: Set<SoundSource> = emptySet(),
         whitelistKeys: Set<String> = emptySet()
     ) {
@@ -798,7 +798,7 @@ object ServerSoundManager {
                 key,
                 -1,
                 Vec3.ZERO,
-                1f,
+                1F,
                 -1.0,
                 emptySet(),
                 emptySet(),
@@ -822,7 +822,7 @@ object ServerSoundManager {
             key,
             entity.id,
             entity.position(),
-            1f,
+            1F,
             -1.0,
             emptySet(),
             emptySet(),
@@ -848,7 +848,7 @@ object ServerSoundManager {
                 key,
                 -1,
                 pos,
-                1f,
+                1F,
                 -1.0,
                 emptySet(),
                 emptySet(),

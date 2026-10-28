@@ -1,11 +1,14 @@
 package cn.coostack.cooparticlesapi.network.particle.emitters
 
+import cn.coostack.cooparticlesapi.network.readVec3
+import cn.coostack.cooparticlesapi.network.writeVec3
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.api.controler.SerializableData
 import cn.coostack.cooparticlesapi.api.controler.Controlable
 import cn.coostack.cooparticlesapi.particles.ControlableParticleEffect
 import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
 import cn.coostack.cooparticlesapi.particles.ParticleCameraOption
+import cn.coostack.cooparticlesapi.particles.CooParticleTextureSheet
 import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
 import cn.coostack.cooparticlesapi.particles.impl.ControlableEndRodEffect
 import cn.coostack.cooparticlesapi.supports.TextureSheetsEnum
@@ -134,7 +137,7 @@ open class ControlableParticleData : SerializableData {
 
         @JvmStatic
         fun registerRenderType(type: ParticleRenderType) {
-            particleTexturesMapper[type.toString()] = type
+            particleTexturesMapper[type.name()] = type
         }
     }
 
@@ -173,7 +176,7 @@ open class ControlableParticleData : SerializableData {
      *
      * 弧度制
      */
-    var yaw = 0.0f
+    var yaw = 0.0F
 
     /**
      * 如果faceToCamera为false
@@ -182,7 +185,7 @@ open class ControlableParticleData : SerializableData {
      * 弧度制
      *
      */
-    var pitch = 0.0f
+    var pitch = 0.0F
 
     /**
      * 此参数代表了粒子滚动朝向
@@ -190,13 +193,13 @@ open class ControlableParticleData : SerializableData {
      * 弧度制
      *
      */
-    var roll = 0.0f
+    var roll = 0.0F
 
     /** 是否保持宽高等比。 */
     var uniformSize = true
 
     /** 粒子宽度大小。 */
-    private var currentWeightSize = 0.2f
+    private var currentWeightSize = 0.2F
     var weightSize: Float
         get() = currentWeightSize
         set(value) {
@@ -207,7 +210,7 @@ open class ControlableParticleData : SerializableData {
         }
 
     /** 粒子高度大小。 */
-    private var currentHeightSize = 0.2f
+    private var currentHeightSize = 0.2F
     var heightSize: Float
         get() = currentHeightSize
         set(value) {
@@ -217,7 +220,7 @@ open class ControlableParticleData : SerializableData {
             }
         }
 
-    private var currentDepthSize = 0f
+    private var currentDepthSize = 0F
     var depthSize: Float
         get() = currentDepthSize
         set(value) {
@@ -226,7 +229,7 @@ open class ControlableParticleData : SerializableData {
 
     /** 旧 size 兼容属性：设置时同时修改宽高。 */
     var size: Float
-        get() = (weightSize + heightSize) / 2f
+        get() = (weightSize + heightSize) / 2F
         set(value) {
             currentWeightSize = value
             currentHeightSize = value
@@ -236,7 +239,7 @@ open class ControlableParticleData : SerializableData {
      * 粒子生成时采用的不透明度
      *
      */
-    var alpha = 1f
+    var alpha = 1F
 
     /**
      * 粒子生成时设置的age
@@ -260,7 +263,7 @@ open class ControlableParticleData : SerializableData {
     /**
      * 粒子可见范围
      */
-    var visibleRange = 256f
+    var visibleRange = 256F
 
     /**
      * 粒子样式 （必须是可控制的粒子）
@@ -286,7 +289,7 @@ open class ControlableParticleData : SerializableData {
      *
      * 此选项只应用一次
      */
-    var color = Vector3f(1f, 1f, 1f)
+    var color = Vector3f(1F, 1F, 1F)
 
     /**
      * 粒子重生次数
@@ -310,7 +313,7 @@ open class ControlableParticleData : SerializableData {
      */
     var speed: Double = 1.0
     fun textureSheetFromString(sheet: String): ParticleRenderType? {
-        return particleTexturesMapper[sheet]
+        return particleTexturesMapper[sheet] ?: CooParticleTextureSheet.textureSheetFromString(sheet)
     }
 
     /**
@@ -355,7 +358,7 @@ open class ControlableParticleData : SerializableData {
             cachedTextureSheetType = it
         } ?: let {
             CooParticlesConstants.logger.error("can not find textureSheet $textureSheet you need use ControlableParticleData.registerRenderType() to register mapper")
-            ParticleRenderType.PARTICLE_SHEET_OPAQUE
+            CooParticleTextureSheet.PARTICLE_SHEET_OPAQUE
         }
     }
 
@@ -388,7 +391,7 @@ open class ControlableParticleData : SerializableData {
      * @param value
      */
     fun setTextureSheet(value: ParticleRenderType) {
-        this.textureSheet = value.toString()
+        this.textureSheet = value.name()
         cachedTextureSheetName = null
         cachedTextureSheetType = null
     }

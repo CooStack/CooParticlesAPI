@@ -94,7 +94,7 @@ data class EntityTransform(
          */
         fun fromNbt(tag: CompoundTag): EntityTransform {
             fun read(name: String, default: Double = 0.0): Vec3 {
-                val values = (0..2).map { if (tag.contains("$name$it")) tag.getDouble("$name$it") else default }
+                val values = (0..2).map { tag.getDoubleOr("$name$it", default) }
                 return Vec3(values[0], values[1], values[2])
             }
             return EntityTransform(read("Rotation"), read("Offset"), read("Scale", 1.0),

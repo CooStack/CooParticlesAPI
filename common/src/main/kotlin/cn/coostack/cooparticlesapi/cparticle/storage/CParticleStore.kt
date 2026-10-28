@@ -15,10 +15,9 @@ import cn.coostack.cooparticlesapi.cparticle.CParticleUpdateMode
 import cn.coostack.cooparticlesapi.cparticle.CParticleUv
 import cn.coostack.cooparticlesapi.particles.ParticleCameraOption
 import cn.coostack.cooparticlesapi.particles.control.RemoveReason
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
-import java.util.Arrays
 import kotlin.math.roundToInt
 
 /**
@@ -50,30 +49,36 @@ class CParticleStore(capacity: Int) {
     /** 仅启用死亡指令时分配；清空存储同时丢弃回调，不在换世界时生成新粒子。 */
     internal var deathTracker: CParticleDeathTracker? = null
 
-    /** GPU 预提交槽位的移除入口；返回 true 表示等候异步回收，不立即释放。 */
+    /** 预提交槽位的移除入口；返回 true 表示等候统一回收，不立即释放。 */
     internal var preparedDeath: ((Int, RemoveReason) -> Boolean)? = null
 
     /** 直接清空存储时同步撤销预提交关系，避免旧异步事件作用于复用后的槽位。 */
     internal var preparedClear: (() -> Unit)? = null
 
     /**
-     * 将槽位的生命周期交给 GPU，并可把它变成尚未激活的后继。
-     * 预留槽位仍占全局额度；清除 CPU 到期与动态源，防止旧配置覆盖 GPU 出生结果。
+     * 将槽位的生命周期交给预提交通道，并可把它变成尚未激活的后继。
+     * 预留槽位仍占全局额度；移除动态源，防止旧配置覆盖新的出生结果。
+     * CPU 路线只保留已激活生命的年龄推进，等待中的后继始终冻结。
      */
-    internal fun prepareGpuRespawn(slot: Int, waiting: Boolean) {
+    internal fun prepareGpuRespawn(slot: Int, waiting: Boolean, cpuManaged: Boolean = false) {
         check(isAlive(slot))
         expirationTicks[slot] = NO_EXPIRATION_TICK
         val word = slot ushr 6
         val mask = 1L shl (slot and 63)
-        if (agingBits[word] and mask != 0L) {
+        if ((!cpuManaged || waiting) && agingBits[word] and mask != 0L) {
             agingBits[word] = agingBits[word] and mask.inv()
             agingCount--
+        }
+        if (cpuManaged && !waiting && agingBits[word] and mask == 0L) {
+            agingBits[word] = agingBits[word] or mask
+            agingCount++
         }
         releaseDynamicSource(slot)
         val offset = slot * STRIDE + OFF_FLAGS
         var flags = data[offset].toInt() or CParticleInstanceFlags.RESPAWN_OWNED
         if (waiting) flags = (flags and FLAG_ALIVE.inv()) or CParticleInstanceFlags.RESPAWN_WAITING
         data[offset] = flags.toFloat()
+        markDirty(slot)
     }
 
     /** 只提交终止标记；位置速度仍由 GPU 持有，不能整槽上传 CPU 的旧运动数据。 */
@@ -85,6 +90,46 @@ class CParticleStore(capacity: Int) {
         if (reason == RemoveReason.CALL) flags = flags or CParticleInstanceFlags.RESPAWN_MANUAL
         data[offset] = flags.toFloat()
         queueKilled(slot)
+        markDirty(slot)
+    }
+
+    /**
+     * 激活已预留的 CPU 后继，更新与 compute 相同的插值、视觉年龄和出生 metadata。
+     *
+     * 后继从下一 tick 开始模拟，不重新执行出生配置或重新申请容量。
+     * @param slot 已预留且未回收的槽位
+     * @param position 目标 system 局部出生位置
+     * @param velocity 目标 system 局部出生速度
+     * @param epochTick 激活时目标系统的 tick
+     */
+    internal fun activatePreparedCpu(slot: Int, position: Vector3f, velocity: Vector3f, epochTick: Int) {
+        check(isAlive(slot))
+        val base = slot * STRIDE
+        val flags = data[base + OFF_FLAGS].toInt()
+        check(flags and CParticleInstanceFlags.RESPAWN_WAITING != 0)
+        data[base] = position.x
+        data[base + 1] = position.y
+        data[base + 2] = position.z
+        data[base + OFF_PREV] = position.x
+        data[base + OFF_PREV + 1] = position.y
+        data[base + OFF_PREV + 2] = position.z
+        data[base + OFF_VEL] = velocity.x
+        data[base + OFF_VEL + 1] = velocity.y
+        data[base + OFF_VEL + 2] = velocity.z
+        data[base + OFF_FLAGS] = ((flags and
+            (CParticleInstanceFlags.RESPAWN_WAITING or FLAG_NEWBORN).inv()) or FLAG_ALIVE).toFloat()
+        data[base + OFF_ANIMATION + 1] = data[base + OFF_AGE]
+        data[base + OFF_EPOCH_TICK] = epochTick.toFloat()
+        ages[slot] = data[base + OFF_AGE].toInt()
+        metadata.setBirth(slot, position.x, position.y, position.z, data[base + OFF_AGE])
+        val word = slot ushr 6
+        val mask = 1L shl (slot and 63)
+        newbornBits[word] = newbornBits[word] and mask.inv()
+        if (agingBits[word] and mask == 0L) {
+            agingBits[word] = agingBits[word] or mask
+            agingCount++
+        }
+        markDirty(slot)
     }
 
     companion object {
@@ -123,9 +168,6 @@ class CParticleStore(capacity: Int) {
         const val OFF_MASK_COLOR = OFF_APPEARANCE + 3
         private const val SYSTEM_SPEED_LIMIT_SENTINEL = -1F
         private const val NO_EXPIRATION_TICK = Long.MAX_VALUE
-        private const val INITIAL_EXPIRATION_BATCH_CAPACITY = 64
-        private const val INITIAL_EXPIRATION_HEAP_CAPACITY = 16
-        private const val MAX_RECYCLED_EXPIRATION_BATCHES = 256
 
         const val FLAG_ALIVE = CParticleInstanceFlags.ALIVE
         const val CAMERA_SHIFT = CParticleInstanceFlags.CAMERA_SHIFT
@@ -265,7 +307,7 @@ class CParticleStore(capacity: Int) {
 
     /** GPU 模式的到期时间账本。相同到期 tick 的槽位放进同一个批次。 */
     private var expirationTicks = LongArray(capacity) { NO_EXPIRATION_TICK }
-    private var expirationBatchHeap = arrayOfNulls<ExpirationBatch>(INITIAL_EXPIRATION_HEAP_CAPACITY)
+    private var expirationBatchHeap = arrayOfNulls<ExpirationBatch>(16)
     private var expirationBatchCount = 0
     private var lastExpirationBatch: ExpirationBatch? = null
     private var nextExpirationBatchOrder = 0L
@@ -679,19 +721,21 @@ class CParticleStore(capacity: Int) {
             var bits = agingBits[w]
             if (w == firstWord) bits = bits and (-1L shl (firstAliveSlot and 63))
             while (bits != 0L) {
-                val bit = java.lang.Long.numberOfTrailingZeros(bits)
+                val bit = bits.countTrailingZeroBits()
                 bits = bits and (bits - 1)
                 val slot = (w shl 6) + bit
                 val mask = 1L shl bit
+                val flags = data[slot * STRIDE + OFF_FLAGS].toInt()
+                if (flags and CParticleInstanceFlags.RESPAWN_OWNED != 0 && flags and FLAG_ALIVE == 0) continue
                 if (newbornBits[w] and mask != 0L) {
                     newbornBits[w] = newbornBits[w] and mask.inv()
                     continue
                 }
-                val newAge = ++ages[slot]
+                val newAge = if (ages[slot] == Int.MAX_VALUE) Int.MAX_VALUE else ++ages[slot]
                 if (writeBufferAge) {
                     data[slot * STRIDE + OFF_AGE] = newAge.toFloat()
                 }
-                if (newAge >= maxAges[slot]) {
+                if (maxAges[slot] < Int.MAX_VALUE && newAge >= maxAges[slot]) {
                     kill(slot, queueGpuFlag = false, reason = RemoveReason.LIFECYCLE)
                     anyDead = true
                 }
@@ -833,7 +877,7 @@ class CParticleStore(capacity: Int) {
 
     private fun recycleExpirationBatch(batch: ExpirationBatch) {
         batch.clear()
-        if (recycledExpirationBatches.size < MAX_RECYCLED_EXPIRATION_BATCHES) {
+        if (recycledExpirationBatches.size < 256) {
             recycledExpirationBatches.addLast(batch)
         }
     }
@@ -990,8 +1034,8 @@ class CParticleStore(capacity: Int) {
         deathTracker?.clear()
         preparedDeath = null
         val releasedCount = aliveCount
-        Arrays.fill(aliveBits, 0L)
-        Arrays.fill(agingBits, 0L)
+        aliveBits.fill(0L)
+        agingBits.fill(0L)
         expirationTicks.fill(NO_EXPIRATION_TICK)
         for (index in 0 until expirationBatchCount) {
             expirationBatchHeap[index]?.let(::recycleExpirationBatch)
@@ -1011,12 +1055,12 @@ class CParticleStore(capacity: Int) {
         agingCount = 0
         highWater = 0
         firstAliveSlot = 0
-        Arrays.fill(spawnedBits, 0L)
-        Arrays.fill(newbornBits, 0L)
+        spawnedBits.fill(0L)
+        newbornBits.fill(0L)
         spawnedCount = 0
         dynamicState = null
         killedState = null
-        Arrays.fill(metadata.data, 0F)
+        metadata.data.fill(0F)
         dirtyMin = -1
         dirtyMax = -1
         // flags 清零即可 (渲染端只看 alive 位)
@@ -1068,8 +1112,8 @@ class CParticleStore(capacity: Int) {
      */
     internal fun clearSpawnedAfterGpu() {
         if (spawnedCount == 0) return
-        java.util.Arrays.fill(spawnedBits, 0L)
-        java.util.Arrays.fill(newbornBits, 0L)
+        spawnedBits.fill(0L)
+        newbornBits.fill(0L)
         spawnedCount = 0
     }
 
@@ -1122,7 +1166,7 @@ class CParticleStore(capacity: Int) {
      */
     internal fun prepareDynamicVisuals(
         tick: Int,
-        resolveAnimation: (ResourceLocation?, ResourceLocation?) -> Int,
+        resolveAnimation: (Identifier?, Identifier?) -> Int,
     ): Int = prepareDynamicVisuals(
         tick,
         textureGeneration = 0,
@@ -1647,7 +1691,7 @@ class CParticleStore(capacity: Int) {
         var expiryTick: Long,
         var order: Long,
     ) {
-        private var slots = IntArray(INITIAL_EXPIRATION_BATCH_CAPACITY)
+        private var slots = IntArray(64)
         var size = 0
             private set
 

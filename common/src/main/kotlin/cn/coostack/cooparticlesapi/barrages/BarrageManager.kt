@@ -31,7 +31,7 @@ object BarrageManager {
         val minZ = box.minZ.toInt() shr 4
         val maxZ = box.maxZ.toInt() shr 4
         for (cx in minX..maxX) for (cz in minZ..maxZ) {
-            val bucket = worldIdx[ChunkPos.asLong(cx, cz)] ?: continue
+            val bucket = worldIdx[ChunkPos.pack(cx, cz)] ?: continue
             for (b in bucket) {
                 if (!b.valid || b.noclip()) continue
                 if (box.contains(b.loc) || box.intersects(b.hitBox.get().ofBox(b.loc))) {
@@ -133,5 +133,5 @@ object BarrageManager {
     }
 
     private fun chunkKey(x: Double, z: Double): Long =
-        ChunkPos.asLong(x.toInt() shr 4, z.toInt() shr 4)
+        ChunkPos.pack(x.toInt() shr 4, z.toInt() shr 4)
 }

@@ -204,19 +204,13 @@ object PerformanceStatusClientController {
             writer = openedWriter
             currentOutputPath = outputPath
             resetSamplingState()
-            client.player?.displayClientMessage(
-                Component.literal("CooParticles Status 已开始记录：$outputPath"),
-                false,
-            )
+            client.player?.sendSystemMessage(Component.literal("CooParticles Status 已开始记录：$outputPath"))
             outputPath
         }.onFailure { failure ->
             CooParticlesConstants.logger.error("无法创建 CooParticles Status CSV", failure)
             writer = null
             currentOutputPath = null
-            client.player?.displayClientMessage(
-                Component.literal("CooParticles Status 无法创建 CSV：${failure.message}"),
-                false,
-            )
+            client.player?.sendSystemMessage(Component.literal("CooParticles Status 无法创建 CSV：${failure.message}"))
         }.getOrNull()
     }
 
@@ -245,13 +239,10 @@ object PerformanceStatusClientController {
         serverRefreshIntervalTicks = null
         if (closeScreen) {
             val client = Minecraft.getInstance()
-            if (client.screen is PerformanceStatusScreen) client.setScreen(null)
+            if (client.gui.screen() is PerformanceStatusScreen) client.gui.setScreen(null)
         }
         completedPath?.let { path ->
-            Minecraft.getInstance().player?.displayClientMessage(
-                Component.literal("CooParticles Status 已导出：$path"),
-                false,
-            )
+            Minecraft.getInstance().player?.sendSystemMessage(Component.literal("CooParticles Status 已导出：$path"))
         }
         return completedPath
     }
@@ -259,10 +250,10 @@ object PerformanceStatusClientController {
     /** 打开纯实时 GUI；没有 CSV 会话时只创建内存趋势窗口。 */
     fun openGui() {
         val client = Minecraft.getInstance()
-        if (client.screen is PerformanceStatusScreen) return
+        if (client.gui.screen() is PerformanceStatusScreen) return
         if (!isActive()) resetSamplingState()
         guiOpen = true
-        client.setScreen(PerformanceStatusScreen())
+        client.setScreenAndShow(PerformanceStatusScreen())
     }
 
     /** GUI 被关闭时停止纯查看采样，但不结束独立的 CSV 记录会话。 */

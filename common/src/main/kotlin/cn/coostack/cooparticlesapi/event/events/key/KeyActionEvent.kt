@@ -1,7 +1,7 @@
 package cn.coostack.cooparticlesapi.event.events.key
 
 import cn.coostack.cooparticlesapi.event.events.entity.player.PlayerEvent
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.entity.player.Player
 
 enum class KeyActionType(val id: Int) {
@@ -91,40 +91,40 @@ class KeyActionBatch<K>(entries: List<KeyActionData<K>>) {
  */
 class KeyActionEvent(
     player: Player,
-    val keyActions: KeyActionBatch<ResourceLocation>,
+    val keyActions: KeyActionBatch<Identifier>,
     val serverSide: Boolean
 ) : PlayerEvent(player) {
-    constructor(player: Player, entries: List<KeyActionData<ResourceLocation>>, serverSide: Boolean) : this(
+    constructor(player: Player, entries: List<KeyActionData<Identifier>>, serverSide: Boolean) : this(
         player,
         KeyActionBatch(entries),
         serverSide
     )
 
-    fun getKeys(): List<ResourceLocation> {
+    fun getKeys(): List<Identifier> {
         return keyActions.getKeys()
     }
 
-    fun getAction(keyId: ResourceLocation): List<KeyActionType> {
+    fun getAction(keyId: Identifier): List<KeyActionType> {
         return keyActions.getAction(keyId)
     }
 
-    fun getPressTick(keyId: ResourceLocation): Int {
+    fun getPressTick(keyId: Identifier): Int {
         return keyActions.getPressTick(keyId)
     }
 
-    fun isReleased(keyId: ResourceLocation): Boolean {
+    fun isReleased(keyId: Identifier): Boolean {
         return keyActions.isReleased(keyId)
     }
 
-    fun isSingleClick(keyId: ResourceLocation): Boolean {
+    fun isSingleClick(keyId: Identifier): Boolean {
         return keyActions.isSingleClick(keyId)
     }
 
-    fun isDoubleClick(keyId: ResourceLocation): Boolean {
+    fun isDoubleClick(keyId: Identifier): Boolean {
         return keyActions.isDoubleClick(keyId)
     }
 
-    fun isLongPress(keyId: ResourceLocation): Boolean {
+    fun isLongPress(keyId: Identifier): Boolean {
         return keyActions.isLongPress(keyId)
     }
 }

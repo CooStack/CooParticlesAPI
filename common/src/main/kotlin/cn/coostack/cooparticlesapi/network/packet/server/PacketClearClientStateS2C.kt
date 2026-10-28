@@ -4,11 +4,11 @@ import cn.coostack.cooparticlesapi.CooParticlesConstants
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 object PacketClearClientStateS2C : CustomPacketPayload {
     private val identifierID =
-        ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "clear_client_state")
+        Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "clear_client_state")
 
     val payloadID = CustomPacketPayload.Type<PacketClearClientStateS2C>(identifierID)
     val CODEC: StreamCodec<FriendlyByteBuf, PacketClearClientStateS2C> =

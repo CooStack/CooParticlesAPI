@@ -1,7 +1,7 @@
 package cn.coostack.cooparticlesapi.renderer.backend
 
 import com.mojang.blaze3d.pipeline.RenderTarget
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /**
  * 一项命名场景资源。
@@ -11,17 +11,17 @@ import net.minecraft.resources.ResourceLocation
  */
 data class RenderSceneResource(
     /** 场景资源的逻辑 id，通常来自 `RenderSceneTargets`。 */
-    val id: ResourceLocation,
+    val id: Identifier,
     /** 面向日志和调试的可读标签。 */
     val label: String,
     /** 对应的底层 RenderTarget；为空时表示该资源当前只有逻辑声明。 */
     val target: RenderTarget? = null,
     /** FBO 的全部颜色 attachment；普通 Minecraft RenderTarget 只有 attachment 0。 */
-    val colorTextureIds: List<Int> = target?.colorTextureId?.let(::listOf) ?: emptyList(),
+    val colorTextureIds: List<Int> = target?.colorTextureId?.takeIf { it > 0 }?.let(::listOf) ?: emptyList(),
     /** attachment 0 的兼容读取入口。 */
     val colorTextureId: Int? = colorTextureIds.firstOrNull(),
     /** 从 target 推导出的深度纹理 id。 */
-    val depthTextureId: Int? = target?.depthTextureId
+    val depthTextureId: Int? = target?.depthTextureId?.takeIf { it > 0 }
 ) {
     /**
      * 更新 `RenderSceneResource` 的 `colorTextureId` 状态；修改会影响后续查询、构建或当前帧绘制。
@@ -33,28 +33,28 @@ data class RenderSceneResource(
      * @return 当前操作计算、更新或查询得到的结果
      */
     fun colorTextureId(attachment: Int): Int? {
-        return colorTextureIds.getOrNull(attachment)
-            ?: colorTextureId.takeIf { attachment == 0 }
+        return if (attachment == 0) colorTextureId ?: colorTextureIds.firstOrNull()
+        else colorTextureIds.getOrNull(attachment)
     }
 }
 
 /**
- * 一组按 `ResourceLocation` 编址的场景资源表。
+ * 一组按 `Identifier` 编址的场景资源表。
  */
 class RenderSceneResources private constructor(
-    private val resources: LinkedHashMap<ResourceLocation, RenderSceneResource>
+    private val resources: LinkedHashMap<Identifier, RenderSceneResource>
 ) {
     /**
      * 读取指定 id 对应的场景资源。
      */
-    operator fun get(id: ResourceLocation): RenderSceneResource? {
+    operator fun get(id: Identifier): RenderSceneResource? {
         return resources[id]
     }
 
     /**
      * 判断当前资源表里是否存在某个 target。
      */
-    fun contains(id: ResourceLocation): Boolean {
+    fun contains(id: Identifier): Boolean {
         return resources.containsKey(id)
     }
 
@@ -72,7 +72,7 @@ class RenderSceneResources private constructor(
          * 若传入重复 id，后面的资源会覆盖前面的条目。
          */
         fun of(vararg resources: RenderSceneResource): RenderSceneResources {
-            val resolved = LinkedHashMap<ResourceLocation, RenderSceneResource>(resources.size)
+            val resolved = LinkedHashMap<Identifier, RenderSceneResource>(resources.size)
             resources.forEach { resource ->
                 resolved[resource.id] = resource
             }

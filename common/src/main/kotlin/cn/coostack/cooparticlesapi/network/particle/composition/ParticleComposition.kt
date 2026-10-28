@@ -1,5 +1,7 @@
 package cn.coostack.cooparticlesapi.network.particle.composition
 
+import cn.coostack.cooparticlesapi.network.readVec3
+import cn.coostack.cooparticlesapi.network.writeVec3
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.annotations.codec.CodecHelper
 import cn.coostack.cooparticlesapi.api.NetworkDirtyMarkable

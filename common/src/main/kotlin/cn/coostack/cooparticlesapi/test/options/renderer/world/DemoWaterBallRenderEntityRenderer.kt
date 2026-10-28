@@ -12,7 +12,7 @@ import cn.coostack.cooparticlesapi.renderer.pipeline.CooUniformProvider
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooUniformValue
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityRenderer
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderInput
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import org.joml.Vector2f
 import org.joml.Vector3f
 import org.joml.Vector4f
@@ -113,8 +113,8 @@ class DemoWaterBallRenderEntityRenderer : RenderEntityRenderer<DemoWaterBallRend
     }
 
     companion object {
-        private fun id(path: String): ResourceLocation {
-            return ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, path)
+        private fun id(path: String): Identifier {
+            return Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, path)
         }
     }
 }

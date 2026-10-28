@@ -1,13 +1,13 @@
 package cn.coostack.cooparticlesapi.renderer.terrain
 
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooUniformValue
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /** 已创建的 mapping 实例不可变描述；区域和参数由客户端在渲染阶段直接求值。 */
 data class CooTerrainMappingInstance(
-    val instanceId: ResourceLocation,
-    val mappingId: ResourceLocation,
-    val dimension: ResourceLocation,
+    val instanceId: Identifier,
+    val mappingId: Identifier,
+    val dimension: Identifier,
     val region: CooTerrainMappingRegion,
     val uniforms: Map<String, CooUniformValue>,
     val priority: Int,
@@ -19,7 +19,7 @@ data class CooTerrainMappingInstance(
     val pausedAt: Long? = null
 ) {
     /** 便于调用方声明实例所属的逻辑维度类型。 */
-    fun dimensionKey(): ResourceLocation = dimension
+    fun dimensionKey(): Identifier = dimension
 
     /** 判断实例是否处于暂停状态。 */
     fun isPaused(): Boolean = pausedAt != null

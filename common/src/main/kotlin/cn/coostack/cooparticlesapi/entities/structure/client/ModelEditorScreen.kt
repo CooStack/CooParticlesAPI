@@ -4,20 +4,23 @@ import cn.coostack.cooparticlesapi.entities.structure.ModelEditPayload
 import cn.coostack.cooparticlesapi.entities.structure.StructureModelSettings
 import cn.coostack.cooparticlesapi.entities.structure.StructureSnapshot
 import cn.coostack.cooparticlesapi.network.packet.api.CooClientPacketManager
-import net.minecraft.client.gui.GuiGraphics
+import com.mojang.blaze3d.platform.InputConstants
+import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.minecraft.client.gui.components.events.GuiEventListener
+import net.minecraft.client.input.CharacterEvent
+import net.minecraft.client.input.KeyEvent
+import net.minecraft.client.input.MouseButtonEvent
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.client.gui.components.Button
 import net.minecraft.client.gui.components.Checkbox
 import net.minecraft.client.gui.components.AbstractWidget
 import net.minecraft.client.gui.components.EditBox
 import net.minecraft.nbt.CompoundTag
-import net.minecraft.nbt.Tag
 import net.minecraft.nbt.ListTag
 import net.minecraft.nbt.StringTag
+import net.minecraft.core.UUIDUtil
 import net.minecraft.network.chat.Component
-import net.minecraft.resources.ResourceLocation
-import org.lwjgl.glfw.GLFW
+import net.minecraft.resources.Identifier
 import java.util.UUID
 
 /** 结构模型设置窗口；只提交编辑意图，库存使用服务端原版容器。
@@ -25,24 +28,24 @@ import java.util.UUID
  */
 class ModelEditorScreen(private val data: CompoundTag) : Screen(Component.literal("结构模型编辑器")) {
     /** 初始方块可设置模型属性，已有实体模式必须由编辑器打开。 */
-    private val editing = data.hasUUID("Entity")
+    private val editing = readUuid(data, "Entity") != null
     /** 原始草稿独立于服务端已验证的模型数据，允许字段尚未填完。 */
-    private val savedDraft = data.getCompound("EditorDraft")
+    private val savedDraft = data.getCompoundOrEmpty("EditorDraft")
     /** 输入草稿在子窗口返回和窗口缩放时保留。 */
-    private var draft = StructureModelSettings.fromNbt(if (savedDraft.contains("Draft")) savedDraft.getCompound("Draft") else data.getCompound("Settings"))
+    private var draft = StructureModelSettings.fromNbt(if (savedDraft.contains("Draft")) savedDraft.getCompoundOrEmpty("Draft") else data.getCompoundOrEmpty("Settings"))
     /** 首次转换时未修改的支点由服务端按所选结构补全。 */
-    private var explicitPivot = if (savedDraft.contains("ExplicitPivot")) savedDraft.getBoolean("ExplicitPivot")
-        else editing || data.getBoolean("SavedBlock")
+    private var explicitPivot = if (savedDraft.contains("ExplicitPivot")) savedDraft.getBooleanOr("ExplicitPivot", false)
+        else editing || data.getBooleanOr("SavedBlock", false)
     /** 当前选择的结构标识。 */
-    private var name = if (savedDraft.contains("Name")) savedDraft.getString("Name") else data.getString("Name")
+    private var name = if (savedDraft.contains("Name")) savedDraft.getStringOr("Name", "") else data.getStringOr("Name", "")
     /** 尚未提交的动画开关。 */
-    private var deathAnimation = if (savedDraft.contains("DeathAnimation")) savedDraft.getBoolean("DeathAnimation") else draft.deathAnimation
+    private var deathAnimation = if (savedDraft.contains("DeathAnimation")) savedDraft.getBooleanOr("DeathAnimation", draft.deathAnimation) else draft.deathAnimation
     /** 拾取开关与名称草稿独立保存，名称未填完时仍可调整模型中心。 */
-    private var pickable = if (savedDraft.contains("Pickable")) savedDraft.getBoolean("Pickable") else draft.pickable
+    private var pickable = if (savedDraft.contains("Pickable")) savedDraft.getBooleanOr("Pickable", draft.pickable) else draft.pickable
     /** 手持子页原始输入，与主页面一起保存和撤销。 */
-    private var itemDraft = savedDraft.getCompound("ItemDraft").copy()
+    private var itemDraft = savedDraft.getCompoundOrEmpty("ItemDraft").copy()
     /** 子菜单保存的手持物品配置，不与未完成的变换文字混合。 */
-    private var itemSettings = if (savedDraft.contains("ItemSettings")) StructureModelSettings.fromNbt(savedDraft.getCompound("ItemSettings")) else draft
+    private var itemSettings = if (savedDraft.contains("ItemSettings")) StructureModelSettings.fromNbt(savedDraft.getCompoundOrEmpty("ItemSettings")) else draft
     /** 物品的进食与重新放置是相互独立的能力。 */
     private var edible = itemSettings.edible
     /** 默认关闭重新放置，避免仅作为道具的模型变回实体。 */
@@ -53,7 +56,7 @@ class ModelEditorScreen(private val data: CompoundTag) : Screen(Component.litera
     private val values = mutableListOf<ModelNumberField>()
     /** 重建窗口前暂存原始文字，包括尚未输入完整的数值。 */
     private var rawValues: List<String>? = if (savedDraft.contains("Values")) {
-        savedDraft.getList("Values", Tag.TAG_STRING.toInt()).let { list -> (0 until list.size).map { list.getString(it) } }
+        savedDraft.getListOrEmpty("Values").let { list -> (0 until list.size).map { list.getStringOr(it, "") } }
     } else null
     /** 结构 ID 输入框，在首次初始化时创建。 */
     private lateinit var nameField: EditBox
@@ -82,8 +85,8 @@ class ModelEditorScreen(private val data: CompoundTag) : Screen(Component.litera
     /** 窄表单把标签放到数值上方，因此需要更大的行距。 */
     private var numberRowHeight = 22
     /** 从服务端目录建立的补全候选及选择状态。 */
-    private val completion = ModelNameSuggestions(data.getList("Names", Tag.TAG_STRING.toInt()).let { list ->
-        (0 until list.size).map { list.getString(it) }
+    private val completion = ModelNameSuggestions(data.getListOrEmpty("Names").let { list ->
+        (0 until list.size).map { list.getStringOr(it, "") }
     })
     /** Escape 或点击其他控件后隐藏候选，继续输入时重新打开。 */
     private var suggestionsDismissed = false
@@ -118,8 +121,8 @@ class ModelEditorScreen(private val data: CompoundTag) : Screen(Component.litera
         }
         form(Button.builder(Component.literal("选择…")) {
             name = nameField.value
-            val list = data.getList("Names", Tag.TAG_STRING.toInt())
-            minecraft?.setScreen(ModelStructureScreen(this, (0 until list.size).map { list.getString(it) }))
+            val list = data.getListOrEmpty("Names")
+            minecraft.setScreenAndShow(ModelStructureScreen(this, (0 until list.size).map { list.getStringOr(it, "") }))
         }.bounds(x + formWidth - 56, y + 28, 56, 20).build())
         val defaults = listOf(draft.health.toString()) + draft.rotation.map { it.toString() } +
             draft.offset.map { it.toString() } + draft.scale.map { it.toString() } + draft.pivot.map { it.toString() }
@@ -164,11 +167,11 @@ class ModelEditorScreen(private val data: CompoundTag) : Screen(Component.litera
             submit("drops")
         }.bounds(x + formWidth - 76, controlsY, 76, 20).build())
         itemButton = form(Button.builder(Component.literal("手持模型配置…")) {
-            minecraft?.setScreen(ModelItemScreen(this, itemSettings.copy(pickable = true), itemDraft))
+            minecraft.setScreenAndShow(ModelItemScreen(this, itemSettings.copy(pickable = true), itemDraft))
         }.bounds(x + formWidth - 100, controlsY + 26, 100, 20).build())
         if (!editing) {
             form(Button.builder(Component.literal("从物品获取")) { submit("import") }
-                .bounds(x, controlsY + 52, 100, 20).build()).active = !data.getBoolean("SavedBlock")
+                .bounds(x, controlsY + 52, 100, 20).build()).active = !data.getBooleanOr("SavedBlock", false)
         }
         formBottom = controlsY + if (editing) 50 else 76
         val saveWidth = if (editing) formWidth - 54 else (formWidth - 62) / 2
@@ -219,18 +222,18 @@ class ModelEditorScreen(private val data: CompoundTag) : Screen(Component.litera
     private fun restoreState(state: CompoundTag) {
         val focusedIndex = values.indexOf(focused)
         val focusedName = focused === nameField
-        draft = StructureModelSettings.fromNbt(state.getCompound("Draft"))
-        itemSettings = StructureModelSettings.fromNbt(state.getCompound("ItemSettings"))
-        itemDraft = state.getCompound("ItemDraft").copy()
+        draft = StructureModelSettings.fromNbt(state.getCompoundOrEmpty("Draft"))
+        itemSettings = StructureModelSettings.fromNbt(state.getCompoundOrEmpty("ItemSettings"))
+        itemDraft = state.getCompoundOrEmpty("ItemDraft").copy()
         edible = itemSettings.edible
         placeable = itemSettings.placeable
-        explicitPivot = state.getBoolean("ExplicitPivot")
-        deathAnimation = state.getBoolean("DeathAnimation")
-        pickable = state.getBoolean("Pickable")
+        explicitPivot = state.getBooleanOr("ExplicitPivot", false)
+        deathAnimation = state.getBooleanOr("DeathAnimation", false)
+        pickable = state.getBooleanOr("Pickable", false)
         nameField.setResponder {}
-        nameField.value = state.getString("Name")
-        val raw = state.getList("Values", Tag.TAG_STRING.toInt())
-        rawValues = (0 until raw.size).map { raw.getString(it) }
+        nameField.value = state.getStringOr("Name", "")
+        val raw = state.getListOrEmpty("Values")
+        rawValues = (0 until raw.size).map { raw.getStringOr(it, "") }
         values.clear()
         error = ""
         schedulePreview()
@@ -239,8 +242,8 @@ class ModelEditorScreen(private val data: CompoundTag) : Screen(Component.litera
         else if (focusedIndex >= 0) setFocused(values[focusedIndex])
     }
 
-    override fun charTyped(chr: Char, modifiers: Int): Boolean {
-        val handled = super.charTyped(chr, modifiers)
+    override fun charTyped(event: CharacterEvent): Boolean {
+        val handled = super.charTyped(event)
         if (!pending) history.record(captureState())
         return handled
     }
@@ -288,13 +291,13 @@ class ModelEditorScreen(private val data: CompoundTag) : Screen(Component.litera
     private fun requestPreview() {
         val input = nameField.value.trim()
         if (input.isEmpty()) return
-        val id = ResourceLocation.tryParse(input) ?: return
+        val id = Identifier.tryParse(input) ?: return
         val request = CompoundTag()
-        request.putLong("Pos", data.getLong("Pos"))
-        if (editing) request.putUUID("Entity", data.getUUID("Entity"))
+        request.putLong("Pos", data.getLongOr("Pos", 0L))
+        if (editing) writeUuid(request, "Entity", requireNotNull(readUuid(data, "Entity")))
         request.putString("Action", "preview")
         request.putString("Name", id.toString())
-        request.putUUID("PreviewRequest", previewRequest)
+        writeUuid(request, "PreviewRequest", previewRequest)
         request.put("Settings", draft.copy(pickable = false).toNbt())
         request.putBoolean("ExplicitPivot", explicitPivot)
         CooClientPacketManager.sendTo(ModelEditPayload(request))
@@ -324,39 +327,43 @@ class ModelEditorScreen(private val data: CompoundTag) : Screen(Component.litera
     }
 
     /** 在控件处理 Tab 焦点切换之前处理补全，Escape 首次只关闭候选。 */
-    override fun keyPressed(keyCode: Int, scanCode: Int, modifiers: Int): Boolean {
-        if (hasControlDown() && (keyCode == GLFW.GLFW_KEY_Z || keyCode == GLFW.GLFW_KEY_Y)) {
+    override fun keyPressed(event: KeyEvent): Boolean {
+        val keyCode = event.key()
+        if (event.hasControlDown() && (keyCode == InputConstants.KEY_Z || keyCode == InputConstants.KEY_Y)) {
             if (!pending) {
-                val state = if (keyCode == GLFW.GLFW_KEY_Y || hasShiftDown()) history.redo() else history.undo()
+                val state = if (keyCode == InputConstants.KEY_Y || event.hasShiftDown()) history.redo() else history.undo()
                 state?.let { restoreState(it) }
             }
             return true
         }
         if (nameField.isFocused && suggestionsDismissed &&
-            (keyCode == GLFW.GLFW_KEY_TAB || keyCode == GLFW.GLFW_KEY_DOWN)) suggestionsDismissed = false
+            (keyCode == InputConstants.KEY_TAB || keyCode == InputConstants.KEY_DOWN)) suggestionsDismissed = false
         if (showingSuggestions()) {
             when (keyCode) {
-                GLFW.GLFW_KEY_TAB -> { acceptSuggestion(completion.complete(hasShiftDown())); return true }
-                GLFW.GLFW_KEY_DOWN -> { completion.move(1); updateGhostText(); return true }
-                GLFW.GLFW_KEY_UP -> { completion.move(-1); updateGhostText(); return true }
-                GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> {
+                InputConstants.KEY_TAB -> { acceptSuggestion(completion.complete(event.hasShiftDown())); return true }
+                InputConstants.KEY_DOWN -> { completion.move(1); updateGhostText(); return true }
+                InputConstants.KEY_UP -> { completion.move(-1); updateGhostText(); return true }
+                InputConstants.KEY_RETURN, InputConstants.KEY_NUMPADENTER -> {
                     acceptSuggestion(completion.choose(completion.selected))
                     suggestionsDismissed = true
                     updateGhostText()
                     return true
                 }
-                GLFW.GLFW_KEY_ESCAPE -> { suggestionsDismissed = true; updateGhostText(); return true }
+                InputConstants.KEY_ESCAPE -> { suggestionsDismissed = true; updateGhostText(); return true }
             }
         }
-        val handled = super.keyPressed(keyCode, scanCode, modifiers)
+        val handled = super.keyPressed(event)
         if (!pending) history.record(captureState())
         return handled
     }
 
     /** 下拉列表先接收点击，不能让点击穿透到后面的生命和旋转输入框。 */
-    override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
+    override fun mouseClicked(event: MouseButtonEvent, doubleClick: Boolean): Boolean {
+        val mouseX = event.x()
+        val mouseY = event.y()
+        val button = event.button()
         val row = suggestionRow(mouseX, mouseY)
-        if (row != null && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+        if (row != null && button == InputConstants.MOUSE_BUTTON_LEFT) {
             acceptSuggestion(completion.choose(row))
             suggestionsDismissed = true
             updateGhostText()
@@ -367,7 +374,7 @@ class ModelEditorScreen(private val data: CompoundTag) : Screen(Component.litera
             return true
         }
         suggestionsDismissed = !nameField.isMouseOver(mouseX, mouseY)
-        val handled = super.mouseClicked(mouseX, mouseY, button)
+        val handled = super.mouseClicked(event, doubleClick)
         updateGhostText()
         if (!pending) history.record(captureState())
         return handled
@@ -396,11 +403,11 @@ class ModelEditorScreen(private val data: CompoundTag) : Screen(Component.litera
         return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount)
     }
 
-    override fun mouseDragged(mouseX: Double, mouseY: Double, button: Int, deltaX: Double, deltaY: Double): Boolean =
-        previewPane.drag(button, deltaX, deltaY) || super.mouseDragged(mouseX, mouseY, button, deltaX, deltaY)
+    override fun mouseDragged(event: MouseButtonEvent, deltaX: Double, deltaY: Double): Boolean =
+        previewPane.drag(event.button(), deltaX, deltaY) || super.mouseDragged(event, deltaX, deltaY)
 
-    override fun mouseReleased(mouseX: Double, mouseY: Double, button: Int): Boolean {
-        val handled = previewPane.release(button) || super.mouseReleased(mouseX, mouseY, button)
+    override fun mouseReleased(event: MouseButtonEvent): Boolean {
+        val handled = previewPane.release(event.button()) || super.mouseReleased(event)
         if (!pending) history.record(captureState())
         return handled
     }
@@ -416,23 +423,22 @@ class ModelEditorScreen(private val data: CompoundTag) : Screen(Component.litera
     }
 
     /** 以原版指令风格的深色下拉框覆盖控件，黄色文字表示当前键盘选项。 */
-    private fun renderSuggestions(context: GuiGraphics, mouseX: Int, mouseY: Int) {
+    private fun renderSuggestions(context: GuiGraphicsExtractor, mouseX: Int, mouseY: Int) {
         if (!showingSuggestions()) return
         val x = nameField.x
         val y = nameField.y + 22
         val first = firstSuggestion()
         val count = (completion.matches.size - first).coerceAtMost(visibleRows)
-        context.pose().pushPose()
-        context.pose().translate(0.0, 0.0, 400.0)
+        context.pose().pushMatrix()
         context.fill(x, y, x + nameField.width, y + count * 12, 0xFF101010.toInt())
         val hovered = suggestionRow(mouseX.toDouble(), mouseY.toDouble())
         repeat(count) { row ->
             val index = first + row
             if (index == completion.selected || index == hovered) context.fill(x, y + row * 12, x + nameField.width, y + row * 12 + 12, 0xFF353535.toInt())
-            context.drawString(font, font.plainSubstrByWidth(completion.matches[index], nameField.width - 8), x + 4, y + row * 12 + 2,
+            context.text(font, font.plainSubstrByWidth(completion.matches[index], nameField.width - 8), x + 4, y + row * 12 + 2,
                 if (index == completion.selected) 0xFFFF55 else 0xAAAAAA)
         }
-        context.pose().popPose()
+        context.pose().popMatrix()
     }
 
     /** 接收结构列表选择，不重置其余草稿。 */
@@ -453,15 +459,15 @@ class ModelEditorScreen(private val data: CompoundTag) : Screen(Component.litera
 
     /** 接收服务器加载的真实快照，仅创建不加入世界的客户端预览。 */
     fun preview(response: CompoundTag) {
-        if (response.getUUID("PreviewRequest") != previewRequest) return
-        if (response.getString("Name") != ResourceLocation.tryParse(nameField.value.trim())?.toString()) {
+        if (readUuid(response, "PreviewRequest") != previewRequest) return
+        if (response.getStringOr("Name", "") != Identifier.tryParse(nameField.value.trim())?.toString()) {
             return
         }
         if (!response.contains("Structure")) { previewPane.clear(); return }
         val world = minecraft?.level ?: return
         runCatching {
-            val snapshot = StructureSnapshot(world.registryAccess(), response.getCompound("Structure"))
-            val settings = StructureModelSettings.fromNbt(response.getCompound("Settings"))
+            val snapshot = StructureSnapshot(world.registryAccess(), response.getCompoundOrEmpty("Structure"))
+            val settings = StructureModelSettings.fromNbt(response.getCompoundOrEmpty("Settings"))
             require(settings.valid())
             if (!explicitPivot) {
                 draft = draft.copy(pivot = settings.pivot, pivotCompensation = settings.pivotCompensation)
@@ -471,7 +477,7 @@ class ModelEditorScreen(private val data: CompoundTag) : Screen(Component.litera
                     values[10 + axis].setResponder { explicitPivot = true; updateDraft() }
                 }
             }
-            previewName = response.getString("Name")
+            previewName = response.getStringOr("Name", "")
             previewPane.load(previewName!!, snapshot, draft.copy(pickable = false), !editing)
             history.replaceCurrent(captureState())
         }.onSuccess {
@@ -504,8 +510,8 @@ class ModelEditorScreen(private val data: CompoundTag) : Screen(Component.litera
     private fun submit(action: String) {
         if (pending) return
         val request = CompoundTag()
-        request.putLong("Pos", data.getLong("Pos"))
-        if (editing) request.putUUID("Entity", data.getUUID("Entity"))
+        request.putLong("Pos", data.getLongOr("Pos", 0L))
+        if (editing) writeUuid(request, "Entity", requireNotNull(readUuid(data, "Entity")))
         request.putString("Action", action)
         request.putString("Name", nameField.value.trim())
         if (action == "save") {
@@ -533,30 +539,38 @@ class ModelEditorScreen(private val data: CompoundTag) : Screen(Component.litera
     }
 
     /** 原版背景与控件绘制完成后再画文字，避免文字被第二次背景模糊覆盖。 */
-    override fun render(context: GuiGraphics, mouseX: Int, mouseY: Int, delta: Float) {
+    override fun extractRenderState(context: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, delta: Float) {
         // 1.21.1 的 Screen.render 自带背景模糊，必须先调用，再绘制标题和标签。
-        super.render(context, mouseX, mouseY, delta)
-        previewPane.render(context)
+        super.extractRenderState(context, mouseX, mouseY, delta)
+        previewPane.render(context, delta)
         val x = 8
-        context.drawString(font, title, x, 10, 0xFFFFFF)
+        context.text(font, title, x, 10, 0xFFFFFF)
         context.enableScissor(x, 28, x + formWidth, height - 48)
-        context.drawString(font, "已保存的结构", x, 30 - formScroll, 0xDDDDDD)
+        context.text(font, "已保存的结构", x, 30 - formScroll, 0xDDDDDD)
         val labels = listOf("最大生命", "旋转 X/Y/Z", "偏移 X/Y/Z", "缩放 X/Y/Z", "模型中心 X/Y/Z")
         labels.forEachIndexed { index, label ->
-            context.drawString(font, label, x,
+            context.text(font, label, x,
                 numberTop + index * numberRowHeight - formScroll + if (formWidth >= 300) 6 else -10, 0xDDDDDD)
         }
         context.disableScissor()
-        if (error.isNotEmpty()) context.drawString(font, font.plainSubstrByWidth(error, formWidth), x, height - 42, 0xFF9999)
+        if (error.isNotEmpty()) context.text(font, font.plainSubstrByWidth(error, formWidth), x, height - 42, 0xFF9999)
         renderSuggestions(context, mouseX, mouseY)
     }
 
     /** 背景模糊只执行一次，并在其后铺设高对比度面板。 */
-    override fun renderBackground(context: GuiGraphics, mouseX: Int, mouseY: Int, delta: Float) {
-        super.renderBackground(context, mouseX, mouseY, delta)
+    override fun extractBackground(context: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, delta: Float) {
+        super.extractBackground(context, mouseX, mouseY, delta)
         context.fill(4, 4, 12 + formWidth, height - 4, 0xF0202428.toInt())
         context.fill(previewPane.left, 4, width - 8, height - 4, 0xFF16191D.toInt())
     }
 
     override fun isPauseScreen(): Boolean = false
+
+    private fun readUuid(tag: CompoundTag, key: String) =
+        tag.getIntArray(key).filter { it.size == UUIDUtil.UUID_BYTES / Int.SIZE_BYTES }
+            .map(UUIDUtil::uuidFromIntArray).orElse(null)
+
+    private fun writeUuid(tag: CompoundTag, key: String, uuid: UUID) {
+        tag.putIntArray(key, UUIDUtil.uuidToIntArray(uuid))
+    }
 }

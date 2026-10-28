@@ -15,13 +15,17 @@ import cn.coostack.cooparticlesapi.test.api.formatTestOptionRgbInputs
 import cn.coostack.cooparticlesapi.test.api.normalizeTestOptionColorHexInput
 import cn.coostack.cooparticlesapi.test.api.parseTestOptionRgbInputs
 import cn.coostack.cooparticlesapi.test.block.BlockTestMode
-import net.minecraft.client.gui.GuiGraphics
+import com.mojang.blaze3d.platform.InputConstants
+import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.minecraft.client.gui.components.Button
 import net.minecraft.client.gui.components.EditBox
+import cn.coostack.cooparticlesapi.gui.FilteredEditBox
+import net.minecraft.client.input.CharacterEvent
+import net.minecraft.client.input.KeyEvent
+import net.minecraft.client.input.MouseButtonEvent
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
-import net.minecraft.resources.ResourceLocation
-import org.lwjgl.glfw.GLFW
+import net.minecraft.resources.Identifier
 import java.util.Locale
 import kotlin.math.floor
 import kotlin.math.roundToInt
@@ -107,7 +111,7 @@ class TestControllerScreen internal constructor(
     private val paramAbsoluteModes = ArrayList<Boolean>()
     private val paramValues = LinkedHashMap<String, String>()
     /** 服务端按注册顺序同步的合法方块测试组 ID。 */
-    private val registeredGroupIds = packet.registeredIds.mapNotNull(ResourceLocation::tryParse)
+    private val registeredGroupIds = packet.registeredIds.mapNotNull(Identifier::tryParse)
     private val maxVisibleSuggestions = 3
     private var mode = BlockTestMode.fromId(packet.mode)
     private var repeatIndex = packet.repeatIndex
@@ -126,10 +130,10 @@ class TestControllerScreen internal constructor(
     private var selectedParamSuggestionIndex = -1
     private var paramSuggestionScroll = 0
     private var colorPickerRow = -1
-    private var colorPickerHue = 0f
-    private var colorPickerSaturation = 0f
-    private var colorPickerValue = 1f
-    private var colorPickerAlpha = 1f
+    private var colorPickerHue = 0F
+    private var colorPickerSaturation = 0F
+    private var colorPickerValue = 1F
+    private var colorPickerAlpha = 1F
     private var colorPickerDrag = ColorPickerDrag.NONE
     private var updatingColorHex = false
     private var updatingColorRgb = false
@@ -191,7 +195,7 @@ class TestControllerScreen internal constructor(
         paramModeButtons.clear()
         paramPickButtons.clear()
         colorRgbBoxes.clear()
-        val initialGroupId = ResourceLocation.tryParse(packet.groupId) ?: defaultTestControllerGroupId()
+        val initialGroupId = Identifier.tryParse(packet.groupId) ?: defaultTestControllerGroupId()
         modIdBox = editBox(left + 52, y, 100, initialGroupId.namespace)
         groupPathBox = editBox(left + 190, y, 122, initialGroupId.path)
         modIdBox.setMaxLength(256)
@@ -405,39 +409,40 @@ class TestControllerScreen internal constructor(
         layoutWidgets()
     }
 
-    override fun keyPressed(keyCode: Int, scanCode: Int, modifiers: Int): Boolean {
-        if (Screen.hasControlDown()) {
-            if (keyCode == GLFW.GLFW_KEY_Z && Screen.hasShiftDown()) {
+    override fun keyPressed(event: KeyEvent): Boolean {
+        val keyCode = event.key()
+        if (event.hasControlDown()) {
+            if (keyCode == InputConstants.KEY_Z && event.hasShiftDown()) {
                 recordCurrentState()
                 restoreHistory(history.redo())
                 return true
             }
-            if (keyCode == GLFW.GLFW_KEY_Z) {
+            if (keyCode == InputConstants.KEY_Z) {
                 recordCurrentState()
                 restoreHistory(history.undo())
                 return true
             }
-            if (keyCode == GLFW.GLFW_KEY_Y) {
+            if (keyCode == InputConstants.KEY_Y) {
                 recordCurrentState()
                 restoreHistory(history.redo())
                 return true
             }
         }
         if (colorPickerRow >= 0) {
-            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+            if (event.isEscape) {
                 closeColorPicker()
                 return true
             }
-            if (keyCode == GLFW.GLFW_KEY_TAB) {
-                moveColorInputFocus(if (modifiers and GLFW.GLFW_MOD_SHIFT != 0) -1 else 1)
+            if (event.isCycleFocus) {
+                moveColorInputFocus(if (event.hasShiftDown()) -1 else 1)
                 return true
             }
             return colorInputBoxes()
                 .firstOrNull { it.isFocused }
-                ?.keyPressed(keyCode, scanCode, modifiers)
+                ?.keyPressed(event)
                 ?: false
         }
-        if (keyCode == GLFW.GLFW_KEY_ESCAPE && page == ControllerPage.PARAMS) {
+        if (event.isEscape && page == ControllerPage.PARAMS) {
             syncVisibleParamValuesToState()
             page = ControllerPage.MAIN
             updateParamSuggestion()
@@ -446,14 +451,14 @@ class TestControllerScreen internal constructor(
         }
         if (focusedGroupBox() != null && suggestions.isNotEmpty()) {
             when (keyCode) {
-                GLFW.GLFW_KEY_TAB, GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> {
+                InputConstants.KEY_TAB, InputConstants.KEY_RETURN, InputConstants.KEY_NUMPADENTER -> {
                     return acceptSelectedSuggestion()
                 }
-                GLFW.GLFW_KEY_DOWN -> {
+                InputConstants.KEY_DOWN -> {
                     moveSelectedSuggestion(1)
                     return true
                 }
-                GLFW.GLFW_KEY_UP -> {
+                InputConstants.KEY_UP -> {
                     moveSelectedSuggestion(-1)
                     return true
                 }
@@ -461,29 +466,29 @@ class TestControllerScreen internal constructor(
         }
         if (paramSuggestions.isNotEmpty() && focusedEnumParamIndex() != null) {
             when (keyCode) {
-                GLFW.GLFW_KEY_TAB, GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> {
+                InputConstants.KEY_TAB, InputConstants.KEY_RETURN, InputConstants.KEY_NUMPADENTER -> {
                     return acceptSelectedParamSuggestion()
                 }
-                GLFW.GLFW_KEY_DOWN -> {
+                InputConstants.KEY_DOWN -> {
                     moveSelectedParamSuggestion(1)
                     return true
                 }
-                GLFW.GLFW_KEY_UP -> {
+                InputConstants.KEY_UP -> {
                     moveSelectedParamSuggestion(-1)
                     return true
                 }
             }
         }
         val previousGroupBox = focusedGroupBox()
-        val handled = super.keyPressed(keyCode, scanCode, modifiers)
+        val handled = super.keyPressed(event)
         if (focusedGroupBox() !== previousGroupBox) {
             updateGroupSuggestions()
         }
         return handled
     }
 
-    override fun charTyped(codePoint: Char, modifiers: Int): Boolean {
-        val handled = super.charTyped(codePoint, modifiers)
+    override fun charTyped(event: CharacterEvent): Boolean {
+        val handled = super.charTyped(event)
         if (handled) recordCurrentState()
         return handled
     }
@@ -494,16 +499,18 @@ class TestControllerScreen internal constructor(
      * 示例：缩放后的按钮仍按其视觉边界响应点击。
      * 禁止把真实坐标直接传给内容控件，否则小视口下命中位置会偏移。
      */
-    override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
-        val contentMouseX = viewport.unscale(mouseX)
-        val contentMouseY = viewport.unscale(mouseY)
+    override fun mouseClicked(event: MouseButtonEvent, doubleClick: Boolean): Boolean {
+        val contentMouseX = viewport.unscale(event.x())
+        val contentMouseY = viewport.unscale(event.y())
+        val contentEvent = MouseButtonEvent(contentMouseX, contentMouseY, event.buttonInfo())
+        val button = event.button()
         if (colorPickerRow >= 0) {
             if (handleColorPickerClick(contentMouseX, contentMouseY, button)) {
                 return true
             }
             if (isInsideColorPicker(contentMouseX, contentMouseY)) {
                 val clickedInput = colorInputBoxes().firstOrNull {
-                    it.mouseClicked(contentMouseX, contentMouseY, button)
+                    it.mouseClicked(contentEvent, doubleClick)
                 }
                 if (clickedInput != null) {
                     setFocused(clickedInput)
@@ -531,7 +538,7 @@ class TestControllerScreen internal constructor(
             return true
         }
         val previousGroupBox = focusedGroupBox()
-        val handled = super.mouseClicked(contentMouseX, contentMouseY, button)
+        val handled = super.mouseClicked(contentEvent, doubleClick)
         if (focusedGroupBox() !== previousGroupBox) {
             updateGroupSuggestions()
         }
@@ -546,31 +553,28 @@ class TestControllerScreen internal constructor(
      * 禁止只转换当前位置而保留原始拖动距离。
      */
     override fun mouseDragged(
-        mouseX: Double,
-        mouseY: Double,
-        button: Int,
+        event: MouseButtonEvent,
         dragX: Double,
         dragY: Double
     ): Boolean {
-        val contentMouseX = viewport.unscale(mouseX)
-        val contentMouseY = viewport.unscale(mouseY)
+        val contentMouseX = viewport.unscale(event.x())
+        val contentMouseY = viewport.unscale(event.y())
         val contentDragX = viewport.unscale(dragX)
         val contentDragY = viewport.unscale(dragY)
-        if (colorPickerRow >= 0 && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+        val contentEvent = MouseButtonEvent(contentMouseX, contentMouseY, event.buttonInfo())
+        if (colorPickerRow >= 0 && event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
             when (colorPickerDrag) {
                 ColorPickerDrag.SATURATION_VALUE -> updateSaturationValue(contentMouseX, contentMouseY)
                 ColorPickerDrag.HUE -> updateHue(contentMouseX)
                 ColorPickerDrag.NONE -> return super.mouseDragged(
-                    contentMouseX,
-                    contentMouseY,
-                    button,
+                    contentEvent,
                     contentDragX,
                     contentDragY,
                 )
             }
             return true
         }
-        return super.mouseDragged(contentMouseX, contentMouseY, button, contentDragX, contentDragY)
+        return super.mouseDragged(contentEvent, contentDragX, contentDragY)
     }
 
     /**
@@ -579,13 +583,17 @@ class TestControllerScreen internal constructor(
      * 示例：缩放后的输入框能收到与点击位置一致的释放事件。
      * 禁止混用真实坐标和内容坐标结束一次拖动。
      */
-    override fun mouseReleased(mouseX: Double, mouseY: Double, button: Int): Boolean {
+    override fun mouseReleased(event: MouseButtonEvent): Boolean {
         if (colorPickerDrag != ColorPickerDrag.NONE) {
             colorPickerDrag = ColorPickerDrag.NONE
             recordCurrentState()
             return true
         }
-        return super.mouseReleased(viewport.unscale(mouseX), viewport.unscale(mouseY), button)
+        return super.mouseReleased(MouseButtonEvent(
+            viewport.unscale(event.x()),
+            viewport.unscale(event.y()),
+            event.buttonInfo(),
+        ))
     }
 
     /**
@@ -625,9 +633,9 @@ class TestControllerScreen internal constructor(
      * 示例：[render] 显式调用时绘制完整背景，[Screen.render] 随后的内部调用会被忽略。
      * 禁止在 [renderingScaledContent] 为 `true` 时再次执行模糊和菜单背景。
      */
-    override fun renderBackground(graphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
+    override fun extractBackground(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {
         if (!renderingScaledContent) {
-            super.renderBackground(graphics, mouseX, mouseY, partialTick)
+            super.extractBackground(graphics, mouseX, mouseY, partialTick)
         }
     }
 
@@ -637,25 +645,25 @@ class TestControllerScreen internal constructor(
      * 示例：`512x288` 视口中的全部内容按同一比例缩小。
      * 禁止缩放背景或漏掉建议框、颜色选择器等浮层。
      */
-    override fun render(graphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
+    override fun extractRenderState(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {
         if (colorPickerDrag == ColorPickerDrag.NONE) recordCurrentState()
         updateHistoryButtons()
-        renderBackground(graphics, mouseX, mouseY, partialTick)
+        extractBackground(graphics, mouseX, mouseY, partialTick)
         val contentMouseX = viewport.unscale(mouseX.toDouble()).toInt()
         val contentMouseY = viewport.unscale(mouseY.toDouble()).toInt()
         val contentScale = viewport.scale.toFloat()
-        graphics.pose().pushPose()
-        graphics.pose().scale(contentScale, contentScale, 1f)
+        graphics.pose().pushMatrix()
+        graphics.pose().scale(contentScale, contentScale)
         renderingScaledContent = true
         try {
-            super.render(graphics, contentMouseX, contentMouseY, partialTick)
+            super.extractRenderState(graphics, contentMouseX, contentMouseY, partialTick)
             renderLabels(graphics)
             renderSuggestions(graphics, contentMouseX, contentMouseY)
             renderParamSuggestions(graphics, contentMouseX, contentMouseY)
             renderColorPicker(graphics, contentMouseX, contentMouseY, partialTick)
         } finally {
             renderingScaledContent = false
-            graphics.pose().popPose()
+            graphics.pose().popMatrix()
         }
     }
 
@@ -667,37 +675,37 @@ class TestControllerScreen internal constructor(
      *
      * @param graphics 当前 GUI 绘图上下文
      */
-    private fun renderLabels(graphics: GuiGraphics) {
+    private fun renderLabels(graphics: GuiGraphicsExtractor) {
         if (page == ControllerPage.PARAMS) {
             renderParamPageLabels(graphics)
             return
         }
         val left = layoutWidth / 2 - 170
         var y = 16
-        graphics.drawString(font, title, left, y, 0xFFFFFF, true)
+        graphics.text(font, title, left, y, 0xFFFFFF, true)
         y = 38
-        graphics.drawString(font, "所属模组", left, y, 0xE0E0E0, true)
-        graphics.drawString(font, "组ID", left + 160, y, 0xE0E0E0, true)
+        graphics.text(font, "所属模组", left, y, 0xE0E0E0, true)
+        graphics.text(font, "组ID", left + 160, y, 0xE0E0E0, true)
         y += 28
-        graphics.drawString(font, "模式", left, y, 0xE0E0E0, true)
+        graphics.text(font, "模式", left, y, 0xE0E0E0, true)
         if (mode == BlockTestMode.INDEX) {
             y += 28
-            graphics.drawString(font, "索引", left, y, 0xE0E0E0, true)
-            graphics.drawString(font, "重播前等待(tick)", left + 174, y, 0xE0E0E0, true)
-            graphics.drawString(font, indexHint(), left + 92, y + 14, 0xA8DDA8, true)
-            graphics.drawString(font, selectedOptionIdLine(), left + 92, y + 24, 0xC8EFC8, true)
+            graphics.text(font, "索引", left, y, 0xE0E0E0, true)
+            graphics.text(font, "重播前等待(tick)", left + 174, y, 0xE0E0E0, true)
+            graphics.text(font, indexHint(), left + 92, y + 14, 0xA8DDA8, true)
+            graphics.text(font, selectedOptionIdLine(), left + 92, y + 24, 0xC8EFC8, true)
             y += 38
         } else {
             y += 28
         }
         val animationRowExtra = if (layoutWidth >= MIN_INLINE_ANIMATION_WIDTH) 0 else ANIMATION_STACK_HEIGHT
-        graphics.drawString(font, "位置偏移", left, y, 0xE0E0E0, true)
+        graphics.text(font, "位置偏移", left, y, 0xE0E0E0, true)
         y += 28 + animationRowExtra
-        graphics.drawString(font, "Forward", left, y, 0xE0E0E0, true)
+        graphics.text(font, "Forward", left, y, 0xE0E0E0, true)
         y += 28 + animationRowExtra
-        graphics.drawString(font, "碰撞箱", left, y, 0xE0E0E0, true)
-        graphics.drawString(font, "状态: ${displayStatus()}", left, layoutHeight - 34, 0xF0F0F0, true)
-        graphics.drawString(font, "测试项: ${packet.optionCount}", left, layoutHeight - 22, 0xF0F0F0, true)
+        graphics.text(font, "碰撞箱", left, y, 0xE0E0E0, true)
+        graphics.text(font, "状态: ${displayStatus()}", left, layoutHeight - 34, 0xF0F0F0, true)
+        graphics.text(font, "测试项: ${packet.optionCount}", left, layoutHeight - 22, 0xF0F0F0, true)
     }
 
     /**
@@ -706,23 +714,23 @@ class TestControllerScreen internal constructor(
      * 示例：缩放后参数标签仍与输入框对齐。
      * 禁止按真实视口宽度单独居中这些标签。
      */
-    private fun renderParamPageLabels(graphics: GuiGraphics) {
+    private fun renderParamPageLabels(graphics: GuiGraphicsExtractor) {
         val left = layoutWidth / 2 - 170
-        graphics.drawString(font, title, left, 16, 0xFFFFFF, true)
-        graphics.drawString(font, fitTextToWidth(selectedOptionIdLine(), PARAM_CONTENT_WIDTH), left, 38, 0xC8EFC8, true)
+        graphics.text(font, title, left, 16, 0xFFFFFF, true)
+        graphics.text(font, fitTextToWidth(selectedOptionIdLine(), 334), left, 38, 0xC8EFC8, true)
         if (currentParamSpecs.isEmpty()) {
-            graphics.drawString(font, "\u5f53\u524d Option \u6ca1\u6709\u989d\u5916\u53c2\u6570", left, PARAM_LIST_TOP + 4, 0xE0E0E0, true)
+            graphics.text(font, "\u5f53\u524d Option \u6ca1\u6709\u989d\u5916\u53c2\u6570", left, PARAM_LIST_TOP + 4, 0xE0E0E0, true)
             return
         }
         val visibleRows = visibleParamRowCount()
         val start = paramScroll + 1
         val end = (paramScroll + visibleRows).coerceAtMost(currentParamSpecs.size)
-        graphics.drawString(font, "\u53c2\u6570 $start-$end/${currentParamSpecs.size}", left, 52, 0xE0E0E0, true)
+        graphics.text(font, "\u53c2\u6570 $start-$end/${currentParamSpecs.size}", left, 52, 0xE0E0E0, true)
         repeat(visibleRows) { row ->
             val actualIndex = actualParamIndex(row)
             val spec = currentParamSpecs.getOrNull(actualIndex) ?: return@repeat
             val rowY = PARAM_LIST_TOP + row * PARAM_ROW_HEIGHT
-            graphics.drawString(font, paramLabel(spec), left, rowY + 4, 0xE0E0E0, true)
+            graphics.text(font, paramLabel(spec), left, rowY + 4, 0xE0E0E0, true)
             if (spec.color) {
                 renderColorSwatch(graphics, left + 56, rowY + 4, colorOfParam(row, spec))
             }
@@ -730,7 +738,7 @@ class TestControllerScreen internal constructor(
         renderParamScrollBar(graphics, left)
     }
 
-    private fun renderParamScrollBar(graphics: GuiGraphics, left: Int) {
+    private fun renderParamScrollBar(graphics: GuiGraphicsExtractor, left: Int) {
         if (currentParamSpecs.size <= paramBoxes.size || paramBoxes.isEmpty()) return
         val trackHeight = paramBoxes.size * PARAM_ROW_HEIGHT - 4
         if (trackHeight <= 0) return
@@ -745,8 +753,8 @@ class TestControllerScreen internal constructor(
         graphics.fill(trackX, handleY, trackX + 4, handleY + handleHeight, 0xFFE0E0E0.toInt())
     }
 
-    private fun editBox(x: Int, y: Int, width: Int, value: String): EditBox {
-        return EditBox(font, x, y, width, 20, Component.empty()).also { box ->
+    private fun editBox(x: Int, y: Int, width: Int, value: String): FilteredEditBox {
+        return FilteredEditBox(font, x, y, width, 20, Component.empty()).also { box ->
             box.value = value
         }
     }
@@ -882,7 +890,7 @@ class TestControllerScreen internal constructor(
             .orEmpty()
     }
 
-    private fun renderSuggestions(graphics: GuiGraphics, mouseX: Int, mouseY: Int) {
+    private fun renderSuggestions(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int) {
         if (page != ControllerPage.MAIN) return
         val box = focusedGroupBox() ?: return
         if (suggestions.isEmpty()) return
@@ -899,7 +907,7 @@ class TestControllerScreen internal constructor(
                 else -> 0xCC000000.toInt()
             }
             graphics.fill(x, y, x + box.width, y + 13, color)
-            graphics.drawString(font, suggestion, x + 3, y + 3, 0xE0FFE0, true)
+            graphics.text(font, suggestion, x + 3, y + 3, 0xE0FFE0, true)
             y += 13
         }
     }
@@ -1181,7 +1189,7 @@ class TestControllerScreen internal constructor(
         box.setSuggestion(if (input.isNotBlank() && first?.startsWith(input, ignoreCase = true) == true) first.drop(input.length) else null)
     }
 
-    private fun renderParamSuggestions(graphics: GuiGraphics, mouseX: Int, mouseY: Int) {
+    private fun renderParamSuggestions(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int) {
         if (page != ControllerPage.PARAMS) return
         val focusedRow = focusedEnumParamRowIndex() ?: return
         if (paramSuggestions.isEmpty()) return
@@ -1199,7 +1207,7 @@ class TestControllerScreen internal constructor(
                 else -> 0xCC000000.toInt()
             }
             graphics.fill(x, y, x + box.width, y + 13, color)
-            graphics.drawString(font, suggestion, x + 3, y + 3, 0xE0FFE0, true)
+            graphics.text(font, suggestion, x + 3, y + 3, 0xE0FFE0, true)
             y += 13
         }
     }
@@ -1310,7 +1318,7 @@ class TestControllerScreen internal constructor(
                 draft.optionParamIndex = currentOptionIndex()
                 draft.optionParamValues = TestOptionParamCodec.encodeOptionValues(values)
                 history.record(TestControllerPacketDrafts.snapshotFrom(packet, draft))
-                minecraft?.setScreen(TestControllerScreen(
+                minecraft.setScreenAndShow(TestControllerScreen(
                     TestControllerPacketDrafts.reopenPacket(packet, draft),
                     true,
                     history,
@@ -1318,7 +1326,7 @@ class TestControllerScreen internal constructor(
                 ))
             },
             onCancelled = {
-                minecraft?.setScreen(TestControllerScreen(
+                minecraft.setScreenAndShow(TestControllerScreen(
                     TestControllerPacketDrafts.reopenPacket(packet, draft),
                     true,
                     history,
@@ -1329,7 +1337,7 @@ class TestControllerScreen internal constructor(
         onClose()
     }
 
-    private fun renderColorSwatch(graphics: GuiGraphics, x: Int, y: Int, color: Int?) {
+    private fun renderColorSwatch(graphics: GuiGraphicsExtractor, x: Int, y: Int, color: Int?) {
         graphics.fill(x, y, x + 14, y + 14, 0xFF111111.toInt())
         graphics.fill(x + 1, y + 1, x + 13, y + 13, color ?: 0xFF444444.toInt())
     }
@@ -1357,13 +1365,13 @@ class TestControllerScreen internal constructor(
     private fun openColorPicker(row: Int) {
         val spec = currentParamSpecs.getOrNull(actualParamIndex(row))?.takeIf { it.color } ?: return
         val current = parseColorComponents(rowParamValue(row, spec), spec.componentCount)
-            ?: listOf(1f, 1f, 1f, 1f)
+            ?: listOf(1F, 1F, 1F, 1F)
         val hsv = rgbToHsv(current)
         colorPickerRow = row
         colorPickerHue = hsv[0]
         colorPickerSaturation = hsv[1]
         colorPickerValue = hsv[2]
-        colorPickerAlpha = current.getOrElse(3) { 1f }
+        colorPickerAlpha = current.getOrElse(3) { 1F }
         clearFocus()
         updateColorHexBox()
         updateColorRgbBoxes()
@@ -1383,7 +1391,7 @@ class TestControllerScreen internal constructor(
      * 示例：小视口下遮罩随内容画布一起缩放并覆盖完整界面。
      * 禁止使用真实视口宽高绘制内容遮罩。
      */
-    private fun renderColorPicker(graphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
+    private fun renderColorPicker(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {
         val spec = activeColorSpec() ?: return
         val left = colorPickerLeft()
         val top = colorPickerTop()
@@ -1391,18 +1399,16 @@ class TestControllerScreen internal constructor(
         val svTop = top + 20
         val hueTop = svTop + COLOR_PICKER_SV_HEIGHT + 8
 
-        graphics.flush()
-        graphics.pose().pushPose()
-        graphics.pose().translate(0f, 0f, COLOR_PICKER_Z)
+        graphics.pose().pushMatrix()
         graphics.fill(0, 0, layoutWidth, layoutHeight, 0x88000000.toInt())
         graphics.fill(left - 1, top - 1, left + COLOR_PICKER_WIDTH + 1, top + COLOR_PICKER_HEIGHT + 1, 0xFF9A9A9A.toInt())
         graphics.fill(left, top, left + COLOR_PICKER_WIDTH, top + COLOR_PICKER_HEIGHT, 0xFF202020.toInt())
-        graphics.drawString(font, "颜色", left + 12, top + 7, 0xFFFFFFFF.toInt(), false)
+        graphics.text(font, "颜色", left + 12, top + 7, 0xFFFFFFFF.toInt(), false)
 
         var y = 0
         while (y < COLOR_PICKER_SV_HEIGHT) {
             var x = 0
-            val value = 1f - y.toFloat() / (COLOR_PICKER_SV_HEIGHT - 1).toFloat()
+            val value = 1F - y.toFloat() / (COLOR_PICKER_SV_HEIGHT - 1).toFloat()
             while (x < COLOR_PICKER_SV_WIDTH) {
                 val saturation = x.toFloat() / (COLOR_PICKER_SV_WIDTH - 1).toFloat()
                 val color = hsvToRgb(colorPickerHue, saturation, value).toColorInt()
@@ -1426,13 +1432,13 @@ class TestControllerScreen internal constructor(
                 hueTop,
                 svLeft + minOf(hueX + COLOR_PICKER_STEP, COLOR_PICKER_SV_WIDTH),
                 hueTop + COLOR_PICKER_HUE_HEIGHT,
-                hsvToRgb(hue, 1f, 1f).toColorInt()
+                hsvToRgb(hue, 1F, 1F).toColorInt()
             )
             hueX += COLOR_PICKER_STEP
         }
 
         val selectorX = svLeft + (colorPickerSaturation * (COLOR_PICKER_SV_WIDTH - 1)).roundToInt()
-        val selectorY = svTop + ((1f - colorPickerValue) * (COLOR_PICKER_SV_HEIGHT - 1)).roundToInt()
+        val selectorY = svTop + ((1F - colorPickerValue) * (COLOR_PICKER_SV_HEIGHT - 1)).roundToInt()
         graphics.fill(selectorX - 3, selectorY, selectorX + 4, selectorY + 1, 0xFFFFFFFF.toInt())
         graphics.fill(selectorX, selectorY - 3, selectorX + 1, selectorY + 4, 0xFFFFFFFF.toInt())
         val hueSelectorX = svLeft + (colorPickerHue * (COLOR_PICKER_SV_WIDTH - 1)).roundToInt()
@@ -1441,11 +1447,11 @@ class TestControllerScreen internal constructor(
         val preview = pickerColor(spec).toColorInt()
         graphics.fill(left + 12, top + 149, left + 42, top + 173, 0xFF0A0A0A.toInt())
         graphics.fill(left + 14, top + 151, left + 40, top + 171, preview)
-        graphics.drawString(font, "HEX", left + 52, top + 140, 0xFFD0D0D0.toInt(), false)
-        colorHexBox.render(graphics, mouseX, mouseY, partialTick)
-        graphics.drawString(font, "RGB", left + 12, top + 184, 0xFFD0D0D0.toInt(), false)
-        RGB_COMPONENT_LABELS.forEachIndexed { index, label ->
-            graphics.drawString(
+        graphics.text(font, "HEX", left + 52, top + 140, 0xFFD0D0D0.toInt(), false)
+        colorHexBox.extractWidgetRenderState(graphics, mouseX, mouseY, partialTick)
+        graphics.text(font, "RGB", left + 12, top + 184, 0xFFD0D0D0.toInt(), false)
+        listOf("R", "G", "B").forEachIndexed { index, label ->
+            graphics.text(
                 font,
                 label,
                 left + COLOR_RGB_INPUT_X + index * COLOR_RGB_INPUT_STEP - 8,
@@ -1454,13 +1460,12 @@ class TestControllerScreen internal constructor(
                 false
             )
         }
-        colorRgbBoxes.forEach { box -> box.render(graphics, mouseX, mouseY, partialTick) }
-        graphics.flush()
-        graphics.pose().popPose()
+        colorRgbBoxes.forEach { box -> box.extractWidgetRenderState(graphics, mouseX, mouseY, partialTick) }
+        graphics.pose().popMatrix()
     }
 
     private fun handleColorPickerClick(mouseX: Double, mouseY: Double, button: Int): Boolean {
-        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return false
+        if (button != InputConstants.MOUSE_BUTTON_LEFT) return false
         val svLeft = colorPickerLeft() + 12
         val svTop = colorPickerTop() + 20
         val hueTop = svTop + COLOR_PICKER_SV_HEIGHT + 8
@@ -1486,14 +1491,14 @@ class TestControllerScreen internal constructor(
     private fun updateSaturationValue(mouseX: Double, mouseY: Double) {
         val svLeft = colorPickerLeft() + 12
         val svTop = colorPickerTop() + 20
-        colorPickerSaturation = ((mouseX - svLeft) / COLOR_PICKER_SV_WIDTH).toFloat().coerceIn(0f, 1f)
-        colorPickerValue = (1f - ((mouseY - svTop) / COLOR_PICKER_SV_HEIGHT).toFloat()).coerceIn(0f, 1f)
+        colorPickerSaturation = ((mouseX - svLeft) / COLOR_PICKER_SV_WIDTH).toFloat().coerceIn(0F, 1F)
+        colorPickerValue = (1F - ((mouseY - svTop) / COLOR_PICKER_SV_HEIGHT).toFloat()).coerceIn(0F, 1F)
         applyPickerColor(updateHex = true, updateRgb = true)
     }
 
     private fun updateHue(mouseX: Double) {
         val svLeft = colorPickerLeft() + 12
-        colorPickerHue = ((mouseX - svLeft) / COLOR_PICKER_SV_WIDTH).toFloat().coerceIn(0f, 1f)
+        colorPickerHue = ((mouseX - svLeft) / COLOR_PICKER_SV_WIDTH).toFloat().coerceIn(0F, 1F)
         applyPickerColor(updateHex = true, updateRgb = true)
     }
 
@@ -1545,7 +1550,7 @@ class TestControllerScreen internal constructor(
         val color = pickerColor(spec)
         val componentCount = if (spec.componentCount >= 4) 4 else 3
         val hex = color.take(componentCount).joinToString("") { component ->
-            String.format(Locale.ROOT, "%02X", (component.coerceIn(0f, 1f) * 255f).roundToInt())
+            String.format(Locale.ROOT, "%02X", (component.coerceIn(0F, 1F) * 255F).roundToInt())
         }
         updatingColorHex = true
         colorHexBox.value = hex
@@ -1609,30 +1614,30 @@ class TestControllerScreen internal constructor(
     private fun colorPickerTop(): Int = (layoutHeight - COLOR_PICKER_HEIGHT) / 2
 
     private fun rgbToHsv(color: List<Float>): List<Float> {
-        val r = color.getOrElse(0) { 0f }.coerceIn(0f, 1f)
-        val g = color.getOrElse(1) { 0f }.coerceIn(0f, 1f)
-        val b = color.getOrElse(2) { 0f }.coerceIn(0f, 1f)
+        val r = color.getOrElse(0) { 0F }.coerceIn(0F, 1F)
+        val g = color.getOrElse(1) { 0F }.coerceIn(0F, 1F)
+        val b = color.getOrElse(2) { 0F }.coerceIn(0F, 1F)
         val max = maxOf(r, g, b)
         val min = minOf(r, g, b)
         val delta = max - min
         val hue = when {
-            delta <= 0.00001f -> 0f
-            max == r -> ((g - b) / delta / 6f).let { if (it < 0f) it + 1f else it }
-            max == g -> ((b - r) / delta + 2f) / 6f
-            else -> ((r - g) / delta + 4f) / 6f
+            delta <= 0.00001F -> 0F
+            max == r -> ((g - b) / delta / 6F).let { if (it < 0F) it + 1F else it }
+            max == g -> ((b - r) / delta + 2F) / 6F
+            else -> ((r - g) / delta + 4F) / 6F
         }
-        val saturation = if (max <= 0.00001f) 0f else delta / max
-        return listOf(hue.coerceIn(0f, 1f), saturation.coerceIn(0f, 1f), max)
+        val saturation = if (max <= 0.00001F) 0F else delta / max
+        return listOf(hue.coerceIn(0F, 1F), saturation.coerceIn(0F, 1F), max)
     }
 
     private fun hsvToRgb(hue: Float, saturation: Float, value: Float): List<Float> {
-        val normalizedHue = ((hue % 1f) + 1f) % 1f
-        val scaledHue = normalizedHue * 6f
+        val normalizedHue = ((hue % 1F) + 1F) % 1F
+        val scaledHue = normalizedHue * 6F
         val sector = floor(scaledHue.toDouble()).toInt().coerceIn(0, 5)
         val fraction = scaledHue - sector
-        val p = value * (1f - saturation)
-        val q = value * (1f - fraction * saturation)
-        val t = value * (1f - (1f - fraction) * saturation)
+        val p = value * (1F - saturation)
+        val q = value * (1F - fraction * saturation)
+        val t = value * (1F - (1F - fraction) * saturation)
         return when (sector) {
             0 -> listOf(value, t, p)
             1 -> listOf(q, value, p)
@@ -1780,7 +1785,7 @@ class TestControllerScreen internal constructor(
             .filter { it.isNotBlank() }
         if (parts.size < minOf(componentCount, 4)) return null
         val values = parts.take(componentCount.coerceIn(3, 4)).map { it.toFloatOrNull() ?: return null }
-        val normalized = if (values.any { it > 1f }) values.map { (it / 255f).coerceIn(0f, 1f) } else values.map { it.coerceIn(0f, 1f) }
+        val normalized = if (values.any { it > 1F }) values.map { (it / 255F).coerceIn(0F, 1F) } else values.map { it.coerceIn(0F, 1F) }
         return normalized
     }
 
@@ -1808,7 +1813,7 @@ class TestControllerScreen internal constructor(
                 (value and 0xFF).toInt()
             )
         }
-        return components.take(componentCount).map { (it / 255f).coerceIn(0f, 1f) }
+        return components.take(componentCount).map { (it / 255F).coerceIn(0F, 1F) }
     }
 
     private fun formatColor(color: List<Float>, componentCount: Int, alpha: Float?): String {
@@ -1817,16 +1822,16 @@ class TestControllerScreen internal constructor(
         components.add(color[1])
         components.add(color[2])
         if (componentCount >= 4) {
-            components.add(alpha ?: color.getOrElse(3) { 1f })
+            components.add(alpha ?: color.getOrElse(3) { 1F })
         }
-        return components.joinToString(",") { formatFloat(it.coerceIn(0f, 1f)) }
+        return components.joinToString(",") { formatFloat(it.coerceIn(0F, 1F)) }
     }
 
     private fun List<Float>.toColorInt(): Int {
-        val r = (getOrElse(0) { 0f }.coerceIn(0f, 1f) * 255f).roundToInt()
-        val g = (getOrElse(1) { 0f }.coerceIn(0f, 1f) * 255f).roundToInt()
-        val b = (getOrElse(2) { 0f }.coerceIn(0f, 1f) * 255f).roundToInt()
-        val a = (getOrElse(3) { 1f }.coerceIn(0f, 1f) * 255f).roundToInt()
+        val r = (getOrElse(0) { 0F }.coerceIn(0F, 1F) * 255F).roundToInt()
+        val g = (getOrElse(1) { 0F }.coerceIn(0F, 1F) * 255F).roundToInt()
+        val b = (getOrElse(2) { 0F }.coerceIn(0F, 1F) * 255F).roundToInt()
+        val a = (getOrElse(3) { 1F }.coerceIn(0F, 1F) * 255F).roundToInt()
         return (a shl 24) or (r shl 16) or (g shl 8) or b
     }
 
@@ -1927,8 +1932,8 @@ class TestControllerScreen internal constructor(
      * 禁止按真实视口高度裁掉本可见的行。
      */
     private fun visibleParamRowCapacity(): Int {
-        val availableHeight = layoutHeight - PARAM_LIST_TOP - PARAM_BOTTOM_RESERVED
-        return (availableHeight / PARAM_ROW_HEIGHT).coerceIn(1, PARAM_MAX_VISIBLE_ROWS)
+        val availableHeight = layoutHeight - PARAM_LIST_TOP - 60
+        return (availableHeight / PARAM_ROW_HEIGHT).coerceIn(1, 10)
     }
 
     /**
@@ -2028,8 +2033,8 @@ class TestControllerScreen internal constructor(
         setRow(offsetY, offsetXBox, offsetYBox, offsetZBox, offsetPickButton)
         setRow(forwardY, forwardXBox, forwardYBox, forwardZBox, forwardPickButton)
         setRow(boxY, widthBox, heightBox, depthBox, precisionButton)
-        val animationControlsX = left + if (animationInline) ANIMATION_CONTROLS_X else ANIMATION_STACK_X
-        val animationControlsOffsetY = if (animationInline) 0 else ANIMATION_STACK_OFFSET_Y
+        val animationControlsX = left + if (animationInline) 366 else 92
+        val animationControlsOffsetY = if (animationInline) 0 else 22
         positionModeButton.setX(animationControlsX)
         positionModeButton.setY(offsetY + animationControlsOffsetY)
         forwardModeButton.setX(animationControlsX)
@@ -2175,9 +2180,9 @@ class TestControllerScreen internal constructor(
     private fun openCurveEditor(kind: TestControllerTrackKind) {
         val draft = updatePacket()
         history.record(TestControllerPacketDrafts.snapshotFrom(packet, draft))
-        minecraft?.setScreen(
+        minecraft.setScreenAndShow(
             TestControllerCurveEditorScreen(packet, draft, kind, history) {
-                minecraft?.setScreen(
+                minecraft.setScreenAndShow(
                     TestControllerScreen(
                         TestControllerPacketDrafts.reopenPacket(packet, draft),
                         page == ControllerPage.PARAMS,
@@ -2201,7 +2206,7 @@ class TestControllerScreen internal constructor(
             updateHistoryButtons()
             return
         }
-        minecraft?.setScreen(
+        minecraft.setScreenAndShow(
             TestControllerScreen(snapshot.toPacket(), page == ControllerPage.PARAMS, history, precisionUnlocked)
         )
     }
@@ -2241,7 +2246,7 @@ class TestControllerScreen internal constructor(
                     draft.forwardZ = if (precisionUnlocked) picked.z else picked.z.roundToDecimals(6)
                 }
                 history.record(TestControllerPacketDrafts.snapshotFrom(packet, draft))
-                minecraft?.setScreen(TestControllerScreen(
+                minecraft.setScreenAndShow(TestControllerScreen(
                     TestControllerPacketDrafts.reopenPacket(packet, draft),
                     page == ControllerPage.PARAMS,
                     history,
@@ -2249,7 +2254,7 @@ class TestControllerScreen internal constructor(
                 ))
             },
             onCancelled = {
-                minecraft?.setScreen(TestControllerScreen(
+                minecraft.setScreenAndShow(TestControllerScreen(
                     TestControllerPacketDrafts.reopenPacket(packet, draft),
                     false,
                     history,
@@ -2260,11 +2265,13 @@ class TestControllerScreen internal constructor(
         onClose()
     }
 
+    /** 当前控制器页签：MAIN 编辑测试主配置，PARAMS 编辑选项参数；切页不重置草稿。 */
     private enum class ControllerPage {
         MAIN,
         PARAMS
     }
 
+    /** 当前颜色面板捕获：NONE 表示未拖动，SATURATION_VALUE 调整二维色域，HUE 调整色相条；仅在本次按下期间有效。 */
     private enum class ColorPickerDrag {
         NONE,
         SATURATION_VALUE,
@@ -2290,18 +2297,6 @@ class TestControllerScreen internal constructor(
          */
         private const val ANIMATION_EDIT_WIDTH = 40
 
-        /**
-         * 动态按钮组相对主界面左边界的横坐标。
-         * 示例：按钮组放在拾取按钮右侧；禁止覆盖向量输入框。
-         */
-        private const val ANIMATION_CONTROLS_X = 366
-
-        /** 窄视口下把动态按钮放到向量输入行的下一行。 */
-        private const val ANIMATION_STACK_X = 92
-
-        /** 窄视口下动态按钮相对向量输入行的垂直偏移。 */
-        private const val ANIMATION_STACK_OFFSET_Y = 22
-
         /** 窄视口下为动态按钮预留的额外行高。 */
         private const val ANIMATION_STACK_HEIGHT = 22
 
@@ -2315,9 +2310,6 @@ class TestControllerScreen internal constructor(
         private const val ANIMATION_CONTROL_GAP = 4
         private const val PARAM_ROW_HEIGHT = 24
         private const val PARAM_LIST_TOP = 78
-        private const val PARAM_BOTTOM_RESERVED = 60
-        private const val PARAM_MAX_VISIBLE_ROWS = 10
-        private const val PARAM_CONTENT_WIDTH = 334
         private const val PARAM_INPUT_WIDTH = 150
         private const val PARAM_MAX_COMPONENT_BOXES = 4
         private const val COLOR_PICKER_WIDTH = 224
@@ -2326,12 +2318,10 @@ class TestControllerScreen internal constructor(
         private const val COLOR_PICKER_SV_HEIGHT = 96
         private const val COLOR_PICKER_HUE_HEIGHT = 12
         private const val COLOR_PICKER_STEP = 2
-        private const val COLOR_PICKER_Z = 400f
         private const val COLOR_HEX_INPUT_WIDTH = 160
         private const val COLOR_RGB_INPUT_X = 52
         private const val COLOR_RGB_INPUT_Y = 178
         private const val COLOR_RGB_INPUT_WIDTH = 42
         private const val COLOR_RGB_INPUT_STEP = 60
-        private val RGB_COMPONENT_LABELS = listOf("R", "G", "B")
     }
 }

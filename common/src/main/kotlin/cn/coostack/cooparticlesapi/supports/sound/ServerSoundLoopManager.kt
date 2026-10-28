@@ -3,7 +3,7 @@ package cn.coostack.cooparticlesapi.supports.sound
 import cn.coostack.cooparticlesapi.network.packet.server.PacketSoundLoopS2C
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import net.minecraft.core.BlockPos
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.sounds.SoundEvent
@@ -39,8 +39,8 @@ object ServerSoundLoopManager {
         key: String,
         sound: SoundEvent,
         source: SoundSource,
-        volume: Float = 1f,
-        pitch: Float = 1f,
+        volume: Float = 1F,
+        pitch: Float = 1F,
         self: Boolean = true
     ): Boolean {
         return startTrackingEntity(entity, key, sound.location, source, volume, pitch, self)
@@ -50,10 +50,10 @@ object ServerSoundLoopManager {
     fun startTrackingEntity(
         entity: Entity,
         key: String,
-        sound: ResourceLocation,
+        sound: Identifier,
         source: SoundSource,
-        volume: Float = 1f,
-        pitch: Float = 1f,
+        volume: Float = 1F,
+        pitch: Float = 1F,
         self: Boolean = true
     ): Boolean {
         val newlyTracked = markTracking(key)
@@ -83,8 +83,8 @@ object ServerSoundLoopManager {
         key: String,
         sound: SoundEvent,
         source: SoundSource,
-        volume: Float = 1f,
-        pitch: Float = 1f
+        volume: Float = 1F,
+        pitch: Float = 1F
     ): Boolean {
         return startAt(world, pos, key, sound.location, source, volume, pitch)
     }
@@ -94,10 +94,10 @@ object ServerSoundLoopManager {
         world: ServerLevel,
         pos: Vec3,
         key: String,
-        sound: ResourceLocation,
+        sound: Identifier,
         source: SoundSource,
-        volume: Float = 1f,
-        pitch: Float = 1f
+        volume: Float = 1F,
+        pitch: Float = 1F
     ): Boolean {
         markTracking(key)
         untrackEntityLoop(key)

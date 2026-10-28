@@ -8,7 +8,7 @@ import cn.coostack.cooparticlesapi.renderer.post.SyncedPostEffectState
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 class PacketRendererPostEffectS2C private constructor(
     internal val operation: Operation,
@@ -29,7 +29,7 @@ class PacketRendererPostEffectS2C private constructor(
 
     companion object {
         private val identifierID =
-            ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "renderer_post_effect_packet")
+            Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "renderer_post_effect_packet")
         val payloadID = CustomPacketPayload.Type<PacketRendererPostEffectS2C>(identifierID)
 
         @JvmStatic
@@ -59,7 +59,7 @@ class PacketRendererPostEffectS2C private constructor(
         }
 
         private fun SyncedPostEffectState.write(buf: FriendlyByteBuf) {
-            buf.writeResourceLocation(effectType)
+            buf.writeIdentifier(effectType)
             buf.writeUtf(instanceId)
             PostEffectBinding.writeTyped(buf, binding)
             lifecycle.write(buf)
@@ -72,7 +72,7 @@ class PacketRendererPostEffectS2C private constructor(
 
         private fun readState(buf: FriendlyByteBuf): SyncedPostEffectState {
             return SyncedPostEffectState(
-                effectType = buf.readResourceLocation(),
+                effectType = buf.readIdentifier(),
                 instanceId = buf.readUtf(),
                 binding = PostEffectBinding.readTyped(buf),
                 lifecycle = PostEffectLifecycle.read(buf),
@@ -86,7 +86,7 @@ class PacketRendererPostEffectS2C private constructor(
         }
     }
 
-    override fun type(): CustomPacketPayload.Type<out CustomPacketPayload?> {
+    override fun type(): CustomPacketPayload.Type<out CustomPacketPayload> {
         return payloadID
     }
 }

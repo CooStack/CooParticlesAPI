@@ -5,7 +5,7 @@ import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
 import cn.coostack.cooparticlesapi.annotations.CodecField
 import cn.coostack.cooparticlesapi.network.packet.api.CooPacket
 import net.minecraft.nbt.CompoundTag
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /** 双向选区协议，由监听器按接收逻辑侧分离意图与权威回执。 */
 @CooAutoRegister
@@ -17,5 +17,5 @@ class StructureSelectionPayload() : CooPacket() {
     /** 复制意图或响应。 */
     constructor(data: CompoundTag) : this() { this.data = data.copy() }
 
-    override fun id(): ResourceLocation = ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "structure_selection")
+    override fun id(): Identifier = Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "structure_selection")
 }

@@ -4,7 +4,7 @@ import cn.coostack.cooparticlesapi.CooParticlesConstants
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /**
  * # CooPacket 信封 (C2S)
@@ -13,7 +13,7 @@ import net.minecraft.resources.ResourceLocation
  */
 class CooPacketEnvelopeC2S(
     val kindId: Int,
-    val packetId: ResourceLocation,
+    val packetId: Identifier,
     val correlationId: Long,
     val timeoutTicks: Int,
     val data: ByteArray,
@@ -21,7 +21,7 @@ class CooPacketEnvelopeC2S(
 
     companion object {
         private val identifier =
-            ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "coo_packet_envelope_c2s")
+            Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "coo_packet_envelope_c2s")
 
         @JvmField
         val payloadID: CustomPacketPayload.Type<CooPacketEnvelopeC2S> =
@@ -31,7 +31,7 @@ class CooPacketEnvelopeC2S(
         val CODEC: StreamCodec<FriendlyByteBuf, CooPacketEnvelopeC2S> = CustomPacketPayload.codec(
             { packet, buf ->
                 buf.writeVarInt(packet.kindId)
-                buf.writeResourceLocation(packet.packetId)
+                buf.writeIdentifier(packet.packetId)
                 buf.writeLong(packet.correlationId)
                 buf.writeVarInt(packet.timeoutTicks)
                 buf.writeByteArray(packet.data)
@@ -39,7 +39,7 @@ class CooPacketEnvelopeC2S(
             { buf ->
                 CooPacketEnvelopeC2S(
                     kindId = buf.readVarInt(),
-                    packetId = buf.readResourceLocation(),
+                    packetId = buf.readIdentifier(),
                     correlationId = buf.readLong(),
                     timeoutTicks = buf.readVarInt(),
                     data = buf.readByteArray()

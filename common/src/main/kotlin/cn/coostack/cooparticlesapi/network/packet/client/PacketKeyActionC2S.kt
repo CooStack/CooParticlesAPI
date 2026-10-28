@@ -7,24 +7,24 @@ import cn.coostack.cooparticlesapi.event.events.key.KeyActionType
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /**
  * 客户端按键动作触发时发送给服务器
  */
 class PacketKeyActionC2S(
-    val keyActions: KeyActionBatch<ResourceLocation>
+    val keyActions: KeyActionBatch<Identifier>
 ) : CustomPacketPayload {
     companion object {
         private val identifierID =
-            ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "key_action")
+            Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "key_action")
         val payloadID = CustomPacketPayload.Type<PacketKeyActionC2S>(identifierID)
         val CODEC: StreamCodec<FriendlyByteBuf, PacketKeyActionC2S> =
             CustomPacketPayload.codec({ packet, buf ->
                 val entries = packet.keyActions.entries
                 buf.writeVarInt(entries.size)
                 entries.forEach { entry ->
-                    buf.writeResourceLocation(entry.keyId)
+                    buf.writeIdentifier(entry.keyId)
                     buf.writeVarInt(entry.actions.size)
                     entry.actions.forEach { action ->
                         buf.writeInt(action.id)
@@ -34,9 +34,9 @@ class PacketKeyActionC2S(
                 }
             }, { buf ->
                 val entryCount = buf.readVarInt()
-                val entries = ArrayList<KeyActionData<ResourceLocation>>(entryCount)
+                val entries = ArrayList<KeyActionData<Identifier>>(entryCount)
                 repeat(entryCount) {
-                    val keyId = buf.readResourceLocation()
+                    val keyId = buf.readIdentifier()
                     val actionCount = buf.readVarInt()
                     val actions = ArrayList<KeyActionType>(actionCount)
                     repeat(actionCount) {

@@ -5,11 +5,11 @@ import cn.coostack.cooparticlesapi.network.buffer.ParticleControlerDataBuffers
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleGroupStyle
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleStyleProvider
 import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
+import cn.coostack.cooparticlesapi.particles.CooParticleTextureSheet
 import cn.coostack.cooparticlesapi.particles.impl.ControlableCloudEffect
 import cn.coostack.cooparticlesapi.test.options.particle.style.sub.MagicSubStyle
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import cn.coostack.cooparticlesapi.utils.builder.PointsBuilder
-import net.minecraft.client.particle.ParticleRenderType
 import java.util.UUID
 import kotlin.math.PI
 
@@ -45,8 +45,8 @@ class ExampleStyle(val bindPlayer: UUID, uuid: UUID = UUID.randomUUID()) :
                         StyleData { ParticleDisplayer.withSingle(ControlableCloudEffect(it)) }
                             .withParticleHandler {
                                 colorOfRGB(127, 139, 175)
-                                this.scale(1.5f)
-                                textureSheet = ParticleRenderType.PARTICLE_SHEET_LIT
+                                this.scale(1.5F)
+                                textureSheet = CooParticleTextureSheet.PARTICLE_SHEET_LIT
                             }
                     })
             putAll(

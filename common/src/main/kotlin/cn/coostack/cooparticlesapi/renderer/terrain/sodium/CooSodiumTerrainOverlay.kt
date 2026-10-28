@@ -6,18 +6,22 @@ import cn.coostack.cooparticlesapi.compat.IrisShadowPassState
 import cn.coostack.cooparticlesapi.renderer.terrain.CooEffectUvResolver
 import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainPipelineManager
 import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainVertexFormats
+import cn.coostack.cooparticlesapi.renderer.pipeline.CooTerrainLayer
+import cn.coostack.cooparticlesapi.renderer.backend.OpenGlRenderTargetBridge
+import cn.coostack.cooparticlesapi.renderer.backend.bindWrite
 import cn.coostack.cooparticlesapi.renderer.post.OpenGlPostEffectExecutionBackend
 import com.mojang.blaze3d.systems.RenderSystem
 import com.mojang.blaze3d.vertex.BufferBuilder
 import com.mojang.blaze3d.vertex.ByteBufferBuilder
 import com.mojang.blaze3d.vertex.MeshData
-import com.mojang.blaze3d.vertex.VertexBuffer
-import com.mojang.blaze3d.vertex.VertexFormat
+import com.mojang.renderpearl.api.pipeline.PrimitiveTopology
+import com.mojang.renderpearl.backend.opengl.GlStateManager
 import com.mojang.blaze3d.vertex.VertexSorting
 import net.caffeinemc.mods.sodium.api.util.ColorARGB
 import net.caffeinemc.mods.sodium.api.texture.SpriteUtil
 import net.caffeinemc.mods.sodium.client.render.chunk.ChunkRenderMatrices
 import net.caffeinemc.mods.sodium.client.render.chunk.RenderSection
+import net.caffeinemc.mods.sodium.client.render.chunk.region.RenderRegion
 import net.caffeinemc.mods.sodium.client.render.chunk.compile.BuilderTaskOutput
 import net.caffeinemc.mods.sodium.client.render.chunk.compile.ChunkBuildOutput
 import net.caffeinemc.mods.sodium.client.render.chunk.data.BuiltSectionInfo
@@ -26,17 +30,20 @@ import net.caffeinemc.mods.sodium.client.render.chunk.terrain.TerrainRenderPass
 import net.caffeinemc.mods.sodium.client.render.chunk.terrain.DefaultTerrainRenderPasses
 import net.caffeinemc.mods.sodium.client.render.chunk.terrain.material.Material
 import net.caffeinemc.mods.sodium.client.render.chunk.vertex.format.ChunkVertexEncoder
-import net.caffeinemc.mods.sodium.client.render.frapi.mesh.MutableQuadViewImpl
+import net.caffeinemc.mods.sodium.client.render.model.MutableQuadViewImpl
 import net.caffeinemc.mods.sodium.client.render.texture.SpriteFinderCache
 import net.minecraft.client.Minecraft
-import net.minecraft.client.renderer.RenderType
+import net.minecraft.client.renderer.rendertype.RenderType
+import net.minecraft.client.renderer.oit.OitStage
+import net.minecraft.client.renderer.chunk.ChunkSectionLayer
 import net.minecraft.client.renderer.texture.TextureAtlasSprite
 import net.minecraft.core.BlockPos
 import org.joml.Matrix4f
+import java.util.IdentityHashMap
 import org.lwjgl.opengl.GL11.GL_DEPTH_FUNC
 import org.lwjgl.opengl.GL11.GL_DEPTH_TEST
 import org.lwjgl.opengl.GL11.GL_DEPTH_WRITEMASK
-import org.lwjgl.opengl.GL11.GL_LEQUAL
+import org.lwjgl.opengl.GL11.GL_GEQUAL
 import org.lwjgl.opengl.GL11.GL_VIEWPORT
 import org.lwjgl.opengl.GL11.glGetBoolean
 import org.lwjgl.opengl.GL11.glGetIntegerv
@@ -46,11 +53,14 @@ import org.lwjgl.opengl.GL30.GL_DRAW_FRAMEBUFFER
 import org.lwjgl.opengl.GL30.GL_DRAW_FRAMEBUFFER_BINDING
 import org.lwjgl.opengl.GL30.GL_READ_FRAMEBUFFER
 import org.lwjgl.opengl.GL30.GL_READ_FRAMEBUFFER_BINDING
-import org.lwjgl.opengl.GL30.glBindFramebuffer
 import org.lwjgl.opengl.GL30.glGetInteger
+import org.lwjgl.opengl.GL33.glEnable
+import org.lwjgl.opengl.GL33.glDisable
+import org.lwjgl.opengl.GL33.glDepthMask
+import org.lwjgl.opengl.GL33.glDepthFunc
 
 /**
- * 管理 Sodium 0.6.x 的 section 级地形覆盖构建、GPU 上传和绘制。
+ * 管理 Sodium 0.9.2 的 section 级地形覆盖构建、GPU 上传和 OpenGL 3.3 绘制。
  *
  * 区块工作线程按 [beginBuild]、多次 [captureQuad]、[markRenderPasses]、[finishBuild] 的顺序生成
  * CPU 批次；渲染线程通过 [uploadResults] 将批次绑定到 RenderSection，再由 [renderOrDefer] 绘制。
@@ -61,28 +71,48 @@ internal object CooSodiumTerrainOverlay {
     private val activeBuild = ThreadLocal<BuildCollector?>()
     private val pending = CooIdentityResourceStore<ChunkBuildOutput, BuiltBatch>()
     private val uploaded = CooIdentityResourceStore<RenderSection, UploadedBatch>()
+    /** 让重载与工作线程结果登记成为同一个所有权边界。 */
+    private val buildLock = Any()
+    /** 清理资源后拒绝接收先前工作线程的结果。 */
+    @Volatile private var buildGeneration = 0L
+    /** 26.3 RenderRegion 不再公开 getSection；记录已上传区段的原版 region 身份与局部索引。 */
+    private val regionSections = IdentityHashMap<RenderRegion, MutableMap<Int, RenderSection>>()
     private val deferredDraws = ArrayList<DeferredDraw>()
+    /** 世界绘制调用的递增帧标记，避免上帧异常退出后的延迟项跨帧重放。 */
+    private var frameEpoch = 0L
+
+    /** 世界绘制开始时清理上帧尚未消费的项，不影响已上传区段网格。 */
+    @JvmStatic
+    fun beginFrame() {
+        synchronized(deferredDraws) {
+            frameEpoch++
+            deferredDraws.clear()
+        }
+    }
 
     /**
      * 把 Sodium terrain pass 还原为对应的原版 RenderType。
      *
-     * @param original 方块原本使用的 RenderType，用于保留 tripwire 或未知 pass
+     * @param original 方块面的原版区段层，用于未知 Sodium pass 的保守映射
      * @param material Sodium 为当前方块面选择的材质
      * @param pass 当前 Sodium terrain pass
      * @return 与 pass 和材质 mipmap 规则对应的原版 terrain layer
      */
     @JvmStatic
-    fun resolveBaseLayer(original: RenderType, material: Material, pass: TerrainRenderPass): RenderType {
-        return when (pass) {
-            DefaultTerrainRenderPasses.SOLID -> RenderType.solid()
+    fun resolveBaseLayer(original: ChunkSectionLayer, material: Material, pass: TerrainRenderPass): RenderType {
+        val layer = when (pass) {
+            DefaultTerrainRenderPasses.SOLID -> CooTerrainLayer.SOLID
             DefaultTerrainRenderPasses.CUTOUT -> {
-                if (material.mipped) RenderType.cutoutMipped() else RenderType.cutout()
+                if (material.mipped) CooTerrainLayer.CUTOUT_MIPPED else CooTerrainLayer.CUTOUT
             }
-            DefaultTerrainRenderPasses.TRANSLUCENT -> {
-                if (original === RenderType.tripwire()) RenderType.tripwire() else RenderType.translucent()
+            DefaultTerrainRenderPasses.TRANSLUCENT -> CooTerrainLayer.TRANSLUCENT
+            else -> when (original) {
+                ChunkSectionLayer.SOLID -> CooTerrainLayer.SOLID
+                ChunkSectionLayer.CUTOUT -> if (material.mipped) CooTerrainLayer.CUTOUT_MIPPED else CooTerrainLayer.CUTOUT
+                ChunkSectionLayer.TRANSLUCENT -> CooTerrainLayer.TRANSLUCENT
             }
-            else -> original
         }
+        return CooTerrainPipelineManager.baseLayer(layer)
     }
 
     /**
@@ -93,7 +123,7 @@ internal object CooSodiumTerrainOverlay {
     @JvmStatic
     fun beginBuild() {
         activeBuild.get()?.close()
-        activeBuild.set(BuildCollector())
+        activeBuild.set(BuildCollector(buildGeneration))
     }
 
     /**
@@ -139,7 +169,8 @@ internal object CooSodiumTerrainOverlay {
                     normalZ = normalZ
                 )
                 builder.addVertex(vertex.x, vertex.y, vertex.z)
-                    .setColor(ColorARGB.mulRGB(vertex.color, vertex.ao))
+                    // Sodium 的编码前颜色是 ABGR，原版消费者接受 ARGB，转换后再应用 AO。
+                    .setColor(ColorARGB.mulRGB(ColorARGB.fromABGR(vertex.color), vertex.ao))
                     .setUv(vertex.u, vertex.v)
                     .setUv1(CooEffectUvResolver.pack(effectUv.u), CooEffectUvResolver.pack(effectUv.v))
                     .setLight(CooEffectUvResolver.packLightWithActivation(vertex.light, activatedAt))
@@ -174,7 +205,13 @@ internal object CooSodiumTerrainOverlay {
             return
         }
         val batches = collector.build()
-        pending.replace(output, batches, BuiltBatch::close)
+        synchronized(buildLock) {
+            if (collector.generation == buildGeneration) {
+                pending.replace(output, batches, BuiltBatch::close)
+            } else {
+                batches.forEach(BuiltBatch::close)
+            }
+        }
     }
 
     /**
@@ -201,8 +238,9 @@ internal object CooSodiumTerrainOverlay {
         outputs.forEach { output ->
             if (output !is ChunkBuildOutput) return@forEach
             val built = pending.take(output).orEmpty()
-            val gpuBatches = built.mapNotNull { upload(output.render, it) }
-            uploaded.replace(output.render, gpuBatches, ::closeUploaded)
+            val gpuBatches = built.mapNotNull { upload(output.section, it) }
+            uploaded.replace(output.section, gpuBatches, ::closeUploaded)
+            regionSections.getOrPut(output.section.region) { mutableMapOf() }[output.section.sectionIndex] = output.section
         }
     }
 
@@ -217,17 +255,33 @@ internal object CooSodiumTerrainOverlay {
      * @param cameraX 相机世界 X 坐标
      * @param cameraY 相机世界 Y 坐标
      * @param cameraZ 相机世界 Z 坐标
+     * @param deferToFrameEnd 兼容旧调用方的最终颜色延迟请求；明确提供 OIT 阶段时使用原生阶段
+     * @param oitStage 当前已打开的原生 OIT 阶段；null 表示普通颜色绘制
      */
     @JvmStatic
+    @JvmOverloads
     fun renderOrDefer(
         renderLists: SortedRenderLists,
         matrices: ChunkRenderMatrices,
         pass: TerrainRenderPass,
         cameraX: Double,
         cameraY: Double,
-        cameraZ: Double
+        cameraZ: Double,
+        deferToFrameEnd: Boolean = false,
+        oitStage: OitStage? = null,
     ) {
         if (!CooTerrainPipelineManager.isSodiumTerrainOverlayEnabled()) return
+        val irisComposite = CooTerrainPipelineManager.shouldPreserveVanillaTerrainGeometry()
+        if (irisComposite && oitStage != null && oitStage != OitStage.ACCUMULATE) return
+        if (irisComposite && IrisCompat.shadowPassState() != IrisShadowPassState.INACTIVE) {
+            if (IrisCompat.shadowPassState() == IrisShadowPassState.UNKNOWN) {
+                CooTerrainPipelineManager.handleSodiumOverlayFailure(
+                    "Iris shadow-pass detection", null,
+                    IllegalStateException("Iris 阴影状态不可用"),
+                )
+            }
+            return
+        }
         val collectedDrawGroups = collectDrawGroups(renderLists, pass)
         if (collectedDrawGroups.isEmpty()) return
         val drawGroups = LinkedHashMap<RenderType, MutableList<DrawEntry>>()
@@ -265,36 +319,43 @@ internal object CooSodiumTerrainOverlay {
 
         val modelView = Matrix4f(matrices.modelView())
         val projection = Matrix4f(matrices.projection())
-        postDrawGroups.forEach { (renderType, entries) ->
-            val snapshot = entries.toList()
-            CooTerrainPipelineManager.recordPostDraw(renderType) {
-                drawSafely(
-                    renderType,
-                    snapshot,
-                    modelView,
-                    projection,
-                    cameraX,
-                    cameraY,
-                    cameraZ,
-                    false
-                )
+        val recordPost = oitStage == null || oitStage == OitStage.ACCUMULATE
+        if (recordPost) {
+            postDrawGroups.forEach { (renderType, entries) ->
+                val snapshot = entries.toList()
+                CooTerrainPipelineManager.recordPostDraw(renderType) {
+                    drawSafely(
+                        renderType,
+                        snapshot,
+                        modelView,
+                        projection,
+                        cameraX,
+                        cameraY,
+                        cameraZ,
+                        false
+                    )
+                }
             }
         }
         if (immediateDrawGroups.isEmpty()) return
 
-        if (CooTerrainPipelineManager.shouldPreserveVanillaTerrainGeometry()) {
-            when (IrisCompat.shadowPassState()) {
-                IrisShadowPassState.ACTIVE -> return
-                IrisShadowPassState.UNKNOWN -> {
-                    CooTerrainPipelineManager.handleSodiumOverlayFailure(
-                        "Iris shadow-pass detection",
-                        immediateDrawGroups.keys.firstOrNull(),
-                        IllegalStateException("Iris shadow-pass state is unavailable")
-                    )
-                    return
-                }
-                IrisShadowPassState.INACTIVE -> Unit
+        if (!irisComposite && oitStage != null) {
+            val nativeGroups = immediateDrawGroups.filterTo(LinkedHashMap()) { (type, _) ->
+                CooTerrainPipelineManager.supportsNativeOit(type)
             }
+            if (nativeGroups.isNotEmpty()) {
+                CooTerrainPipelineManager.withOitStage(oitStage) {
+                    renderDrawGroups(
+                        nativeGroups, modelView, projection, cameraX, cameraY, cameraZ, false, recordPost,
+                    )
+                }
+            }
+            // 任意 MRT 输出等无法包装的用户 shader 仍保留最终颜色路线，避免迁移时丢失整个效果。
+            if (oitStage != OitStage.ACCUMULATE) return
+            immediateDrawGroups.keys.removeAll(nativeGroups.keys)
+            if (immediateDrawGroups.isEmpty()) return
+        }
+        if (irisComposite || deferToFrameEnd || oitStage != null) {
             synchronized(deferredDraws) {
                 deferredDraws += DeferredDraw(
                     immediateDrawGroups.mapValues { (_, entries) -> entries.toList() },
@@ -302,7 +363,9 @@ internal object CooSodiumTerrainOverlay {
                     projection,
                     cameraX,
                     cameraY,
-                    cameraZ
+                    cameraZ,
+                    irisComposite,
+                    frameEpoch,
                 )
             }
             return
@@ -319,41 +382,37 @@ internal object CooSodiumTerrainOverlay {
     }
 
     /**
-     * 在 Iris 最终合成后绘制并清空本帧延迟的 Sodium 地形覆盖。
+     * 在 OIT 完成后或 Iris 最终合成后绘制本帧延迟覆盖，并移除已经消费的队列项。
      *
-     * 该入口负责包围最终合成状态与 overlay batch；兼容条件失效时只清空队列。
+     * 原版 OIT 必须在手部渲染清除主深度之前调用；Iris 沿用 GameRenderer 世界渲染返回入口。
+     * @param includeIris 是否同时消费 Iris 队列；false 只消费原版 OIT 项
      */
     @JvmStatic
-    fun flushDeferred() {
+    @JvmOverloads
+    fun flushDeferred(includeIris: Boolean = true) {
         val draws = synchronized(deferredDraws) {
-            deferredDraws.toList().also { deferredDraws.clear() }
+            deferredDraws.filter { includeIris || !it.irisComposite }.also { consumed ->
+                deferredDraws.removeAll(consumed.toSet())
+            }
         }
-        if (draws.isEmpty() ||
-            !CooTerrainPipelineManager.isSodiumTerrainOverlayEnabled() ||
-            !CooTerrainPipelineManager.shouldPreserveVanillaTerrainGeometry()
-        ) {
-            return
-        }
-        val renderTypes = draws.flatMap { it.drawGroups.keys }.distinct()
-        CooTerrainPipelineManager.beginFinalCompositeTerrainOverlay()
-        try {
-            if (!CooTerrainPipelineManager.beginOverlayBatch(renderTypes)) return
+        if (draws.isEmpty() || !CooTerrainPipelineManager.isSodiumTerrainOverlayEnabled()) return
+        val irisActive = CooTerrainPipelineManager.shouldPreserveVanillaTerrainGeometry()
+        val compatibleDraws = draws.filter { it.irisComposite == irisActive && it.frameEpoch == frameEpoch }
+        if (compatibleDraws.isEmpty()) return
+        OpenGlPostEffectExecutionBackend.withPreservedGlState {
+            if (!irisActive) {
+                // OIT 阶段的 FBO 已完成工作；在手部绘制前重新使用仍保留场景深度的主目标。
+                Minecraft.getInstance().gameRenderer.mainRenderTarget().bindWrite(true)
+            }
+            val renderTypes = compatibleDraws.flatMap { it.drawGroups.keys }.distinct()
+            CooTerrainPipelineManager.beginFinalCompositeTerrainOverlay()
             try {
-                if (!CooTerrainPipelineManager.isSodiumTerrainOverlayEnabled()) return
-                drawLoop@ for (draw in draws) {
-                    for ((renderType, entries) in draw.drawGroups) {
-                        if (!drawSafely(
-                            renderType,
-                            entries,
-                            draw.modelView,
-                            draw.projection,
-                            draw.cameraX,
-                            draw.cameraY,
-                            draw.cameraZ,
-                            true
-                        )) break@drawLoop
-                        CooTerrainPipelineManager.recordPostDraw(renderType) {
-                            drawSafely(
+                if (!CooTerrainPipelineManager.beginOverlayBatch(renderTypes)) return@withPreservedGlState
+                try {
+                    if (!CooTerrainPipelineManager.isSodiumTerrainOverlayEnabled()) return@withPreservedGlState
+                    drawLoop@ for (draw in compatibleDraws) {
+                        for ((renderType, entries) in draw.drawGroups) {
+                            if (!drawSafely(
                                 renderType,
                                 entries,
                                 draw.modelView,
@@ -361,16 +420,28 @@ internal object CooSodiumTerrainOverlay {
                                 draw.cameraX,
                                 draw.cameraY,
                                 draw.cameraZ,
-                                false
-                            )
+                                draw.irisComposite
+                            )) break@drawLoop
+                            CooTerrainPipelineManager.recordPostDraw(renderType) {
+                                drawSafely(
+                                    renderType,
+                                    entries,
+                                    draw.modelView,
+                                    draw.projection,
+                                    draw.cameraX,
+                                    draw.cameraY,
+                                    draw.cameraZ,
+                                    false
+                                )
+                            }
                         }
                     }
+                } finally {
+                    CooTerrainPipelineManager.endOverlayBatch()
                 }
             } finally {
-                CooTerrainPipelineManager.endOverlayBatch()
+                CooTerrainPipelineManager.endFinalCompositeTerrainOverlay()
             }
-        } finally {
-            CooTerrainPipelineManager.endFinalCompositeTerrainOverlay()
         }
     }
 
@@ -381,7 +452,8 @@ internal object CooSodiumTerrainOverlay {
         cameraX: Double,
         cameraY: Double,
         cameraZ: Double,
-        irisComposite: Boolean
+        irisComposite: Boolean,
+        recordPost: Boolean = true,
     ) {
         val renderTypes = drawGroups.keys.toList()
         if (!CooTerrainPipelineManager.beginOverlayBatch(renderTypes)) return
@@ -398,17 +470,19 @@ internal object CooSodiumTerrainOverlay {
                     cameraZ,
                     irisComposite
                 )) return
-                CooTerrainPipelineManager.recordPostDraw(renderType) {
-                    drawSafely(
-                        renderType,
-                        entries,
-                        modelView,
-                        projection,
-                        cameraX,
-                        cameraY,
-                        cameraZ,
-                        false
-                    )
+                if (recordPost) {
+                    CooTerrainPipelineManager.recordPostDraw(renderType) {
+                        drawSafely(
+                            renderType,
+                            entries,
+                            modelView,
+                            projection,
+                            cameraX,
+                            cameraY,
+                            cameraZ,
+                            false
+                        )
+                    }
                 }
             }
         } finally {
@@ -423,6 +497,10 @@ internal object CooSodiumTerrainOverlay {
      */
     @JvmStatic
     fun releaseSection(section: RenderSection) {
+        regionSections[section.region]?.let { sections ->
+            if (sections[section.sectionIndex] === section) sections.remove(section.sectionIndex)
+            if (sections.isEmpty()) regionSections.remove(section.region)
+        }
         uploaded.release(section, ::closeUploaded)
     }
 
@@ -435,20 +513,24 @@ internal object CooSodiumTerrainOverlay {
     fun releaseAll() {
         activeBuild.get()?.close()
         activeBuild.remove()
-        pending.clear(BuiltBatch::close)
+        synchronized(buildLock) {
+            buildGeneration++
+            pending.clear(BuiltBatch::close)
+        }
         uploaded.clear(::closeUploaded)
+        regionSections.clear()
         synchronized(deferredDraws) {
             deferredDraws.clear()
         }
     }
 
     private fun upload(section: RenderSection, batch: BuiltBatch): UploadedBatch? {
-        val vertexBuffer = VertexBuffer(VertexBuffer.Usage.STATIC)
+        var vertexBuffer: OpenGlTerrainMesh? = null
         var sortBuffer: ByteBufferBuilder? = null
         var sortState: MeshData.SortState? = null
         return try {
             if (batch.pass.isTranslucent) {
-                val camera = Minecraft.getInstance().gameRenderer.mainCamera.position
+                val camera = Minecraft.getInstance().gameRenderer.mainCamera().position()
                 sortBuffer = ByteBufferBuilder(RenderType.BIG_BUFFER_SIZE)
                 sortState = batch.meshData.sortQuads(
                     sortBuffer,
@@ -459,12 +541,10 @@ internal object CooSodiumTerrainOverlay {
                     )
                 )
             }
-            VertexBuffer.unbind()
-            vertexBuffer.bind()
-            vertexBuffer.upload(batch.meshData)
+            vertexBuffer = OpenGlTerrainMesh(batch.meshData)
             UploadedBatch(batch.renderType, batch.pass, vertexBuffer, batch.sprites, sortState, sortBuffer)
         } catch (error: RuntimeException) {
-            vertexBuffer.close()
+            vertexBuffer?.close()
             sortBuffer?.close()
             CooParticlesConstants.logger.error(
                 "Failed to upload Sodium terrain overlay for section [{}, {}, {}]",
@@ -480,7 +560,6 @@ internal object CooSodiumTerrainOverlay {
             )
             null
         } finally {
-            VertexBuffer.unbind()
             batch.close()
         }
     }
@@ -497,7 +576,8 @@ internal object CooSodiumTerrainOverlay {
             val sections = renderList.sectionsWithGeometryIterator(reverse) ?: continue
             val region = renderList.region
             while (sections.hasNext()) {
-                val section = region.getSection(sections.nextByteAsInt()) ?: continue
+                val section = regionSections[region]?.get(sections.nextByteAsInt()) ?: continue
+                if (section.isDisposed) continue
                 uploaded.get(section).orEmpty()
                     .asSequence()
                     .filter { it.pass === pass }
@@ -563,44 +643,58 @@ internal object CooSodiumTerrainOverlay {
         val previousDepthFunc = glGetInteger(GL_DEPTH_FUNC)
         val previousDepthMask = glGetBoolean(GL_DEPTH_WRITEMASK)
         val depthTestEnabled = glIsEnabled(GL_DEPTH_TEST)
-        var setupCompleted = false
         try {
-            renderType.setupRenderState()
-            setupCompleted = true
-            restoreTarget(drawFramebuffer, readFramebuffer, viewport)
             if (irisComposite) {
-                RenderSystem.enableDepthTest()
-                RenderSystem.depthMask(false)
-                RenderSystem.depthFunc(GL_LEQUAL)
+                GlStateManager._enableDepthTest()
+                glEnable(GL_DEPTH_TEST)
+                GlStateManager._depthMask(false)
+                glDepthMask(false)
+                GlStateManager._depthFunc(GL_GEQUAL)
+                glDepthFunc(GL_GEQUAL)
             }
-            val shader = RenderSystem.getShader() ?: return
-            entries.filterNot { it.batch.vertexBuffer.isInvalid() }.forEach { entry ->
+            entries.filterNot { it.batch.vertexBuffer.isClosed }.forEach { entry ->
                 entry.batch.sprites.forEach(SpriteUtil.INSTANCE::markSpriteActive)
                 resortTranslucent(entry, cameraX, cameraY, cameraZ)
-                shader.getUniform("ChunkOffset")?.set(
+                check(CooTerrainPipelineManager.drawSodiumOverlay(
+                    renderType,
+                    modelView,
+                    projection,
                     (entry.section.originX - cameraX).toFloat(),
                     (entry.section.originY - cameraY).toFloat(),
-                    (entry.section.originZ - cameraZ).toFloat()
-                )
-                entry.batch.vertexBuffer.bind()
-                entry.batch.vertexBuffer.drawWithShader(modelView, projection, shader)
+                    (entry.section.originZ - cameraZ).toFloat(),
+                ) {
+                    restoreTarget(drawFramebuffer, readFramebuffer, viewport)
+                    if (irisComposite) {
+                        GlStateManager._enableDepthTest()
+                        glEnable(GL_DEPTH_TEST)
+                        GlStateManager._depthMask(false)
+                        glDepthMask(false)
+                        GlStateManager._depthFunc(GL_GEQUAL)
+                        glDepthFunc(GL_GEQUAL)
+                    } else if (!entry.batch.pass.isTranslucent &&
+                        !CooTerrainPipelineManager.isTerrainAttachmentCaptureActive() &&
+                        !CooTerrainPipelineManager.isTerrainPostRenderType(renderType)
+                    ) {
+                        // 替换原版不透明几何时必须建立真实遮挡，不能只在最终颜色上补画。
+                        GlStateManager._depthMask(true)
+                        glDepthMask(true)
+                    }
+                    entry.batch.vertexBuffer.draw()
+                }) { "Sodium 地形覆盖 shader 尚不可用" }
             }
         } finally {
-            try {
-                VertexBuffer.unbind()
-                if (setupCompleted) {
-                    renderType.clearRenderState()
-                }
-            } finally {
-                RenderSystem.depthFunc(previousDepthFunc)
-                RenderSystem.depthMask(previousDepthMask)
-                if (depthTestEnabled) {
-                    RenderSystem.enableDepthTest()
-                } else {
-                    RenderSystem.disableDepthTest()
-                }
-                restoreTarget(drawFramebuffer, readFramebuffer, viewport)
+            GlStateManager._depthFunc(previousDepthFunc)
+            glDepthFunc(previousDepthFunc)
+            GlStateManager._depthMask(previousDepthMask)
+            glDepthMask(previousDepthMask)
+            if (depthTestEnabled) {
+                GlStateManager._enableDepthTest()
+                glEnable(GL_DEPTH_TEST)
+            } else {
+                GlStateManager._disableDepthTest()
+                glDisable(GL_DEPTH_TEST)
             }
+            restoreTarget(drawFramebuffer, readFramebuffer, viewport)
         }
     }
 
@@ -619,8 +713,7 @@ internal object CooSodiumTerrainOverlay {
             )
         ) { "Sodium translucent terrain overlay index sorting returned no data" }
         result.use {
-            entry.batch.vertexBuffer.bind()
-            entry.batch.vertexBuffer.uploadIndexBuffer(it)
+            entry.batch.vertexBuffer.uploadIndexBuffer(it.byteBuffer())
         }
     }
 
@@ -653,8 +746,9 @@ internal object CooSodiumTerrainOverlay {
     }
 
     private fun restoreTarget(drawFramebuffer: Int, readFramebuffer: Int, viewport: IntArray) {
-        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, drawFramebuffer)
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, readFramebuffer)
+        OpenGlRenderTargetBridge.bindFramebuffer(GL_DRAW_FRAMEBUFFER, drawFramebuffer)
+        OpenGlRenderTargetBridge.bindFramebuffer(GL_READ_FRAMEBUFFER, readFramebuffer)
+        GlStateManager._viewport(viewport[0], viewport[1], viewport[2], viewport[3])
         glViewport(viewport[0], viewport[1], viewport[2], viewport[3])
     }
 
@@ -664,7 +758,7 @@ internal object CooSodiumTerrainOverlay {
             batch.vertexBuffer.close()
             batch.sortBuffer?.close()
         } else {
-            RenderSystem.recordRenderCall {
+            Minecraft.getInstance().execute {
                 batch.vertexBuffer.close()
                 batch.sortBuffer?.close()
             }
@@ -701,7 +795,7 @@ internal object CooSodiumTerrainOverlay {
         val key: BatchKey
     ) : AutoCloseable {
         val backing = ByteBufferBuilder(RenderType.BIG_BUFFER_SIZE)
-        val builder = BufferBuilder(backing, VertexFormat.Mode.QUADS, CooTerrainVertexFormats.BLOCK_EFFECT)
+        val builder = BufferBuilder(backing, PrimitiveTopology.QUADS, CooTerrainVertexFormats.BLOCK_EFFECT)
         val sprites = LinkedHashSet<TextureAtlasSprite>()
 
         /**
@@ -716,7 +810,12 @@ internal object CooSodiumTerrainOverlay {
                 close()
                 return null
             }
-            return BuiltBatch(key.renderType, key.pass, meshData, backing, sprites.toList())
+            try {
+                return BuiltBatch(key.renderType, key.pass, meshData, backing, sprites.toList())
+            } catch (failure: Throwable) {
+                meshData.close()
+                throw failure
+            }
         }
 
         /**
@@ -729,7 +828,11 @@ internal object CooSodiumTerrainOverlay {
         }
     }
 
-    private class BuildCollector : AutoCloseable {
+    /**
+     * 一个工作线程独占的区段覆盖构建器。
+     * @property generation 启动时资源代数，用于拒绝重载前的结果
+     */
+    private class BuildCollector(val generation: Long) : AutoCloseable {
         private val buffers = LinkedHashMap<BatchKey, BuildBuffer>()
 
         /**
@@ -767,10 +870,19 @@ internal object CooSodiumTerrainOverlay {
         fun build(): List<BuiltBatch> {
             val built = ArrayList<BuiltBatch>(buffers.size)
             return try {
-                buffers.values.mapNotNullTo(built, BuildBuffer::build)
-                buffers.clear()
+                val remaining = buffers.values.iterator()
+                while (remaining.hasNext()) {
+                    val buffer = remaining.next()
+                    remaining.remove()
+                    try {
+                        buffer.build()?.let(built::add)
+                    } catch (error: Throwable) {
+                        buffer.close()
+                        throw error
+                    }
+                }
                 built
-            } catch (error: RuntimeException) {
+            } catch (error: Throwable) {
                 built.forEach(BuiltBatch::close)
                 close()
                 throw error
@@ -820,7 +932,7 @@ internal object CooSodiumTerrainOverlay {
     private data class UploadedBatch(
         val renderType: RenderType,
         val pass: TerrainRenderPass,
-        val vertexBuffer: VertexBuffer,
+        val vertexBuffer: OpenGlTerrainMesh,
         val sprites: List<TextureAtlasSprite>,
         val sortState: MeshData.SortState?,
         val sortBuffer: ByteBufferBuilder?
@@ -837,6 +949,8 @@ internal object CooSodiumTerrainOverlay {
         val projection: Matrix4f,
         val cameraX: Double,
         val cameraY: Double,
-        val cameraZ: Double
+        val cameraZ: Double,
+        val irisComposite: Boolean,
+        val frameEpoch: Long,
     )
 }

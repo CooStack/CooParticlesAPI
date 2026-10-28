@@ -24,7 +24,7 @@ object TestCollideEventHandler : ParticleEventHandler {
             event.particleData.velocity
         )
         val data = event.particleData
-        val vec = event.res.direction.normal.asVec3()
+        val vec = event.res.direction.unitVec3
 
         data.velocity = movement
     }

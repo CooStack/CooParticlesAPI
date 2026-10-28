@@ -10,7 +10,7 @@ import cn.coostack.cooparticlesapi.coofx.render.instance.CooFxMeshInstanceLayout
 import cn.coostack.cooparticlesapi.coofx.render.instance.CooFxQuaternion
 import cn.coostack.cooparticlesapi.coofx.runtime.mesh.render.CooFxMeshBatchKey
 import cn.coostack.cooparticlesapi.coofx.runtime.mesh.render.CooFxMeshInstanceBatch
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import org.joml.Matrix4fc
 import java.util.TreeMap
 
@@ -41,7 +41,7 @@ internal data class CooFxResolvedModelAsset(
  */
 internal data class CooFxModelDebugInstance(
     val instanceId: Long,
-    val resourceId: ResourceLocation,
+    val resourceId: Identifier,
     val transform: CooFxWorldTransform,
     val clipIndex: Int,
     val playbackSpeed: Float,
@@ -131,7 +131,7 @@ internal class CooFxModelInstanceManager {
     fun buildBatches(
         partialTick: Float,
         lightResolver: (Double, Double, Double) -> Int = { _, _, _ -> 0 },
-        assetResolver: (ResourceLocation) -> CooFxResolvedModelAsset?,
+        assetResolver: (Identifier) -> CooFxResolvedModelAsset?,
     ): List<CooFxMeshInstanceBatch> {
         require(partialTick.isFinite()) { "Partial tick must be finite" }
         val progress = partialTick.coerceIn(0F, 1F)
@@ -255,7 +255,7 @@ internal class CooFxModelInstanceManager {
     )
 
     private data class ModelState(
-        val resourceId: ResourceLocation,
+        val resourceId: Identifier,
         var contentDigest: String,
         var transform: CooFxWorldTransform,
         var previousTransform: CooFxWorldTransform = transform,

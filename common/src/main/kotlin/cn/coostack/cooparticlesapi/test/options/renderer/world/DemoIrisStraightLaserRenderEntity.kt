@@ -4,14 +4,14 @@ import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.annotations.CodecField
 import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
 import cn.coostack.cooparticlesapi.renderer.AutoRenderEntity
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
 
 @CooAutoRegister
 class DemoIrisStraightLaserRenderEntity() : AutoRenderEntity(null, Vec3.ZERO) {
-    constructor(world: Level?, start: Vec3, end: Vec3, durationTicks: Int = DEFAULT_DURATION_TICKS) : this() {
+    constructor(world: Level?, start: Vec3, end: Vec3, durationTicks: Int = 90) : this() {
         this.world = world
         this.pos = start
         this.previousStart = start
@@ -30,27 +30,27 @@ class DemoIrisStraightLaserRenderEntity() : AutoRenderEntity(null, Vec3.ZERO) {
     var previousEnd: Vec3 = Vec3.ZERO
 
     @CodecField
-    var durationTicks: Int = DEFAULT_DURATION_TICKS
+    var durationTicks: Int = 90
 
     @CodecField
-    var phaseTicks: Int = DEFAULT_PHASE_TICKS
+    var phaseTicks: Int = 8
 
     @CodecField
-    var color: Vector3f = Vector3f(0.28f, 0.82f, 1.0f)
+    var color: Vector3f = Vector3f(0.28F, 0.82F, 1.0F)
 
     @CodecField
-    var alpha: Float = 1.0f
+    var alpha: Float = 1.0F
 
     @CodecField
-    var brightness: Float = 1.25f
+    var brightness: Float = 1.25F
 
     @CodecField
-    var maxRadius: Float = DEFAULT_MAX_RADIUS
+    var maxRadius: Float = 0.24F
 
     @CodecField
-    var irisMaskAlpha: Float = DEFAULT_IRIS_MASK_ALPHA
+    var irisMaskAlpha: Float = 0.22F
 
-    override fun getRenderID(): ResourceLocation = ID
+    override fun getRenderID(): Identifier = ID
 
     override fun serverTick() {
         updateLifecycle()
@@ -88,7 +88,7 @@ class DemoIrisStraightLaserRenderEntity() : AutoRenderEntity(null, Vec3.ZERO) {
         val growDuration = phaseTicks.coerceAtLeast(1).toFloat()
         val holdEnd = growDuration + durationTicks.coerceAtLeast(0).toFloat()
         return when {
-            time < growDuration -> mix(MIN_RADIUS, maxRadius, easeOutCubic(smoothstep(0f, growDuration, time)))
+            time < growDuration -> mix(MIN_RADIUS, maxRadius, easeOutCubic(smoothstep(0F, growDuration, time)))
             time < holdEnd -> maxRadius
             else -> mix(maxRadius, MIN_RADIUS, currentCollapse(tickDelta))
         }.coerceAtLeast(MIN_RADIUS)
@@ -98,12 +98,12 @@ class DemoIrisStraightLaserRenderEntity() : AutoRenderEntity(null, Vec3.ZERO) {
         val time = currentTimeline(tickDelta)
         val growDuration = phaseTicks.coerceAtLeast(1).toFloat()
         val holdEnd = growDuration + durationTicks.coerceAtLeast(0).toFloat()
-        val baseAlpha = alpha.coerceIn(0f, 1f)
+        val baseAlpha = alpha.coerceIn(0F, 1F)
         return when {
-            time < growDuration -> mix(0.24f, 1.0f, easeOutCubic(smoothstep(0f, growDuration, time))) * baseAlpha
+            time < growDuration -> mix(0.24F, 1.0F, easeOutCubic(smoothstep(0F, growDuration, time))) * baseAlpha
             time < holdEnd -> baseAlpha
             else -> {
-                val fade = 1f - currentCollapse(tickDelta)
+                val fade = 1F - currentCollapse(tickDelta)
                 fade * fade * baseAlpha
             }
         }
@@ -113,7 +113,7 @@ class DemoIrisStraightLaserRenderEntity() : AutoRenderEntity(null, Vec3.ZERO) {
         val time = currentTimeline(tickDelta)
         val growDuration = phaseTicks.coerceAtLeast(1).toFloat()
         val holdEnd = growDuration + durationTicks.coerceAtLeast(0).toFloat()
-        return if (time < holdEnd) 0f else smoothstep(0f, growDuration, time - holdEnd)
+        return if (time < holdEnd) 0F else smoothstep(0F, growDuration, time - holdEnd)
     }
 
     fun currentPhaseProgress(tickDelta: Float): Float {
@@ -121,9 +121,9 @@ class DemoIrisStraightLaserRenderEntity() : AutoRenderEntity(null, Vec3.ZERO) {
         val growDuration = phaseTicks.coerceAtLeast(1).toFloat()
         val holdEnd = growDuration + durationTicks.coerceAtLeast(0).toFloat()
         return when {
-            time < growDuration -> smoothstep(0f, growDuration, time)
-            time < holdEnd -> 1f
-            else -> 1f - currentCollapse(tickDelta)
+            time < growDuration -> smoothstep(0F, growDuration, time)
+            time < holdEnd -> 1F
+            else -> 1F - currentCollapse(tickDelta)
         }
     }
 
@@ -151,37 +151,33 @@ class DemoIrisStraightLaserRenderEntity() : AutoRenderEntity(null, Vec3.ZERO) {
     }
 
     private fun currentTimeline(tickDelta: Float): Float {
-        return (age - 1f + tickDelta).coerceAtLeast(0f)
+        return (age - 1F + tickDelta).coerceAtLeast(0F)
     }
 
     companion object {
-        const val DEFAULT_DURATION_TICKS = 90
-        const val DEFAULT_PHASE_TICKS = 8
-        const val DEFAULT_MAX_RADIUS = 0.24f
-        const val DEFAULT_IRIS_MASK_ALPHA = 0.22f
-        const val MIN_RADIUS = 0.012f
-        const val MIN_BEAM_LENGTH = 0.05f
+        const val MIN_RADIUS = 0.012F
+        const val MIN_BEAM_LENGTH = 0.05F
         const val MIN_DIRECTION_LENGTH_SQR = 1.0E-6
 
-        val ID: ResourceLocation = ResourceLocation.fromNamespaceAndPath(
+        val ID: Identifier = Identifier.fromNamespaceAndPath(
             CooParticlesConstants.MOD_ID,
             "demo_iris_straight_laser_render_entity"
         )
 
         fun smoothstep(edge0: Float, edge1: Float, value: Float): Float {
-            if (edge0 == edge1) return if (value >= edge1) 1f else 0f
-            val x = ((value - edge0) / (edge1 - edge0)).coerceIn(0f, 1f)
-            return x * x * (3f - 2f * x)
+            if (edge0 == edge1) return if (value >= edge1) 1F else 0F
+            val x = ((value - edge0) / (edge1 - edge0)).coerceIn(0F, 1F)
+            return x * x * (3F - 2F * x)
         }
 
         fun easeOutCubic(value: Float): Float {
-            val x = value.coerceIn(0f, 1f)
-            val inverse = 1f - x
-            return 1f - inverse * inverse * inverse
+            val x = value.coerceIn(0F, 1F)
+            val inverse = 1F - x
+            return 1F - inverse * inverse * inverse
         }
 
         fun mix(from: Float, to: Float, alpha: Float): Float {
-            return from + (to - from) * alpha.coerceIn(0f, 1f)
+            return from + (to - from) * alpha.coerceIn(0F, 1F)
         }
     }
 }

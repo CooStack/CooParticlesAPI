@@ -8,7 +8,7 @@ import net.minecraft.core.particles.ParticleTypes
 import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.ByteBufCodecs
 import net.minecraft.network.codec.StreamCodec
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.level.block.Block as MinecraftBlock
 import net.minecraft.world.level.block.state.BlockState
@@ -68,17 +68,17 @@ sealed interface CParticleTextureSource {
                 }
                 is AtlasSprite -> {
                     buf.writeByte(1)
-                    buf.writeResourceLocation(source.atlasLocation)
-                    buf.writeResourceLocation(source.spriteLocation)
+                    buf.writeIdentifier(source.atlasLocation)
+                    buf.writeIdentifier(source.spriteLocation)
                 }
                 is AtlasAnimation -> {
                     require(source.spriteLocations.size <= MAX_ATLAS_ANIMATION_FRAMES) {
                         "CParticle atlas animation exceeds $MAX_ATLAS_ANIMATION_FRAMES frames"
                     }
                     buf.writeByte(2)
-                    buf.writeResourceLocation(source.atlasLocation)
+                    buf.writeIdentifier(source.atlasLocation)
                     buf.writeVarInt(source.spriteLocations.size)
-                    source.spriteLocations.forEach(buf::writeResourceLocation)
+                    source.spriteLocations.forEach(buf::writeIdentifier)
                 }
                 is Block -> {
                     buf.writeByte(3)
@@ -97,7 +97,7 @@ sealed interface CParticleTextureSource {
                 }
                 is Custom -> {
                     buf.writeByte(5)
-                    buf.writeResourceLocation(source.textureLocation)
+                    buf.writeIdentifier(source.textureLocation)
                     writeUv(buf, source.uv)
                 }
             }
@@ -120,18 +120,18 @@ sealed interface CParticleTextureSource {
                     animateByAge = buf.readBoolean(),
                 )
                 1 -> AtlasSprite(
-                    buf.readResourceLocation(),
-                    buf.readResourceLocation(),
+                    buf.readIdentifier(),
+                    buf.readIdentifier(),
                 )
                 2 -> {
-                    val atlas = buf.readResourceLocation()
+                    val atlas = buf.readIdentifier()
                     val frameCount = buf.readVarInt()
                     require(frameCount in 1..MAX_ATLAS_ANIMATION_FRAMES) {
                         "CParticle atlas animation frame count is invalid: $frameCount"
                     }
                     AtlasAnimation(
                         atlas,
-                        List(frameCount) { buf.readResourceLocation() },
+                        List(frameCount) { buf.readIdentifier() },
                     )
                 }
                 3 -> Block(
@@ -147,7 +147,7 @@ sealed interface CParticleTextureSource {
                     tintIndex = buf.readInt(),
                 )
                 5 -> Custom(
-                    buf.readResourceLocation(),
+                    buf.readIdentifier(),
                     readUv(buf),
                 )
                 else -> throw IllegalArgumentException("Unknown CParticle texture source type: $type")
@@ -211,8 +211,8 @@ sealed interface CParticleTextureSource {
      * @property spriteLocation 图集中的 sprite ID
      */
     data class AtlasSprite(
-        val atlasLocation: ResourceLocation,
-        val spriteLocation: ResourceLocation,
+        val atlasLocation: Identifier,
+        val spriteLocation: Identifier,
     ) : CParticleTextureSource
 
     /**
@@ -226,11 +226,11 @@ sealed interface CParticleTextureSource {
      * @throws IllegalArgumentException 帧列表为空或超过 [MAX_ATLAS_ANIMATION_FRAMES] 时抛出
      */
     class AtlasAnimation(
-        val atlasLocation: ResourceLocation,
-        spriteLocations: List<ResourceLocation>,
+        val atlasLocation: Identifier,
+        spriteLocations: List<Identifier>,
     ) : CParticleTextureSource {
         /** 创建来源时复制的只读帧顺序。 */
-        val spriteLocations: List<ResourceLocation> = spriteLocations.toList()
+        val spriteLocations: List<Identifier> = spriteLocations.toList()
 
         init {
             require(this.spriteLocations.size in 1..MAX_ATLAS_ANIMATION_FRAMES) {
@@ -309,7 +309,7 @@ sealed interface CParticleTextureSource {
      * @property uv 纹理内区域，默认整张纹理
      */
     data class Custom(
-        val textureLocation: ResourceLocation,
+        val textureLocation: Identifier,
         val uv: CParticleUv = CParticleUv.FULL,
     ) : CParticleTextureSource
 }
@@ -415,7 +415,7 @@ fun textureOfItem(
  */
 @JvmOverloads
 fun textureOf(
-    textureLocation: ResourceLocation,
+    textureLocation: Identifier,
     uv: CParticleUv = CParticleUv.FULL,
 ): CParticleTextureSource = CParticleTextureSource.Custom(textureLocation, uv)
 
@@ -430,8 +430,8 @@ fun textureOf(
  * @return atlas sprite 来源
  */
 fun textureOfAtlas(
-    atlasLocation: ResourceLocation,
-    spriteLocation: ResourceLocation,
+    atlasLocation: Identifier,
+    spriteLocation: Identifier,
 ): CParticleTextureSource = CParticleTextureSource.AtlasSprite(atlasLocation, spriteLocation)
 
 /**
@@ -445,8 +445,8 @@ fun textureOfAtlas(
  * @return atlas 动画来源
  */
 fun textureAnimationOfAtlas(
-    atlasLocation: ResourceLocation,
-    spriteLocations: List<ResourceLocation>,
+    atlasLocation: Identifier,
+    spriteLocations: List<Identifier>,
 ): CParticleTextureSource = CParticleTextureSource.AtlasAnimation(atlasLocation, spriteLocations.toList())
 
 /**
@@ -471,7 +471,7 @@ fun textureOfEffect(effect: ParticleOptions): CParticleTextureSource =
  * @param spriteLocation 粒子图集中的 sprite ID
  * @return 固定粒子 sprite 来源
  */
-fun textureOfParticleSprite(spriteLocation: ResourceLocation): CParticleTextureSource =
+fun textureOfParticleSprite(spriteLocation: Identifier): CParticleTextureSource =
     if (spriteLocation == CParticleSprites.DEFAULT) {
         CParticleTextureSource.ParticleEffect(ParticleTypes.END_ROD, animateByAge = false)
     } else {

@@ -8,7 +8,8 @@ class SimpleTextures : GlTextures {
     private data class TextureState(
         val activeChannel: Int,
         val activeTexture: Int,
-        val channelTextures: IntArray
+        val channelTextures: IntArray,
+        val channelSamplers: IntArray,
     )
 
     private val textureWithChannel = mutableListOf<GlTexture>()
@@ -68,22 +69,25 @@ class SimpleTextures : GlTextures {
         val activeChannel = glGetInteger(GL_ACTIVE_TEXTURE)
         val activeTexture = glGetInteger(GL_TEXTURE_BINDING_2D)
         val channelTextures = IntArray(textureWithChannel.size)
+        val channelSamplers = IntArray(textureWithChannel.size)
         try {
             channelTextures.indices.forEach { channelIndex ->
                 glActiveTexture(GL_TEXTURE0 + channelIndex)
                 channelTextures[channelIndex] = glGetInteger(GL_TEXTURE_BINDING_2D)
+                channelSamplers[channelIndex] = glGetIntegeri(GL_SAMPLER_BINDING, channelIndex)
             }
         } finally {
             glActiveTexture(activeChannel)
             glBindTexture(GL_TEXTURE_2D, activeTexture)
         }
 
-        val state = TextureState(activeChannel, activeTexture, channelTextures)
+        val state = TextureState(activeChannel, activeTexture, channelTextures, channelSamplers)
         states.addLast(state)
         try {
             textureWithChannel.forEachIndexed { channelIndex, texture ->
                 glActiveTexture(GL_TEXTURE0 + channelIndex)
                 glBindTexture(GL_TEXTURE_2D, texture.textureID())
+                if (texture is IdentifierTexture) glBindSampler(channelIndex, texture.samplerID)
             }
         } catch (error: Throwable) {
             states.removeLast()
@@ -128,6 +132,7 @@ class SimpleTextures : GlTextures {
         state.channelTextures.forEachIndexed { channelIndex, texture ->
             glActiveTexture(GL_TEXTURE0 + channelIndex)
             glBindTexture(GL_TEXTURE_2D, texture)
+            glBindSampler(channelIndex, state.channelSamplers[channelIndex])
         }
         glActiveTexture(state.activeChannel)
         glBindTexture(GL_TEXTURE_2D, state.activeTexture)

@@ -5,7 +5,7 @@ import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
 import cn.coostack.cooparticlesapi.annotations.CodecField
 import cn.coostack.cooparticlesapi.network.packet.api.CooPacket
 import net.minecraft.nbt.CompoundTag
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /** 服务端窗口、预览与编辑结果，只由客户端监听器消费。 */
 @CooAutoRegister
@@ -17,5 +17,5 @@ class ModelEditorPayload() : CooPacket() {
     /** 复制服务端响应。 */
     constructor(data: CompoundTag) : this() { this.data = data.copy() }
 
-    override fun id(): ResourceLocation = ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "structure_model_editor")
+    override fun id(): Identifier = Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "structure_model_editor")
 }

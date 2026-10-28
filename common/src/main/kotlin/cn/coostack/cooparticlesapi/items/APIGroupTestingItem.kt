@@ -5,7 +5,9 @@ import cn.coostack.cooparticlesapi.test.TestManager
 import net.minecraft.network.chat.Component
 import net.minecraft.world.item.TooltipFlag
 import net.minecraft.world.InteractionHand
-import net.minecraft.world.InteractionResultHolder
+import net.minecraft.world.InteractionResult
+import net.minecraft.world.item.component.TooltipDisplay
+import java.util.function.Consumer
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.Item
 import net.minecraft.world.item.ItemStack
@@ -20,30 +22,30 @@ class APIGroupTestingItem(settings: Properties) : Item(settings) {
     override fun appendHoverText(
         stack: ItemStack,
         context: TooltipContext,
-        tooltipComponents: MutableList<Component>,
+        display: TooltipDisplay,
+        tooltipComponents: Consumer<Component>,
         tooltipFlag: TooltipFlag
     ) {
-        tooltipComponents.add(
+        tooltipComponents.accept(
             Component.literal("用途: 启动并控制 APITestGroupBuilder 测试序列").withStyle(ChatFormatting.YELLOW)
         )
-        tooltipComponents.add(
+        tooltipComponents.accept(
             Component.literal("右键: 当前项通过并继续").withStyle(ChatFormatting.GRAY)
         )
-        tooltipComponents.add(
+        tooltipComponents.accept(
             Component.literal("潜行右键: 快进 +5").withStyle(ChatFormatting.GRAY)
         )
-        tooltipComponents.add(
+        tooltipComponents.accept(
             Component.literal("冲刺右键: 跳到最后").withStyle(ChatFormatting.GRAY)
         )
-        tooltipComponents.add(
+        tooltipComponents.accept(
             Component.literal("PageDown/PageUp: 前进或回退当前测试项").withStyle(ChatFormatting.DARK_GRAY)
         )
     }
 
-    override fun use(world: Level, user: Player, hand: InteractionHand): InteractionResultHolder<ItemStack> {
-        val stack = user.getItemInHand(hand)
+    override fun use(world: Level, user: Player, hand: InteractionHand): InteractionResult {
         if (world.isClientSide) {
-            return InteractionResultHolder.success(stack)
+            return InteractionResult.SUCCESS
         }
 
         val test = TestManager.getGamingTestFromServer(user)
@@ -63,6 +65,6 @@ class APIGroupTestingItem(settings: Properties) : Item(settings) {
             TestManager.completeCurrent(user)
         }
 
-        return InteractionResultHolder.success(stack)
+        return InteractionResult.SUCCESS
     }
 }

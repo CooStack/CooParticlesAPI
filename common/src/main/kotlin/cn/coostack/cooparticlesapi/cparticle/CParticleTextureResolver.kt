@@ -2,19 +2,26 @@ package cn.coostack.cooparticlesapi.cparticle
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.mixin.MutableSpriteSetAccessor
+import cn.coostack.cooparticlesapi.renderer.backend.glTextureId
+import cn.coostack.cooparticlesapi.renderer.backend.glSamplerId
+import net.minecraft.client.renderer.texture.AbstractTexture
 import cn.coostack.cooparticlesapi.mixin.ParticleEngineAccessor
-import cn.coostack.cooparticlesapi.mixin.events.world.client.ItemRendererInvoker
 import net.minecraft.client.Minecraft
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.client.particle.SpriteSet
+import net.minecraft.client.renderer.item.ItemStackRenderState
 import net.minecraft.client.renderer.texture.MissingTextureAtlasSprite
 import net.minecraft.client.renderer.texture.TextureAtlas
 import net.minecraft.client.renderer.texture.TextureAtlasSprite
 import net.minecraft.core.BlockPos
+import net.minecraft.core.component.DataComponents
 import net.minecraft.core.particles.ParticleTypes
 import net.minecraft.core.registries.BuiltInRegistries
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
+import net.minecraft.world.item.ItemDisplayContext
 import net.minecraft.world.item.ItemStack
+import net.minecraft.world.item.alchemy.PotionContents
+import net.minecraft.util.RandomSource
 import org.joml.Vector3f
 import java.util.concurrent.ConcurrentHashMap
 
@@ -22,21 +29,21 @@ import java.util.concurrent.ConcurrentHashMap
  * 客户端纹理来源解析器。
  *
  * 它只在 spawn、DYNAMIC 来源变化或资源重载时解析模型，不参与普通 age 推进。
- * Example: [CParticleSystem] 在写入 STATIC 槽位前调用 [resolve] 一次。
- * Forbidden: 服务端逻辑不能加载此对象。
+ * 示例： [CParticleSystem] 在写入 STATIC 槽位前调用 [resolve] 一次。
+ * 禁止： 服务端逻辑不能加载此对象。
  */
 object CParticleTextureResolver {
     private data class AtlasSpriteKey(
         val bindingKey: CParticleTextureBindingKey,
-        val sprite: ResourceLocation,
+        val sprite: Identifier,
     )
 
     private data class AtlasAnimationKey(
         val bindingKey: CParticleTextureBindingKey,
-        val sprites: List<ResourceLocation>,
+        val sprites: List<Identifier>,
     )
 
-    private data class EffectKey(val typeId: ResourceLocation, val animation: Boolean)
+    private data class EffectKey(val typeId: Identifier, val animation: Boolean)
 
     private data class BlockKey(val state: net.minecraft.world.level.block.state.BlockState)
 
@@ -46,8 +53,8 @@ object CParticleTextureResolver {
      * 按 ItemStack 内容和 model seed 复用的模型描述符键。
      *
      * 键只在共享 descriptor 表中保存一份 stack 快照，资源重载后可再次调用 ItemRenderer。
-     * Example: 十万份相同钻石 stack 只注册一个模型描述符。
-     * Forbidden: 不能用 ItemStack 引用相等，否则会把 descriptor 数量放大到粒子数量。
+     * 示例： 十万份相同钻石 stack 只注册一个模型描述符。
+     * 禁止： 不能用 ItemStack 引用相等，否则会把 descriptor 数量放大到粒子数量。
      *
      * @param sourceStack 创建纹理来源时保存的 stack 快照
      * @property modelSeed 传给 ItemRenderer 的模型随机种子
@@ -84,16 +91,16 @@ object CParticleTextureResolver {
         val sprite: TextureAtlasSprite,
     )
 
-    private val effectSetCache = ConcurrentHashMap<ResourceLocation, SpriteSet>()
-    private val customTextureAvailability = HashMap<ResourceLocation, Boolean>()
-    private val warnedMissingTextures = HashSet<ResourceLocation>()
-    private val warnedMissingAtlases = HashSet<ResourceLocation>()
+    private val effectSetCache = ConcurrentHashMap<Identifier, SpriteSet>()
+    private val customTextureAvailability = HashMap<Identifier, Boolean>()
+    private val warnedMissingTextures = HashSet<Identifier>()
+    private val warnedMissingAtlases = HashSet<Identifier>()
 
     /**
      * 当前解析缓存代数。
      *
-     * Example: DYNAMIC 槽位发现代数变化时会重新解析同一来源。
-     * Forbidden: 普通 tick 不应递增此值。
+     * 示例： DYNAMIC 槽位发现代数变化时会重新解析同一来源。
+     * 禁止： 普通 tick 不应递增此值。
      */
     @JvmStatic
     var generation: Int = 0
@@ -102,8 +109,8 @@ object CParticleTextureResolver {
     /**
      * 把纹理来源解析为 binding、descriptor、基础 UV 和颜色倍率。
      *
-     * Example: Item 来源会调用当前世界的 `ItemRenderer.getModel`。
-     * Forbidden: 返回值不能保存原 CParticle 或每粒子的 ItemStack。
+     * 示例： Item 来源会调用当前世界的 `ItemRenderer.getModel`。
+     * 禁止： 返回值不能保存原 CParticle 或每粒子的 ItemStack。
      *
      * @param source 不可变纹理来源
      * @param position 粒子世界坐标，用于 BlockColors
@@ -126,35 +133,50 @@ object CParticleTextureResolver {
     /**
      * 返回 binding 当前应绑定的 GL texture id。
      *
-     * Example: atlas key 通过 ModelManager 获取重载后的新纹理对象。
-     * Forbidden: 不要缓存跨资源重载的 GL id。
+     * 示例：atlas key 通过当前资源管理器获取重载后的新纹理对象。
+     * 禁止：不要缓存跨资源重载的 GL id。
      *
      * @param bindingKey 系统的基础或蒙版纹理绑定
-     * @return 可传给 `RenderSystem.bindTexture` 的 GL id
+     * @return 可绑定到 OpenGL 二维纹理单元的对象名
      */
     internal fun textureId(bindingKey: CParticleTextureBindingKey): Int {
+        return bindingTexture(bindingKey).texture.glTextureId
+    }
+
+    /**
+     * 取得与当前资源纹理匹配的原版 sampler，保留图集 mip 和过滤设置。
+     * 示例：`glBindSampler(0, CParticleTextureResolver.samplerId(binding))`。
+     * @param bindingKey 与纹理解析相同的基础或蒙版绑定
+     * @return 原版 sampler 的 GL 对象名，调用方不得删除
+     */
+    internal fun samplerId(bindingKey: CParticleTextureBindingKey): Int {
+        return bindingTexture(bindingKey).sampler.glSamplerId
+    }
+
+    /** 同时供纹理和 sampler 解析使用，避免重载后的资源身份不一致。 */
+    private fun bindingTexture(bindingKey: CParticleTextureBindingKey): AbstractTexture {
         val minecraft = Minecraft.getInstance()
         if (bindingKey == CParticleTextureBindingKey.MISSING) {
-            return MissingTextureAtlasSprite.getTexture().id
+            return minecraft.textureManager.getTexture(MissingTextureAtlasSprite.getLocation())
         }
         return when (bindingKey.kind) {
-            CParticleTextureBindingKind.ATLAS -> textureAtlas(bindingKey.location)?.id ?: run {
+            CParticleTextureBindingKind.ATLAS -> textureAtlas(bindingKey.location) ?: run {
                 if (warnedMissingAtlases.add(bindingKey.location)) {
                     CooParticlesConstants.logger.warn("Missing CParticle texture atlas {}", bindingKey.location)
                 }
-                MissingTextureAtlasSprite.getTexture().id
+                minecraft.textureManager.getTexture(MissingTextureAtlasSprite.getLocation())
             }
 
             CParticleTextureBindingKind.TEXTURE ->
-                minecraft.textureManager.getTexture(bindingKey.location).id
+                minecraft.textureManager.getTexture(bindingKey.location)
         }
     }
 
     /**
      * 返回与 binding 兼容的 missing UV。
      *
-     * Example: 已存在 atlas 中缺失的 sprite 使用该 atlas 的 missing sprite UV。
-     * Forbidden: atlas missing UV 不能和另一张 atlas 的绑定混用。
+     * 示例： 已存在 atlas 中缺失的 sprite 使用该 atlas 的 missing sprite UV。
+     * 禁止： atlas missing UV 不能和另一张 atlas 的绑定混用。
      *
      * @param bindingKey 目标纹理绑定
      * @return atlas missing sprite UV 或独立纹理完整 UV
@@ -169,8 +191,8 @@ object CParticleTextureResolver {
     /**
      * 清理模型、图集和 SpriteSet 缓存，并让描述符表重建。
      *
-     * Example: atlas stitch 完成后的 full reload 调用一次。
-     * Forbidden: 不要清空稳定 descriptor ID。
+     * 示例： atlas stitch 完成后的 full reload 调用一次。
+     * 禁止： 不要清空稳定 descriptor ID。
      */
     @JvmStatic
     @Synchronized
@@ -202,7 +224,7 @@ object CParticleTextureResolver {
             descriptorId,
             CParticleTextureDescriptors.firstFrame(descriptorId),
             animationId,
-            Vector3f(1f),
+            Vector3f(1F),
         )
     }
 
@@ -221,7 +243,7 @@ object CParticleTextureResolver {
             descriptorId,
             CParticleTextureDescriptors.firstFrame(descriptorId),
             null,
-            Vector3f(1f),
+            Vector3f(1F),
         )
     }
 
@@ -243,7 +265,7 @@ object CParticleTextureResolver {
             descriptorId,
             CParticleTextureDescriptors.firstFrame(descriptorId),
             animationId,
-            Vector3f(1f),
+            Vector3f(1F),
         )
     }
 
@@ -297,12 +319,11 @@ object CParticleTextureResolver {
             )
         }
         val color = if (source.applyTint) {
-            val renderer = Minecraft.getInstance().itemRenderer as ItemRendererInvoker
             CParticleBlockAppearanceResolver.colorMultiplier(
-                renderer.`cooparticlesapi$getItemColors`().getColor(stack, source.tintIndex)
+                itemTintColor(stack, source.tintIndex)
             )
         } else {
-            Vector3f(1f)
+            Vector3f(1F)
         }
         return CParticleResolvedTexture(
             binding,
@@ -332,30 +353,49 @@ object CParticleTextureResolver {
         val descriptorId = CParticleTextureDescriptors.register(CustomKey(binding, resolvedUv), binding) {
             listOf(resolvedUv)
         }
-        return CParticleResolvedTexture(binding, descriptorId, resolvedUv, null, Vector3f(1f))
+        return CParticleResolvedTexture(binding, descriptorId, resolvedUv, null, Vector3f(1F))
     }
 
     private fun resolveItemSprite(stack: ItemStack, modelSeed: Int): ItemSprite? {
         val minecraft = Minecraft.getInstance()
         if (stack.isEmpty) return null
-        val model = minecraft.itemRenderer.getModel(
+        val modelState = ItemStackRenderState()
+        minecraft.itemModelResolver.updateForTopItem(
+            modelState,
             stack,
+            ItemDisplayContext.NONE,
             minecraft.level,
             minecraft.player,
             modelSeed,
         )
-        if (model === minecraft.modelManager.missingModel) return null
-        val sprite = model.particleIcon
+        val material = modelState.pickParticleMaterial(RandomSource.create(modelSeed.toLong())) ?: return null
+        val sprite = material.sprite()
         return ItemSprite(
             CParticleTextureBindingKey(CParticleTextureBindingKind.ATLAS, sprite.atlasLocation()),
             sprite,
         )
     }
 
-    internal fun effectFrames(typeId: ResourceLocation): List<CParticleUv> {
+    private fun itemTintColor(stack: ItemStack, tintIndex: Int): Int {
+        val customColors = stack.get(DataComponents.CUSTOM_MODEL_DATA)?.colors()
+        if (customColors != null && tintIndex in customColors.indices) {
+            return customColors[tintIndex]
+        }
+        val dyedColor = stack.get(DataComponents.DYED_COLOR)
+        if (tintIndex == 0 && dyedColor != null) {
+            return dyedColor.rgb()
+        }
+        val potionContents = stack.get(DataComponents.POTION_CONTENTS)
+        if (tintIndex == 0 && potionContents != null) {
+            return potionContents.getColorOr(PotionContents.BASE_POTION_COLOR)
+        }
+        return 0xFFFFFF
+    }
+
+    internal fun effectFrames(typeId: Identifier): List<CParticleUv> {
         val set = effectSet(typeId) ?: return listOf(defaultEffectUv())
         val sprites = runCatching {
-            (set as MutableSpriteSetAccessor).`cooparticlesapi$getSprites`()
+            (set as MutableSpriteSetAccessor).particleSprites
         }.getOrNull()
         return sprites?.takeIf { it.isNotEmpty() }?.map(::uv) ?: listOf(defaultEffectUv())
     }
@@ -363,21 +403,21 @@ object CParticleTextureResolver {
     /**
      * 检查隐式 effect 是否有可用的 SpriteSet 帧。
      *
-     * Example: 已注册的 end rod effect 返回 `true`。
-     * Forbidden: 没有 SpriteSet 的 effect 不能继续注册 missing UV 描述符。
+     * 示例： 已注册的 end rod effect 返回 `true`。
+     * 禁止： 没有 SpriteSet 的 effect 不能继续注册 missing UV 描述符。
      *
      * @param typeId 粒子类型资源 ID
      * @return SpriteSet 存在且至少包含一帧时返回 `true`
      */
-    private fun hasEffectFrames(typeId: ResourceLocation): Boolean {
+    private fun hasEffectFrames(typeId: Identifier): Boolean {
         val set = effectSet(typeId) ?: return false
         val sprites = runCatching {
-            (set as MutableSpriteSetAccessor).`cooparticlesapi$getSprites`()
+            (set as MutableSpriteSetAccessor).particleSprites
         }.getOrNull()
         return !sprites.isNullOrEmpty()
     }
 
-    private fun effectSet(typeId: ResourceLocation): SpriteSet? {
+    private fun effectSet(typeId: Identifier): SpriteSet? {
         effectSetCache[typeId]?.let { return it }
         val engine = Minecraft.getInstance().particleEngine as? ParticleEngineAccessor ?: return null
         val loaded = engine.spriteSets[typeId] ?: return null
@@ -392,20 +432,20 @@ object CParticleTextureResolver {
             ?: atlasUv(CParticleTextureBindingKey.PARTICLE_ATLAS.location, MissingTextureAtlasSprite.getLocation())
     }
 
-    private fun atlasUv(atlas: ResourceLocation, sprite: ResourceLocation): CParticleUv {
+    private fun atlasUv(atlas: Identifier, sprite: Identifier): CParticleUv {
         return atlasSprite(atlas, sprite)?.let(::uv)
             ?: CParticleUv.FULL
     }
 
-    private fun atlasSprite(atlas: ResourceLocation, sprite: ResourceLocation): TextureAtlasSprite? {
+    private fun atlasSprite(atlas: Identifier, sprite: Identifier): TextureAtlasSprite? {
         return textureAtlas(atlas)?.getSprite(sprite)
     }
 
-    private fun textureAtlas(atlas: ResourceLocation): TextureAtlas? {
+    private fun textureAtlas(atlas: Identifier): TextureAtlas? {
         val minecraft = Minecraft.getInstance()
         val stitched = minecraft.textureManager.getTexture(atlas) as? TextureAtlas
         if (stitched != null) return stitched
-        return runCatching { minecraft.modelManager.getAtlas(atlas) }.getOrNull()
+        return runCatching { minecraft.atlasManager.getAtlasOrThrow(atlas) }.getOrNull()
     }
 
     private fun uv(sprite: TextureAtlasSprite): CParticleUv =
@@ -416,6 +456,6 @@ object CParticleTextureResolver {
         val descriptorId = CParticleTextureDescriptors.register(CustomKey(binding, CParticleUv.FULL), binding) {
             listOf(CParticleUv.FULL)
         }
-        return CParticleResolvedTexture(binding, descriptorId, CParticleUv.FULL, null, Vector3f(1f))
+        return CParticleResolvedTexture(binding, descriptorId, CParticleUv.FULL, null, Vector3f(1F))
     }
 }

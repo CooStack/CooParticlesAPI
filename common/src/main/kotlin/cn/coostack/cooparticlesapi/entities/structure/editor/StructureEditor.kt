@@ -23,12 +23,13 @@ import net.minecraft.world.item.Item
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.core.Registry
+import net.minecraft.core.UUIDUtil
 import net.minecraft.core.registries.Registries
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate
 import net.minecraft.network.chat.Component
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.phys.HitResult
 import net.minecraft.core.BlockPos
 import net.minecraft.world.phys.Vec3
@@ -42,7 +43,7 @@ object StructureEditor {
     const val SELECTION_REACH = 3.0
     /** 独立于结构模型编辑器的选点工具，注册及所有输入入口共享实例。 */
     private val itemEntry = CooParticlesServices.COO_REGISTRY.register(CommonDeferredRegistry(
-        BuiltInRegistries.ITEM, ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "structure_editor")
+        BuiltInRegistries.ITEM, Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "structure_editor")
     ) { Item(Item.Properties().stacksTo(1)) })
     /** 平台延迟注册后的选点工具实例。 */
     val ITEM: Item get() = itemEntry.get()
@@ -75,7 +76,7 @@ object StructureEditor {
     @EventHandler
     fun tick(event: ServerPostTickEvent) {
         event.server.playerList.players.forEach { player ->
-            if (sessions[player.uuid]?.dimension?.let { it != player.level().dimension().location() } == true) clear(player)
+            if (sessions[player.uuid]?.dimension?.let { it != player.level().dimension().identifier() } == true) clear(player)
         }
     }
 
@@ -90,41 +91,43 @@ object StructureEditor {
 
     /** 只接受操作意图；坐标由服务器射线决定，保存必须携带当前选区版本。 */
     private fun receive(player: ServerPlayer, data: CompoundTag) {
+        val revision = data.read("Revision", UUIDUtil.CODEC).orElse(null)
         if (!isHolding(player) || !player.isAlive || player.isSpectator) {
-            if (data.hasUUID("Revision")) send(player, CompoundTag().apply {
+            if (revision != null) send(player, CompoundTag().apply {
                 putString("Action", "result")
-                putUUID("Revision", data.getUUID("Revision"))
+                store("Revision", UUIDUtil.CODEC, revision)
                 putString("Message", "请保持存活并手持结构编辑器")
             })
             return
         }
-        val action = data.getString("Action")
+        val action = data.getStringOr("Action", "")
         if (action == "clear") { clear(player); return }
-        val state = sessions.getOrPut(player.uuid) { StructureEditorSession(player.level().dimension().location()) }
-        if (state.dimension != player.level().dimension().location()) { clear(player); return }
+        val state = sessions.getOrPut(player.uuid) { StructureEditorSession(player.level().dimension().identifier()) }
+        if (state.dimension != player.level().dimension().identifier()) { clear(player); return }
         val result = runCatching {
             when (action) {
                 "first", "second" -> select(player, state, action == "first", data)
                 "open" -> {
                     requireNotNull(state.selection) { "请先确定两个角点" }
-                    require((player.isCreative && player.hasPermissions(2))) { "与原版结构方块一致，保存需要创造模式和管理员权限" }
+                    require(player.canUseGameMasterBlocks()) { "与原版结构方块一致，保存需要创造模式和管理员权限" }
                     send(player, state.packet("open"))
                 }
                 "save", "draft" -> {
-                    require(data.hasUUID("Revision") && data.getUUID("Revision") == state.revision) { "选区已改变，请重新按 G 打开" }
-                    require((player.isCreative && player.hasPermissions(2))) { "保存需要创造模式和管理员权限" }
+                    require(revision != null && revision == state.revision) { "选区已改变，请重新按 G 打开" }
+                    require(player.canUseGameMasterBlocks()) { "保存需要创造模式和管理员权限" }
                     if (action == "save") {
-                        require(!player.cooldowns.isOnCooldown(ITEM)) { "请稍后重试" }
-                        player.cooldowns.addCooldown(ITEM, 10)
+                        val heldTool = if (player.mainHandItem.`is`(ITEM)) player.mainHandItem else player.offhandItem
+                        require(!player.cooldowns.isOnCooldown(heldTool)) { "请稍后重试" }
+                        player.cooldowns.addCooldown(heldTool, 10)
                     }
-                    save(player, state, data.getCompound("Draft"), action == "save")
+                    save(player, state, data.getCompoundOrEmpty("Draft"), action == "save")
                     send(player, state.packet("state"))
                     send(player, CompoundTag().apply {
                         putString("Action", "result")
-                        putUUID("Revision", data.getUUID("Revision"))
+                        store("Revision", UUIDUtil.CODEC, revision)
                         putBoolean("Success", true)
                         putString("Message", if (action == "draft") "选区设置已保留"
-                            else if (state.draft.getBoolean("Convert")) "结构已保存并原位转换" else "结构已保存")
+                            else if (state.draft.getBooleanOr("Convert", false)) "结构已保存并原位转换" else "结构已保存")
                     })
                 }
             }
@@ -132,34 +135,34 @@ object StructureEditor {
         result.onFailure {
             val response = CompoundTag()
             response.putString("Action", "result")
-            if (data.hasUUID("Revision")) response.putUUID("Revision", data.getUUID("Revision"))
+            if (revision != null) response.store("Revision", UUIDUtil.CODEC, revision)
             response.putString("Message", it.message ?: "结构操作失败")
             send(player, response)
-            player.displayClientMessage(Component.literal(it.message ?: "结构操作失败"), true)
+            player.sendOverlayMessage(Component.literal(it.message ?: "结构操作失败"))
         }
     }
 
     /** 左右键均优先选择命中方块；未命中时取眼睛沿视线三格处，负坐标使用向下取整。 */
     private fun select(player: ServerPlayer, state: StructureEditorSession, first: Boolean, input: CompoundTag) {
-        val yaw = input.getFloat("Yaw")
-        val pitch = input.getFloat("Pitch")
+        val yaw = input.getFloatOr("Yaw", 0F)
+        val pitch = input.getFloatOr("Pitch", 0F)
         require(yaw.isFinite() && pitch.isFinite() && pitch in -90F..90F) { "视线参数无效" }
         // 客户端只提供当次点击的朝向，服务器用自身眼睛位置重新射线，避免旋转包晚于点击包导致错选。
         val end = player.eyePosition.add(Vec3.directionFromRotation(pitch, yaw).scale(SELECTION_REACH))
-        val hit = player.serverLevel().clip(ClipContext(player.eyePosition, end,
+        val hit = player.level().clip(ClipContext(player.eyePosition, end,
             ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, player))
         val pos = if (hit.type == HitResult.Type.BLOCK) hit.blockPos
             else BlockPos.containing(end)
-        require(player.serverLevel().isInWorldBounds(pos) && player.serverLevel().worldBorder.isWithinBounds(pos)) { "选点超出世界范围" }
+        require(player.level().isInWorldBounds(pos) && player.level().worldBorder.isWithinBounds(pos)) { "选点超出世界范围" }
         if (first) state.first = pos.immutable() else state.second = pos.immutable()
         state.revision = UUID.randomUUID()
         // 修改任一点后，旧尺寸和偏移不应暗中扩大新选区；保留名称与显示偏好。
         val previous = state.draft
         state.draft = CompoundTag().apply {
-            putString("Name", previous.getString("Name"))
-            putBoolean("IncludeEntities", previous.getBoolean("IncludeEntities"))
-            putBoolean("ShowAir", previous.getBoolean("ShowAir"))
-            putBoolean("ShowBox", !previous.contains("ShowBox") || previous.getBoolean("ShowBox"))
+            putString("Name", previous.getStringOr("Name", ""))
+            putBoolean("IncludeEntities", previous.getBooleanOr("IncludeEntities", false))
+            putBoolean("ShowAir", previous.getBooleanOr("ShowAir", false))
+            putBoolean("ShowBox", previous.getBooleanOr("ShowBox", true))
         }
         send(player, state.packet("state"))
     }
@@ -167,30 +170,30 @@ object StructureEditor {
     /** 清理固定点并同步空状态；不修改玩家已经保存的模板或生成的模型。 */
     private fun clear(player: ServerPlayer) {
         sessions.remove(player.uuid)
-        send(player, StructureEditorSession(player.level().dimension().location()).packet("state"))
+        send(player, StructureEditorSession(player.level().dimension().identifier()).packet("state"))
     }
 
     /** 校验原版保存参数，生成模板后先落盘；只有明确选择转换才修改世界。 */
     private fun save(player: ServerPlayer, state: StructureEditorSession, input: CompoundTag, write: Boolean) {
         val original = requireNotNull(state.selection) { "请先确定两个角点" }
-        val offset = BlockPos(input.getInt("OffsetX"), input.getInt("OffsetY"), input.getInt("OffsetZ"))
-        val size = BlockPos(input.getInt("SizeX"), input.getInt("SizeY"), input.getInt("SizeZ"))
+        val offset = BlockPos(input.getIntOr("OffsetX", 0), input.getIntOr("OffsetY", 0), input.getIntOr("OffsetZ", 0))
+        val size = BlockPos(input.getIntOr("SizeX", 0), input.getIntOr("SizeY", 0), input.getIntOr("SizeZ", 0))
         val selected = original.adjusted(offset, size)
-        val nameText = input.getString("Name").trim()
+        val nameText = input.getStringOr("Name", "").trim()
         require(nameText.length <= 256) { "结构名称过长" }
         val draft = CompoundTag().apply {
             putString("Name", nameText)
             putInt("OffsetX", offset.x); putInt("OffsetY", offset.y); putInt("OffsetZ", offset.z)
             putInt("SizeX", size.x); putInt("SizeY", size.y); putInt("SizeZ", size.z)
-            putBoolean("IncludeEntities", input.getBoolean("IncludeEntities"))
-            putBoolean("ShowAir", input.getBoolean("ShowAir"))
-            putBoolean("ShowBox", input.getBoolean("ShowBox"))
-            putBoolean("Convert", input.getBoolean("Convert"))
+            putBoolean("IncludeEntities", input.getBooleanOr("IncludeEntities", false))
+            putBoolean("ShowAir", input.getBooleanOr("ShowAir", false))
+            putBoolean("ShowBox", input.getBooleanOr("ShowBox", false))
+            putBoolean("Convert", input.getBooleanOr("Convert", false))
         }
         if (!write) { state.draft = draft; return }
-        val name = requireNotNull(ResourceLocation.tryParse(nameText)) { "请输入有效的结构 ID" }
+        val name = requireNotNull(Identifier.tryParse(nameText)) { "请输入有效的结构 ID" }
         require(name.path.split('/').none { it.isEmpty() || it == "." || it == ".." }) { "结构路径无效" }
-        val world = player.serverLevel()
+        val world = player.level()
         require(selected.box.distanceToSqr(player.position()) <= 96.0 * 96.0) { "距离选区过远" }
         require(world.isInWorldBounds(selected.origin) && world.isInWorldBounds(selected.second)) { "选区超出建筑高度" }
         for (pos in BlockPos.betweenClosed(selected.origin, selected.second)) {
@@ -198,11 +201,11 @@ object StructureEditor {
             require(world.worldBorder.isWithinBounds(pos) && world.mayInteract(player, pos)) { "选区包含不可修改的位置" }
         }
         val template = StructureTemplate()
-        template.fillFromWorld(world, selected.origin, selected.size, draft.getBoolean("IncludeEntities"), Blocks.STRUCTURE_VOID)
+        template.fillFromWorld(world, selected.origin, selected.size, draft.getBooleanOr("IncludeEntities", false), listOf(Blocks.STRUCTURE_VOID))
         template.author = player.gameProfile.name
         // 转换限制先检查，纯保存仍完全使用原版模板能力，不受实体的 8192 方块限制。
-        val model = if (draft.getBoolean("Convert")) StructureSnapshot.fromTemplate(world.registryAccess(), template) else null
-        val manager = world.structureManager
+        val model = if (draft.getBooleanOr("Convert", false)) StructureSnapshot.fromTemplate(world.registryAccess(), template) else null
+        val manager = world.structureTemplateManager
         val cached = manager.getOrCreate(name)
         val previous = cached.save(CompoundTag())
         cached.load(world.registryAccess().lookupOrThrow(Registries.BLOCK), template.save(CompoundTag()))
@@ -218,7 +221,7 @@ object StructureEditor {
     }
 
     /** 按原始最小角生成模型；清除失败时恢复方块实体及库存，不产生重复掉落。 */
-    private fun convert(world: ServerLevel, selected: StructureSelection, name: ResourceLocation, snapshot: StructureSnapshot) {
+    private fun convert(world: ServerLevel, selected: StructureSelection, name: Identifier, snapshot: StructureSnapshot) {
         val backups = BlockPos.betweenClosed(selected.origin, selected.second).map { mutable ->
             val pos = mutable.immutable()
             SelectionBlockBackup(pos, world.getBlockState(pos), world.getBlockEntity(pos)?.saveWithFullMetadata(world.registryAccess()))
@@ -262,7 +265,7 @@ object StructureEditor {
         }
         // 整批清空后补回原版的逻辑与形状通知；仅 neighborUpdate 不会刷新边界栅栏的连接状态。
         for (backup in backups) runCatching {
-            world.updateNeighborsAt(backup.pos, backup.state.block)
+            world.updateNeighborsAt(backup.pos, backup.state.block, null)
             backup.state.updateIndirectNeighbourShapes(world, backup.pos, Block.UPDATE_CLIENTS)
             val current = world.getBlockState(backup.pos)
             current.updateNeighbourShapes(world, backup.pos, Block.UPDATE_CLIENTS)

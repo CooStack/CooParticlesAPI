@@ -4,7 +4,7 @@ import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
 import cn.coostack.cooparticlesapi.annotations.CodecField
 import cn.coostack.cooparticlesapi.renderer.AutoRenderEntity
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector4f
@@ -44,10 +44,10 @@ class DemoTrailOrbRenderEntity() : AutoRenderEntity(null, Vec3.ZERO), DemoWorldR
         if (durationTicks in 1..age) remove()
     }
 
-    override fun getRenderID(): ResourceLocation = ID
+    override fun getRenderID(): Identifier = ID
 
     companion object {
-        val ID: ResourceLocation = ResourceLocation.fromNamespaceAndPath(
+        val ID: Identifier = Identifier.fromNamespaceAndPath(
             CooParticlesConstants.MOD_ID,
             "demo_trail_orb_render_entity"
         )

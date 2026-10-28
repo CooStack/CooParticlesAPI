@@ -4,13 +4,16 @@ import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.ContainerHelper
+import net.minecraft.world.Containers
 import net.minecraft.world.SimpleContainer
 import net.minecraft.world.item.ItemStack
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.core.HolderLookup
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.core.NonNullList
 import net.minecraft.core.BlockPos
+import net.minecraft.world.level.storage.ValueInput
+import net.minecraft.world.level.storage.ValueOutput
 
 /** 保存模型方块的配置、独立结构快照和转入库存，不在保存时生成模型实体。 */
 class ModelBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(StructureModels.BLOCK_ENTITY, pos, state) {
@@ -31,7 +34,7 @@ class ModelBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(Structure
     private var draftStructure: CompoundTag? = null
     /** 仅用于判断是否可以接收物品，未验证的草稿名称不能作为注册标识使用。 */
     val hasSelectedStructure: Boolean
-        get() = structureName.isNotEmpty() || editorDraft?.getString("Name")?.isNotBlank() == true
+        get() = structureName.isNotEmpty() || editorDraft?.getStringOr("Name", "")?.isNotBlank() == true
     /** 库存始终由方块独占；转换前转交实体，破坏时散落，均不得复制。 */
     val drops = object : SimpleContainer(27) {
         override fun setChanged() {
@@ -43,7 +46,7 @@ class ModelBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(Structure
             val currentWorld = level ?: return false
             return !isRemoved && currentWorld.getBlockEntity(pos) === this@ModelBlockEntity &&
                 player.isAlive && !player.isSpectator && player.abilities.mayBuild &&
-                player.canInteractWithBlock(pos, 1.0) && currentWorld.mayInteract(player, pos)
+                player.isWithinBlockInteractionRange(pos, 1.0) && currentWorld.mayInteract(player, pos)
         }
     }
 
@@ -66,14 +69,14 @@ class ModelBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(Structure
     /** 按请求名称读取服务端保存的快照，不信任草稿提交的任何结构内容。 */
     fun snapshotFor(name: String, registries: HolderLookup.Provider): StructureSnapshot? {
         if (structureName == name) return snapshot(registries)
-        val draftName = editorDraft?.getString("Name")?.trim()?.let { ResourceLocation.tryParse(it) }
+        val draftName = editorDraft?.getStringOr("Name", "")?.trim()?.let { Identifier.tryParse(it) }
         return if (draftName?.toString() == name) draftStructure?.let { StructureSnapshot(registries, it.copy()) } else null
     }
 
     /** 保存已验证的配置，不改变已有库存；空名称只允许空快照。 */
     fun configure(name: String, snapshot: StructureSnapshot?, options: StructureModelSettings) {
         require(options.valid())
-        require((name.isEmpty() && snapshot == null) || (ResourceLocation.tryParse(name) != null && snapshot != null))
+        require((name.isEmpty() && snapshot == null) || (Identifier.tryParse(name) != null && snapshot != null))
         require(snapshot == null || snapshot.tag.sizeInBytes() <= 1048576L)
         val health = if (structureName.isEmpty()) options.health else storedHealth.coerceAtMost(options.health)
         structureName = name
@@ -99,33 +102,46 @@ class ModelBlockEntity(pos: BlockPos, state: BlockState) : BlockEntity(Structure
         setChanged()
     }
 
+    /** 方块移除前结算真实库存；转换流程已转走并清空的库存不会重复掉落。 */
+    override fun preRemoveSideEffects(pos: BlockPos, state: BlockState) {
+        super.preRemoveSideEffects(pos, state)
+        val world = level ?: return
+        if (world.isClientSide) return
+        Containers.dropContents(world, pos, drops)
+        drops.clearContent()
+    }
+
     /** 持久化真实库存和结构快照，重进世界后不依赖模板文件仍然存在。 */
-    override fun saveAdditional(nbt: CompoundTag, registryLookup: HolderLookup.Provider) {
-        super.saveAdditional(nbt, registryLookup)
-        nbt.putString("Name", structureName)
-        nbt.put("Settings", settings.toNbt())
-        nbt.putFloat("Health", storedHealth)
-        structure?.let { nbt.put("Structure", it.copy()) }
-        editorDraft?.let { nbt.put("EditorDraft", it.copy()) }
-        draftStructure?.let { nbt.put("DraftStructure", it.copy()) }
+    override fun saveAdditional(output: ValueOutput) {
+        super.saveAdditional(output)
+        output.putString("Name", structureName)
+        output.store("Settings", CompoundTag.CODEC, settings.toNbt())
+        output.putFloat("Health", storedHealth)
+        structure?.let { output.store("Structure", CompoundTag.CODEC, it.copy()) }
+        editorDraft?.let { output.store("EditorDraft", CompoundTag.CODEC, it.copy()) }
+        draftStructure?.let { output.store("DraftStructure", CompoundTag.CODEC, it.copy()) }
         val stacks = NonNullList.withSize(27, ItemStack.EMPTY)
         repeat(27) { stacks[it] = drops.getItem(it) }
-        ContainerHelper.saveAllItems(nbt, stacks, registryLookup)
+        ContainerHelper.saveAllItems(output, stacks)
     }
 
     /** 空旧方块采用默认设置；有快照的存档必须通过与编辑相同的结构校验。 */
-    override fun loadAdditional(nbt: CompoundTag, registryLookup: HolderLookup.Provider) {
-        super.loadAdditional(nbt, registryLookup)
-        val options = if (nbt.contains("Settings")) StructureModelSettings.fromNbt(nbt.getCompound("Settings")) else StructureModelSettings()
-        val name = nbt.getString("Name")
-        val snapshot = if (name.isNotEmpty()) StructureSnapshot(registryLookup, nbt.getCompound("Structure").copy()) else null
+    override fun loadAdditional(input: ValueInput) {
+        super.loadAdditional(input)
+        val options = input.read("Settings", CompoundTag.CODEC).map(StructureModelSettings::fromNbt).orElseGet(::StructureModelSettings)
+        val name = input.getStringOr("Name", "")
+        val snapshot = if (name.isNotEmpty()) {
+            StructureSnapshot(input.lookup(), input.read("Structure", CompoundTag.CODEC).orElseThrow {
+                IllegalArgumentException("模型结构数据缺失")
+            }.copy())
+        } else null
         configure(name, snapshot, options)
-        storedHealth = if (nbt.contains("Health")) nbt.getFloat("Health") else options.health
+        storedHealth = input.getFloatOr("Health", options.health)
         require(storedHealth.isFinite() && storedHealth > 0F && storedHealth <= options.health)
         val stacks = NonNullList.withSize(27, ItemStack.EMPTY)
-        ContainerHelper.loadAllItems(nbt, stacks, registryLookup)
+        ContainerHelper.loadAllItems(input, stacks)
         repeat(27) { drops.setItem(it, stacks[it]) }
-        editorDraft = if (nbt.contains("EditorDraft")) nbt.getCompound("EditorDraft").copy() else null
-        draftStructure = if (nbt.contains("DraftStructure")) nbt.getCompound("DraftStructure").copy() else null
+        editorDraft = input.read("EditorDraft", CompoundTag.CODEC).orElse(null)?.copy()
+        draftStructure = input.read("DraftStructure", CompoundTag.CODEC).orElse(null)?.copy()
     }
 }

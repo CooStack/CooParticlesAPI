@@ -10,12 +10,17 @@ import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameContext
 import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameStage
 import cn.coostack.cooparticlesapi.renderer.backend.RenderSceneTargets
 import cn.coostack.cooparticlesapi.renderer.backend.VanillaSafeRenderBackend
+import cn.coostack.cooparticlesapi.renderer.backend.colorTextureId
+import cn.coostack.cooparticlesapi.renderer.backend.depthTextureId
+import cn.coostack.cooparticlesapi.renderer.backend.frameBufferId
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelineRuntimeEffect
 import cn.coostack.cooparticlesapi.renderer.post.PostEffectFrameExecutor
 import com.mojang.blaze3d.pipeline.RenderTarget
+import com.mojang.blaze3d.systems.RenderSystem
 import net.minecraft.client.Minecraft
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import org.joml.Matrix4f
+import cn.coostack.cooparticlesapi.renderer.backend.DepthProjectionContext
 
 object ClientRenderPipelineManager {
     val minecraft: Minecraft get() = Minecraft.getInstance()
@@ -337,7 +342,17 @@ object ClientRenderPipelineManager {
             resolvedTargetLabel = resolvedTargets.targetLabel,
             boundFramebufferId = resolvedTargets.boundFramebufferId,
             targetWidth = irisFinal?.finalColorWidth() ?: resolvedTargets.width,
-            targetHeight = irisFinal?.finalColorHeight() ?: resolvedTargets.height
+            targetHeight = irisFinal?.finalColorHeight() ?: resolvedTargets.height,
+            depthProjection = if (irisShaderPackFrameActive) {
+                CooIrisRenderState.depthProjection()
+            } else {
+                runCatching {
+                    DepthProjectionContext.native(
+                        viewMatrix, projMatrix,
+                        RenderSystem.getDevice().deviceInfo.isZZeroToOne,
+                    )
+                }.getOrNull()
+            },
         )
     }
 
@@ -351,11 +366,11 @@ object ClientRenderPipelineManager {
     fun currentSceneColorTextureId(): Int {
         val context = currentFrameContext
         if (context == null) {
-            return minecraft.mainRenderTarget.colorTextureId
+            return minecraft.gameRenderer.mainRenderTarget().colorTextureId
         }
         return context.sceneColorTextureId
             ?: context.sceneResources.get(RenderSceneTargets.SCENE_COLOR)?.colorTextureId
-            ?: minecraft.mainRenderTarget.colorTextureId
+            ?: minecraft.gameRenderer.mainRenderTarget().colorTextureId
     }
 
     /**
@@ -368,11 +383,11 @@ object ClientRenderPipelineManager {
     fun currentSceneDepthTextureId(): Int {
         val context = currentFrameContext
         if (context == null) {
-            return minecraft.mainRenderTarget.depthTextureId
+            return minecraft.gameRenderer.mainRenderTarget().depthTextureId
         }
         return context.sceneDepthTextureId
             ?: context.sceneResources.get(RenderSceneTargets.SCENE_DEPTH)?.depthTextureId
-            ?: minecraft.mainRenderTarget.depthTextureId
+            ?: minecraft.gameRenderer.mainRenderTarget().depthTextureId
     }
 
     /**
@@ -386,7 +401,7 @@ object ClientRenderPipelineManager {
      *
      * @return 匹配当前条件的对象或状态；可空返回值表示没有可用结果
      */
-    internal fun currentSceneResourceTextureId(id: ResourceLocation, attachment: Int = 0): Int? {
+    internal fun currentSceneResourceTextureId(id: Identifier, attachment: Int = 0): Int? {
         return currentFrameContext?.sceneResources?.get(id)?.colorTextureId(attachment)
     }
 
@@ -400,11 +415,11 @@ object ClientRenderPipelineManager {
     fun currentFinalCompositeTarget(): RenderTarget {
         val context = currentFrameContext
         if (context == null) {
-            return minecraft.mainRenderTarget
+            return minecraft.gameRenderer.mainRenderTarget()
         }
         return context.sceneResources.get(RenderSceneTargets.POST)?.target
             ?: context.finalCompositeTarget
-            ?: minecraft.mainRenderTarget
+            ?: minecraft.gameRenderer.mainRenderTarget()
     }
 
     /**
@@ -426,7 +441,7 @@ object ClientRenderPipelineManager {
      * @return 匹配当前条件的对象或状态；可空返回值表示没有可用结果
      */
     fun currentRenderWidth(): Int {
-        return currentFrameContext?.targetWidth ?: minecraft.mainRenderTarget.width
+        return currentFrameContext?.targetWidth ?: minecraft.gameRenderer.mainRenderTarget().width
     }
 
     /**
@@ -437,7 +452,7 @@ object ClientRenderPipelineManager {
      * @return 匹配当前条件的对象或状态；可空返回值表示没有可用结果
      */
     fun currentRenderHeight(): Int {
-        return currentFrameContext?.targetHeight ?: minecraft.mainRenderTarget.height
+        return currentFrameContext?.targetHeight ?: minecraft.gameRenderer.mainRenderTarget().height
     }
 
     private fun logResolvedTargets(targets: ResolvedRenderTargets) {

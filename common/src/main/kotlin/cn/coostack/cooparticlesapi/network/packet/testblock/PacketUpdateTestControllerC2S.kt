@@ -10,7 +10,7 @@ import cn.coostack.cooparticlesapi.test.api.TestOptionParamCodec
 import cn.coostack.cooparticlesapi.test.block.BlockTestAnimationTrackCodec
 import cn.coostack.cooparticlesapi.test.block.BlockTestMode
 import net.minecraft.core.BlockPos
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.phys.Vec3
 
 @CooAutoRegister
@@ -39,14 +39,14 @@ class PacketUpdateTestControllerC2S() : CooPacket() {
     @CodecField var reopen: Boolean = false
     @CodecField var selectedIndex: Int = 0
 
-    override fun id(): ResourceLocation {
-        return ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "update_test_controller_c2s")
+    override fun id(): Identifier {
+        return Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "update_test_controller_c2s")
     }
 
     override fun onServerReceive(context: ServerContext) {
         val sender = context.sender
         if (!sender.isCreative) return
-        val blockEntity = TestControllerBlockAccess.find(sender.server, dimension, blockPos) ?: return
+        val blockEntity = TestControllerBlockAccess.find(sender.level().server, dimension, blockPos) ?: return
         val wasRunning = blockEntity.isRunning()
         // 待人工复核时重启会丢弃尚未给出的复核结果，交由随后的复核包决定测试组去向。
         val pendingReview = blockEntity.hasPendingReview()

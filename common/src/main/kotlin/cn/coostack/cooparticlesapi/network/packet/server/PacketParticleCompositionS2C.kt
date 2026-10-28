@@ -4,7 +4,7 @@ import cn.coostack.cooparticlesapi.CooParticlesConstants
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import java.util.UUID
 
 
@@ -18,7 +18,7 @@ class PacketParticleCompositionS2C(val uuid: UUID, val type: String, val data: B
 
     companion object {
         private val identifierID =
-            ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "particle_composition")
+            Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "particle_composition")
         val payloadID = CustomPacketPayload.Type<PacketParticleCompositionS2C>(identifierID)
         val CODEC: StreamCodec<FriendlyByteBuf, PacketParticleCompositionS2C> =
             CustomPacketPayload.codec({ packet, buf ->

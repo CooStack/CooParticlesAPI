@@ -8,7 +8,7 @@ import cn.coostack.cooparticlesapi.cparticle.path.CParticlePathPoint
 import cn.coostack.cooparticlesapi.cparticle.path.CParticlePathSegmentType
 import cn.coostack.cooparticlesapi.cparticle.path.CParticlePathSlot
 import cn.coostack.cooparticlesapi.renderer.AutoRenderEntity
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
 
@@ -53,7 +53,7 @@ class DemoPathLayerRenderEntity() : AutoRenderEntity(null, Vec3.ZERO) {
     var pathLayerRevision: Int = -1
         private set
 
-    override fun getRenderID(): ResourceLocation = ID
+    override fun getRenderID(): Identifier = ID
 
     /**
      * 建立一条空间贝塞尔路径。
@@ -134,7 +134,7 @@ class DemoPathLayerRenderEntity() : AutoRenderEntity(null, Vec3.ZERO) {
     }
 
     companion object {
-        val ID: ResourceLocation = ResourceLocation.fromNamespaceAndPath(
+        val ID: Identifier = Identifier.fromNamespaceAndPath(
             CooParticlesConstants.MOD_ID,
             "demo_path_layer_render_entity",
         )

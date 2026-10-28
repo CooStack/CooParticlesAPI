@@ -48,33 +48,47 @@ class StructureSnapshot(registries: HolderLookup.Provider, source: CompoundTag) 
     internal val outline: List<AABB>
 
     init {
-        val dimensions = storedTag.getList("size", 3)
+        val dimensions = storedTag.getList("size").orElseThrow { IllegalArgumentException("结构尺寸无效") }
         require(dimensions.size == 3) { "结构尺寸无效" }
-        size = BlockPos(dimensions.getInt(0), dimensions.getInt(1), dimensions.getInt(2))
+        size = BlockPos(dimensions.getIntOr(0, 0), dimensions.getIntOr(1, 0), dimensions.getIntOr(2, 0))
         require(listOf(size.x, size.y, size.z).all { it in 1..48 }) { "结构每轴尺寸须为 1 到 48 格" }
-        val palettes = storedTag.getList("palettes", 9)
-        val palette = if (palettes.isEmpty()) storedTag.getList("palette", 10) else palettes.getList(0)
+        val palettes = storedTag.getList("palettes").orElseGet(::ListTag)
+        val palette = if (palettes.isEmpty()) {
+            storedTag.getList("palette").orElseThrow { IllegalArgumentException("结构调色板无效") }
+        } else {
+            palettes.getList(0).orElseThrow { IllegalArgumentException("结构调色板无效") }
+        }
         val lookup = registries.lookupOrThrow(Registries.BLOCK)
-        val decoded = (0 until palette.size).map { NbtUtils.readBlockState(lookup, palette.getCompound(it)) }
-        val blocks = storedTag.getList("blocks", 10)
+        val decoded = (0 until palette.size).map {
+            NbtUtils.readBlockState(
+                lookup,
+                palette.getCompound(it)
+                    .orElseThrow { IllegalArgumentException("结构调色板无效") },
+            )
+        }
+        val blocks = storedTag.getList("blocks")
+            .orElseThrow { IllegalArgumentException("结构方块列表无效") }
         require(blocks.size <= 110592) { "结构数据过大" }
         val stateMap = linkedMapOf<BlockPos, BlockState>()
         val dataMap = linkedMapOf<BlockPos, CompoundTag>()
         val filtered = ListTag()
         val seen = hashSetOf<BlockPos>()
         for (index in 0 until blocks.size) {
-            val block = blocks.getCompound(index)
-            require(block.contains("state", 3)) { "结构缺少调色板下标" }
-            val state = decoded.getOrNull(block.getInt("state"))
+            val block = blocks.getCompound(index).orElseThrow { IllegalArgumentException("结构方块数据无效") }
+            val state = decoded.getOrNull(block.getInt("state").orElse(-1))
             require(state != null) { "结构调色板下标无效" }
-            val coordinates = block.getList("pos", 3)
+            val coordinates = block.getList("pos").orElseThrow { IllegalArgumentException("结构坐标无效") }
             require(coordinates.size == 3) { "结构坐标无效" }
-            val pos = BlockPos(coordinates.getInt(0), coordinates.getInt(1), coordinates.getInt(2))
+            val pos = BlockPos(
+                coordinates.getIntOr(0, Int.MIN_VALUE),
+                coordinates.getIntOr(1, Int.MIN_VALUE),
+                coordinates.getIntOr(2, Int.MIN_VALUE),
+            )
             require(pos.x in 0 until size.x && pos.y in 0 until size.y && pos.z in 0 until size.z) { "结构坐标越界" }
             require(seen.add(pos)) { "结构坐标重复" }
             if (state.isAir || state.`is`(Blocks.STRUCTURE_VOID)) continue
             stateMap[pos] = state
-            if (block.contains("nbt", 10)) dataMap[pos] = block.getCompound("nbt").copy()
+            block.getCompound("nbt").ifPresent { dataMap[pos] = it.copy() }
             filtered.add(block.copy())
             require(stateMap.size <= 8192) { "结构最多包含 8192 个非空气方块" }
         }
@@ -130,5 +144,5 @@ class StructureSnapshot(registries: HolderLookup.Provider, source: CompoundTag) 
     override fun getBlockState(pos: BlockPos): BlockState = states[pos] ?: Blocks.AIR.defaultBlockState()
     override fun getFluidState(pos: BlockPos): FluidState = getBlockState(pos).fluidState
     override fun getHeight(): Int = size.y
-    override fun getMinBuildHeight(): Int = 0
+    override fun getMinY(): Int = 0
 }

@@ -6,13 +6,13 @@ import cn.coostack.cooparticlesapi.test.api.TestOptionParamSpec
 import cn.coostack.cooparticlesapi.test.api.TestOptionPlayerUpdateSupport
 import cn.coostack.cooparticlesapi.test.api.TestReviewMode
 import net.minecraft.network.chat.Component
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.entity.player.Player
 import java.util.function.Supplier
 
 class BlockTestGroup(
     val testPlayer: Player,
-    private val id: ResourceLocation
+    private val id: Identifier
 ) : TestGroup {
     internal var statusAnnouncer: (String) -> Unit = { message ->
         testPlayer.level().server?.sendSystemMessage(Component.literal(message))
@@ -88,7 +88,7 @@ class BlockTestGroup(
 
     fun hasPendingReview(): Boolean = pendingReviewOption != null
 
-    override fun groupID(): ResourceLocation = id
+    override fun groupID(): Identifier = id
 
     fun statusLine(): String = buildCurrentStatusLine() ?: lastStatus
 

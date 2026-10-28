@@ -13,8 +13,8 @@ import java.util.Arrays
  * 保存一块供 CParticle 模拟器共享的方块占用位图。
  *
  * 任意非空碰撞形状都按完整方块处理，因此栅栏、台阶等复杂形状是保守近似。
- * Example: 同一 emitter 的不同纹理 system 可复用同一个网格。
- * Forbidden: 不要把本对象用于精确实体或 `VoxelShape` 碰撞。
+ * 示例： 同一 emitter 的不同纹理 system 可复用同一个网格。
+ * 禁止： 不要把本对象用于精确实体或 `VoxelShape` 碰撞。
  *
  * @property minX 网格最小世界 X
  * @property minY 网格最小世界 Y
@@ -25,7 +25,7 @@ internal class CParticleBlockCollisionGrid(
     val minX: Int,
     val minY: Int,
     val minZ: Int,
-    val size: Int = SIZE,
+    val size: Int = 64,
 ) {
     init {
         require(size > 0) { "Collision grid size must be positive: $size" }
@@ -61,8 +61,8 @@ internal class CParticleBlockCollisionGrid(
     /**
      * 按固定间隔从已加载区块刷新占用位图。
      *
-     * Example: 多个 system 在同一 tick 调用时只会重建一次。
-     * Forbidden: 不会强制加载网格覆盖范围内的区块。
+     * 示例： 多个 system 在同一 tick 调用时只会重建一次。
+     * 禁止： 不会强制加载网格覆盖范围内的区块。
      *
      * @param level 当前客户端世界
      */
@@ -70,7 +70,7 @@ internal class CParticleBlockCollisionGrid(
         val tick = level.gameTime
         if (lastRefreshTick != Long.MIN_VALUE &&
             tick >= lastRefreshTick &&
-            tick - lastRefreshTick < REFRESH_INTERVAL_TICKS
+            tick - lastRefreshTick < 5L
         ) {
             return
         }
@@ -81,8 +81,8 @@ internal class CParticleBlockCollisionGrid(
     /**
      * 查询网格局部坐标是否被碰撞方块占用。
      *
-     * Example: `isOccupied(1, 2, 3)` 查询 `[min + (1,2,3)]`。
-     * Forbidden: 网格外坐标不会被当成墙体。
+     * 示例： `isOccupied(1, 2, 3)` 查询 `[min + (1,2,3)]`。
+     * 禁止： 网格外坐标不会被当成墙体。
      *
      * @param x 局部 X
      * @param y 局部 Y
@@ -98,8 +98,8 @@ internal class CParticleBlockCollisionGrid(
     /**
      * 把当前位图绑定到 compute shader 的指定 SSBO binding。
      *
-     * Example: GPU 模拟器在 dispatch 前绑定到 binding `1`。
-     * Forbidden: 只能在持有 OpenGL 上下文的渲染线程调用。
+     * 示例： GPU 模拟器在 dispatch 前绑定到 binding `1`。
+     * 禁止： 只能在持有 OpenGL 上下文的渲染线程调用。
      *
      * @param binding shader storage binding 点
      */
@@ -122,8 +122,8 @@ internal class CParticleBlockCollisionGrid(
     /**
      * 释放网格的 GPU 缓冲和上传缓冲。
      *
-     * Example: 世界切换或网格闲置后由 manager 调用。
-     * Forbidden: 只能在渲染线程销毁 OpenGL 资源。
+     * 示例： 世界切换或网格闲置后由 manager 调用。
+     * 禁止： 只能在渲染线程销毁 OpenGL 资源。
      */
     fun release() {
         if (glBuffer != 0) {
@@ -138,8 +138,8 @@ internal class CParticleBlockCollisionGrid(
     /**
      * 测试入口：直接修改一个局部占用位。
      *
-     * Example: 单元测试可放置一个完整方块验证命中法线。
-     * Forbidden: 生产路径应通过 [refreshIfNeeded] 从世界生成位图。
+     * 示例： 单元测试可放置一个完整方块验证命中法线。
+     * 禁止： 生产路径应通过 [refreshIfNeeded] 从世界生成位图。
      *
      * @param x 局部 X
      * @param y 局部 Y
@@ -176,7 +176,8 @@ internal class CParticleBlockCollisionGrid(
                 val toZ = minOf(maxZ, (chunkZ + 1) shl 4)
                 for (worldX in fromX until toX) {
                     for (worldZ in fromZ until toZ) {
-                        for (worldY in maxOf(minY, level.minBuildHeight) until minOf(maxY, level.maxBuildHeight)) {
+                        // 26.3 maxY 为包含边界，网格循环的上界仍保持排除边界语义。
+                        for (worldY in maxOf(minY, level.minY) until minOf(maxY, level.maxY + 1)) {
                             mutablePos.set(worldX, worldY, worldZ)
                             val state = chunk.getBlockState(mutablePos)
                             if (!state.isAir && !state.getCollisionShape(level, mutablePos).isEmpty) {
@@ -205,25 +206,8 @@ internal class CParticleBlockCollisionGrid(
 
     /** 保存 CPU/GPU 必须一致的默认网格参数。 */
     companion object {
-        /** 相邻共享网格中心的间隔。Example: 同一 16³ 原点分区共享网格。 */
+        /** 相邻共享网格中心的间隔。示例： 同一 16³ 原点分区共享网格。 */
         const val ORIGIN_BUCKET_SIZE = 16
 
-        /** 未声明范围时，原点分区到网格边缘的最小方块余量。 */
-        const val DEFAULT_RANGE = 24
-
-        /** 默认每个轴的方块数。Example: `64` 表示 64³ 单元。 */
-        const val SIZE = ORIGIN_BUCKET_SIZE + DEFAULT_RANGE * 2
-
-        /** 旧名称保留为默认范围别名。 */
-        const val EDGE_MARGIN = DEFAULT_RANGE
-
-        /** 方块状态变化反映到 GPU 网格的最大常规延迟，单位 tick。 */
-        const val REFRESH_INTERVAL_TICKS = 5L
-
-        /** 网格单元总数。 */
-        const val CELL_COUNT = SIZE * SIZE * SIZE
-
-        /** SSBO 中 32-bit 占用字的数量。 */
-        const val WORD_COUNT = (CELL_COUNT + 31) / 32
     }
 }

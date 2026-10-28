@@ -10,9 +10,8 @@ import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldRenderEv
 import cn.coostack.cooparticlesapi.items.CooItems
 import cn.coostack.cooparticlesapi.items.TestBlockBinding
 import cn.coostack.cooparticlesapi.items.TestBlockBindings
+import cn.coostack.cooparticlesapi.utils.MinecraftRendererUtil
 import net.minecraft.client.Minecraft
-import net.minecraft.client.renderer.LevelRenderer
-import net.minecraft.client.renderer.RenderType
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.phys.AABB
 
@@ -22,15 +21,12 @@ object TestBlockBinderHighlightListener {
 
     @EventHandler
     fun onRender(event: ClientWorldRenderEvent) {
-        if (event.stage != ClientWorldRenderEvent.RenderStage.AFTER_ENTITY) {
-            return
-        }
         val client = Minecraft.getInstance()
         val player = client.player ?: return
         val stack = InteractionHand.values()
             .map { hand -> player.getItemInHand(hand) }
             .firstOrNull { stack -> stack.item === CooItems.TEST_BLOCK_BINDER.getItem() } ?: return
-        val dimension = event.world.dimension().location().toString()
+        val dimension = event.world.dimension().identifier().toString()
         val bindings = TestBlockBindings.read(stack).filter { binding ->
             binding.dimension == dimension &&
                     (!event.world.isLoaded(binding.pos) ||
@@ -38,15 +34,18 @@ object TestBlockBinderHighlightListener {
         }
         val boundSet = bindings.toHashSet()
 
-        val camera = event.camera.position
-        val consumer = event.buffer.getBuffer(RenderType.lines())
+        val camera = event.camera.pos
         bindings.forEach { binding ->
-            val box = AABB(binding.pos).inflate(0.02).move(-camera.x, -camera.y, -camera.z)
-            LevelRenderer.renderLineBox(event.poseStack, consumer, box, 0.0f, 1.0f, 0.0f, 1.0f)
+            MinecraftRendererUtil.submitLineBox(
+                event.collector, event.poseStack, AABB(binding.pos).inflate(0.02), camera,
+                0F, 1F, 0F, 1F,
+            )
         }
         hiddenUnboundControllers(event, dimension, boundSet).forEach { blockEntity ->
-            val box = AABB(blockEntity.blockPos).inflate(0.02).move(-camera.x, -camera.y, -camera.z)
-            LevelRenderer.renderLineBox(event.poseStack, consumer, box, 1.0f, 1.0f, 1.0f, 1.0f)
+            MinecraftRendererUtil.submitLineBox(
+                event.collector, event.poseStack, AABB(blockEntity.blockPos).inflate(0.02), camera,
+                1F, 1F, 1F, 1F,
+            )
         }
     }
 

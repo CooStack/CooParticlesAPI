@@ -3,7 +3,7 @@ package cn.coostack.cooparticlesapi.network.buffer
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import io.netty.buffer.ByteBuf
 import io.netty.buffer.Unpooled
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.phys.Vec3
 import java.util.UUID
 
@@ -80,13 +80,13 @@ object ParticleControlerDataBuffers {
         return withDecode(array, clazz)
     }
 
-    fun withId(id: ResourceLocation, value: Any): ParticleControlerDataBuffer<*>? {
+    fun withId(id: Identifier, value: Any): ParticleControlerDataBuffer<*>? {
         val identifier = ParticleControlerDataBuffer.Id(id)
         val clazz = registerBuilder[identifier] ?: return null
         return withType(value, clazz)
     }
 
-    fun withIdDecode(id: ResourceLocation, array: ByteArray): ParticleControlerDataBuffer<*>? {
+    fun withIdDecode(id: Identifier, array: ByteArray): ParticleControlerDataBuffer<*>? {
         val identifier = ParticleControlerDataBuffer.Id(id)
         val clazz = registerBuilder[identifier] ?: return null
         return withDecode(array, clazz)

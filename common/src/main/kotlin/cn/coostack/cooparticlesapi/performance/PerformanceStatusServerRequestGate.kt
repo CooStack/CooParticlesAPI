@@ -1,6 +1,7 @@
 package cn.coostack.cooparticlesapi.performance
 
 import net.minecraft.server.level.ServerPlayer
+import net.minecraft.server.permissions.Permissions
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -19,7 +20,7 @@ object PerformanceStatusServerRequestGate {
      * 使用墙钟对应的 tick 时长而不是服务端 tick 序号，避免服务器低 TPS 时合法客户端连续超时。
      */
     fun tryAcquire(player: ServerPlayer, refreshIntervalTicks: Int): Boolean {
-        if (!player.createCommandSourceStack().hasPermission(2)) return false
+        if (!player.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER)) return false
         val nowNanos = System.nanoTime()
         val minimumIntervalNanos = (refreshIntervalTicks - 1).coerceAtLeast(1) * 50_000_000L
         var accepted = false

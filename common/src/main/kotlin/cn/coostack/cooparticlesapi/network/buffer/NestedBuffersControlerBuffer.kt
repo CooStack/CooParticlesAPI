@@ -2,7 +2,7 @@ package cn.coostack.cooparticlesapi.network.buffer
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import io.netty.buffer.Unpooled
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 
 /**
@@ -16,7 +16,7 @@ class NestedBuffersControlerBuffer : ParticleControlerDataBuffer<Map<String, Par
     companion object {
         @JvmStatic
         val id = ParticleControlerDataBuffer.Id(
-            ResourceLocation.fromNamespaceAndPath(
+            Identifier.fromNamespaceAndPath(
                 CooParticlesConstants.MOD_ID, "nested"
             )
         )
@@ -56,7 +56,7 @@ class NestedBuffersControlerBuffer : ParticleControlerDataBuffer<Map<String, Par
             val key = String(buf.readBytes(keyLen).copy().array())
             val typeLen = buf.readInt()
             val idSplit = String(buf.readBytes(typeLen).copy().array()).split(":")
-            val id = ResourceLocation.fromNamespaceAndPath(idSplit[0], idSplit[1])
+            val id = Identifier.fromNamespaceAndPath(idSplit[0], idSplit[1])
             val valueLen = buf.readInt()
             val valueBytes = buf.readBytes(valueLen).copy().array()
             val buffer = ParticleControlerDataBuffers.withIdDecode(id, valueBytes)!!

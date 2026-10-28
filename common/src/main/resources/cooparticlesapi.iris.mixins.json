@@ -2,7 +2,7 @@
   "required": false,
   "package": "cn.coostack.cooparticlesapi.mixin.compat.iris",
   "plugin": "cn.coostack.cooparticlesapi.mixin.plugin.CooIrisMixinPlugin",
-  "compatibilityLevel": "JAVA_21",
+  "compatibilityLevel": "JAVA_25",
   "client": [
     "IrisRenderingPipelineMixin",
     "FinalPassRendererAccessor"

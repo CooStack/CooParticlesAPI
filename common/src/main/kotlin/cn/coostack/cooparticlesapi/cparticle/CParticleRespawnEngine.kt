@@ -1,6 +1,7 @@
 package cn.coostack.cooparticlesapi.cparticle
 
 import cn.coostack.cooparticlesapi.cparticle.storage.CParticleRespawnBuffer
+import cn.coostack.cooparticlesapi.cparticle.storage.CParticleStore
 import cn.coostack.cooparticlesapi.extend.minus
 import cn.coostack.cooparticlesapi.network.particle.emitters.command.ParticleRespawnRequest
 import cn.coostack.cooparticlesapi.particles.control.RemoveReason
@@ -20,16 +21,19 @@ import java.util.BitSet
 import java.nio.FloatBuffer
 
 /**
- * 管理出生时预提交的 GPU 生命及后继关系，仅在客户端渲染线程使用。
+ * 管理出生时预提交的 CParticle 生命及后继关系，仅在客户端渲染线程使用。
  * Manager 先模拟全部 system，再捕获死亡、激活后继；不依赖 system 或工作组的执行顺序。
- * 纯 GPU 重生只异步回读回收位图，不读取运动数据，也不在死亡时执行配置闭包。
+ * 纯 GPU 重生只异步回读回收位图；无 compute 时读取同一 CPU SoA，不在死亡时执行配置闭包。
  */
 internal object CParticleRespawnEngine {
     /** 按 GPU slot 直接寻址，避免百万粒子使用 HashMap<Int, Entry> 的 boxing/node 开销。 */
     private class SlotEntries(initialCapacity: Int) {
         private companion object {
+            /** 页号与页内索引共享的二进制位宽，定义分页寻址算法。 */
             const val PAGE_SHIFT = 8
+            /** 单页可容纳的槽位数，供分配和总页数计算共用。 */
             const val PAGE_SIZE = 1 shl PAGE_SHIFT
+            /** 从任意槽位号提取页内偏移的位掩码。 */
             const val PAGE_MASK = PAGE_SIZE - 1
         }
 
@@ -83,7 +87,13 @@ internal object CParticleRespawnEngine {
             ((capacity.coerceAtLeast(1) + PAGE_SIZE - 1) ushr PAGE_SHIFT).coerceAtLeast(1)
     }
 
-    private class Entry(val generation: Int, val includeManual: Boolean) {
+    /**
+     * 一个已预提交生命的身份及双向连接账本，槽位复用后不能继续消费此记录。
+     * @property slot 所属系统中的槽位号
+     * @property generation 登记时的槽位世代
+     * @property includeManual 是否允许 CALL 终止激活后继
+     */
+    private class Entry(val slot: Int, val generation: Int, val includeManual: Boolean) {
         var cpuAction: ((CParticleDeathState) -> Unit)? = null
 
         // 大多数 GPU 后继树节点只有一个 outgoing/incoming link。把这个常见形态
@@ -142,7 +152,7 @@ internal object CParticleRespawnEngine {
             val batch = if (incoming) incomingBatch else linkBatch
             if (batch != null) action(batch, if (incoming) incomingIndex else linkIndex)
             val overflow = if (incoming) incomingOverflow else linkOverflow
-            // unlink() mutates the relation, so only the uncommon overflow case needs a snapshot.
+            // unlink 会修改连接，只有少见的多连接形态需要快照。
             overflow?.toList()?.forEach { action(it.batch, it.index) }
         }
 
@@ -259,6 +269,8 @@ internal object CParticleRespawnEngine {
     }
 
     private class Channel(val system: CParticleSystem) {
+        /** 无 compute 能力时仍保留出生时固定的连接，由 CPU 执行同一生命契约。 */
+        val cpuManaged = !CParticleCapabilities.useGpuSimulation()
         val entries = SlotEntries(system.capacity)
         val snapshots = CParticleRespawnBuffer()
         val ended = CParticleRespawnBuffer()
@@ -295,7 +307,7 @@ internal object CParticleRespawnEngine {
 
     /** 为已分配槽位接管生命周期；waiting 为 true 时只占容量，不显示、不模拟。 */
     fun track(system: CParticleSystem, slot: Int, waiting: Boolean, includeManual: Boolean) {
-        check(!CParticleCapabilities.forceCpuSimulation) { "Prepared respawn requires GPU simulation" }
+        check(!CParticleCapabilities.forceCpuSimulation) { "Explicit CPU mode uses death-time callbacks instead of prepared lifetimes" }
         val channel = channels.getOrPut(system) {
             Channel(system).also { current ->
                 system.store.preparedClear = { clearSystem(system) }
@@ -310,9 +322,9 @@ internal object CParticleRespawnEngine {
             }
         }
         check(slot !in channel.entries) { "Particle already has a prepared lifetime" }
-        channel.entries[slot] = Entry(system.store.generations[slot], includeManual)
+        channel.entries[slot] = Entry(slot, system.store.generations[slot], includeManual)
         channel.clearSlots.set(slot)
-        system.store.prepareGpuRespawn(slot, waiting)
+        system.store.prepareGpuRespawn(slot, waiting, channel.cpuManaged)
     }
 
     /** 子槽位可使用不同的基础纹理、蒙版、渲染层和 system 原点。 */
@@ -334,7 +346,7 @@ internal object CParticleRespawnEngine {
         batch.remove(index)
     }
 
-    /** GPU 到 CPU 明确走异步读回；回调只实例化出生时已经固定的模板。 */
+    /** 回调只实例化出生时已固定的模板；GPU 异步读回，自动 CPU 直接使用统一死亡快照。 */
     fun onCpuChildren(system: CParticleSystem, slot: Int, action: (CParticleDeathState) -> Unit) {
         val channel = channels.getValue(system)
         val entry = channel.entries.getValue(slot)
@@ -415,6 +427,11 @@ internal object CParticleRespawnEngine {
         if (channels.isEmpty()) return
         if (channels.values.none { it.entries.isNotEmpty() }) return
         check(!CParticleCapabilities.forceCpuSimulation) { "Clear prepared lifetimes before switching to CPU simulation" }
+        if (channels.values.any { it.cpuManaged }) {
+            check(channels.values.all { it.cpuManaged }) { "Prepared lifetimes cannot switch compute capability mid-world" }
+            finishCpuTick()
+            return
+        }
         for (channel in channels.values) {
             if (channel.entries.isEmpty()) continue
             val system = channel.system
@@ -470,6 +487,111 @@ internal object CParticleRespawnEngine {
         }
         GL11.glFlush()
     }
+
+    /**
+     * 捕获、激活、回收分为三轮，保证不同 system 的顺序不会让后继在本 tick 提前模拟。
+     * CPU 只读取自己的 SoA 镜像，不创建 SSBO、fence 或 compute program。
+     */
+    private fun finishCpuTick() {
+        val deaths = ArrayList<CpuDeath>()
+        for (channel in channels.values) {
+            val system = channel.system
+            val store = system.store
+            channel.entries.forEach { entry ->
+                val slot = entry.slot
+                if (!system.checkHandle(slot, entry.generation)) return@forEach
+                val base = slot * CParticleStore.STRIDE
+                val flags = store.data[base + CParticleStore.OFF_FLAGS].toInt()
+                if (flags and (CParticleInstanceFlags.ALIVE or CParticleInstanceFlags.RESPAWN_WAITING) != 0) return@forEach
+                val position = system.groupTransform.transformPosition(Vector3f(
+                    store.data[base], store.data[base + 1], store.data[base + 2],
+                ))
+                val velocity = system.groupTransform.transformDirection(Vector3f(
+                    store.data[base + CParticleStore.OFF_VEL],
+                    store.data[base + CParticleStore.OFF_VEL + 1],
+                    store.data[base + CParticleStore.OFF_VEL + 2],
+                ))
+                deaths.add(CpuDeath(channel, slot, entry, flags, CParticleDeathState(
+                    system.origin.add(position.x.toDouble(), position.y.toDouble(), position.z.toDouble()),
+                    Vec3(velocity.x.toDouble(), velocity.y.toDouble(), velocity.z.toDouble()),
+                    store.ages[slot],
+                    if (flags and CParticleInstanceFlags.RESPAWN_MANUAL != 0) RemoveReason.CALL else RemoveReason.LIFECYCLE,
+                )))
+            }
+        }
+        var callbackFailure: Throwable? = null
+        val targetInverses = HashMap<CParticleSystem, Matrix4f>()
+        for (death in deaths) {
+            death.entry.forEachLink(incoming = false) { batch, index ->
+                val base = index * 8
+                if (batch.records[base].toRawBits() < 0 || batch.records[base + 2].toRawBits() != 0) return@forEachLink
+                val target = batch.target
+                if (target.released) return@forEachLink
+                val targetInverse = targetInverses.getOrPut(target) {
+                    val determinant = target.groupTransform.determinant3x3()
+                    check(determinant.isFinite() && determinant != 0F) { "Respawn target transform must be invertible" }
+                    Matrix4f(target.groupTransform).invertAffine()
+                }
+                batch.records[base + 2] = Float.fromBits(1)
+                val relative = batch.records[base + 3].toRawBits() != 0
+                val offset = Vec3(
+                    batch.records[base + 4].toDouble(),
+                    batch.records[base + 5].toDouble(),
+                    batch.records[base + 6].toDouble(),
+                )
+                activatePreparedCpuRespawn(
+                    target.store, batch.records[base + 1].toRawBits(), death.state, target.origin,
+                    targetInverse,
+                    if (relative) offset else target.origin.add(offset),
+                    relative, batch.records[base + 7], target.tickCount,
+                    death.flags and CParticleInstanceFlags.RESPAWN_CANCELED != 0,
+                )
+            }
+        }
+        for (death in deaths) {
+            val channel = death.channel
+            channel.entries.remove(death.slot)
+            death.entry.forEachLink(incoming = false) { batch, index -> unlink(batch, index) }
+            death.entry.forEachLink(incoming = true) { batch, index -> unlink(batch, index) }
+            channel.clearSlots.clear(death.slot)
+            if (death.entry.cpuAction != null) channel.cpuEntries--
+            try {
+                if (death.flags and CParticleInstanceFlags.RESPAWN_CANCELED == 0) {
+                    death.entry.cpuAction?.invoke(death.state)
+                }
+            } catch (failure: Throwable) {
+                // 先回收这一轮全部死亡槽位，再把第一个异常交还调用方，避免后继长期占住容量。
+                val previous = callbackFailure
+                if (previous == null) callbackFailure = failure else previous.addSuppressed(failure)
+            } finally {
+                channel.reclaiming = true
+                try {
+                    channel.system.store.kill(death.slot, reason = RemoveReason.QUEUE)
+                } finally {
+                    channel.reclaiming = false
+                }
+            }
+        }
+        channels.values.forEach { it.system.uploadPreparedCpuChanges() }
+        channels.values.filter { it.entries.isEmpty() }.map { it.system }.forEach(::clearSystem)
+        callbackFailure?.let { throw it }
+    }
+
+    /**
+     * 在统一捕获轮取得的不可变死亡快照，激活阶段不再读取可能被覆盖的父槽位。
+     * @property channel 本次死亡所属的预提交通道
+     * @property slot 父代在所属系统中的槽位
+     * @property entry 与捕获世代一致的生命账本
+     * @property flags 捕获时的终止与取消标志
+     * @property state 捕获时已转换到世界空间的运动状态
+     */
+    private data class CpuDeath(
+        val channel: Channel,
+        val slot: Int,
+        val entry: Entry,
+        val flags: Int,
+        val state: CParticleDeathState,
+    )
 
     private fun program(capture: Boolean): CooComputeShaderProgram {
         val existing = if (capture) captureProgram else activateProgram

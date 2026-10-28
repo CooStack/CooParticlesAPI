@@ -2,8 +2,9 @@ package cn.coostack.cooparticlesapi.test.block
 
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
-import net.minecraft.nbt.Tag
 import net.minecraft.nbt.TagParser
+import net.minecraft.world.level.storage.ValueInput
+import net.minecraft.world.level.storage.ValueOutput
 import net.minecraft.world.phys.Vec3
 
 /**
@@ -28,6 +29,20 @@ object BlockTestAnimationTrackCodec {
     }
 
     /**
+     * 把轨道写入 26.3 的值输出容器。
+     *
+     * 示例：`writeTo(output, "positionTrack", track)`。
+     * 禁止在运行时直接把输出容器转换成可变 NBT 并缓存。
+     *
+     * @param parent 值输出容器
+     * @param key 轨道字段名
+     * @param track 待保存轨道
+     */
+    fun writeTo(parent: ValueOutput, key: String, track: BlockTestAnimationTrack) {
+        parent.store(key, CompoundTag.CODEC, write(track))
+    }
+
+    /**
      * 从父 NBT 读取轨道，不存在或损坏时创建默认轨道。
      *
      * 示例：旧存档没有动态字段时会保留传入的静态偏移。
@@ -39,10 +54,26 @@ object BlockTestAnimationTrackCodec {
      * @return 可编辑的独立轨道
      */
     fun readFrom(parent: CompoundTag, key: String, fallbackValue: Vec3): BlockTestAnimationTrack {
-        if (!parent.contains(key, Tag.TAG_COMPOUND.toInt())) {
-            return BlockTestAnimationTrack.create(fallbackValue)
-        }
-        return read(parent.getCompound(key), fallbackValue)
+        val tag = parent.getCompound(key).orElse(null)
+            ?: return BlockTestAnimationTrack.create(fallbackValue)
+        return read(tag, fallbackValue)
+    }
+
+    /**
+     * 从 26.3 的值输入容器读取轨道，字段缺失或损坏时创建默认轨道。
+     *
+     * 示例：`readFrom(input, "positionTrack", playerOffset)`。
+     * 禁止复用返回值作为全局默认实例。
+     *
+     * @param parent 值输入容器
+     * @param key 轨道字段名
+     * @param fallbackValue 默认关键帧值
+     * @return 可编辑的独立轨道
+     */
+    fun readFrom(parent: ValueInput, key: String, fallbackValue: Vec3): BlockTestAnimationTrack {
+        return parent.read(key, CompoundTag.CODEC)
+            .map { read(it, fallbackValue) }
+            .orElseGet { BlockTestAnimationTrack.create(fallbackValue) }
     }
 
     /**
@@ -72,7 +103,7 @@ object BlockTestAnimationTrackCodec {
         if (encoded.isBlank()) {
             return BlockTestAnimationTrack.create(fallbackValue)
         }
-        return runCatching { read(TagParser.parseTag(encoded), fallbackValue) }
+        return runCatching { read(TagParser.parseCompoundFully(encoded), fallbackValue) }
             .getOrElse { BlockTestAnimationTrack.create(fallbackValue) }
     }
 
@@ -118,26 +149,26 @@ object BlockTestAnimationTrackCodec {
      */
     private fun read(tag: CompoundTag, fallbackValue: Vec3): BlockTestAnimationTrack {
         val frames = ArrayList<BlockTestAnimationKeyframe>()
-        val list = tag.getList("keyframes", Tag.TAG_COMPOUND.toInt())
+        val list = tag.getListOrEmpty("keyframes")
         for (index in 0 until list.size) {
-            val frame = list.getCompound(index)
+            val frame = list.getCompound(index).orElse(null) ?: continue
             frames += BlockTestAnimationKeyframe(
-                tick = frame.getInt("tick"),
+                tick = frame.getIntOr("tick", 0),
                 value = readVec3(frame, "value", fallbackValue),
-                curveToNext = BlockTestCurveType.fromId(frame.getString("curveToNext")),
-                outgoingTime = frame.getDouble("outgoingTime").takeIf { frame.contains("outgoingTime") } ?: 1.0 / 3.0,
-                outgoingProgress = frame.getDouble("outgoingProgress").takeIf { frame.contains("outgoingProgress") } ?: 1.0 / 3.0,
-                incomingTime = frame.getDouble("incomingTime").takeIf { frame.contains("incomingTime") } ?: 2.0 / 3.0,
-                incomingProgress = frame.getDouble("incomingProgress").takeIf { frame.contains("incomingProgress") } ?: 2.0 / 3.0,
-                locked = frame.getBoolean("locked")
+                curveToNext = BlockTestCurveType.fromId(frame.getStringOr("curveToNext", "")),
+                outgoingTime = frame.getDoubleOr("outgoingTime", 1.0 / 3.0),
+                outgoingProgress = frame.getDoubleOr("outgoingProgress", 1.0 / 3.0),
+                incomingTime = frame.getDoubleOr("incomingTime", 2.0 / 3.0),
+                incomingProgress = frame.getDoubleOr("incomingProgress", 2.0 / 3.0),
+                locked = frame.getBooleanOr("locked", false)
             )
         }
         if (frames.isEmpty()) {
             frames += BlockTestAnimationKeyframe(0, fallbackValue, locked = true)
         }
         return BlockTestAnimationTrack(
-            durationTicks = tag.getInt("durationTicks").coerceAtLeast(BlockTestAnimationTrack.MIN_DURATION_TICKS),
-            playbackMode = BlockTestPlaybackMode.fromId(tag.getString("playbackMode")),
+            durationTicks = tag.getIntOr("durationTicks", 0).coerceAtLeast(BlockTestAnimationTrack.MIN_DURATION_TICKS),
+            playbackMode = BlockTestPlaybackMode.fromId(tag.getStringOr("playbackMode", "")),
             keyframes = frames
         ).also { it.normalize(fallbackValue) }
     }
@@ -173,6 +204,6 @@ object BlockTestAnimationTrackCodec {
         if (!tag.contains("${key}X") || !tag.contains("${key}Y") || !tag.contains("${key}Z")) {
             return fallback
         }
-        return Vec3(tag.getDouble("${key}X"), tag.getDouble("${key}Y"), tag.getDouble("${key}Z"))
+        return Vec3(tag.getDoubleOr("${key}X", 0.0), tag.getDoubleOr("${key}Y", 0.0), tag.getDoubleOr("${key}Z", 0.0))
     }
 }

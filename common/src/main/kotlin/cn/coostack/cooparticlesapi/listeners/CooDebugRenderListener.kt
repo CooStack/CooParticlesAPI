@@ -18,13 +18,11 @@ import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainEffectRegistry
 import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainMappingRegion
 import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainMappingRegistry
 import cn.coostack.cooparticlesapi.supports.sound.ClientSoundManager
-import com.mojang.blaze3d.vertex.PoseStack
-import com.mojang.blaze3d.vertex.VertexConsumer
+import net.minecraft.gizmos.GizmoStyle
+import net.minecraft.gizmos.Gizmos
+import net.minecraft.gizmos.TextGizmo.Style
 import net.minecraft.client.Minecraft
 import net.minecraft.client.multiplayer.ClientLevel
-import net.minecraft.client.renderer.LevelRenderer
-import net.minecraft.client.renderer.MultiBufferSource
-import net.minecraft.client.renderer.RenderType
 import net.minecraft.client.renderer.debug.DebugRenderer
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
@@ -33,6 +31,7 @@ import java.util.concurrent.ConcurrentHashMap
 import org.joml.Quaternionf
 import org.joml.Vector3f
 import kotlin.math.PI
+import net.minecraft.client.gui.components.debug.DebugScreenEntries
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -43,12 +42,10 @@ import kotlin.math.sin
  * CooFX 模型实例、Terrain 效果组与 Terrain mapping，以及单机存档服务端侧的弹幕碰撞盒。
  * 单个 CParticle/ControlableParticle 数量级太大，不在这里绘制。
  *
- * 绘制顺序不能随意调整：1.21.1 的 `MultiBufferSource.BufferSource` 对使用共享缓冲区的 RenderType
- * 只保留一个 builder，请求另一个共享 RenderType 会立刻结算上一批并让旧的 [VertexConsumer] 失效
- * (继续写入会抛 `Not building!`)。因此这里先收集条目，再按 填充盒 -> 文本 -> 线框 的顺序分批提交，
- * [RenderType.lines] 最后取用且一次性写完，同时保持与原版一致的 lines 批次结算时机。
+ * 所有资产先提取为当前帧的世界坐标快照，再通过原版 gizmo collector 收集标记、文本和线段。
+ * collector 在世界渲染的 gizmo 阶段统一结算，避免直接访问已移除的缓冲源 API。
  *
- * 必须声明 [DistType.CLIENT]：本监听器的方法签名直接引用 `PoseStack`、`MultiBufferSource` 等
+ * 必须声明 [DistType.CLIENT]：本监听器的方法签名直接引用渲染状态等
  * 客户端类，若在专用服务端被登记，`CooEventBus.initListeners` 反射读取方法表时会抛
  * `NoClassDefFoundError`，且该处没有异常兜底。
  */
@@ -104,13 +101,12 @@ object CooDebugRenderListener {
 
     @EventHandler
     fun onRender(event: ClientWorldRenderEvent) {
-        if (event.stage != ClientWorldRenderEvent.RenderStage.AFTER_ENTITY) return
         val client = Minecraft.getInstance()
-        if (!client.entityRenderDispatcher.shouldRenderHitBoxes()) return
+        if (!client.debugEntries.isCurrentlyEnabled(DebugScreenEntries.ENTITY_HITBOXES)) return
         val level = client.level ?: return
 
-        val camera = event.camera.position
-        val partialTick = event.delta.getGameTimeDeltaPartialTick(true)
+        val camera = event.camera.pos
+        val partialTick = event.delta
         val entries = ArrayList<DebugEntry>()
         collectRenderEntities(entries, level, camera, partialTick)
         collectEmitters(entries, level, camera)
@@ -123,9 +119,44 @@ object CooDebugRenderListener {
         collectBarrages(entries, client, level, camera)
         if (entries.isEmpty()) return
 
-        drawMarkers(event.poseStack, event.buffer, camera, entries)
-        drawTexts(event.poseStack, event.buffer, entries)
-        drawShapes(event.poseStack, event.buffer, camera, entries)
+        event.worldRenderer.collectPerFrameRenderThreadGizmos().use {
+            entries.forEach { entry ->
+                if (entry.marker && entry.detailed) {
+                    val box = markerBox(entry.position, camera)
+                    val color = entry.color.packed(166)
+                    Gizmos.cuboid(box, GizmoStyle.strokeAndFill(color, 1F, color))
+                }
+                entry.boxes.forEach { box ->
+                    val color = entry.color.packed(255)
+                    Gizmos.cuboid(box, GizmoStyle.stroke(color))
+                }
+                entry.segments.forEach { segment ->
+                    Gizmos.line(segment.from, segment.to, segment.color.packed(255))
+                }
+                if (entry.label.isNotEmpty()) {
+                    val labelPosition = entry.position.add(0.0, LABEL_OFFSET, 0.0)
+                    Gizmos.billboardText(
+                        entry.label,
+                        labelPosition,
+                        Style.forColor(LABEL_COLOR),
+                    )
+                }
+                if (entry.detailed) {
+                    entry.details.forEachIndexed { index, detail ->
+                        val textPosition = entry.position.add(
+                            0.0,
+                            DETAIL_OFFSET - index * DETAIL_LINE_HEIGHT,
+                            0.0,
+                        )
+                        Gizmos.billboardText(
+                            detail,
+                            textPosition,
+                            Style.forColor(DETAIL_COLOR),
+                        )
+                    }
+                }
+            }
+        }
     }
 
     private fun collectRenderEntities(
@@ -255,14 +286,14 @@ object CooDebugRenderListener {
             .forEach { sound ->
                 val details = listOf(
                     "key=${sound.key}",
-                    "sound=${sound.location}",
+                    "sound=${sound.identifier}",
                     "vol=${format(sound.volumeMultiplier)} pitch=${format(sound.pitchMultiplier)}",
                     "looping=${sound.loopingSound} relative=${sound.relativeSound} stopped=${sound.isStopped}",
                     "entityId=${sound.entityId}",
                 )
                 out += DebugEntry(
                     position = sound.position,
-                    label = "${sound.location.namespace}:${sound.javaClass.simpleName}",
+                    label = "${sound.identifier.namespace}:${sound.javaClass.simpleName}",
                     details = details,
                     color = COLOR_SOUND,
                     detailed = detailed(sound.position, camera),
@@ -308,7 +339,7 @@ object CooDebugRenderListener {
     }
 
     private fun collectTerrainGroups(out: MutableList<DebugEntry>, level: ClientLevel, camera: Vec3) {
-        val dimension = level.dimension().location()
+        val dimension = level.dimension().identifier()
         val gameTime = level.gameTime
         CooTerrainEffectRegistry.debugGroups(dimension).asSequence()
             .take(MAX_ENTRIES_PER_CATEGORY)
@@ -364,7 +395,7 @@ object CooDebugRenderListener {
     }
 
     private fun collectTerrainMappings(out: MutableList<DebugEntry>, level: ClientLevel, camera: Vec3) {
-        val dimension = level.dimension().location()
+        val dimension = level.dimension().identifier()
         val gameTime = level.gameTime
         CooTerrainMappingRegistry.debugMappings(dimension).asSequence()
             .map { mapping -> mapping to regionCenter(mapping.region) }
@@ -437,105 +468,6 @@ object CooDebugRenderListener {
                 segments = orientationSegments(barrage.loc, barrage.direction, null),
             )
         }
-    }
-
-    /** 绘制点状资产的实心标记，只在近距离绘制以控制共享缓冲区的批次数量。 */
-    private fun drawMarkers(
-        poseStack: PoseStack,
-        buffer: MultiBufferSource,
-        camera: Vec3,
-        entries: List<DebugEntry>,
-    ) {
-        entries.forEach { entry ->
-            if (!entry.marker || !entry.detailed) return@forEach
-            val box = markerBox(entry.position, camera).move(-camera.x, -camera.y, -camera.z)
-            DebugRenderer.renderFilledBox(
-                poseStack, buffer, box, entry.color.red, entry.color.green, entry.color.blue, 0.65F
-            )
-        }
-    }
-
-    private fun drawTexts(poseStack: PoseStack, buffer: MultiBufferSource, entries: List<DebugEntry>) {
-        entries.forEach { entry ->
-            val position = entry.position
-            if (entry.label.isNotEmpty()) {
-                DebugRenderer.renderFloatingText(
-                    poseStack, buffer, entry.label,
-                    position.x, position.y + LABEL_OFFSET, position.z, LABEL_COLOR,
-                )
-            }
-            if (!entry.detailed) return@forEach
-            entry.details.forEachIndexed { index, detail ->
-                DebugRenderer.renderFloatingText(
-                    poseStack,
-                    buffer,
-                    detail,
-                    position.x,
-                    position.y + DETAIL_OFFSET - index * DETAIL_LINE_HEIGHT,
-                    position.z,
-                    DETAIL_COLOR,
-                )
-            }
-        }
-    }
-
-    /**
-     * 一次性写完全部线框。
-     *
-     * [RenderType.lines] 使用共享缓冲区，必须在取得 consumer 之后不再请求其他 RenderType。
-     */
-    private fun drawShapes(
-        poseStack: PoseStack,
-        buffer: MultiBufferSource,
-        camera: Vec3,
-        entries: List<DebugEntry>,
-    ) {
-        val consumer = buffer.getBuffer(RenderType.lines())
-        entries.forEach { entry ->
-            if (entry.marker) {
-                drawBox(poseStack, consumer, markerBox(entry.position, camera), camera, entry.color)
-            }
-            entry.boxes.forEach { box -> drawBox(poseStack, consumer, box, camera, entry.color) }
-            entry.segments.forEach { segment -> drawSegment(poseStack, consumer, segment, camera) }
-        }
-    }
-
-    private fun drawBox(
-        poseStack: PoseStack,
-        consumer: VertexConsumer,
-        box: AABB,
-        camera: Vec3,
-        color: DebugColor,
-    ) {
-        LevelRenderer.renderLineBox(
-            poseStack,
-            consumer,
-            box.move(-camera.x, -camera.y, -camera.z),
-            color.red,
-            color.green,
-            color.blue,
-            1.0F,
-        )
-    }
-
-    private fun drawSegment(
-        poseStack: PoseStack,
-        consumer: VertexConsumer,
-        segment: DebugSegment,
-        camera: Vec3,
-    ) {
-        val start = segment.from.subtract(camera)
-        val end = segment.to.subtract(camera)
-        val delta = end.subtract(start)
-        if (delta.lengthSqr() <= 1.0E-8) return
-        val normal = delta.normalize()
-        val pose = poseStack.last().pose()
-        consumer.addVertex(pose, start.x.toFloat(), start.y.toFloat(), start.z.toFloat())
-            .setColor(segment.color.red, segment.color.green, segment.color.blue, 1.0F)
-            .setNormal(normal.x.toFloat(), normal.y.toFloat(), normal.z.toFloat())
-        consumer.addVertex(pose, end.x.toFloat(), end.y.toFloat(), end.z.toFloat())
-            .setColor(segment.color.red, segment.color.green, segment.color.blue, 1.0F)
-            .setNormal(normal.x.toFloat(), normal.y.toFloat(), normal.z.toFloat())
     }
 
     /** 朝向线：旋转向量为红色，自转轴为青色。 */
@@ -761,6 +693,13 @@ object CooDebugRenderListener {
     private class DebugSegment(val from: Vec3, val to: Vec3, val color: DebugColor)
 
     private class DebugColor(val red: Float, val green: Float, val blue: Float)
+
+    private fun DebugColor.packed(alpha: Int): Int {
+        val red = (red.coerceIn(0F, 1F) * 255F).toInt()
+        val green = (green.coerceIn(0F, 1F) * 255F).toInt()
+        val blue = (blue.coerceIn(0F, 1F) * 255F).toInt()
+        return (alpha.coerceIn(0, 255) shl 24) or (red shl 16) or (green shl 8) or blue
+    }
 
     private enum class Plane { XZ, XY, YZ }
 

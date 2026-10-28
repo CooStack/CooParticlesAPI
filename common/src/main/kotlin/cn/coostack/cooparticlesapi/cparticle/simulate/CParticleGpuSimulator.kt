@@ -339,7 +339,7 @@ object CParticleGpuSimulator {
      * 按调用方选择的模拟路径提前编译 compute program。
      *
      * 示例：客户端渲染初始化在 [ShaderProgramRegistry.reinitializeAll] 前调用。
-     * 禁止：能力诊断字段不能在真实编译前把默认 GPU 请求改成 CPU；只有显式 CPU 模式不注册 program。
+     * GL 3.3 的自动 CPU 路由和显式 CPU 模式不注册 compute program。
      */
     internal fun initializeProgramForRequestedRoute() {
         if (!CParticleCapabilities.gpuSimulationRequested()) {
@@ -363,9 +363,9 @@ object CParticleGpuSimulator {
      * 返回可用的 compute program；编译或链接失败时直接抛出异常。
      *
      * 示例：program 已在客户端渲染初始化阶段编译时直接返回缓存实例。
-     * 禁止：只有显式 CPU 模式才跳过创建；compute 能力不足或 shader 不兼容必须在初始化时抛错。
+     * 能力不足时不创建；已选择 GPU 后的编译或链接错误仍抛出。
      *
-     * @return 可用的 compute program；仅显式 CPU 模式返回 `null`
+     * @return 可用的 compute program；CPU 路由返回 `null`
      */
     private fun ensureProgram(legacy: Boolean): CooComputeShaderProgram? {
         if (!CParticleCapabilities.gpuSimulationRequested()) return null
@@ -426,7 +426,7 @@ object CParticleGpuSimulator {
         val store = system.store
         val activeSlotCount = store.activeSlotCount
         if (activeSlotCount <= 0) return true
-        check(!CParticleCapabilities.forceCpuSimulation) {
+        check(CParticleCapabilities.useGpuSimulation()) {
             "[cparticle] Force Command GPU compute 未启用，拒绝回退 CPU"
         }
         check(system.glBuffer.initialized) {
@@ -489,7 +489,7 @@ object CParticleGpuSimulator {
                 setMatrix4("uInverseSimulationTransform", inverseSimulationTransform)
             }
             setBatchInt("uCollisionEnabled", if (collisionGrid != null) 1 else 0)
-            setBatchInt("uCollisionSize", collisionGrid?.size ?: CParticleBlockCollisionGrid.SIZE)
+            setBatchInt("uCollisionSize", collisionGrid?.size ?: 64)
             if (collisionGrid != null) {
                 setBatchFloat3(
                     "uCollisionOffset",

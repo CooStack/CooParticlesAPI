@@ -6,16 +6,16 @@ import cn.coostack.cooparticlesapi.annotations.CodecField
 import cn.coostack.cooparticlesapi.annotations.display.handle.DisplayEntityRegistryHelper
 import cn.coostack.cooparticlesapi.display.DisplayEntity
 import cn.coostack.cooparticlesapi.platform.CooClientServices
-import com.mojang.blaze3d.systems.RenderSystem
 import com.mojang.blaze3d.vertex.PoseStack
+import com.mojang.blaze3d.vertex.PoseStack.Pose
 import com.mojang.blaze3d.vertex.VertexConsumer
-import net.minecraft.client.Camera
-import net.minecraft.client.renderer.LightTexture
-import net.minecraft.client.renderer.MultiBufferSource
+import net.minecraft.util.LightCoordsUtil
+import net.minecraft.client.renderer.SubmitNodeCollector
+import net.minecraft.client.renderer.state.level.CameraRenderState
 import net.minecraft.client.renderer.texture.OverlayTexture
 import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
 import org.joml.Matrix4f
@@ -37,7 +37,7 @@ import kotlin.math.sin
 @CooAutoRegister
 class TestShapeDisplayEntity(pos: Vec3, world: Level?) : DisplayEntity(pos, world) {
     companion object {
-        private val LAYERED_GLOW_ID = ResourceLocation.fromNamespaceAndPath(
+        private val LAYERED_GLOW_ID = Identifier.fromNamespaceAndPath(
             CooParticlesConstants.MOD_ID,
             "glow_layered"
         )
@@ -45,32 +45,31 @@ class TestShapeDisplayEntity(pos: Vec3, world: Level?) : DisplayEntity(pos, worl
 
     @CodecField
     var direction = Vec3(0.0, 1.0, 0.0)
-    override fun render(
+    override fun submit(
         view: Matrix4f,
         proj: Matrix4f,
         modelMatrixStack: PoseStack,
-        buffer: MultiBufferSource,
+        collector: SubmitNodeCollector,
         delta: Float,
-        camera: Camera
+        camera: CameraRenderState
     ) {
-        modelMatrixStack.pushPose()
         val provider = CooClientServices.RENDER_TYPES_PROVIDER
-        val layeredConsumer = provider.layered(LAYERED_GLOW_ID)?.consumer(buffer)
-        val consumer = layeredConsumer ?: buffer.getBuffer(provider.glow())
-        renderCylinder(
-            consumer,
-            modelMatrixStack,
-            5f,
-            100f,
-            10f,
-            Vector3f(10f, 10f, 10f)
-        )
-        modelMatrixStack.popPose()
+        val draw: (Pose, VertexConsumer) -> Unit = { pose, consumer ->
+            renderCylinder(consumer, pose, 5F, 100F, 10F, Vector3f(10F, 10F, 10F))
+        }
+        val layered = provider.layered(LAYERED_GLOW_ID)
+        if (layered != null) {
+            layered.submit(collector, modelMatrixStack, draw)
+        } else {
+            collector.submitCustomGeometry(modelMatrixStack, provider.glow()) { pose, consumer ->
+                draw(pose, consumer)
+            }
+        }
     }
 
     fun renderCylinder(
         consumer: VertexConsumer,
-        stack: PoseStack,
+        pose: Pose,
         r: Float,
         tessellate: Float,
         height: Float,
@@ -78,21 +77,21 @@ class TestShapeDisplayEntity(pos: Vec3, world: Level?) : DisplayEntity(pos, worl
     ) {
         require(height > 0 && r > 0 && tessellate >= 2)
         val step = 2 * PI.toFloat() / tessellate
-        var current = 0f
+        var current = 0F
         while (current < 2 * PI) {
             val x1 = r * cos(current)
             val x2 = r * cos(current + step)
             val z1 = r * sin(current)
             val z2 = r * sin(current + step)
             addSquare(
-                consumer, stack,
+                consumer, pose,
                 Vector3f(x1, height, z1),
                 Vector3f(x2, height, z2),
-                Vector3f(x2, 0f, z2),
-                Vector3f(x1, 0f, z1),
+                Vector3f(x2, 0F, z2),
+                Vector3f(x1, 0F, z1),
                 color,
-                Vector3f(x1, 0f, z1),
-                LightTexture.FULL_BRIGHT
+                Vector3f(x1, 0F, z1),
+                LightCoordsUtil.FULL_BRIGHT
             )
             current += step
         }
@@ -101,27 +100,27 @@ class TestShapeDisplayEntity(pos: Vec3, world: Level?) : DisplayEntity(pos, worl
 
     fun addSquare(
         consumer: VertexConsumer,
-        stack: PoseStack,
+        pose: Pose,
         weight: Float,
         heigh: Float,
         color: Vector3f,
         normal: Vector3f,
         light: Int
     ) {
-        val left = Vector3f(0f, 0f, 0f)
-        val leftUP = Vector3f(0f, heigh, 0f)
-        val rightUP = Vector3f(weight, heigh, 0f)
-        val right = Vector3f(weight, 0f, 0f)
+        val left = Vector3f(0F, 0F, 0F)
+        val leftUP = Vector3f(0F, heigh, 0F)
+        val rightUP = Vector3f(weight, heigh, 0F)
+        val right = Vector3f(weight, 0F, 0F)
 
-        addVertex(consumer, stack, left, color, normal, 0f, 0f, light)
-        addVertex(consumer, stack, right, color, normal, 0f, 1f, light)
-        addVertex(consumer, stack, rightUP, color, normal, 1f, 1f, light)
-        addVertex(consumer, stack, leftUP, color, normal, 1f, 0f, light)
+        addVertex(consumer, pose, left, color, normal, 0F, 0F, light)
+        addVertex(consumer, pose, right, color, normal, 0F, 1F, light)
+        addVertex(consumer, pose, rightUP, color, normal, 1F, 1F, light)
+        addVertex(consumer, pose, leftUP, color, normal, 1F, 0F, light)
     }
 
     fun addSquare(
         consumer: VertexConsumer,
-        stack: PoseStack,
+        pose: Pose,
         p1: Vector3f,
         p2: Vector3f,
         p3: Vector3f,
@@ -130,17 +129,15 @@ class TestShapeDisplayEntity(pos: Vec3, world: Level?) : DisplayEntity(pos, worl
         normal: Vector3f,
         light: Int
     ) {
-        RenderSystem.disableCull()
-
-        addVertex(consumer, stack, p1, color, normal, 0f, 0f, light)
-        addVertex(consumer, stack, p2, color, normal, 0f, 1f, light)
-        addVertex(consumer, stack, p3, color, normal, 1f, 1f, light)
-        addVertex(consumer, stack, p4, color, normal, 1f, 0f, light)
+        addVertex(consumer, pose, p1, color, normal, 0F, 0F, light)
+        addVertex(consumer, pose, p2, color, normal, 0F, 1F, light)
+        addVertex(consumer, pose, p3, color, normal, 1F, 1F, light)
+        addVertex(consumer, pose, p4, color, normal, 1F, 0F, light)
     }
 
     fun addVertex(
         consumer: VertexConsumer,
-        stack: PoseStack,
+        pose: Pose,
         pos: Vector3f,
         color: Vector3f,
         normal: Vector3f,
@@ -148,9 +145,9 @@ class TestShapeDisplayEntity(pos: Vec3, world: Level?) : DisplayEntity(pos, worl
         v: Float,
         light: Int,
     ) {
-        consumer.addVertex(stack.last(), pos.x, pos.y, pos.z)
-            .setNormal(stack.last(), normal.x, normal.y, normal.z)
-            .setColor(color.x, color.y, color.z, 1f)
+        consumer.addVertex(pose, pos.x, pos.y, pos.z)
+            .setNormal(pose, normal.x, normal.y, normal.z)
+            .setColor(color.x, color.y, color.z, 1F)
             .setUv(u, v)
             .setUv1(1, 1)
             .setLight(light)

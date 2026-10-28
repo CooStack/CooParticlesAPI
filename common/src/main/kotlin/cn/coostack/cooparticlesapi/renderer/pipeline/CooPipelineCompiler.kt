@@ -3,13 +3,13 @@ package cn.coostack.cooparticlesapi.renderer.pipeline
 import cn.coostack.cooparticlesapi.renderer.backend.RenderBackendCapability
 import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameStage
 import cn.coostack.cooparticlesapi.renderer.backend.RenderSceneTargets
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import java.util.PriorityQueue
 
 /** Pipeline output 在编译后对应的 FBO attachment。 */
 internal data class CooCompiledAttachment(
     val output: CooPipelineOutputPort,
-    val framebuffer: ResourceLocation,
+    val framebuffer: Identifier,
     val firstUse: Int,
     val lastUse: Int
 )
@@ -17,7 +17,7 @@ internal data class CooCompiledAttachment(
 /** Pipeline DAG 编译后的执行与资源快照。 */
 internal data class CooCompiledPipeline(
     val stages: Set<RenderFrameStage>,
-    val sceneTargets: Set<ResourceLocation>,
+    val sceneTargets: Set<Identifier>,
     val requiredCapabilities: Set<RenderBackendCapability>,
     val optionalCapabilities: Set<RenderBackendCapability>,
     val nodes: List<CooPipelineNode>,
@@ -52,7 +52,7 @@ internal object CooPipelineCompiler {
     fun compile(pipeline: CooRenderPipeline<*>): CooCompiledPipeline {
         val orderedNodes = sortNodes(pipeline.nodes, pipeline.lines)
         val nodeIndex = orderedNodes.mapIndexed { index, node -> node.name to index }.toMap()
-        val sceneTargets = linkedSetOf<ResourceLocation>()
+        val sceneTargets = linkedSetOf<Identifier>()
         val required = linkedSetOf<RenderBackendCapability>()
         val optional = linkedSetOf<RenderBackendCapability>()
 
@@ -120,7 +120,7 @@ internal object CooPipelineCompiler {
     private fun includeSource(
         source: CooPipelineTextureSource,
         optional: Boolean,
-        targets: MutableSet<ResourceLocation>,
+        targets: MutableSet<Identifier>,
         required: MutableSet<RenderBackendCapability>,
         optionalCapabilities: MutableSet<RenderBackendCapability>
     ) {
@@ -176,7 +176,7 @@ internal object CooPipelineCompiler {
 
     private fun includeTarget(
         target: CooPipelineTarget,
-        targets: MutableSet<ResourceLocation>,
+        targets: MutableSet<Identifier>,
         required: MutableSet<RenderBackendCapability>
     ) {
         when (target) {
@@ -196,7 +196,7 @@ internal object CooPipelineCompiler {
         pipeline: CooRenderPipeline<*>,
         orderedNodes: List<CooPipelineNode>,
         nodeIndex: Map<String, Int>,
-        sceneTargets: MutableSet<ResourceLocation>
+        sceneTargets: MutableSet<Identifier>
     ): List<CooCompiledAttachment> {
         val lastPipelineStep = orderedNodes.lastIndex.coerceAtLeast(0)
         return orderedNodes.flatMap { node ->
@@ -251,7 +251,7 @@ internal object CooPipelineCompiler {
     private fun resolveNodeFramebuffer(
         pipeline: CooRenderPipeline<*>,
         node: CooPipelineNode
-    ): ResourceLocation? {
+    ): Identifier? {
         val nodeLines = pipeline.lines.filter { line ->
             val output = line.output as? CooPipelineOutputPort
             output?.node == node.name
@@ -310,7 +310,7 @@ internal object CooPipelineCompiler {
                 '_'
             }
         }.joinToString("")
-        return ResourceLocation.fromNamespaceAndPath(
+        return Identifier.fromNamespaceAndPath(
             pipeline.id.namespace,
             "pipeline/${pipeline.id.path}/$safeNode"
         )

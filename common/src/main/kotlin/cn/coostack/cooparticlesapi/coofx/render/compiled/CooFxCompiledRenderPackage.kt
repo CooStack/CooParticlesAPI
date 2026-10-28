@@ -4,7 +4,7 @@ import cn.coostack.cooparticlesapi.coofx.playback.pose.CooFxPoseEvaluator
 import cn.coostack.cooparticlesapi.coofx.playback.pose.CooFxPoseNode
 import cn.coostack.cooparticlesapi.coofx.playback.pose.CooFxTransformTrack
 import cn.coostack.cooparticlesapi.coofx.render.batch.CooFxBatchTemplate
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import org.joml.Matrix4f
 import kotlin.math.abs
 
@@ -159,7 +159,7 @@ data class CooFxCompiledEmitter(
 }
 
 class CooFxCompiledRenderPackage(
-    val id: ResourceLocation,
+    val id: Identifier,
     val sourceSchemaVersion: Int,
     val compilerVersion: String,
     val contentDigest: String,

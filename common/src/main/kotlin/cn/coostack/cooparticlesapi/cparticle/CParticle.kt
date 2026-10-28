@@ -8,7 +8,7 @@ import cn.coostack.cooparticlesapi.particles.ControlableParticle
 import cn.coostack.cooparticlesapi.particles.ParticleCameraOption
 import net.minecraft.core.particles.ParticleOptions
 import net.minecraft.core.particles.ParticleTypes
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
 
@@ -259,7 +259,7 @@ open class CParticle {
      *
      * 为 null 时使用 [CParticleSprites.DEFAULT] (end_rod)
      */
-    var sprite: ResourceLocation? = null
+    var sprite: Identifier? = null
         set(value) {
             if (field == value) return
             field = value
@@ -319,7 +319,7 @@ open class CParticle {
     }
 
     fun sprite(namespace: String, path: String): CParticle {
-        sprite = ResourceLocation.fromNamespaceAndPath(namespace, path)
+        sprite = Identifier.fromNamespaceAndPath(namespace, path)
         return this
     }
 

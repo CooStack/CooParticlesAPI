@@ -1,6 +1,8 @@
 package cn.coostack.cooparticlesapi
 
 import cn.coostack.cooparticlesapi.entities.CooModEntityTypes
+import cn.coostack.cooparticlesapi.entities.structure.StructureModelEntity
+import cn.coostack.cooparticlesapi.entities.structure.StructureModels
 import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
 import cn.coostack.cooparticlesapi.items.CooItemNeoForge
 import cn.coostack.cooparticlesapi.items.group.CooItemGroup
@@ -12,6 +14,8 @@ import net.neoforged.fml.ModList
 import net.neoforged.fml.common.Mod
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent
 import net.neoforged.neoforge.registries.RegisterEvent
+import net.neoforged.neoforge.registries.NeoForgeRegistries
+import net.minecraft.resources.Identifier
 import thedarkcolour.kotlinforforge.neoforge.forge.MOD_BUS
 
 @Mod(CooParticlesConstants.MOD_ID)
@@ -48,6 +52,12 @@ object CooParticlesAPINeo {
     }
 
     fun onRegistryRegister(event: RegisterEvent) {
+        event.register(NeoForgeRegistries.ENTITY_DATA_SERIALIZERS.key()) {
+            it.register(
+                Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, StructureModels.MODEL_ID),
+                StructureModelEntity.MODEL_DATA_SERIALIZER,
+            )
+        }
         event.register(BuiltInRegistries.PARTICLE_TYPE.key()) {
             CooModParticles.particleTypes.forEach { type ->
                 it.register(type.id, type.get())

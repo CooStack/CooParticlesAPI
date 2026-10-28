@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi.coofx.asset
 
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /**
  * glTF 材质的透明度策略。
@@ -88,10 +88,10 @@ data class CooFxClip(
 }
 
 data class CooFxSourceAsset(
-    val resource: ResourceLocation,
+    val resource: Identifier,
     val schemaVersion: Int,
     val assetSeed: ULong,
-    val modelResource: ResourceLocation,
+    val modelResource: Identifier,
     val scene: Int,
     val nodes: List<CooFxNode>,
     val meshes: List<CooFxMesh>,
@@ -183,12 +183,12 @@ data class CooFxMeshPrimitive(
 data class CooFxMaterial(
     val name: String?,
     val baseColorFactor: List<Float>,
-    val baseColorTexture: ResourceLocation?,
+    val baseColorTexture: Identifier?,
     val alphaMode: CooFxAlphaMode,
     val alphaCutoff: Float,
     val doubleSided: Boolean,
     val emissiveFactor: List<Float>,
-    val emissiveTexture: ResourceLocation? = null,
+    val emissiveTexture: Identifier? = null,
     val emissiveStrength: Float = 1F,
 ) {
     init {
@@ -273,10 +273,10 @@ data class CooFxDeformationMetadata(
     val skinCount: Int,
     val morphTargetCount: Int,
     val hasAnimatedWeights: Boolean,
-    val vatExtensionIds: Set<ResourceLocation>,
+    val vatExtensionIds: Set<Identifier>,
 )
 
 data class CooFxExtensionMetadata(
-    val cooFx: Map<ResourceLocation, String> = emptyMap(),
+    val cooFx: Map<Identifier, String> = emptyMap(),
     val gltf: Map<String, String?> = emptyMap(),
 )

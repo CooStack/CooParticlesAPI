@@ -2,9 +2,8 @@ package cn.coostack.cooparticlesapi.mixin.event.entity.player;
 
 import cn.coostack.cooparticlesapi.event.CooEventBus;
 import cn.coostack.cooparticlesapi.event.events.entity.player.PlayerItemDestroyEvent;
-import net.minecraft.server.level.ServerLevel;
+import com.llamalad7.mixinextras.sugar.Local;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -13,19 +12,15 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.function.Consumer;
 
+/** 从 Fabric 的真实损坏回调发布物品销毁事件。 */
 @Mixin(ItemStack.class)
 public class ItemStackMixinFabric {
 
-    @Inject(method = "hurtAndBreak(ILnet/minecraft/server/level/ServerLevel;Lnet/minecraft/server/level/ServerPlayer;Ljava/util/function/Consumer;)V",
-            at = @At(value = "INVOKE", target = "Lnet/minecraft/world/item/ItemStack;setDamageValue(I)V"))
-    public void onBreak(int damage, ServerLevel level, ServerPlayer player, Consumer<Item> onBreak, CallbackInfo ci) {
-        ItemStack stack = (ItemStack) (Object) this;
-        var before = stack.copy();
-        // 防止空指针异常
-        if (before == null || player == null) {
-            return;
-        }
-        var event = new PlayerItemDestroyEvent(player, before);
-        CooEventBus.call(event);
+    /** 仅在原版确认损坏并调用通知时发布事件，保留缩减前的原版快照。 */
+    @Inject(method = "applyDamage(ILnet/minecraft/server/level/ServerPlayer;Ljava/util/function/Consumer;)V",
+            at = @At(value = "INVOKE", target = "Ljava/util/function/Consumer;accept(Ljava/lang/Object;)V"))
+    private void onBreak(int damage, ServerPlayer player, Consumer<ItemStack> onBreak, CallbackInfo ci,
+                         @Local(name = "broken") ItemStack broken) {
+        if (player != null) CooEventBus.call(new PlayerItemDestroyEvent(player, broken.copy()));
     }
 }

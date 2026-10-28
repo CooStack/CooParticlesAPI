@@ -20,8 +20,11 @@ class StructureFluidVertices(private val target: VertexConsumer, private val ent
         return this
     }
     override fun setColor(red: Int, green: Int, blue: Int, alpha: Int): VertexConsumer { target.setColor(red, green, blue, alpha); return this }
+    override fun setColor(color: Int): VertexConsumer { target.setColor(color); return this }
     override fun setUv(u: Float, v: Float): VertexConsumer { target.setUv(u, v); return this }
     override fun setUv1(u: Int, v: Int): VertexConsumer { target.setOverlay(overlay); return this }
     override fun setUv2(u: Int, v: Int): VertexConsumer { target.setLight(packedLight); return this }
+    override fun setUv3(u: Float, v: Float): VertexConsumer { target.setUv3(u, v); return this }
     override fun setNormal(x: Float, y: Float, z: Float): VertexConsumer { target.setNormal(entry, x, y, z); return this }
+    override fun setLineWidth(width: Float): VertexConsumer { target.setLineWidth(width); return this }
 }

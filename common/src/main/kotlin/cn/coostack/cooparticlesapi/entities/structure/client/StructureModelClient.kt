@@ -7,6 +7,7 @@ import cn.coostack.cooparticlesapi.entities.structure.ModelEditorPayload
 import cn.coostack.cooparticlesapi.event.events.packet.CooPacketReceiveEvent
 import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldChangeEvent
 import cn.coostack.cooparticlesapi.event.events.client.ClientStoppingEvent
+import cn.coostack.cooparticlesapi.event.events.client.ClientResourceReloadEvent
 import net.minecraft.client.Minecraft
 
 /** 两个平台共用的客户端窗口与展示缓存入口，只在客户端扫描注册。 */
@@ -21,16 +22,22 @@ object StructureModelClient {
         if (event.side != CooPacketReceiveEvent.Side.CLIENT) return
         val packet = event.packet as? ModelEditorPayload ?: return
         val client = Minecraft.getInstance()
-        if (packet.data.hasUUID("PreviewRequest")) {
-            (client.screen as? ModelEditorScreen)?.preview(packet.data)
+        if (packet.data.contains("PreviewRequest")) {
+            (client.gui.screen() as? ModelEditorScreen)?.preview(packet.data)
         } else if (packet.data.contains("Result")) {
-            (client.screen as? ModelEditorScreen)?.result(packet.data.getBoolean("Result"), packet.data.getString("Message"))
-        } else client.setScreen(ModelEditorScreen(packet.data))
+            (client.gui.screen() as? ModelEditorScreen)?.result(
+                packet.data.getBooleanOr("Result", false), packet.data.getStringOr("Message", "")
+            )
+        } else client.setScreenAndShow(ModelEditorScreen(packet.data))
     }
 
     /** 切换世界时释放预览实体。 */
     @EventHandler
     fun change(event: ClientWorldChangeEvent) { itemRenderer.clear() }
+
+    /** 资源重载时重新解析物品展示变换并释放旧结构展示状态。 */
+    @EventHandler
+    fun reload(event: ClientResourceReloadEvent) { itemRenderer.clear() }
 
     /** 退出客户端时释放预览实体。 */
     @EventHandler

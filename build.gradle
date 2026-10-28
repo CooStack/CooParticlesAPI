@@ -1,9 +1,8 @@
 plugins {
-    // see https://fabricmc.net/develop/ for new versions
-    id 'fabric-loom' version '1.10-SNAPSHOT' apply false
-    // see https://projects.neoforged.net/neoforged/moddevgradle for new versions
-    id 'net.neoforged.moddev' version '2.0.107' apply false
-    id 'org.jetbrains.kotlin.jvm' version '2.2.0' apply false
+    id 'net.fabricmc.fabric-loom' version '1.15.4' apply false
+    id 'net.neoforged.gradle.userdev' version '7.1.39' apply false
+    id 'net.neoforged.gradle.vanilla' version '7.1.39' apply false
+    id 'org.jetbrains.kotlin.jvm' version '2.4.21' apply false
 }
 
 tasks.register("publish-local") {

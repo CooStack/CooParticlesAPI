@@ -2,6 +2,7 @@ package cn.coostack.cooparticlesapi.cparticle
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import com.mojang.blaze3d.systems.RenderSystem
+import net.minecraft.client.Minecraft
 import org.lwjgl.BufferUtils
 import org.lwjgl.opengl.GL11.glBindTexture
 import org.lwjgl.opengl.GL11.glDeleteTextures
@@ -26,8 +27,8 @@ import org.lwjgl.opengl.GL31.glTexBuffer
 /**
  * 一个共享 GPU 纹理描述符的注册定义。
  *
- * Example: 十万粒子可共同引用一个 [id]，只在 TBO 中保存一次帧表。
- * Forbidden: [frames] 不得返回其他 [bindingKey] 的 UV。
+ * 示例： 十万粒子可共同引用一个 [id]，只在 TBO 中保存一次帧表。
+ * 禁止： [frames] 不得返回其他 [bindingKey] 的 UV。
  *
  * @property id 在 float 精确整数范围内的稳定 ID
  * @property bindingKey 所有帧所属的纹理绑定
@@ -43,31 +44,31 @@ internal data class CParticleTextureDescriptorDefinition(
  * 管理稳定 descriptor ID 与 RGBA32F texture-buffer 查找表。
  *
  * 注册表在资源重载时保留 ID，只丢弃已解析 UV 并重建 GL 表。
- * Example: STATIC 槽位重载前后的 `iAnimation.x` 无需改变。
- * Forbidden: 不要从非渲染线程调用 [bindLookup] 创建 GL 资源。
+ * 示例： STATIC 槽位重载前后的 `iAnimation.x` 无需改变。
+ * 禁止： 不要从非渲染线程调用 [bindLookup] 创建 GL 资源。
  */
 object CParticleTextureDescriptors {
     /**
      * descriptor ID 使用 float 精确整数的 24 位范围。
      *
-     * Example: ID `16_777_215` 仍可无损往返 float。
-     * Forbidden: `16_777_216` 不能作为最大有效 ID 再继续递增。
+     * 示例： ID `16_777_215` 仍可无损往返 float。
+     * 禁止： `16_777_216` 不能作为最大有效 ID 再继续递增。
      */
     const val DESCRIPTOR_ID_BITS = 24
 
     /**
      * 最大有效 descriptor ID。
      *
-     * Example: 上限测试可直接检查 [requireValidDescriptorId]。
-     * Forbidden: 真实 TBO 仍受 `GL_MAX_TEXTURE_BUFFER_SIZE` 的更小限制。
+     * 示例： 上限测试可直接检查 [requireValidDescriptorId]。
+     * 禁止： 真实 TBO 仍受 `GL_MAX_TEXTURE_BUFFER_SIZE` 的更小限制。
      */
     const val MAX_DESCRIPTOR_ID = (1 shl DESCRIPTOR_ID_BITS) - 1
 
     /**
      * 最大 descriptor 数量。
      *
-     * Example: ID 从 `0` 开始，因此数量比 [MAX_DESCRIPTOR_ID] 大一。
-     * Forbidden: 不要预分配此数量的数组。
+     * 示例： ID 从 `0` 开始，因此数量比 [MAX_DESCRIPTOR_ID] 大一。
+     * 禁止： 不要预分配此数量的数组。
      */
     const val MAX_DESCRIPTOR_COUNT = MAX_DESCRIPTOR_ID + 1
 
@@ -84,8 +85,8 @@ object CParticleTextureDescriptors {
     /**
      * 注册或复用一个共享描述符。
      *
-     * Example: 相同 BlockState 和 binding 会返回同一 ID。
-     * Forbidden: 相同 [key] 不能在不同 binding 下注册；调用方应把 binding 纳入 key。
+     * 示例： 相同 BlockState 和 binding 会返回同一 ID。
+     * 禁止： 相同 [key] 不能在不同 binding 下注册；调用方应把 binding 纳入 key。
      *
      * @param key 可稳定比较的描述符键
      * @param bindingKey 所有帧所属绑定
@@ -118,8 +119,8 @@ object CParticleTextureDescriptors {
     /**
      * 返回描述符当前解析出的第一帧。
      *
-     * Example: [CParticleResolvedTexture.uv] 使用此值提供 CPU 兼容信息。
-     * Forbidden: age 动画不能只使用此方法选帧。
+     * 示例： [CParticleResolvedTexture.uv] 使用此值提供 CPU 兼容信息。
+     * 禁止： age 动画不能只使用此方法选帧。
      *
      * @param descriptorId 已注册 ID
      * @return 第一帧，失败时返回与 binding 兼容的 missing UV
@@ -129,8 +130,8 @@ object CParticleTextureDescriptors {
     /**
      * 按与 vertex shader 相同的 age/maxAge 公式选择一帧。
      *
-     * Example: legacy CPU `resolveEffect` 可用它保持旧 API 行为。
-     * Forbidden: GPU age 正常推进不能每粒子调用此方法。
+     * 示例： legacy CPU `resolveEffect` 可用它保持旧 API 行为。
+     * 禁止： GPU age 正常推进不能每粒子调用此方法。
      *
      * @param descriptorId 动画或单帧描述符
      * @param age 当前年龄
@@ -151,8 +152,8 @@ object CParticleTextureDescriptors {
     /**
      * 校验 descriptor ID 的位宽。
      *
-     * Example: `requireValidDescriptorId(MAX_DESCRIPTOR_ID)` 成功。
-     * Forbidden: 负数和超过 24 位的值会抛出异常。
+     * 示例： `requireValidDescriptorId(MAX_DESCRIPTOR_ID)` 成功。
+     * 禁止： 负数和超过 24 位的值会抛出异常。
      *
      * @param descriptorId 要写入实例 float 的 ID
      * @return 原值，便于调用点内联使用
@@ -169,8 +170,8 @@ object CParticleTextureDescriptors {
     /**
      * 校验描述符已经注册并属于预期纹理绑定。
      *
-     * Example: 方块图集 system 可接受由 `textureOfBlock` 注册的 descriptor。
-     * Forbidden: 粒子图集 system 不能写入方块图集 descriptor。
+     * 示例： 方块图集 system 可接受由 `textureOfBlock` 注册的 descriptor。
+     * 禁止： 粒子图集 system 不能写入方块图集 descriptor。
      *
      * @param descriptorId 要写入实例数据的 descriptor ID
      * @param expectedBindingKey 当前 system 固定的基础或蒙版纹理绑定
@@ -197,8 +198,8 @@ object CParticleTextureDescriptors {
     /**
      * 把 texture-buffer 绑定到指定纹理单元，并恢复原 active texture。
      *
-     * Example: renderer 在 draw 前调用 `bindLookup(2)`。
-     * Forbidden: 非渲染线程不能调用此方法。
+     * 示例： renderer 在 draw 前调用 `bindLookup(2)`。
+     * 禁止： 非渲染线程不能调用此方法。
      *
      * @param textureUnit 从零开始的纹理单元
      */
@@ -217,8 +218,8 @@ object CParticleTextureDescriptors {
     /**
      * 丢弃解析缓存和旧 TBO，但保留 descriptor ID。
      *
-     * Example: atlas stitch 或完整资源重载后调用。
-     * Forbidden: 不要清空 [definitions]，否则现存 STATIC 槽位会引用错误 ID。
+     * 示例： atlas stitch 或完整资源重载后调用。
+     * 禁止： 不要清空 [definitions]，否则现存 STATIC 槽位会引用错误 ID。
      */
     @JvmStatic
     @Synchronized
@@ -231,8 +232,8 @@ object CParticleTextureDescriptors {
     /**
      * 释放 GL 查找表，保留 CPU 注册定义。
      *
-     * Example: 客户端关闭时调用。
-     * Forbidden: 不要把它当成 descriptor ID 重置操作。
+     * 示例： 客户端关闭时调用。
+     * 禁止： 不要把它当成 descriptor ID 重置操作。
      */
     @JvmStatic
     fun release() {
@@ -285,7 +286,7 @@ object CParticleTextureDescriptors {
         val data = BufferUtils.createFloatBuffer(texelCount * 4)
         var frameOffset = definitions.size
         for (entry in frames) {
-            data.put(frameOffset.toFloat()).put(entry.size.toFloat()).put(0f).put(0f)
+            data.put(frameOffset.toFloat()).put(entry.size.toFloat()).put(0F).put(0F)
             frameOffset += entry.size
         }
         for (entry in frames) for (uv in entry) {
@@ -326,7 +327,7 @@ object CParticleTextureDescriptors {
             if (texture != 0) glDeleteTextures(texture)
             if (buffer != 0) glDeleteBuffers(buffer)
         } else {
-            RenderSystem.recordRenderCall {
+            Minecraft.getInstance().execute {
                 if (texture != 0) glDeleteTextures(texture)
                 if (buffer != 0) glDeleteBuffers(buffer)
             }

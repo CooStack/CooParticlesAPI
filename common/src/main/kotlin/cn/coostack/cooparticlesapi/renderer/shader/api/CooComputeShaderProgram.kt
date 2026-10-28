@@ -2,7 +2,7 @@ package cn.coostack.cooparticlesapi.renderer.shader.api
 
 import cn.coostack.cooparticlesapi.renderer.shader.buffer.ShaderBufferLayout
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlShader
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /**
  * compute shader 程序抽象。
@@ -25,12 +25,12 @@ interface CooComputeShaderProgram : CooProgramUniformAccess {
      *
      * 返回 `null` 表示该程序不参与托管式刷新。
      */
-    fun managedProgramId(): ResourceLocation? = null
+    fun managedProgramId(): Identifier? = null
 
     /**
      * 返回该程序依赖的 shader 源文件集合。
      */
-    fun shaderSources(): Set<ResourceLocation> = listOfNotNull(computeShader.sourceLocation()).toSet()
+    fun shaderSources(): Set<Identifier> = listOfNotNull(computeShader.sourceLocation()).toSet()
 
     /**
      * 初始化 program 与相关 GPU 资源。

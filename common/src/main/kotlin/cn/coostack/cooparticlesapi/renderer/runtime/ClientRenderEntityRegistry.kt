@@ -3,7 +3,7 @@ package cn.coostack.cooparticlesapi.renderer.runtime
 import cn.coostack.cooparticlesapi.renderer.RenderEntity
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /**
  * 客户端侧的 RenderEntity 类型表。
@@ -17,11 +17,11 @@ import net.minecraft.resources.ResourceLocation
  * 2. 再为同一个 id 注册 renderer。
  */
 object ClientRenderEntityRegistry {
-    private val types = LinkedHashMap<ResourceLocation, ClientRenderEntityType>()
-    private val automaticEntityClasses = LinkedHashMap<ResourceLocation, Class<out RenderEntity>>()
+    private val types = LinkedHashMap<Identifier, ClientRenderEntityType>()
+    private val automaticEntityClasses = LinkedHashMap<Identifier, Class<out RenderEntity>>()
 
     /** 每个已注册 RenderEntity id 当前使用的共享 renderer。 */
-    private val renderers = LinkedHashMap<ResourceLocation, RenderEntityRenderer<out RenderEntity>>()
+    private val renderers = LinkedHashMap<Identifier, RenderEntityRenderer<out RenderEntity>>()
 
     /**
      * 直接注册一个完整的客户端类型定义。
@@ -31,7 +31,7 @@ object ClientRenderEntityRegistry {
      * @throws IllegalArgumentException 当同一个 id 被重复注册时抛出
      */
     @Synchronized
-    fun register(id: ResourceLocation, type: ClientRenderEntityType) {
+    fun register(id: Identifier, type: ClientRenderEntityType) {
         if (types.containsKey(id)) {
             throw IllegalArgumentException(id.toString())
         }
@@ -48,7 +48,7 @@ object ClientRenderEntityRegistry {
      * @param rendererFactory 惰性创建共享 renderer 的工厂；为空时该类型只支持解码
      */
     fun register(
-        id: ResourceLocation,
+        id: Identifier,
         codec: StreamCodec<FriendlyByteBuf, RenderEntity>,
         rendererFactory: (() -> RenderEntityRenderer<out RenderEntity>)? = null
     ) {
@@ -66,7 +66,7 @@ object ClientRenderEntityRegistry {
      * @throws IllegalStateException 当 codec 尚未注册时抛出
      */
     @Synchronized
-    fun registerRenderer(id: ResourceLocation, rendererFactory: () -> RenderEntityRenderer<out RenderEntity>) {
+    fun registerRenderer(id: Identifier, rendererFactory: () -> RenderEntityRenderer<out RenderEntity>) {
         val existing = types[id]
             ?: throw IllegalStateException("RenderEntity codec not registered: $id")
         types[id] = existing.copy(rendererFactory = rendererFactory)
@@ -79,7 +79,7 @@ object ClientRenderEntityRegistry {
      * @param registrations 键为 RenderEntity 注册 id，值为已校验的客户端类型及其实体类
      */
     @Synchronized
-    internal fun applyRegistrations(registrations: Map<ResourceLocation, AutomaticClientRenderEntityType>) {
+    internal fun applyRegistrations(registrations: Map<Identifier, AutomaticClientRenderEntityType>) {
         registrations.forEach { (id, registration) ->
             val existing = types[id]
             val existingEntityClass = automaticEntityClasses[id]
@@ -101,7 +101,7 @@ object ClientRenderEntityRegistry {
      * @return 自动注册的实体类；条目不存在或由手动注册时返回 `null`
      */
     @Synchronized
-    internal fun getAutomaticEntityClass(id: ResourceLocation): Class<out RenderEntity>? {
+    internal fun getAutomaticEntityClass(id: Identifier): Class<out RenderEntity>? {
         return automaticEntityClasses[id]
     }
 
@@ -114,7 +114,7 @@ object ClientRenderEntityRegistry {
      * @return 已注册的客户端类型定义；不存在时返回 `null`
      */
     @Synchronized
-    fun get(id: ResourceLocation): ClientRenderEntityType? {
+    fun get(id: Identifier): ClientRenderEntityType? {
         return types[id]
     }
 
@@ -130,7 +130,7 @@ object ClientRenderEntityRegistry {
      * @return 共享 renderer；类型不存在或没有注册 renderer 时返回 `null`
      */
     @Synchronized
-    fun resolveRenderer(id: ResourceLocation): RenderEntityRenderer<out RenderEntity>? {
+    fun resolveRenderer(id: Identifier): RenderEntityRenderer<out RenderEntity>? {
         renderers[id]?.let { return it }
         val factory = types[id]?.rendererFactory ?: return null
         return factory().also { renderer ->

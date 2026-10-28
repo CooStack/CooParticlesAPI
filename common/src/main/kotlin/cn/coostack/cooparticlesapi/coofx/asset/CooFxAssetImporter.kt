@@ -7,7 +7,7 @@ import cn.coostack.cooparticlesapi.coofx.asset.gltf.requiredString
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.charset.StandardCharsets
@@ -15,7 +15,7 @@ import java.nio.charset.StandardCharsets
 class CooFxAssetImporter(
     private val resources: CooFxResourceProvider,
 ) {
-    fun import(assetResource: ResourceLocation): CooFxImportResult {
+    fun import(assetResource: Identifier): CooFxImportResult {
         val diagnostics = mutableListOf<CooFxDiagnostic>()
         val asset = runCatching {
             val root = parseObject(resources.read(assetResource), "CooFX JSON")
@@ -38,7 +38,7 @@ class CooFxAssetImporter(
         return CooFxImportResult(asset?.takeIf { diagnostics.none { it.severity == CooFxDiagnosticSeverity.ERROR } }, diagnostics)
     }
 
-    private fun validateCooDocument(root: JsonObject, asset: ResourceLocation) {
+    private fun validateCooDocument(root: JsonObject, asset: Identifier) {
         val supportedFields = setOf(
             "\$schema",
             "schemaVersion",
@@ -63,7 +63,7 @@ class CooFxAssetImporter(
             throw IllegalArgumentException("未知 CooFX required extension：${extension.asString}")
         }
         root.getAsJsonObject("extensions")?.keySet()?.forEach { id ->
-            require(ResourceLocation.tryParse(id) != null) { "非法 extension ID：$id" }
+            require(Identifier.tryParse(id) != null) { "非法 extension ID：$id" }
         }
         require(asset.path.endsWith(".coofx.json")) { "CooFX 入口资源必须以 .coofx.json 结尾" }
     }
@@ -78,9 +78,9 @@ class CooFxAssetImporter(
     }
 
     private fun normalize(
-        assetResource: ResourceLocation,
+        assetResource: Identifier,
         coo: JsonObject,
-        modelResource: ResourceLocation,
+        modelResource: Identifier,
         gltf: JsonObject,
         buffers: List<ByteArray>,
         diagnostics: MutableList<CooFxDiagnostic>,
@@ -205,7 +205,7 @@ class CooFxAssetImporter(
         }
         val vatIds = coo.getAsJsonObject("extensions")?.keySet()
             ?.filter { it.contains("vat", ignoreCase = true) }
-            ?.mapNotNull(ResourceLocation::tryParse)
+            ?.mapNotNull(Identifier::tryParse)
             ?.toSet()
             .orEmpty()
         if (vatIds.isNotEmpty()) {
@@ -240,8 +240,8 @@ class CooFxAssetImporter(
         meshIndex: Int,
         decoder: GltfAccessorDecoder,
         materials: List<CooFxMaterial>,
-        assetResource: ResourceLocation,
-        modelResource: ResourceLocation,
+        assetResource: Identifier,
+        modelResource: Identifier,
         diagnostics: MutableList<CooFxDiagnostic>,
     ): NormalizedMesh {
         var morphTargetCount = 0
@@ -310,8 +310,8 @@ class CooFxAssetImporter(
         gltf: JsonObject,
         decoder: GltfAccessorDecoder,
         nodeCount: Int,
-        asset: ResourceLocation,
-        model: ResourceLocation,
+        asset: Identifier,
+        model: Identifier,
         diagnostics: MutableList<CooFxDiagnostic>,
     ): List<CooFxAnimation> = gltf.array("animations").mapIndexed { animationIndex, element ->
         val animation = element.asJsonObject
@@ -368,7 +368,7 @@ class CooFxAssetImporter(
 
     private fun applyMaterialOverrides(
         coo: JsonObject,
-        assetResource: ResourceLocation,
+        assetResource: Identifier,
         gltfMaterials: JsonArray,
         baseMaterials: List<CooFxMaterial>,
     ): List<CooFxMaterial> {
@@ -422,7 +422,7 @@ class CooFxAssetImporter(
         return result
     }
 
-    private fun normalizeMaterial(material: JsonObject, textures: List<ResourceLocation?>): CooFxMaterial {
+    private fun normalizeMaterial(material: JsonObject, textures: List<Identifier?>): CooFxMaterial {
         val pbr = material.getAsJsonObject("pbrMetallicRoughness")
         val baseColorTextureInfo = pbr?.getAsJsonObject("baseColorTexture")
         val emissiveTextureInfo = material.getAsJsonObject("emissiveTexture")
@@ -563,14 +563,14 @@ class CooFxAssetImporter(
     private fun normalizeExtensionMetadata(
         coo: JsonObject,
         gltf: JsonObject,
-        assetResource: ResourceLocation,
-        modelResource: ResourceLocation,
+        assetResource: Identifier,
+        modelResource: Identifier,
         diagnostics: MutableList<CooFxDiagnostic>,
     ): CooFxExtensionMetadata {
         val cooFxExtensions = coo.getAsJsonObject("extensions")?.entrySet()?.associate { (id, payload) ->
-            requireNotNull(ResourceLocation.tryParse(id)) to payload.toString()
+            requireNotNull(Identifier.tryParse(id)) to payload.toString()
         }.orEmpty()
-        cooFxExtensions.keys.sortedBy(ResourceLocation::toString).forEach { id ->
+        cooFxExtensions.keys.sortedBy(Identifier::toString).forEach { id ->
             diagnostics += CooFxDiagnostic(
                 severity = CooFxDiagnosticSeverity.WARNING,
                 code = "coofx.extension.metadata",
@@ -673,7 +673,7 @@ class CooFxAssetImporter(
         )
     }
 
-    private fun resolveTextures(gltf: JsonObject, model: ResourceLocation): List<ResourceLocation?> {
+    private fun resolveTextures(gltf: JsonObject, model: Identifier): List<Identifier?> {
         val images = gltf.array("images").mapIndexed { index, element ->
             val image = element.asJsonObject
             require(!image.has("bufferView")) { "image[$index] 不支持内嵌 bufferView" }
@@ -684,7 +684,7 @@ class CooFxAssetImporter(
         return gltf.array("textures").map { element -> images.getOrNull(element.asJsonObject.requiredInt("source")) }
     }
 
-    private fun readBuffers(data: GltfData, model: ResourceLocation): List<ByteArray> = data.document.array("buffers").mapIndexed { index, element ->
+    private fun readBuffers(data: GltfData, model: Identifier): List<ByteArray> = data.document.array("buffers").mapIndexed { index, element ->
         val buffer = element.asJsonObject
         val uri = buffer.get("uri")?.asString
         val bytes = if (uri == null) {
@@ -699,7 +699,7 @@ class CooFxAssetImporter(
         bytes
     }
 
-    private fun readGltf(resource: ResourceLocation): GltfData {
+    private fun readGltf(resource: Identifier): GltfData {
         val bytes = resources.read(resource)
         return when {
             resource.path.endsWith(".glb", ignoreCase = true) -> parseGlb(bytes)
@@ -737,7 +737,7 @@ class CooFxAssetImporter(
             ?: throw IllegalArgumentException("$label 顶层必须是对象")
     }
 
-    private fun parseResource(reference: String, base: ResourceLocation): ResourceLocation {
+    private fun parseResource(reference: String, base: Identifier): Identifier {
         return resolveCooFxResource(base, reference) ?: throw IllegalArgumentException("model 路径非法或发生目录逃逸")
     }
 
@@ -767,7 +767,7 @@ class CooFxAssetImporter(
         }.values
     }
 
-    private fun diagnostic(asset: ResourceLocation, model: ResourceLocation, code: String, pointer: String, message: String, objectIndex: Int? = null) =
+    private fun diagnostic(asset: Identifier, model: Identifier, code: String, pointer: String, message: String, objectIndex: Int? = null) =
         CooFxDiagnostic(CooFxDiagnosticSeverity.WARNING, code, asset, pointer, message, model, objectIndex)
 
     private data class GltfData(val document: JsonObject, val binaryChunk: ByteArray?)

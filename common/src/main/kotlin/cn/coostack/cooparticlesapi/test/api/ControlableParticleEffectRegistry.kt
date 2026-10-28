@@ -4,7 +4,7 @@ import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.particles.ControlableParticleEffect
 import cn.coostack.cooparticlesapi.particles.CooModParticles
 import cn.coostack.cooparticlesapi.particles.impl.ControlableFallingDustEffect
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.level.block.Blocks
 import java.util.Locale
 import java.util.UUID
@@ -42,7 +42,7 @@ object ControlableParticleEffectRegistry {
         fixedFactories[text]?.let { return it }
         fixedFactories["$EFFECT_PACKAGE.$text"]?.let { return it }
 
-        parseResourceLocation(text)?.let { location ->
+        parseIdentifier(text)?.let { location ->
             val id = location.toString()
             fixedFactories[id]?.let { return it }
             val className = specialClassNames[id] ?: resourceIdToClassName(location)
@@ -68,17 +68,17 @@ object ControlableParticleEffectRegistry {
             .sorted()
     }
 
-    private fun parseResourceLocation(text: String): ResourceLocation? {
+    private fun parseIdentifier(text: String): Identifier? {
         return runCatching {
             if (text.contains(':')) {
-                ResourceLocation.parse(text)
+                Identifier.parse(text)
             } else {
-                ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, text)
+                Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, text)
             }
         }.getOrNull()
     }
 
-    private fun resourceIdToClassName(id: ResourceLocation): String {
+    private fun resourceIdToClassName(id: Identifier): String {
         val classBody = id.path
             .removePrefix("controlable_")
             .split('_')

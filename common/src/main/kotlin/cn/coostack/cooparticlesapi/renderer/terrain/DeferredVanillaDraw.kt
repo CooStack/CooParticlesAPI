@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi.renderer.terrain
 
-import net.minecraft.client.renderer.RenderType
+import net.minecraft.client.renderer.rendertype.RenderType
 
 /**
  * 需要在 Iris 地形合成覆盖阶段结束后执行的一次原版 section 绘制。

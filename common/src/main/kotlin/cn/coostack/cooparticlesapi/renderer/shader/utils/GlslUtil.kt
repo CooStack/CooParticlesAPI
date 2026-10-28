@@ -2,7 +2,7 @@ package cn.coostack.cooparticlesapi.renderer.shader.utils
 
 import cn.coostack.cooparticlesapi.renderer.shader.data.TextureData
 import cn.coostack.cooparticlesapi.renderer.shader.glsl.IdentifierShader
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import org.lwjgl.BufferUtils
 import org.lwjgl.stb.STBImage
 import java.nio.ByteBuffer
@@ -34,7 +34,7 @@ object GlslUtil {
      *
      * @return 当前操作计算、更新或查询得到的结果
      */
-    fun readGlslCodeFromJar(id: ResourceLocation): String {
+    fun readGlslCodeFromJar(id: Identifier): String {
         val path = "assets/${id.namespace}/shaders/${id.path}"
         val stream = this::class.java.classLoader.getResourceAsStream(path) ?: return ""
         return stream.use {
@@ -74,7 +74,7 @@ object GlslUtil {
      *
      * @return 当前操作计算、更新或查询得到的结果
      */
-    fun readTextureFromJar(id: ResourceLocation): TextureData {
+    fun readTextureFromJar(id: Identifier): TextureData {
         val path = "assets/${id.namespace}/textures/${id.path}"
         val bytes = this::class.java.classLoader.getResourceAsStream(path)!!.readAllBytes()
         val read = ByteBuffer.allocateDirect(bytes.size)

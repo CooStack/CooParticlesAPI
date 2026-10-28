@@ -15,7 +15,7 @@ import cn.coostack.cooparticlesapi.renderer.post.PostEffectType
 import cn.coostack.cooparticlesapi.renderer.post.PostEffectUniform
 import cn.coostack.cooparticlesapi.renderer.post.toPostEffectParamValue
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.CooTextureFormat
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 internal data class CooCompiledPostEffect(
     val type: PostEffectType,
@@ -172,7 +172,7 @@ internal object CooPipelinePostEffectCompiler {
             CooPipelineTextureSource.BlockAtlas -> {
                 defaults.resource(
                     input.sampler,
-                    ResourceLocation.fromNamespaceAndPath("minecraft", "textures/atlas/blocks.png")
+                    Identifier.fromNamespaceAndPath("minecraft", "textures/atlas/blocks.png")
                 )
                 input.input(PostEffectInputSource.CUSTOM_TEXTURE)
             }
@@ -244,7 +244,7 @@ internal object CooPipelinePostEffectCompiler {
         shader: CooPipelineShader.Stages,
         inputs: List<PostEffectInput>,
         output: PostEffectOutput,
-        framebuffer: ResourceLocation?,
+        framebuffer: Identifier?,
         iteration: CooPipelineIteration? = null,
         outputTargetKey: String? = framebuffer?.toString(),
         generateMipmaps: Boolean = outputs.any { it.mipLevels > 1 },
@@ -293,7 +293,7 @@ internal object CooPipelinePostEffectCompiler {
     }
 
     private fun CooPipelineInputPort.inputSceneResource(
-        resource: ResourceLocation,
+        resource: Identifier,
         channel: PostEffectResourceChannel = PostEffectResourceChannel.COLOR,
         attachment: Int = 0
     ): PostEffectInput {

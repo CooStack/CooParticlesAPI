@@ -1,38 +1,25 @@
 package cn.coostack.cooparticlesapi.display
 
-import cn.coostack.cooparticlesapi.compat.IrisCompat
 import cn.coostack.cooparticlesapi.test.options.display.MCShaders
-import net.minecraft.client.renderer.ShaderInstance
+import com.mojang.renderpearl.api.pipeline.RenderPipeline
 
 /**
- * 把 [CooRenderTypeDescriptor] 的 shader 配置翻译为 ShaderInstance 供应器。
- *
- * 跨平台：FabricRenderTypesProvider/NeoRenderTypesProvider 共用。
- *
- * 之所以不直接返回 vanilla `RenderStateShard.ShaderStateShard`：
- * `ShaderStateShard` 与 `POSITION_COLOR_SHADER` 在 vanilla 里是 `protected`，
- * 只有 Fabric AW / NeoForge AT 在各自平台模块里把它们公开。
- * common 模块编译时看不到这些保护成员，因此把封装责任下沉到各平台 provider，
- * common 只决定"用哪个 ShaderInstance 供应器"。
- *
- * @return 自定义 ShaderInstance 供应器；返回 null 表示该描述符要使用平台原生
- *         的 `POSITION_COLOR_SHADER`，由 provider 自行处理。
+ * 为两个加载器选择描述符要求的不可变管线。
+ * 原版管线缓存负责实际 GPU 程序生命周期，Iris 通道标记由 RenderType 包装负责。
  */
 object CooShaderStateResolver {
-    fun customShaderSupplier(descriptor: CooRenderTypeDescriptor): (() -> ShaderInstance)? {
-        val supplier = when (descriptor.shaderPreset) {
-            CooRenderTypeShaderPreset.POSITION_COLOR -> null
-            CooRenderTypeShaderPreset.COO_GLOW -> { { MCShaders.GLOW } }
+    /**
+     * 解析着色程序来源，不以基础管线替代缺失的自定义程序。
+     * 示例：`pipeline(descriptor)`。
+     * @param descriptor 已验证的渲染描述符
+     * @return 包含程序、绑定布局和目标格式的源管线
+     */
+    fun pipeline(descriptor: CooRenderTypeDescriptor): RenderPipeline =
+        when (descriptor.shaderPreset) {
+            CooRenderTypeShaderPreset.POSITION_COLOR -> MCShaders.POSITION_COLOR
+            CooRenderTypeShaderPreset.COO_GLOW -> MCShaders.GLOW
             CooRenderTypeShaderPreset.CUSTOM -> requireNotNull(descriptor.customShader) {
                 "CooRenderTypeDescriptor(name=${descriptor.name}) shaderPreset=CUSTOM but customShader is null"
-            }
+            }.invoke()
         }
-        return supplier?.let { irisSafe(it) }
-    }
-
-    private fun irisSafe(supplier: () -> ShaderInstance): () -> ShaderInstance {
-        return {
-            supplier().also(IrisCompat::markUnskippable)
-        }
-    }
 }

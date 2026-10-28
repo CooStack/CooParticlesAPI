@@ -4,7 +4,7 @@ import cn.coostack.cooparticlesapi.renderer.shader.api.CooShaderProgram
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlShader
 import cn.coostack.cooparticlesapi.renderer.shader.buffer.ShaderBufferCache
 import cn.coostack.cooparticlesapi.renderer.shader.buffer.ShaderBufferLayout
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import org.lwjgl.opengl.GL33.*
 
 class SimpleShaderProgram(
@@ -16,7 +16,7 @@ class SimpleShaderProgram(
     private val shaderBufferLayoutsInternal: List<ShaderBufferLayout<*>> = emptyList(),
     private val attributeLocationsInternal: Map<String, Int> = emptyMap(),
     private val transformFeedbackVaryingsInternal: List<String> = emptyList(),
-    private val managedProgramIdInternal: ResourceLocation? = null
+    private val managedProgramIdInternal: Identifier? = null
 ) : CooShaderProgram {
     override var program: Int = 0
     private val previousPrograms = ArrayDeque<Int>()
@@ -64,7 +64,7 @@ class SimpleShaderProgram(
      *
      * @return 当前操作计算、更新或查询得到的结果
      */
-    override fun managedProgramId(): ResourceLocation? = managedProgramIdInternal
+    override fun managedProgramId(): Identifier? = managedProgramIdInternal
 
     /**
      * 初始化或准备 `SimpleShaderProgram` 的 `init` 阶段，使后续渲染调用可以使用相关资源。

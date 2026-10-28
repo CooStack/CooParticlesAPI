@@ -7,7 +7,7 @@ import cn.coostack.cooparticlesapi.coofx.render.compiled.CooFxDeformationMode
 import cn.coostack.cooparticlesapi.coofx.render.compiled.CooFxDepthTest
 import cn.coostack.cooparticlesapi.coofx.render.compiled.CooFxIndexType
 import cn.coostack.cooparticlesapi.coofx.render.compiled.CooFxLightMode
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /**
  * CooFX 网格实例的稳定批次键。
@@ -17,13 +17,13 @@ import net.minecraft.resources.ResourceLocation
  */
 data class CooFxMeshBatchKey(
     val generation: Long,
-    val pipelineId: ResourceLocation,
+    val pipelineId: Identifier,
     val worldNodeId: String,
     val primitiveId: String,
     val vertexLayoutVersion: Int,
     val indexType: CooFxIndexType,
     val materialId: String,
-    val baseColorTexture: ResourceLocation?,
+    val baseColorTexture: Identifier?,
     val samplerKey: String,
     val shaderVariant: String,
     val deformationMode: CooFxDeformationMode,

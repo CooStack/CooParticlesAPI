@@ -1,8 +1,8 @@
 package cn.coostack.cooparticlesapi.blocks
 
 import cn.coostack.cooparticlesapi.test.block.builtin.BlockAPITestGroupBuilder
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
-internal fun defaultTestControllerGroupId(): ResourceLocation {
+internal fun defaultTestControllerGroupId(): Identifier {
     return BlockAPITestGroupBuilder.ID
 }

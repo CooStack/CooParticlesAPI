@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi.coofx.render.compiled
 
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /**
  * CooFX 编译网格支持的索引元素类型。
@@ -228,7 +228,7 @@ data class CooFxColor3(
 
 data class CooFxCompiledMaterial(
     val id: String,
-    val baseColorTexture: ResourceLocation?,
+    val baseColorTexture: Identifier?,
     val baseColorFactor: CooFxColor4 = CooFxColor4(1F, 1F, 1F, 1F),
     val alphaMode: CooFxAlphaMode,
     val alphaCutoff: Float,
@@ -237,7 +237,7 @@ data class CooFxCompiledMaterial(
     val depthWrite: Boolean,
     val blendMode: CooFxBlendMode,
     val lightMode: CooFxLightMode,
-    val emissiveTexture: ResourceLocation? = null,
+    val emissiveTexture: Identifier? = null,
     val emissiveFactor: CooFxColor3 = CooFxColor3(0F, 0F, 0F),
     val emissiveStrength: Float = 1F,
 ) {

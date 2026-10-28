@@ -2,8 +2,12 @@ package cn.coostack.cooparticlesapi.entities.structure.client
 
 import cn.coostack.cooparticlesapi.entities.structure.StructureModelSettings
 import cn.coostack.cooparticlesapi.entities.structure.StructureModels
-import net.minecraft.client.gui.GuiGraphics
+import com.mojang.blaze3d.platform.InputConstants
+import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.minecraft.client.gui.components.events.GuiEventListener
+import net.minecraft.client.input.CharacterEvent
+import net.minecraft.client.input.KeyEvent
+import net.minecraft.client.input.MouseButtonEvent
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.client.gui.components.Button
 import net.minecraft.client.gui.components.Checkbox
@@ -12,8 +16,8 @@ import net.minecraft.client.gui.components.EditBox
 import net.minecraft.core.component.DataComponents
 import net.minecraft.world.item.ItemStack
 import net.minecraft.nbt.CompoundTag
+import net.minecraft.nbt.NbtOps
 import net.minecraft.network.chat.Component
-import org.lwjgl.glfw.GLFW
 
 /**
  * 手持模型设置子页，背包仅作只读来源，复制槽不移动、扣除或生成背包物品。
@@ -27,8 +31,8 @@ internal class ModelItemScreen(
     private val initialDraft: CompoundTag
 ) : Screen(Component.literal("手持模型配置")) {
     /** 输入文字在窗口重建时保留，包括尚未完成的数值。 */
-    private val textValues = initialDraft.getCompound("Fields").let { fields ->
-        fields.allKeys.associateWith { fields.getString(it) }.toMutableMap()
+    private val textValues = initialDraft.getCompoundOrEmpty("Fields").let { fields ->
+        fields.keySet().associateWith { fields.getStringOr(it, "") }.toMutableMap()
     }
     /** 当前窗口的输入控件，重建前将文字写回草稿。 */
     private val fields = linkedMapOf<String, EditBox>()
@@ -43,7 +47,7 @@ internal class ModelItemScreen(
     /** 只在第一次初始化时解码旧值，清除槽位后不能被缩放窗口恢复。 */
     private var sampleLoaded = false
     /** 清除槽位时也解除旧版 ID 绑定，避免不可见的继承残留。 */
-    private var sampleChanged = initialDraft.getBoolean("SampleChanged")
+    private var sampleChanged = initialDraft.getBooleanOr("SampleChanged", false)
     /** 点击背包后暂存待放入的副本，原背包保持原样。 */
     private var carried = ItemStack.EMPTY
     /** 数值无效时保留子页和输入。 */
@@ -107,8 +111,9 @@ internal class ModelItemScreen(
         putBoolean("OverrideFood", overrideFood)
         putBoolean("SampleChanged", sampleChanged)
         minecraft?.level?.registryAccess()?.let {
-            put("Sample", sample.saveOptional(it))
-            put("Carried", carried.saveOptional(it))
+            val ops = it.createSerializationContext(NbtOps.INSTANCE)
+            store("Sample", ItemStack.OPTIONAL_CODEC, ops, sample)
+            store("Carried", ItemStack.OPTIONAL_CODEC, ops, carried)
         }
     }
 
@@ -117,35 +122,35 @@ internal class ModelItemScreen(
         val focusedKey = fields.entries.firstOrNull { it.value === focused }?.key
         val registries = minecraft?.level?.registryAccess() ?: return
         textValues.clear()
-        val savedFields = state.getCompound("Fields")
-        savedFields.allKeys.forEach { textValues[it] = savedFields.getString(it) }
+        val savedFields = state.getCompoundOrEmpty("Fields")
+        savedFields.keySet().forEach { textValues[it] = savedFields.getStringOr(it, "") }
         fields.clear()
-        edible = state.getBoolean("Edible")
-        placeable = state.getBoolean("Placeable")
-        overrideFood = state.getBoolean("OverrideFood")
-        sampleChanged = state.getBoolean("SampleChanged")
-        val savedSample = state.getCompound("Sample")
-        val savedCarried = state.getCompound("Carried")
-        sample = if (savedSample.isEmpty) ItemStack.EMPTY else ItemStack.parse(registries, savedSample).orElse(ItemStack.EMPTY)
-        carried = if (savedCarried.isEmpty) ItemStack.EMPTY else ItemStack.parse(registries, savedCarried).orElse(ItemStack.EMPTY)
+        edible = state.getBooleanOr("Edible", false)
+        placeable = state.getBooleanOr("Placeable", false)
+        overrideFood = state.getBooleanOr("OverrideFood", false)
+        sampleChanged = state.getBooleanOr("SampleChanged", false)
+        val ops = registries.createSerializationContext(NbtOps.INSTANCE)
+        sample = state.read("Sample", ItemStack.OPTIONAL_CODEC, ops).orElse(ItemStack.EMPTY)
+        carried = state.read("Carried", ItemStack.OPTIONAL_CODEC, ops).orElse(ItemStack.EMPTY)
         error = ""
         rebuildWidgets()
         focusedKey?.let { fields[it]?.takeIf { field -> field.visible }?.let { field -> setFocused(field) } }
     }
 
-    override fun charTyped(chr: Char, modifiers: Int): Boolean {
-        val handled = super.charTyped(chr, modifiers)
+    override fun charTyped(event: CharacterEvent): Boolean {
+        val handled = super.charTyped(event)
         history.record(captureState())
         return handled
     }
 
-    override fun keyPressed(keyCode: Int, scanCode: Int, modifiers: Int): Boolean {
-        if (hasControlDown() && (keyCode == GLFW.GLFW_KEY_Z || keyCode == GLFW.GLFW_KEY_Y)) {
-            val state = if (keyCode == GLFW.GLFW_KEY_Y || hasShiftDown()) history.redo() else history.undo()
+    override fun keyPressed(event: KeyEvent): Boolean {
+        val keyCode = event.key()
+        if (event.hasControlDown() && (keyCode == InputConstants.KEY_Z || keyCode == InputConstants.KEY_Y)) {
+            val state = if (keyCode == InputConstants.KEY_Y || event.hasShiftDown()) history.redo() else history.undo()
             state?.let { restoreState(it) }
             return true
         }
-        val handled = super.keyPressed(keyCode, scanCode, modifiers)
+        val handled = super.keyPressed(event)
         history.record(captureState())
         return handled
     }
@@ -203,7 +208,9 @@ internal class ModelItemScreen(
             saturation = saturation ?: Float.NaN, eatSeconds = seconds ?: Float.NaN,
             overrideFood = overrideFood,
             boundItem = if (sample.isEmpty && !sampleChanged) initial.itemProperties.boundItem else "",
-            simulatedStack = if (sample.isEmpty) "" else sample.copyWithCount(1).save(registries).toString()
+            simulatedStack = if (sample.isEmpty) "" else ItemStack.CODEC.encodeStart(
+                registries.createSerializationContext(NbtOps.INSTANCE), sample.copyWithCount(1)
+            ).getOrThrow().toString()
         )
         val configured = initial.copy(itemName = fields.getValue("name").value.trim(), edible = edible,
             placeable = placeable, itemProperties = properties)
@@ -220,8 +227,11 @@ internal class ModelItemScreen(
         return if (row == 3) column else 9 + row * 9 + column
     }
 
-    override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
-        if (button == 0 && mouseY >= 28 && mouseY < height - 44) {
+    override fun mouseClicked(event: MouseButtonEvent, doubleClick: Boolean): Boolean {
+        val mouseX = event.x()
+        val mouseY = event.y()
+        val button = event.button()
+        if (button == InputConstants.MOUSE_BUTTON_LEFT && mouseY >= 28 && mouseY < height - 44) {
             if (mouseX >= left + 112 && mouseX < left + 132 && mouseY >= sampleY && mouseY < sampleY + 20) {
                 if (!sample.isEmpty) {
                     sample = ItemStack.EMPTY
@@ -249,13 +259,16 @@ internal class ModelItemScreen(
                 return true
             }
         }
-        val handled = super.mouseClicked(mouseX, mouseY, button)
+        val handled = super.mouseClicked(event, doubleClick)
         history.record(captureState())
         return handled
     }
 
-    override fun mouseReleased(mouseX: Double, mouseY: Double, button: Int): Boolean {
-        if (button == 0 && !carried.isEmpty && sample.isEmpty && mouseY >= 28 && mouseY < height - 44 &&
+    override fun mouseReleased(event: MouseButtonEvent): Boolean {
+        val mouseX = event.x()
+        val mouseY = event.y()
+        if (event.button() == InputConstants.MOUSE_BUTTON_LEFT && !carried.isEmpty && sample.isEmpty &&
+            mouseY >= 28 && mouseY < height - 44 &&
             mouseX >= left + 112 && mouseX < left + 132 && mouseY >= sampleY && mouseY < sampleY + 20) {
             sample = carried.copyWithCount(1)
             sampleChanged = true
@@ -264,7 +277,7 @@ internal class ModelItemScreen(
             history.record(captureState())
             return true
         }
-        val handled = super.mouseReleased(mouseX, mouseY, button)
+        val handled = super.mouseReleased(event)
         history.record(captureState())
         return handled
     }
@@ -279,20 +292,20 @@ internal class ModelItemScreen(
         if (focused !== this.focused) super.setFocused(focused)
     }
 
-    override fun render(context: GuiGraphics, mouseX: Int, mouseY: Int, delta: Float) {
-        super.render(context, mouseX, mouseY, delta)
-        context.drawCenteredString(font, title, width / 2, 10, 0xFFFFFF)
+    override fun extractRenderState(context: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, delta: Float) {
+        super.extractRenderState(context, mouseX, mouseY, delta)
+        context.centeredText(font, title, width / 2, 10, 0xFFFFFF)
         context.enableScissor(left, 28, left + 286, height - 44)
         val labels = listOf("物品名称" to 40, "事件 ID" to 66) +
             if (edible) listOf("恢复饱食度" to 146, "恢复饱和度" to 172, "食用时长（秒）" to 198) else emptyList()
-        labels.forEach { (label, y) -> context.drawString(font, label, left, y - scroll, 0xDDDDDD) }
-        context.drawString(font, "模拟物品", left, sampleY + 6, 0xDDDDDD)
-        context.drawString(font, "背包", left, inventoryY - 14, 0xDDDDDD)
+        labels.forEach { (label, y) -> context.text(font, label, left, y - scroll, 0xDDDDDD) }
+        context.text(font, "模拟物品", left, sampleY + 6, 0xDDDDDD)
+        context.text(font, "背包", left, inventoryY - 14, 0xDDDDDD)
         context.fill(left + 111, sampleY - 1, left + 133, sampleY + 21, 0xFFA0A0A0.toInt())
         context.fill(left + 112, sampleY, left + 132, sampleY + 20, 0xFF111111.toInt())
         if (!sample.isEmpty) {
-            context.renderItem(sample, left + 114, sampleY + 2)
-            context.drawString(font, font.plainSubstrByWidth(sample.hoverName.string, 144),
+            context.item(sample, left + 114, sampleY + 2)
+            context.text(font, font.plainSubstrByWidth(sample.hoverName.string, 144),
                 left + 140, sampleY + 6, 0xDDDDDD)
         }
         repeat(36) { index ->
@@ -302,24 +315,23 @@ internal class ModelItemScreen(
             context.fill(x, y, x + 19, y + 19, 0xFF777777.toInt())
             context.fill(x + 1, y + 1, x + 18, y + 18, 0xFF202020.toInt())
             val stack = minecraft?.player?.inventory?.getItem(slot) ?: ItemStack.EMPTY
-            context.renderItem(stack, x + 1, y + 1)
-            context.renderItemDecorations(font, stack, x + 1, y + 1)
+            context.item(stack, x + 1, y + 1)
+            context.itemDecorations(font, stack, x + 1, y + 1)
         }
         context.disableScissor()
-        if (error.isNotEmpty()) context.drawString(font, font.plainSubstrByWidth(error, 286),
+        if (error.isNotEmpty()) context.text(font, font.plainSubstrByWidth(error, 286),
             left, height - 40, 0xFF9999)
         if (!carried.isEmpty) {
-            context.pose().pushPose()
-            context.pose().translate(0.0, 0.0, 500.0)
-            context.renderItem(carried, mouseX - 8, mouseY - 8)
-            context.pose().popPose()
+            context.pose().pushMatrix()
+            context.item(carried, mouseX - 8, mouseY - 8)
+            context.pose().popMatrix()
         } else {
             val hovered = inventorySlot(mouseX.toDouble(), mouseY.toDouble())
                 ?.let { minecraft?.player?.inventory?.getItem(it) }
-            if (hovered != null && !hovered.isEmpty) context.renderTooltip(font, hovered, mouseX, mouseY)
+            if (hovered != null && !hovered.isEmpty) context.setTooltipForNextFrame(font, hovered, mouseX, mouseY)
         }
     }
 
-    override fun onClose() { minecraft?.setScreen(parent) }
+    override fun onClose() { minecraft.setScreenAndShow(parent) }
     override fun isPauseScreen(): Boolean = false
 }

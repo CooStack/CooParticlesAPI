@@ -10,35 +10,36 @@ import com.mojang.brigadier.context.CommandContext
 import net.minecraft.commands.CommandSourceStack
 import net.minecraft.commands.Commands
 import net.minecraft.network.chat.Component
+import net.minecraft.server.permissions.Permissions
 
 /** 注册 CooParticlesAPI 管理命令及客户端 Status 会话控制命令。 */
 object APICommand {
     /** 在指定 dispatcher 同时注册新根命令与兼容旧根命令。 */
     fun register(dispatcher: CommandDispatcher<CommandSourceStack>) {
-        dispatcher.register(root(ROOT_COMMAND))
-        dispatcher.register(root(LEGACY_ROOT_COMMAND))
+        dispatcher.register(root("cooparticles"))
+        dispatcher.register(root("cooparticlesapi"))
     }
 
     /** 构造包含 clean 与 status 子树的权限受控命令根。 */
     private fun root(name: String): LiteralArgumentBuilder<CommandSourceStack> {
         return Commands.literal(name)
-            .requires { source -> source.hasPermission(2) }
+            .requires { source -> source.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER) }
             .then(
-                Commands.literal(CLEAN_COMMAND)
-                    .then(Commands.literal(ALL_COMMAND).executes {
+                Commands.literal("clean")
+                    .then(Commands.literal("all").executes {
                         CooParticlesAPI.clearTransientState()
                         1
                     })
             )
             .then(
-                Commands.literal(STATUS_COMMAND)
-                    .then(Commands.literal(START_COMMAND).executes { context ->
+                Commands.literal("status")
+                    .then(Commands.literal("start").executes { context ->
                         sendStatusControl(context, PerformanceStatusControlAction.START)
                     })
-                    .then(Commands.literal(STOP_COMMAND).executes { context ->
+                    .then(Commands.literal("stop").executes { context ->
                         sendStatusControl(context, PerformanceStatusControlAction.STOP)
                     })
-                    .then(Commands.literal(GUI_COMMAND).executes { context ->
+                    .then(Commands.literal("gui").executes { context ->
                         sendStatusControl(context, PerformanceStatusControlAction.GUI)
                     })
             )
@@ -62,27 +63,4 @@ object APICommand {
         return 1
     }
 
-    /** 稳定命令注册 ID。 */
-    private const val ROOT_COMMAND = "cooparticles"
-
-    /** 兼容已有脚本和用户习惯的旧命令注册 ID。 */
-    private const val LEGACY_ROOT_COMMAND = "cooparticlesapi"
-
-    /** 清理子命令注册 ID。 */
-    private const val CLEAN_COMMAND = "clean"
-
-    /** 全部目标子命令注册 ID。 */
-    private const val ALL_COMMAND = "all"
-
-    /** Status 子命令注册 ID。 */
-    private const val STATUS_COMMAND = "status"
-
-    /** 开始采集子命令注册 ID。 */
-    private const val START_COMMAND = "start"
-
-    /** 停止采集子命令注册 ID。 */
-    private const val STOP_COMMAND = "stop"
-
-    /** 打开实时界面子命令注册 ID。 */
-    private const val GUI_COMMAND = "gui"
 }

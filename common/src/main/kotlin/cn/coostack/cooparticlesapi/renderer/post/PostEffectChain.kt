@@ -2,7 +2,7 @@ package cn.coostack.cooparticlesapi.renderer.post
 
 import cn.coostack.cooparticlesapi.renderer.backend.RenderBackendCapability
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.CooTextureFormat
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /**
  * Pipeline graph 编译后的内部 pass 列表。
@@ -89,14 +89,14 @@ internal data class PostEffectChain(
  */
 internal data class PostEffectPass(
     val name: String,
-    val vertex: ResourceLocation? = null,
-    val fragment: ResourceLocation,
+    val vertex: Identifier? = null,
+    val fragment: Identifier,
     val inputs: List<PostEffectInput> = emptyList(),
     val output: PostEffectOutput = PostEffectOutput.TEMPORARY,
     val uniforms: List<PostEffectUniform> = emptyList(),
     val requiredCapabilities: Set<RenderBackendCapability> = emptySet(),
     val optionalCapabilities: Set<RenderBackendCapability> = emptySet(),
-    val outputTargetId: ResourceLocation? = null,
+    val outputTargetId: Identifier? = null,
     val outputTargetKey: String? = null,
     val colorAttachmentCount: Int = 1,
     val outputFormat: CooTextureFormat = CooTextureFormat.RGBA8,
@@ -133,7 +133,7 @@ internal data class PostEffectInput(
     val optional: Boolean = false,
     val sourcePassName: String? = null,
     val sourcePassAttachment: Int = 0,
-    val sourceResourceId: ResourceLocation? = null,
+    val sourceResourceId: Identifier? = null,
     val sourceResourceAttachment: Int = 0,
     val sourceResourceChannel: PostEffectResourceChannel = PostEffectResourceChannel.COLOR,
     val textureSlot: Int? = null,

@@ -2,7 +2,7 @@ package cn.coostack.cooparticlesapi.supports.sound
 
 import net.minecraft.client.Minecraft
 import net.minecraft.client.resources.sounds.SoundInstance
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.sounds.SoundSource
 import net.minecraft.util.Mth
 import net.minecraft.world.phys.Vec3
@@ -13,7 +13,7 @@ class DuckingSoundEffect(
     initialPos: Vec3,
     volumeMultiplier: Float,
     range: Double,
-    whitelistSounds: Set<ResourceLocation>,
+    whitelistSounds: Set<Identifier>,
     whitelistSources: Set<SoundSource>,
     whitelistKeys: Set<String>
 ) {
@@ -25,13 +25,13 @@ class DuckingSoundEffect(
             field = value
         }
 
-    var volumeMultiplier: Float = Mth.clamp(volumeMultiplier, 0f, 1f)
+    var volumeMultiplier: Float = Mth.clamp(volumeMultiplier, 0F, 1F)
         set(value) {
-            field = Mth.clamp(value, 0f, 1f)
+            field = Mth.clamp(value, 0F, 1F)
         }
 
     var range: Double = range
-    val whitelistSounds: MutableSet<ResourceLocation> = whitelistSounds.toMutableSet()
+    val whitelistSounds: MutableSet<Identifier> = whitelistSounds.toMutableSet()
     val whitelistSources: MutableSet<SoundSource> = whitelistSources.toMutableSet()
     val whitelistKeys: MutableSet<String> = whitelistKeys.toMutableSet()
     var isStopped = false
@@ -61,7 +61,7 @@ class DuckingSoundEffect(
         pos: Vec3,
         volumeMultiplier: Float,
         range: Double,
-        whitelistSounds: Set<ResourceLocation>,
+        whitelistSounds: Set<Identifier>,
         whitelistSources: Set<SoundSource>,
         whitelistKeys: Set<String>
     ) {
@@ -91,7 +91,7 @@ class DuckingSoundEffect(
     }
 
     fun isWhitelisted(sound: SoundInstance): Boolean {
-        if (sound.location in whitelistSounds || sound.source in whitelistSources) {
+        if (sound.identifier in whitelistSounds || sound.source in whitelistSources) {
             return true
         }
         return sound is ManagedSoundInstance && sound.key in whitelistKeys
@@ -103,10 +103,10 @@ class DuckingSoundEffect(
         }
         val distance = listenerPos.distanceTo(position)
         if (distance >= range) {
-            return 1f
+            return 1F
         }
         val strength = (1.0 - distance / range).toFloat()
-        return 1f - (1f - volumeMultiplier) * strength
+        return 1F - (1F - volumeMultiplier) * strength
     }
 
     private fun setRawPosition(pos: Vec3) {

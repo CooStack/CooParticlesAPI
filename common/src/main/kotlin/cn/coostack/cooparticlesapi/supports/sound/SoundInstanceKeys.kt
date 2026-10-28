@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi.supports.sound
 
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.entity.Entity
 import java.util.UUID
 
@@ -21,7 +21,7 @@ object SoundInstanceKeys {
     }
 
     @JvmStatic
-    fun soundName(soundId: ResourceLocation): String {
+    fun soundName(soundId: Identifier): String {
         return soundId.toString()
     }
 

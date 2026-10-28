@@ -8,14 +8,14 @@ import cn.coostack.cooparticlesapi.network.packet.api.ServerContext
 import cn.coostack.cooparticlesapi.performance.PerformanceStatusServerRequestGate
 import cn.coostack.cooparticlesapi.performance.PerformanceStatusServerSnapshotFactory
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /** 客户端在 Status 活跃期间按配置间隔发送的无参数服务端快照请求。 */
 @CooAutoRegister
 class PacketPerformanceStatusRequestC2S : CooPacket() {
     /** 返回该业务包的稳定协议 ID。 */
-    override fun id(): ResourceLocation {
-        return ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, PACKET_ID)
+    override fun id(): Identifier {
+        return Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, PACKET_ID)
     }
 
     /** 验证请求类型、命令权限和服务端限流后构造固定大小快照。 */
@@ -26,7 +26,7 @@ class PacketPerformanceStatusRequestC2S : CooPacket() {
         if (!PerformanceStatusServerRequestGate.tryAcquire(context.sender, refreshInterval)) return
         context.reply(
             PacketPerformanceStatusSnapshotS2C.from(
-                PerformanceStatusServerSnapshotFactory.create(context.sender.server)
+                PerformanceStatusServerSnapshotFactory.create(context.sender.level().server)
             )
         )
     }

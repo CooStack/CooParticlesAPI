@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi.platform.registry
 
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.EntityType
 import net.minecraft.world.level.block.Block
@@ -9,7 +9,7 @@ import net.minecraft.world.level.block.entity.BlockEntityType
 import java.util.function.Supplier
 
 class CommonDeferredEntityType<T : Entity>(
-    val id: ResourceLocation,
+    val id: Identifier,
     val supplier: Supplier<EntityType<T>>
 ) {
 

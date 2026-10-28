@@ -1,11 +1,11 @@
 package cn.coostack.cooparticlesapi.network.buffer
 
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 
 interface ParticleControlerDataBuffer<T> {
 
-    data class Id(val value: ResourceLocation) {
+    data class Id(val value: Identifier) {
         companion object {
             @JvmStatic
             fun toID(string: String): Id {
@@ -15,7 +15,7 @@ interface ParticleControlerDataBuffer<T> {
                 }
                 val namespace = split[0]
                 val id = split[1]
-                return Id(ResourceLocation.fromNamespaceAndPath(namespace, id))
+                return Id(Identifier.fromNamespaceAndPath(namespace, id))
             }
         }
     }

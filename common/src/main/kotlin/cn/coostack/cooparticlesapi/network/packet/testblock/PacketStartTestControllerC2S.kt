@@ -7,7 +7,7 @@ import cn.coostack.cooparticlesapi.blocks.TestControllerBlockAccess
 import cn.coostack.cooparticlesapi.network.packet.api.CooPacket
 import cn.coostack.cooparticlesapi.network.packet.api.ServerContext
 import net.minecraft.core.BlockPos
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 @CooAutoRegister
 class PacketStartTestControllerC2S() : CooPacket() {
@@ -19,13 +19,13 @@ class PacketStartTestControllerC2S() : CooPacket() {
         this.blockPos = blockPos
     }
 
-    override fun id(): ResourceLocation {
-        return ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "start_test_controller_c2s")
+    override fun id(): Identifier {
+        return Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "start_test_controller_c2s")
     }
 
     override fun onServerReceive(context: ServerContext) {
         val sender = context.sender
         if (!sender.isCreative) return
-        TestControllerBlockAccess.find(sender.server, dimension, blockPos)?.startTest()
+        TestControllerBlockAccess.find(sender.level().server, dimension, blockPos)?.startTest()
     }
 }

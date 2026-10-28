@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi.gui
 
-import net.minecraft.client.gui.GuiGraphics
+import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.minecraft.world.phys.Vec2
 
 /**
@@ -18,6 +18,7 @@ object GUIUtil {
      * @param elementWidth 元素自身宽度
      * @param anchor 贴左 / 居中 / 贴右
      * @param offset 在锚点基础上的额外偏移(正数向右)
+     * @return 元素左边界的 GUI 像素坐标；元素超宽时可以为负数
      */
     fun alignX(screenWidth: Int, elementWidth: Int, anchor: AnchorX, offset: Int = 0): Int {
         val base = when (anchor) {
@@ -35,6 +36,7 @@ object GUIUtil {
      * @param elementHeight 元素自身高度
      * @param anchor 贴顶 / 居中 / 贴底
      * @param offset 在锚点基础上的额外偏移(正数向下)
+     * @return 元素上边界的 GUI 像素坐标；元素超高时可以为负数
      */
     fun alignY(screenHeight: Int, elementHeight: Int, anchor: AnchorY, offset: Int = 0): Int {
         val base = when (anchor) {
@@ -50,6 +52,15 @@ object GUIUtil {
      *
      * 例: 把一个 80x10 的条放在屏幕正中:
      *     val pos = GUIUtil.align(w, h, 80, 10, AnchorX.CENTER, AnchorY.CENTER)
+     * @param screenWidth 当前界面的 GUI 像素宽度
+     * @param screenHeight 当前界面的 GUI 像素高度
+     * @param elementWidth 待对齐元素的 GUI 像素宽度
+     * @param elementHeight 待对齐元素的 GUI 像素高度
+     * @param anchorX 水平对齐基准
+     * @param anchorY 垂直对齐基准
+     * @param offsetX 正数表示向右移动的 GUI 像素偏移
+     * @param offsetY 正数表示向下移动的 GUI 像素偏移
+     * @return 元素左上角的 GUI 像素坐标，不受绘制矩阵缩放影响
      */
     fun align(
         screenWidth: Int,
@@ -75,11 +86,11 @@ object GUIUtil {
      * 布局作用域: 在 [placeLayout] 的代码块里, 你拿到的就是这个对象。
      * 它已经把"平移到锚点"和"缩放"处理好了, 你只管从 (0, 0) 开始画。
      *
-     * @property graphics 当前的 GuiGraphics, 直接用它画图
+     * @property graphics 当前的 GuiGraphicsExtractor, 直接用它画图
      * @property scale 实际生效的缩放倍率
      */
     class LayoutScope(
-        val graphics: GuiGraphics,
+        val graphics: GuiGraphicsExtractor,
         val scale: Float
     ) {
         /**
@@ -107,43 +118,46 @@ object GUIUtil {
      * ```
      * // 把魔力条钉在饥饿条上方(右半边、底部对齐), 放大 1.5 倍, 缩放后位置不变
      * val hunger = HudAnchors.hungerTopLeft()
-     * GUIUtil.placeLayout(graphics, hunger.x, hunger.y - 12, scale = 1.5f) {
+     * GUIUtil.placeLayout(graphics, hunger.x, hunger.y - 12, scale = 1.5F) {
      *     // 这里直接从 (0,0) 画, 不用管缩放
      *     graphics.blit(MANA_TEXTURE, originX, originY, 0, 0, 80, 8)
      * }
      * ```
      *
-     * @param graphics 当前 GuiGraphics
+     * @param graphics 当前 GuiGraphicsExtractor
      * @param x 元素左上角的目标 X(逻辑坐标, 可直接用 HudAnchors 的值)
      * @param y 元素左上角的目标 Y
-     * @param scale 缩放倍率, 1f 表示不缩放
+     * @param scale 缩放倍率, 1F 表示不缩放
      * @param block 绘制逻辑, 在里面从 (originX, originY) 即 (0,0) 开始画
      */
     inline fun placeLayout(
-        graphics: GuiGraphics,
+        graphics: GuiGraphicsExtractor,
         x: Int,
         y: Int,
-        scale: Float = 1f,
+        scale: Float = 1F,
         block: LayoutScope.() -> Unit
     ) {
         val pose = graphics.pose()
-        pose.pushPose()
+        pose.pushMatrix()
         // 1. 先平移到锚点(此时还是干净的逻辑坐标)
-        pose.translate(x.toFloat(), y.toFloat(), 0f)
+        pose.translate(x.toFloat(), y.toFloat())
         // 2. 再缩放(只影响后续从原点画出的内容大小, 不污染定位)
-        if (scale != 1f) {
-            pose.scale(scale, scale, 1f)
+        if (scale != 1F) {
+            pose.scale(scale, scale)
         }
         // 3. 交给用户, 让它从 (0,0) 画
-        LayoutScope(graphics, scale).block()
-        pose.popPose()
+        try {
+            LayoutScope(graphics, scale).block()
+        } finally {
+            pose.popMatrix()
+        }
     }
 
     /**
      * placeLayout 的锚点版: 直接用锚点 + 偏移定位, 内部自动算真实坐标。
      * 适合"始终贴右下角"这种需求, 连坐标都不用自己算。
      *
-     * @param graphics 当前 GuiGraphics
+     * @param graphics 当前 GuiGraphicsExtractor
      * @param elementWidth 元素宽度(用于居中/居右计算)
      * @param elementHeight 元素高度
      * @param anchorX 水平锚点
@@ -152,16 +166,17 @@ object GUIUtil {
      * @param offsetY 额外纵向偏移
      * @param scale 缩放倍率
      * @param block 绘制逻辑, 从 (0,0) 开始画
+     * 示例：`GUIUtil.placeLayout(graphics, 80, 10, AnchorX.RIGHT, AnchorY.BOTTOM) { }`。
      */
     inline fun placeLayout(
-        graphics: GuiGraphics,
+        graphics: GuiGraphicsExtractor,
         elementWidth: Int,
         elementHeight: Int,
         anchorX: AnchorX,
         anchorY: AnchorY,
         offsetX: Int = 0,
         offsetY: Int = 0,
-        scale: Float = 1f,
+        scale: Float = 1F,
         block: LayoutScope.() -> Unit
     ) {
         val w = graphics.guiWidth()

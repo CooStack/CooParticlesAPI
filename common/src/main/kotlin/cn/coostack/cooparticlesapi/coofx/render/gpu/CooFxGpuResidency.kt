@@ -1,7 +1,7 @@
 package cn.coostack.cooparticlesapi.coofx.render.gpu
 
 import cn.coostack.cooparticlesapi.coofx.render.compiled.CooFxCompiledRenderPackage
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /**
  * CooFX GPU generation 的常驻状态。
@@ -22,7 +22,7 @@ enum class CooFxGpuGenerationState {
 }
 
 data class CooFxGpuPackageKey(
-    val resourceId: ResourceLocation,
+    val resourceId: Identifier,
     val contentDigest: String,
     val backendCapabilitySignature: String
 ) {
@@ -93,7 +93,7 @@ class CooFxGpuPackageRegistry(
     private val uploader: CooFxGpuPackageUploader
 ) {
     private val monitor = Any()
-    private val active = mutableMapOf<ResourceLocation, GenerationEntry>()
+    private val active = mutableMapOf<Identifier, GenerationEntry>()
     private val retired = mutableSetOf<GenerationEntry>()
     private var nextGeneration = 1L
 
@@ -127,7 +127,7 @@ class CooFxGpuPackageRegistry(
         }
     }
 
-    fun acquire(resourceId: ResourceLocation): CooFxGpuGenerationLease? {
+    fun acquire(resourceId: Identifier): CooFxGpuGenerationLease? {
         renderThreadGuard.assertRenderThread()
         return synchronized(monitor) {
             val entry = active[resourceId] ?: return@synchronized null
@@ -139,11 +139,11 @@ class CooFxGpuPackageRegistry(
         }
     }
 
-    fun activeGeneration(resourceId: ResourceLocation): Long? = synchronized(monitor) {
+    fun activeGeneration(resourceId: Identifier): Long? = synchronized(monitor) {
         active[resourceId]?.gpuPackage?.generation
     }
 
-    fun retire(resourceId: ResourceLocation): Boolean {
+    fun retire(resourceId: Identifier): Boolean {
         renderThreadGuard.assertRenderThread()
         return synchronized(monitor) {
             val entry = active.remove(resourceId) ?: return@synchronized false

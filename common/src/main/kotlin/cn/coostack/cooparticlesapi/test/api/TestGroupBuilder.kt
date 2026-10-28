@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi.test.api
 
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /**
  * 按照自定义的方式去构建 group
@@ -11,7 +11,7 @@ import net.minecraft.resources.ResourceLocation
 interface TestGroupBuilder {
 
     /** @return 待构建测试组的资源 ID */
-    fun groupID(): ResourceLocation
+    fun groupID(): Identifier
 
     fun build(): TestGroup
 }

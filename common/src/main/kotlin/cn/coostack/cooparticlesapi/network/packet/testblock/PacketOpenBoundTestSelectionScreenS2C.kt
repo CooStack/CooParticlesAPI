@@ -8,7 +8,7 @@ import cn.coostack.cooparticlesapi.network.packet.api.ClientContext
 import cn.coostack.cooparticlesapi.network.packet.api.CooPacket
 import cn.coostack.cooparticlesapi.test.block.client.TestControllerClientScreens
 import net.minecraft.core.BlockPos
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 @CooAutoRegister
 class PacketOpenBoundTestSelectionScreenS2C() : CooPacket() {
@@ -22,8 +22,8 @@ class PacketOpenBoundTestSelectionScreenS2C() : CooPacket() {
     @CodecField var running: List<Boolean> = emptyList()
     @CodecField var statuses: List<String> = emptyList()
 
-    override fun id(): ResourceLocation {
-        return ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "open_bound_test_selection_screen_s2c")
+    override fun id(): Identifier {
+        return Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "open_bound_test_selection_screen_s2c")
     }
 
     override fun onClientReceive(context: ClientContext) {

@@ -7,7 +7,7 @@ import cn.coostack.cooparticlesapi.network.packet.api.ClientContext
 import cn.coostack.cooparticlesapi.network.packet.api.CooPacket
 import cn.coostack.cooparticlesapi.performance.PerformanceStatusClientBridge
 import cn.coostack.cooparticlesapi.performance.PerformanceStatusControlAction
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /** 服务端命令向目标玩家客户端发送的 Status 会话控制包。 */
 @CooAutoRegister
@@ -21,8 +21,8 @@ class PacketPerformanceStatusControlS2C() : CooPacket() {
     }
 
     /** 返回该业务包的稳定协议 ID。 */
-    override fun id(): ResourceLocation {
-        return ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, PACKET_ID)
+    override fun id(): Identifier {
+        return Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, PACKET_ID)
     }
 
     /** 经纯 common bridge 把动作交给客户端初始化时安装的控制器。 */

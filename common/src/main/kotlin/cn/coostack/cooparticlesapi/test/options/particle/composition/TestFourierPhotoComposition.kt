@@ -9,7 +9,7 @@ import cn.coostack.cooparticlesapi.utils.ImageUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import cn.coostack.cooparticlesapi.utils.builder.FourierSeriesBuilder
 import cn.coostack.cooparticlesapi.utils.builder.PointsBuilder
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
 
@@ -17,7 +17,7 @@ import net.minecraft.world.phys.Vec3
 class TestFourierPhotoComposition(position: Vec3, world: Level? = null) : AutoParticleComposition(position, world) {
     companion object {
         val image = ImageUtil.loadFromIdentifier(
-            ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "test/testing.png")
+            Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "test/testing.png")
         )
         val builders = HashMap<RelativeLocation, FourierSeriesBuilder>()
         val points = PointsBuilder()

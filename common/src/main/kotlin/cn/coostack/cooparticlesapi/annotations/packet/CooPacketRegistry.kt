@@ -7,7 +7,7 @@ import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
 import io.netty.buffer.Unpooled
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -24,8 +24,8 @@ object CooPacketRegistry {
         val codec: StreamCodec<FriendlyByteBuf, CooPacket>,
     )
 
-    private val byId = ConcurrentHashMap<ResourceLocation, Entry>()
-    private val byClass = ConcurrentHashMap<Class<out CooPacket>, ResourceLocation>()
+    private val byId = ConcurrentHashMap<Identifier, Entry>()
+    private val byClass = ConcurrentHashMap<Class<out CooPacket>, Identifier>()
 
     private var scanned = false
 
@@ -76,11 +76,11 @@ object CooPacketRegistry {
         byClass[packetClass] = id
     }
 
-    fun isRegistered(id: ResourceLocation): Boolean = byId.containsKey(id)
+    fun isRegistered(id: Identifier): Boolean = byId.containsKey(id)
 
     fun isRegistered(packetClass: Class<out CooPacket>): Boolean = byClass.containsKey(packetClass)
 
-    fun idOf(packet: CooPacket): ResourceLocation {
+    fun idOf(packet: CooPacket): Identifier {
         return byClass[packet::class.java] ?: packet.id()
     }
 
@@ -104,7 +104,7 @@ object CooPacketRegistry {
     /**
      * 根据 ID 与 字节数组解码出 packet
      */
-    fun decode(id: ResourceLocation, data: ByteArray): CooPacket? {
+    fun decode(id: Identifier, data: ByteArray): CooPacket? {
         val entry = byId[id] ?: return null
         val buf = FriendlyByteBuf(Unpooled.wrappedBuffer(data))
         return try {

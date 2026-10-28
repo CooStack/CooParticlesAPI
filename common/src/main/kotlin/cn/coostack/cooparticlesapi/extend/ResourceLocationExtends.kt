@@ -1,15 +1,15 @@
 package cn.coostack.cooparticlesapi.extend
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /**
  * 缩短指令长度
  */
-fun ofID(modID: String, path: String) = ResourceLocation.fromNamespaceAndPath(modID, path)
+fun ofID(modID: String, path: String) = Identifier.fromNamespaceAndPath(modID, path)
 
-fun ofID(path: String) = ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, path)
+fun ofID(path: String) = Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, path)
 
-fun ofVanillaID(path: String) = ResourceLocation.fromNamespaceAndPath("minecraft", path)
+fun ofVanillaID(path: String) = Identifier.fromNamespaceAndPath("minecraft", path)
 
-fun ResourceLocation.asID(modID: String): ResourceLocation = ofID(modID, this.path)
+fun Identifier.asID(modID: String): Identifier = ofID(modID, this.path)

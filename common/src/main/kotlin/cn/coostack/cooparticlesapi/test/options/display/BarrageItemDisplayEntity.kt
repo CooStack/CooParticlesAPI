@@ -12,21 +12,23 @@ import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.MinecraftRendererUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import com.mojang.blaze3d.vertex.PoseStack
-import net.minecraft.client.Camera
-import net.minecraft.client.Minecraft
-import net.minecraft.client.renderer.LightTexture
-import net.minecraft.client.renderer.MultiBufferSource
-import net.minecraft.client.renderer.RenderType
+import net.minecraft.util.LightCoordsUtil
+import net.minecraft.client.renderer.SubmitNodeCollector
+import net.minecraft.client.renderer.rendertype.RenderTypes
+import net.minecraft.client.renderer.state.level.CameraRenderState
 import net.minecraft.client.renderer.texture.OverlayTexture
 import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.entity.player.Player
+import net.minecraft.world.item.ItemDisplayContext
 import net.minecraft.world.item.Items
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import org.joml.Matrix4f
 import org.joml.Quaternionf
+import kotlin.math.PI
+import kotlin.math.abs
 
 @CooAutoRegister
 class BarrageItemDisplayEntity(pos: Vec3, world: Level?) : DisplayEntity(pos, world) {
@@ -44,67 +46,39 @@ class BarrageItemDisplayEntity(pos: Vec3, world: Level?) : DisplayEntity(pos, wo
     @CodecField
     var modelOffset = Quaternionf()
 
-    override fun render(
+    override fun submit(
         view: Matrix4f,
         proj: Matrix4f,
         modelMatrixStack: PoseStack,
-        buffer: MultiBufferSource,
+        collector: SubmitNodeCollector,
         delta: Float,
-        camera: Camera
+        camera: CameraRenderState
     ) {
-        val itemRenderer = Minecraft.getInstance().itemRenderer
-        val model = itemRenderer.getModel(item, world, null, 0)
         val offset = renderCenterOffset()
         modelMatrixStack.translate(-offset.x, -offset.y, -offset.z)
-        modelMatrixStack.pushPose()
         MinecraftRendererUtil.applyAtPoint(
             offset, modelMatrixStack
         ) {
-            modelMatrixStack.mulPose(rotation(delta))
-            buffer.getBuffer(RenderType.LINES)
-                // Z轴 蓝色
-                .addVertex(modelMatrixStack.last(), 0f, 0f, -2f)
-                .setNormal(modelMatrixStack.last(), 0f, 1f, 0f)
-                .setColor(255, 255, 255, 255)
-                .setLight(LightTexture.FULL_BRIGHT)
-                .addVertex(modelMatrixStack.last(), 0f, 0f, 2f)
-                .setNormal(modelMatrixStack.last(), 0f, 1f, 0f)
-                .setColor(0, 0, 255, 255)
-                .setLight(LightTexture.FULL_BRIGHT)
-                // Y轴 红色
-                .addVertex(modelMatrixStack.last(), 0f, 2f, 0f)
-                .setNormal(modelMatrixStack.last(), 0f, 1f, 0f)
-                .setColor(255, 0, 0, 255)
-                .setLight(LightTexture.FULL_BRIGHT)
-                .addVertex(modelMatrixStack.last(), 0f, -2f, 0f)
-                .setNormal(modelMatrixStack.last(), 0f, 1f, 0f)
-                .setColor(255, 255, 255, 255)
-                .setLight(LightTexture.FULL_BRIGHT)
-                // X轴 绿色
-                .addVertex(modelMatrixStack.last(), 2f, 0f, 0f)
-                .setNormal(modelMatrixStack.last(), 0f, 1f, 0f)
-                .setColor(0, 255, 0, 255)
-                .setLight(LightTexture.FULL_BRIGHT)
-                .addVertex(modelMatrixStack.last(), -2f, 0f, 0f)
-                .setNormal(modelMatrixStack.last(), 0f, 1f, 0f)
-                .setColor(255, 255, 255, 255)
-                .setLight(LightTexture.FULL_BRIGHT)
+            rotate(rotation(delta))
         }
-        modelMatrixStack.popPose()
-        MinecraftRendererUtil.applyAtPoint(
-            offset, modelMatrixStack
-        ) {
-            modelMatrixStack.mulPose(rotation(delta))
+        collector.submitCustomGeometry(modelMatrixStack, RenderTypes.LINES) { pose, vertices ->
+            vertices.addVertex(pose, 0F, 0F, -2F).setColor(255, 255, 255, 255)
+            vertices.addVertex(pose, 0F, 0F, 2F).setColor(0, 0, 255, 255)
+            vertices.addVertex(pose, 0F, 2F, 0F).setColor(255, 0, 0, 255)
+            vertices.addVertex(pose, 0F, -2F, 0F).setColor(255, 255, 255, 255)
+            vertices.addVertex(pose, 2F, 0F, 0F).setColor(0, 255, 0, 255)
+            vertices.addVertex(pose, -2F, 0F, 0F).setColor(255, 255, 255, 255)
         }
-
-        MinecraftRendererUtil.renderItemModel(
-            itemRenderer,
+        MinecraftRendererUtil.submitItem(
             item,
+            ItemDisplayContext.NONE,
+            world ?: return,
+            null,
+            0,
             modelMatrixStack,
-            model,
-            LightTexture.FULL_BRIGHT,
+            collector,
+            LightCoordsUtil.FULL_BRIGHT,
             OverlayTexture.NO_OVERLAY,
-            buffer.getBuffer(RenderType.cutout())
         )
     }
 
@@ -124,9 +98,9 @@ class BarrageItemDisplayEntity(pos: Vec3, world: Level?) : DisplayEntity(pos, wo
 
     fun applyModelOffsetEuler(yawDeg: Float, pitchDeg: Float, rollDeg: Float) {
 
-        val yaw = (-yawDeg) * (Math.PI.toFloat() / 180f)
-        val pitch = (-pitchDeg) * (Math.PI.toFloat() / 180f)
-        val roll = (rollDeg) * (Math.PI.toFloat() / 180f)
+        val yaw = (-yawDeg) * (PI.toFloat() / 180F)
+        val pitch = (-pitchDeg) * (PI.toFloat() / 180F)
+        val roll = (rollDeg) * (PI.toFloat() / 180F)
 
         modelOffset.identity()
             .rotateY(yaw)
@@ -145,7 +119,7 @@ class BarrageItemDisplayEntity(pos: Vec3, world: Level?) : DisplayEntity(pos, wo
         }.lastOrNull() ?: return
 
         val rel = player.eyePosition - pos
-        applyModelOffsetEuler(0f, -90f, 45f)
+        applyModelOffsetEuler(0F, -90F, 45F)
         rotateToPoint(rel.asRelative())
 
 //        roll += 10f
@@ -159,7 +133,7 @@ class BarrageItemDisplayEntity(pos: Vec3, world: Level?) : DisplayEntity(pos, wo
     }
 
     override fun rotateAsAxis(radian: Double) {
-        if (kotlin.math.abs(radian) < 1e-12) return
+        if (abs(radian) < 1e-12) return
 
         val dq = Quaternionf().rotateZ(radian.toFloat())
 

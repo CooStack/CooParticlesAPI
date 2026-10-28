@@ -8,7 +8,7 @@ import cn.coostack.cooparticlesapi.network.packet.api.CooPacket
 import cn.coostack.cooparticlesapi.network.packet.api.ServerContext
 import cn.coostack.cooparticlesapi.test.block.BlockTestOptionResult
 import net.minecraft.core.BlockPos
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 @CooAutoRegister
 class PacketReviewTestControllerC2S() : CooPacket() {
@@ -22,8 +22,8 @@ class PacketReviewTestControllerC2S() : CooPacket() {
         this.action = action
     }
 
-    override fun id(): ResourceLocation {
-        return ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "review_test_controller_c2s")
+    override fun id(): Identifier {
+        return Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "review_test_controller_c2s")
     }
 
     override fun onServerReceive(context: ServerContext) {
@@ -35,7 +35,7 @@ class PacketReviewTestControllerC2S() : CooPacket() {
             action.equals(SKIP, ignoreCase = true) -> BlockTestOptionResult.SKIPPED
             else -> return
         }
-        TestControllerBlockAccess.find(sender.server, dimension, blockPos)?.reviewCurrent(result)
+        TestControllerBlockAccess.find(sender.level().server, dimension, blockPos)?.reviewCurrent(result)
     }
 
     companion object {

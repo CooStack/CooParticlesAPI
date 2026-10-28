@@ -3,19 +3,21 @@ package cn.coostack.cooparticlesapi.particles
 import cn.coostack.cooparticlesapi.extend.minus
 import cn.coostack.cooparticlesapi.particles.control.ControlParticleManager
 import cn.coostack.cooparticlesapi.particles.control.ParticleControler
+import cn.coostack.cooparticlesapi.particles.control.RemoveReason
 import cn.coostack.cooparticlesapi.utils.GraphMathHelper
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.MinecraftRendererUtil
 import cn.coostack.cooparticlesapi.utils.PhysicsUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
-import com.mojang.blaze3d.vertex.VertexConsumer
 import net.minecraft.client.Camera
+import net.minecraft.client.Minecraft
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.client.particle.ParticleRenderType
-import net.minecraft.client.particle.TextureSheetParticle
-import net.minecraft.client.renderer.LevelRenderer
-import net.minecraft.client.renderer.LightTexture
+import net.minecraft.client.particle.SingleQuadParticle
 import net.minecraft.core.BlockPos
+import net.minecraft.data.AtlasIds
+import net.minecraft.util.ARGB
+import net.minecraft.util.LightCoordsUtil
 import net.minecraft.util.Mth
 import net.minecraft.util.RandomSource
 import net.minecraft.world.phys.AABB
@@ -28,6 +30,15 @@ import org.joml.Vector3f
 import java.util.*
 
 
+/**
+ * 由控制器驱动的客户端普通粒子，负责插值、碰撞与几何快照提取。
+ *
+ * 实例由粒子提供器创建，并要求对应 UUID 的控制器已先进入管理器。
+ * 渲染提交不得改变生命周期；所有顶点在客户端提取阶段复制。
+ *
+ * @property controlUUID 管理器中已注册控制器的身份
+ * @property cameraOption 几何朝向与插值模式
+ */
 abstract class ControlableParticle(
     world: ClientLevel,
     pos: Vec3,
@@ -35,7 +46,16 @@ abstract class ControlableParticle(
     val controlUUID: UUID,
     /** 粒子的相机朝向模式 */
     var cameraOption: ParticleCameraOption = ParticleCameraOption.BILLBOARD
-) : TextureSheetParticle(world, pos.x, pos.y, pos.z, velocity.x, velocity.y, velocity.z) {
+) : SingleQuadParticle(
+    world,
+    pos.x,
+    pos.y,
+    pos.z,
+    velocity.x,
+    velocity.y,
+    velocity.z,
+    Minecraft.getInstance().atlasManager.getAtlasOrThrow(AtlasIds.PARTICLES).missingSprite(),
+) {
     constructor(
         world: ClientLevel,
         pos: Vec3,
@@ -45,10 +65,10 @@ abstract class ControlableParticle(
     ) : this(world, pos, velocity, controlUUID, ParticleCameraOption.fromFaceToCamera(faceToCamera))
 
     companion object {
+        /** 线性插值的兼容入口，通过无状态工厂返回函数，不保留独立缓存字段。 */
         @JvmStatic
-        val LINEAR_INTERPOLATOR: ParticleLerpInterpolator = ParticleLerpInterpolator { p1, p2, delta ->
-            GraphMathHelper.lerp(delta, p1, p2)
-        }
+        val LINEAR_INTERPOLATOR: ParticleLerpInterpolator
+            get() = ParticleLerpInterpolator { p1, p2, delta -> GraphMathHelper.lerp(delta, p1, p2) }
     }
 
     /** 旧布尔 API 的兼容桥接：true = BILLBOARD，false = ROTATION。 */
@@ -77,7 +97,7 @@ abstract class ControlableParticle(
         }
 
     /** 粒子渲染类型 可以使用 */
-    var textureSheet: ParticleRenderType = ParticleRenderType.PARTICLE_SHEET_LIT
+    var textureSheet: ParticleRenderType = CooParticleTextureSheet.PARTICLE_SHEET_LIT
 
     private var currentAxis: Vec3 = Vec3(0.0, 1.0, 0.0)
     var previewAxis: Vec3 = currentAxis
@@ -112,7 +132,7 @@ abstract class ControlableParticle(
     /** @see scale 粒子尺寸 */
     private var currentWeightSize = super.quadSize
     private var currentHeightSize = super.quadSize
-    private var currentDepthSize = 0f
+    private var currentDepthSize = 0F
     var previewWeightSize = currentWeightSize
     var previewHeightSize = currentHeightSize
     var previewDepthSize = currentDepthSize
@@ -148,7 +168,7 @@ abstract class ControlableParticle(
         }
 
     var size: Float
-        get() = (currentWeightSize + currentHeightSize) / 2f
+        get() = (currentWeightSize + currentHeightSize) / 2F
         set(value) {
             currentWeightSize = value
             currentHeightSize = value
@@ -158,7 +178,7 @@ abstract class ControlableParticle(
     private fun updateRenderSizeBounds() {
         val boundSize = maxOf(currentWeightSize, currentHeightSize, currentDepthSize)
         // 对应scale方法
-        this.setSize(0.2f * boundSize, 0.2f * boundSize)
+        this.setSize(0.2F * boundSize, 0.2F * boundSize)
     }
 
     /**
@@ -260,14 +280,14 @@ abstract class ControlableParticle(
     var particleAlpha: Float
         get() = alpha
         set(value) {
-            alpha = value.coerceIn(0f, 1f)
+            alpha = value.coerceIn(0F, 1F)
         }
 
-    var previewPitch: Float = 0f
-    var currentPitch: Float = 0f
+    var previewPitch: Float = 0F
+    var currentPitch: Float = 0F
 
-    var previewYaw: Float = 0f
-    var currentYaw: Float = 0f
+    var previewYaw: Float = 0F
+    var currentYaw: Float = 0F
 
     /** @see prevAngle */
     var previewRoll: Float
@@ -390,7 +410,7 @@ abstract class ControlableParticle(
 
     /**
      * 防止频繁调用Math3DUtil (让键盘休息一会) 也不用调用 color =
-     * Vector3f(xxx/255f,xxx/255f,xxx/255f)
+     * Vector3f(xxx/255F,xxx/255F,xxx/255F)
      */
     fun colorOfRGB(r: Int, g: Int, b: Int) {
         color = Math3DUtil.colorOf(r.coerceIn(0, 255), g.coerceIn(0, 255), b.coerceIn(0, 255))
@@ -401,12 +421,12 @@ abstract class ControlableParticle(
         val r = (rgba shr 16) and 0xFF
         val g = (rgba shr 8) and 0xFF
         val b = rgba and 0xFF
-        colorOfRGBA(r, g, b, a / 255f)
+        colorOfRGBA(r, g, b, a / 255F)
     }
 
     fun colorOfRGBA(r: Int, g: Int, b: Int, alpha: Float) {
         color = Math3DUtil.colorOf(r.coerceIn(0, 255), g.coerceIn(0, 255), b.coerceIn(0, 255))
-        this.alpha = alpha.coerceIn(0f, 1f)
+        this.alpha = alpha.coerceIn(0F, 1F)
     }
 
     /**
@@ -534,18 +554,22 @@ abstract class ControlableParticle(
     /** @see ParticleControler.remove() */
     override fun remove() {
         super.remove()
-        // FIXME 原版的驱逐队列满后不会调用 markDead，百分百泄漏，
-        //  我们的 ParticleManagerMixin 可以确保没问题，
-        //  但是一旦关闭 ParticleManagerMixin 注入，就绝对有问题
-        // 粒子的移除方法被原版调用时也要移除 controller 否则会内存泄漏
-        // 不能放在 controller.remove() 里，因为 markDead 可能在模组外部调用
+        // 外部直接移除粒子时也要清除控制器；队列驱逐另走 QUEUE 原因，避免触发死亡重生。
         ControlParticleManager.removeControl(controlUUID)
     }
 
-    override fun render(vertexConsumer: VertexConsumer, camera: Camera, tickDelta: Float) {
+    /**
+     * 在提取阶段复制顶点，延迟提交时不再读取粒子的可变状态。
+     *
+     * @return 摄像机相对坐标中的顶点；禁用绘制时返回 null
+     */
+    internal fun captureGeometry(camera: Camera, tickDelta: Float): List<ParticleVertex>? {
+        if (textureSheet == CooParticleTextureSheet.NO_RENDER) return null
+        val vertices = ArrayList<ParticleVertex>()
+        val color = ARGB.colorFromFloat(alpha, rCol, gCol, bCol)
+        val light = getLightCoords(tickDelta)
+        val cameraPos = camera.position()
         val q = Quaternionf()
-        // 获取摄像机位置
-        val cameraPos = camera.position
         val worldPos = interpolator.consume(
             Vec3(xo, yo, zo), Vec3(x, y, z), tickDelta
         )
@@ -553,16 +577,15 @@ abstract class ControlableParticle(
         val lerpPos = (worldPos - cameraPos).toVector3f()
         when (cameraOption) {
             ParticleCameraOption.BILLBOARD -> {
-                this.facingCameraMode.setRotation(q, camera, tickDelta)
-                if (this.roll != 0f) {
+                this.getFacingCameraMode().setRotation(q, camera, tickDelta)
+                if (this.roll != 0F) {
                     q.rotateZ(Mth.lerp(tickDelta, this.oRoll, this.roll))
                 }
             }
 
             ParticleCameraOption.AXIS_BILLBOARD -> {
-                val light = this.getLightColor(tickDelta)
-                renderAxisBillboardQuad(vertexConsumer, camera, worldPos, lerpPos, tickDelta, light)
-                return
+                renderAxisBillboardQuad(vertices, cameraPos, worldPos, lerpPos, tickDelta, light, color)
+                return vertices
             }
 
             ParticleCameraOption.ROTATION -> {
@@ -580,37 +603,37 @@ abstract class ControlableParticle(
                 }
             }
         }
-        // 构建顶点几何
         if (cameraOption == ParticleCameraOption.BILLBOARD) {
-            val light = this.getLightColor(tickDelta)
-            setParticleTexture(vertexConsumer, q, lerpPos.x, lerpPos.y, lerpPos.z, tickDelta, light)
-            return
+            setParticleTexture(vertices, q, lerpPos.x, lerpPos.y, lerpPos.z, tickDelta, light, color)
+            return vertices
         }
-        val light = this.getLightColor(tickDelta)
         setParticleTexture(
-            vertexConsumer,
+            vertices,
             q,
             lerpPos.x,
             lerpPos.y,
             lerpPos.z,
             tickDelta,
-            light
+            light,
+            color,
         )
+        return vertices
     }
 
     private fun renderAxisBillboardQuad(
-        vertexConsumer: VertexConsumer,
-        camera: Camera,
+        vertices: MutableList<ParticleVertex>,
+        cameraPos: Vec3,
         worldPos: Vec3,
         lerpPos: Vector3f,
         tickDelta: Float,
-        light: Int
+        light: Int,
+        color: Int,
     ) {
         val axis = GraphMathHelper.lerp(tickDelta, previewAxis, currentAxis)
-        val basis = MinecraftRendererUtil.axialBillboardBasis(axis, camera, worldPos)
+        val basis = MinecraftRendererUtil.axialBillboardBasis(axis, cameraPos, worldPos)
         var right = basis.right
         val roll = Mth.lerp(tickDelta, this.previewRoll, this.currentRoll)
-        if (roll != 0f) {
+        if (roll != 0F) {
             val rollQ = Quaternionf().rotateAxis(
                 roll,
                 basis.axis.x.toFloat(),
@@ -622,7 +645,7 @@ abstract class ControlableParticle(
         }
 
         renderSizedQuad(
-            vertexConsumer,
+            vertices,
             lerpPos,
             right,
             basis.axis,
@@ -630,24 +653,26 @@ abstract class ControlableParticle(
             getWeightSize(tickDelta),
             getHeightSize(tickDelta),
             getDepthSize(tickDelta),
-            light
+            light,
+            color,
         )
     }
 
     private fun setParticleTexture(
-        vertexConsumer: VertexConsumer,
+        vertices: MutableList<ParticleVertex>,
         q: Quaternionf,
         x: Float,
         y: Float,
         z: Float,
         tickDelta: Float,
-        light: Int
+        light: Int,
+        color: Int,
     ) {
-        val right = Vector3f(1f, 0f, 0f).rotate(q)
-        val up = Vector3f(0f, 1f, 0f).rotate(q)
-        val forward = Vector3f(0f, 0f, 1f).rotate(q)
+        val right = Vector3f(1F, 0F, 0F).rotate(q)
+        val up = Vector3f(0F, 1F, 0F).rotate(q)
+        val forward = Vector3f(0F, 0F, 1F).rotate(q)
         renderSizedQuad(
-            vertexConsumer,
+            vertices,
             Vector3f(x, y, z),
             Vec3(right.x.toDouble(), right.y.toDouble(), right.z.toDouble()),
             Vec3(up.x.toDouble(), up.y.toDouble(), up.z.toDouble()),
@@ -655,12 +680,13 @@ abstract class ControlableParticle(
             getWeightSize(tickDelta),
             getHeightSize(tickDelta),
             getDepthSize(tickDelta),
-            light
+            light,
+            color,
         )
     }
 
     private fun renderSizedQuad(
-        consumer: VertexConsumer,
+        consumer: MutableList<ParticleVertex>,
         center: Vector3f,
         right: Vec3,
         up: Vec3,
@@ -668,9 +694,10 @@ abstract class ControlableParticle(
         weightSize: Float,
         heightSize: Float,
         depthSize: Float,
-        light: Int
+        light: Int,
+        color: Int,
     ) {
-        if (depthSize == 0f) {
+        if (depthSize == 0F) {
             addDoubleSidedQuad(
                 consumer,
                 center,
@@ -681,50 +708,51 @@ abstract class ControlableParticle(
                 heightSize,
                 depthSize,
                 light,
-                1f,
-                -1f,
-                0f,
-                1f,
-                1f,
-                0f,
-                -1f,
-                1f,
-                0f,
-                -1f,
-                -1f,
-                0f
+                1F,
+                -1F,
+                0F,
+                1F,
+                1F,
+                0F,
+                -1F,
+                1F,
+                0F,
+                -1F,
+                -1F,
+                0F,
+                color,
             )
             return
         }
 
         addBoxFace(
             consumer, center, right, up, forward, weightSize, heightSize, depthSize, light,
-            1f, -1f, 1f, 1f, 1f, 1f, -1f, 1f, 1f, -1f, -1f, 1f
+            1F, -1F, 1F, 1F, 1F, 1F, -1F, 1F, 1F, -1F, -1F, 1F, color
         )
         addBoxFace(
             consumer, center, right, up, forward, weightSize, heightSize, depthSize, light,
-            -1f, -1f, -1f, -1f, 1f, -1f, 1f, 1f, -1f, 1f, -1f, -1f
+            -1F, -1F, -1F, -1F, 1F, -1F, 1F, 1F, -1F, 1F, -1F, -1F, color
         )
         addBoxFace(
             consumer, center, right, up, forward, weightSize, heightSize, depthSize, light,
-            1f, -1f, -1f, 1f, 1f, -1f, 1f, 1f, 1f, 1f, -1f, 1f
+            1F, -1F, -1F, 1F, 1F, -1F, 1F, 1F, 1F, 1F, -1F, 1F, color
         )
         addBoxFace(
             consumer, center, right, up, forward, weightSize, heightSize, depthSize, light,
-            -1f, -1f, 1f, -1f, 1f, 1f, -1f, 1f, -1f, -1f, -1f, -1f
+            -1F, -1F, 1F, -1F, 1F, 1F, -1F, 1F, -1F, -1F, -1F, -1F, color
         )
         addBoxFace(
             consumer, center, right, up, forward, weightSize, heightSize, depthSize, light,
-            1f, 1f, 1f, 1f, 1f, -1f, -1f, 1f, -1f, -1f, 1f, 1f
+            1F, 1F, 1F, 1F, 1F, -1F, -1F, 1F, -1F, -1F, 1F, 1F, color
         )
         addBoxFace(
             consumer, center, right, up, forward, weightSize, heightSize, depthSize, light,
-            1f, -1f, -1f, 1f, -1f, 1f, -1f, -1f, 1f, -1f, -1f, -1f
+            1F, -1F, -1F, 1F, -1F, 1F, -1F, -1F, 1F, -1F, -1F, -1F, color
         )
     }
 
     private fun addBoxFace(
-        consumer: VertexConsumer,
+        consumer: MutableList<ParticleVertex>,
         center: Vector3f,
         right: Vec3,
         up: Vec3,
@@ -744,7 +772,8 @@ abstract class ControlableParticle(
         z2: Float,
         x3: Float,
         y3: Float,
-        z3: Float
+        z3: Float,
+        color: Int,
     ) {
         addDoubleSidedQuad(
             consumer,
@@ -767,12 +796,13 @@ abstract class ControlableParticle(
             z2,
             x3,
             y3,
-            z3
+            z3,
+            color,
         )
     }
 
     private fun addDoubleSidedQuad(
-        consumer: VertexConsumer,
+        consumer: MutableList<ParticleVertex>,
         center: Vector3f,
         right: Vec3,
         up: Vec3,
@@ -792,21 +822,22 @@ abstract class ControlableParticle(
         z2: Float,
         x3: Float,
         y3: Float,
-        z3: Float
+        z3: Float,
+        color: Int,
     ) {
-        addVertex(consumer, center, right, up, forward, x0, y0, z0, u1, v1, weightSize, heightSize, depthSize, light)
-        addVertex(consumer, center, right, up, forward, x1, y1, z1, u1, v0, weightSize, heightSize, depthSize, light)
-        addVertex(consumer, center, right, up, forward, x2, y2, z2, u0, v0, weightSize, heightSize, depthSize, light)
-        addVertex(consumer, center, right, up, forward, x3, y3, z3, u0, v1, weightSize, heightSize, depthSize, light)
+        addVertex(consumer, center, right, up, forward, x0, y0, z0, u1, v1, weightSize, heightSize, depthSize, light, color)
+        addVertex(consumer, center, right, up, forward, x1, y1, z1, u1, v0, weightSize, heightSize, depthSize, light, color)
+        addVertex(consumer, center, right, up, forward, x2, y2, z2, u0, v0, weightSize, heightSize, depthSize, light, color)
+        addVertex(consumer, center, right, up, forward, x3, y3, z3, u0, v1, weightSize, heightSize, depthSize, light, color)
 
-        addVertex(consumer, center, right, up, forward, x3, y3, z3, u0, v1, weightSize, heightSize, depthSize, light)
-        addVertex(consumer, center, right, up, forward, x2, y2, z2, u0, v0, weightSize, heightSize, depthSize, light)
-        addVertex(consumer, center, right, up, forward, x1, y1, z1, u1, v0, weightSize, heightSize, depthSize, light)
-        addVertex(consumer, center, right, up, forward, x0, y0, z0, u1, v1, weightSize, heightSize, depthSize, light)
+        addVertex(consumer, center, right, up, forward, x3, y3, z3, u0, v1, weightSize, heightSize, depthSize, light, color)
+        addVertex(consumer, center, right, up, forward, x2, y2, z2, u0, v0, weightSize, heightSize, depthSize, light, color)
+        addVertex(consumer, center, right, up, forward, x1, y1, z1, u1, v0, weightSize, heightSize, depthSize, light, color)
+        addVertex(consumer, center, right, up, forward, x0, y0, z0, u1, v1, weightSize, heightSize, depthSize, light, color)
     }
 
     private fun addVertex(
-        consumer: VertexConsumer,
+        consumer: MutableList<ParticleVertex>,
         center: Vector3f,
         right: Vec3,
         up: Vec3,
@@ -819,32 +850,61 @@ abstract class ControlableParticle(
         weightSize: Float,
         heightSize: Float,
         depthSize: Float,
-        light: Int
+        light: Int,
+        color: Int,
     ) {
         val pos = Vector3f(
             center.x + (right.x * vx * weightSize + up.x * vy * heightSize + forward.x * vz * depthSize).toFloat(),
             center.y + (right.y * vx * weightSize + up.y * vy * heightSize + forward.y * vz * depthSize).toFloat(),
             center.z + (right.z * vx * weightSize + up.z * vy * heightSize + forward.z * vz * depthSize).toFloat()
         )
-        consumer
-            .addVertex(pos.x, pos.y, pos.z)
-            .setUv(tu, tv)
-            .setColor(rCol, gCol, bCol, alpha)
-            .setLight(light)
+        consumer.add(ParticleVertex(pos.x, pos.y, pos.z, tu, tv, color, light))
     }
 
+    override fun getGroup(): ParticleRenderType = textureSheet
 
-    override fun getRenderType(): ParticleRenderType {
-        return textureSheet
+    override fun getLayer(): SingleQuadParticle.Layer = SingleQuadParticle.Layer.TRANSLUCENT
+
+    /**
+     * 从渲染队列驱逐时释放控制器，不执行寿命结束后的重生行为。
+     *
+     * 此入口供粒子引擎 Mixin 和队列清理使用；重复清理已死亡粒子不会再次通知控制器。
+     * 示例：`particle.removeFromQueue()`。
+     */
+    fun removeFromQueue() {
+        if (isAlive) {
+            controler.remove(RemoveReason.QUEUE)
+        }
     }
 
     /** 在黑夜里粒子也会很亮 */
-    override fun getLightColor(partialTick: Float): Int {
+    override fun getLightCoords(partialTick: Float): Int {
         return if (light == -1) {
-            LevelRenderer.getLightColor(level, BlockPos(loc.x.toInt(), loc.y.toInt(), loc.z.toInt()))
+            LightCoordsUtil.getLightCoords(level, BlockPos.containing(loc.x, loc.y, loc.z))
         } else {
-            LightTexture.pack(light, light)
+            LightCoordsUtil.pack(light, light)
         }
     }
 
 }
+
+/**
+ * 提取后的单个粒子顶点，颜色为 ARGB，光照为原版打包值。
+ *
+ * @property x 摄像机相对横坐标
+ * @property y 摄像机相对纵坐标
+ * @property z 摄像机相对深度
+ * @property u 图集横向纹理坐标
+ * @property v 图集纵向纹理坐标
+ * @property color 打包后的顶点颜色
+ * @property light 打包后的天空与方块光照
+ */
+internal data class ParticleVertex(
+    val x: Float,
+    val y: Float,
+    val z: Float,
+    val u: Float,
+    val v: Float,
+    val color: Int,
+    val light: Int,
+)

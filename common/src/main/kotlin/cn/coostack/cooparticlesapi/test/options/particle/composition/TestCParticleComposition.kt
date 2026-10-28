@@ -13,7 +13,7 @@ import cn.coostack.cooparticlesapi.particles.impl.ControlableEndRodEffect
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import cn.coostack.cooparticlesapi.utils.builder.ImagePointBuilder
 import cn.coostack.cooparticlesapi.utils.builder.PointsBuilder
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
@@ -57,15 +57,15 @@ class TestCParticleComposition(position: Vec3, world: Level? = null) : AutoParti
 
     /** 单个粒子边长 */
     @CodecField
-    var particleSize = 0.16f
+    var particleSize = 0.16F
 
     /** 内层颜色 */
     @CodecField
-    var colorInner = Vector3f(0.35f, 0.85f, 1.00f)
+    var colorInner = Vector3f(0.35F, 0.85F, 1.00F)
 
     /** 外层颜色 */
     @CodecField
-    var colorOuter = Vector3f(0.85f, 0.30f, 1.00f)
+    var colorOuter = Vector3f(0.85F, 0.30F, 1.00F)
 
     /** 每 tick 自转弧度 (0 = 不旋转) */
     @CodecField
@@ -76,7 +76,7 @@ class TestCParticleComposition(position: Vec3, world: Level? = null) : AutoParti
     override fun getParticles(): Map<CompositionData, RelativeLocation> {
         return PointsBuilder()
             .addImage(
-                ImagePointBuilder(ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "test/test2.png"))
+                ImagePointBuilder(Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "test/test2.png"))
                     .scale(1.0)
                     .step(0.1)
             )
@@ -93,8 +93,8 @@ class TestCParticleComposition(position: Vec3, world: Level? = null) : AutoParti
 
     override fun onDisplay() {
         playCParticleVisualTransition(
-            10f, alphaCurve =
-                CParticleCurve.linear(0f, 1f)
+            10F, alphaCurve =
+                CParticleCurve.linear(0F, 1F)
         )
         if (rotateSpeed == 0.0) return
         addPreTickAction {
@@ -104,7 +104,7 @@ class TestCParticleComposition(position: Vec3, world: Level? = null) : AutoParti
                 dis = true
                 playCParticleVisualTransition(
                     status.closedInternal.toFloat(),
-                    alphaCurve = CParticleCurve.linear(1f, 0f)
+                    alphaCurve = CParticleCurve.linear(1F, 0F)
                 )
             }
         }

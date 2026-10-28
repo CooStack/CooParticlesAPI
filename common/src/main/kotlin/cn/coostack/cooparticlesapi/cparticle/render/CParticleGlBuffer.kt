@@ -47,20 +47,6 @@ class CParticleGlBuffer(capacity: Int) {
         const val VISUAL_FLOAT_COUNT = CParticleStore.STRIDE - CParticleStore.OFF_FLAGS
         const val EXPANDED_VERTICES_PER_PARTICLE = 6
 
-        /**
-         * 认为一次 `glBufferSubData` 大致等价于多少个字节的映射写入。
-         *
-         * 这是**用于选择策略的量级估计**，不是实测值：一次 GL 状态切换加命令排队的成本远高于
-         * 几百字节的内存拷贝，取 4 KiB 参与成本估计，不代表跨驱动的性能保证。
-         */
-        const val BYTES_PER_GL_CALL = 4096L
-
-        /**
-         * 在考虑映射前允许直接补写的槽位数量。
-         *
-         * 超过本值才考虑整段映射；日常的少量死亡仍然逐槽上传。
-         */
-        const val PATCH_FLAG_CALL_BUDGET = 64
     }
 
     var vao = 0
@@ -362,9 +348,12 @@ class CParticleGlBuffer(capacity: Int) {
      * @param count 需要补写的槽位数
      */
     private fun shouldMapFlags(count: Int): Boolean {
-        if (count <= PATCH_FLAG_CALL_BUDGET) return false
+        val directPatchCallBudget = 64
+        // 每次调用按 4 KiB 估计成本，仅用于启发式选择，不代表跨驱动实测值。
+        val bytesPerGlCall = 4096L
+        if (count <= directPatchCallBudget) return false
         val mapBytes = capacity.toLong() * CParticleStore.BYTE_STRIDE
-        val callSavings = (count - PATCH_FLAG_CALL_BUDGET).toLong() * BYTES_PER_GL_CALL
+        val callSavings = (count - directPatchCallBudget).toLong() * bytesPerGlCall
         return callSavings > mapBytes
     }
 
@@ -522,9 +511,46 @@ class CParticleGlBuffer(capacity: Int) {
     fun drawExpanded(instances: Int) {
         if (expandedVao == 0 || instances <= 0 || instances > expandedInstances) return
         val previousVao = glGetInteger(GL_VERTEX_ARRAY_BINDING)
-        glBindVertexArray(expandedVao)
-        glDrawArrays(GL_TRIANGLES, 0, instances * EXPANDED_VERTICES_PER_PARTICLE)
-        restoreVertexArray(previousVao)
+        val previousVbo = glGetInteger(GL_ARRAY_BUFFER_BINDING)
+        try {
+            glBindVertexArray(expandedVao)
+            glBindBuffer(GL_ARRAY_BUFFER, expandedVbo)
+            configureExpandedParticleVao()
+            glDrawArrays(GL_TRIANGLES, 0, instances * EXPANDED_VERTICES_PER_PARTICLE)
+        } finally {
+            restoreVertexArray(previousVao)
+            glBindBuffer(GL_ARRAY_BUFFER, previousVbo)
+        }
+    }
+
+    /** 根据本次链接的 program 语义名配置 26.3 PARTICLE 布局，不能沿用旧固定 location。 */
+    private fun configureExpandedParticleVao() {
+        val program = glGetInteger(GL_CURRENT_PROGRAM)
+        check(program > 0) { "Expanded particle draw requires an active Iris program" }
+        repeat(glGetInteger(GL_MAX_VERTEX_ATTRIBS)) { location ->
+            glDisableVertexAttribArray(location)
+            CParticleCapabilities.setVertexAttribDivisor(location, 0)
+        }
+        val stride = DefaultVertexFormat.PARTICLE.vertexSize
+        fun location(semantic: String): Int {
+            val irisLocation = glGetAttribLocation(program, "iris_$semantic")
+            return if (irisLocation >= 0) irisLocation else glGetAttribLocation(program, semantic)
+        }
+        fun floatingAttribute(semantic: String, count: Int, type: Int, normalized: Boolean, offset: Long) {
+            val location = location(semantic)
+            if (location < 0) return
+            glVertexAttribPointer(location, count, type, normalized, stride, offset)
+            glEnableVertexAttribArray(location)
+        }
+        check(location("Position") >= 0) { "Iris particle program does not expose a supported position attribute" }
+        floatingAttribute("Position", 3, GL_FLOAT, false, 0L)
+        floatingAttribute("UV0", 2, GL_FLOAT, false, 12L)
+        floatingAttribute("Color", 4, GL_UNSIGNED_BYTE, true, 20L)
+        val lightLocation = location("UV2")
+        if (lightLocation >= 0) {
+            glVertexAttribIPointer(lightLocation, 2, GL_SHORT, stride, 24L)
+            glEnableVertexAttribArray(lightLocation)
+        }
     }
 
     /**
@@ -543,7 +569,6 @@ class CParticleGlBuffer(capacity: Int) {
             expandedVbo = glGenBuffers()
             glBindVertexArray(expandedVao)
             glBindBuffer(GL_ARRAY_BUFFER, expandedVbo)
-            DefaultVertexFormat.PARTICLE.setupBufferState()
             restoreVertexArray(previousVao)
             glBindBuffer(GL_ARRAY_BUFFER, previousVbo)
         }

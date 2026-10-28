@@ -13,31 +13,30 @@ import net.minecraft.server.level.ServerLevel
 import net.minecraft.network.chat.Component
 import net.minecraft.world.InteractionResult
 import net.minecraft.world.InteractionHand
-import net.minecraft.world.InteractionResultHolder
 import net.minecraft.world.phys.Vec3
 import net.minecraft.world.level.Level
 
 /** 携带结构快照的单件物品，收起不触发死亡，成功放置后包括创造模式在内均消耗一件。 */
 class HeldStructureModelItem(settings: Properties) : Item(settings) {
     /** 普通右键只触发业务事件；食用开关开启时按原版进食时长开始使用，满饥饿值也可用。 */
-    override fun use(world: Level, user: Player, hand: InteractionHand): InteractionResultHolder<ItemStack> {
+    override fun use(world: Level, user: Player, hand: InteractionHand): InteractionResult {
         val stack = user.getItemInHand(hand)
-        if (!user.isAlive || user.isSpectator || user.cooldowns.isOnCooldown(this)) {
-            return InteractionResultHolder.fail(stack)
+        if (!user.isAlive || user.isSpectator || user.cooldowns.isOnCooldown(stack)) {
+            return InteractionResult.FAIL
         }
-        val component = stack.get(DataComponents.CUSTOM_DATA) ?: return InteractionResultHolder.fail(stack)
+        val component = stack.get(DataComponents.CUSTOM_DATA) ?: return InteractionResult.FAIL
         val data = runCatching { ModelItemData.fromNbt(component.copyTag(), world.registryAccess()) }.getOrElse {
-            user.displayClientMessage(Component.literal(it.message ?: "模型物品数据无效"), true)
-            return InteractionResultHolder.fail(stack)
+            user.sendOverlayMessage(Component.literal(it.message ?: "模型物品数据无效"))
+            return InteractionResult.FAIL
         }
         if (data.settings.edible) {
-            if (!stack.has(DataComponents.FOOD)) return InteractionResultHolder.fail(stack)
+            if (!stack.has(DataComponents.FOOD)) return InteractionResult.FAIL
             user.startUsingItem(hand)
         }
         if (!world.isClientSide) {
             CooEventBus.call(StructureModelItemUseEvent(user, hand, stack.copyWithCount(1), data))
         }
-        return InteractionResultHolder.sidedSuccess(stack, world.isClientSide)
+        return if (world.isClientSide) InteractionResult.SUCCESS else InteractionResult.CONSUME
     }
 
     /** 完整进食后才消费并发布完成通知，提前停止使用不会进入此方法。 */
@@ -58,11 +57,11 @@ class HeldStructureModelItem(settings: Properties) : Item(settings) {
     /** 仅在目标位置权限合法且实体生成成功后消耗物品；失败保留原物品。 */
     override fun useOn(context: UseOnContext): InteractionResult {
         val player = context.player ?: return InteractionResult.FAIL
-        if (!player.isShiftKeyDown) return use(context.level, player, context.hand).result
+        if (!player.isShiftKeyDown) return use(context.level, player, context.hand)
         val component = context.itemInHand.get(DataComponents.CUSTOM_DATA) ?: return InteractionResult.FAIL
         val world = context.level
         val pos = context.clickedPos.relative(context.clickedFace)
-        if (!player.isAlive || player.isSpectator || player.cooldowns.isOnCooldown(this) ||
+        if (!player.isAlive || player.isSpectator || player.cooldowns.isOnCooldown(context.itemInHand) ||
             !player.abilities.mayBuild) return InteractionResult.FAIL
         val result = runCatching {
             val data = ModelItemBehavior.currentForPlacement(context.itemInHand, world)
@@ -77,7 +76,7 @@ class HeldStructureModelItem(settings: Properties) : Item(settings) {
             }
         }
         if (result.isFailure) {
-            player.displayClientMessage(Component.literal(result.exceptionOrNull()?.message ?: "模型物品数据无效"), true)
+            player.sendOverlayMessage(Component.literal(result.exceptionOrNull()?.message ?: "模型物品数据无效"))
             return InteractionResult.FAIL
         }
         if (world.isClientSide) return InteractionResult.SUCCESS
@@ -93,7 +92,7 @@ class HeldStructureModelItem(settings: Properties) : Item(settings) {
             model.isPassenger() || model.isVehicle() || model.isLeashed) return InteractionResult.FAIL
         val emptyHand = player.getItemInHand(hand).isEmpty
         if (!emptyHand && player.inventory.freeSlot < 0) {
-            player.displayClientMessage(Component.literal("背包已满，无法收起模型"), true)
+            player.sendOverlayMessage(Component.literal("背包已满，无法收起模型"))
             return InteractionResult.FAIL
         }
         if (model.level().isClientSide) return InteractionResult.SUCCESS
@@ -104,7 +103,7 @@ class HeldStructureModelItem(settings: Properties) : Item(settings) {
             data.toStack(model.registryAccess())
         }
         val stack = result.getOrElse {
-            player.displayClientMessage(Component.literal(it.message ?: "无法收起模型"), true)
+            player.sendOverlayMessage(Component.literal(it.message ?: "无法收起模型"))
             return InteractionResult.FAIL
         }
         if (emptyHand) player.setItemInHand(hand, stack)

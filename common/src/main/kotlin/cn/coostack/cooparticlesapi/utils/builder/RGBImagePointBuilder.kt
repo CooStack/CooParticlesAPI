@@ -2,7 +2,7 @@ package cn.coostack.cooparticlesapi.utils.builder
 
 import cn.coostack.cooparticlesapi.utils.ImageUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /**
  * 通过黑白的图片获取到点的集合
@@ -11,7 +11,7 @@ import net.minecraft.resources.ResourceLocation
  * 不支持直接加入PointsBuilder,因为无法将颜色信息传递给particle, 如同ImagePointsBuilder
  *
  */
-class RGBImagePointBuilder(val image: ResourceLocation) {
+class RGBImagePointBuilder(val image: Identifier) {
     private var scale = 1.0
     private var step = 0.01
 

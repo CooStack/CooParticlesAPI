@@ -59,7 +59,7 @@
 
 1. Fabric API
 2. Fabric Language Kotlin
-3. Minecraft 1.21.1
+3. Minecraft 26.3
 
 把模组 jar 放进 `mods/` 即可。
 
@@ -68,7 +68,7 @@
 需求：
 
 1. Kotlin for Forge
-2. Minecraft 1.21.1
+2. Minecraft 26.3
 
 把模组 jar 放进 `mods/` 即可。
 
@@ -125,13 +125,13 @@ repositories {
 
 ### 依赖（Gradle）
 
-版本号请以最新 Release 为准。
+当前 Minecraft 26.3 坐标在 artifactId 中包含 `-26.3-`；不含该版本段的旧 artifactId 对应 Minecraft 1.21.1。下面使用当前项目版本 `3.0-SNAPSHOT` 举例。
 
 ```gradle
 dependencies {
-    // neoforge
-    implementation("cn.coostack:cooparticlesapi-neoforge:<version>")
-    // fabric
-    implementation("cn.coostack:cooparticlesapi-fabric:<version>")
+    // NeoForge 26.3
+    implementation("cn.coostack:cooparticlesapi-26.3-neoforge:3.0-SNAPSHOT")
+    // Fabric 26.3
+    implementation("cn.coostack:cooparticlesapi-26.3-fabric:3.0-SNAPSHOT")
 }
 ```

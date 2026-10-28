@@ -5,11 +5,12 @@ import cn.coostack.cooparticlesapi.display.DisplayEntityManager;
 import cn.coostack.cooparticlesapi.network.particle.composition.manager.ParticleCompositionManager;
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmittersManager;
 import cn.coostack.cooparticlesapi.renderer.client.ClientRenderEntityManager;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.DebugScreenOverlay;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -28,16 +29,30 @@ public abstract class DebugScreenOverlayMixin {
      * <p>示例：原版信息生成后会追加 {@code [CPLib] Emitters: 3}。
      * 禁止把注册类型数量或服务端容器数量混入这些客户端实例计数。
      *
-     * @param info 原版调试文本返回值的回调信息
+     * @param overlay 原版 F3 覆盖层
+     * @param graphics 当前 GUI 提取器
+     * @param originalLines 原版当前列的调试文本
+     * @param left 是否为左侧调试列
+     * @param width 当前可用 GUI 宽度
+     * @param original 原版文本提取操作
      */
-    @Inject(method = "getGameInformation", at = @At("RETURN"), cancellable = true)
-    private void cooParticlesAPI$appendRuntimeCounts(CallbackInfoReturnable<List<String>> info) {
-        List<String> lines = new ArrayList<>(info.getReturnValue());
+    @WrapOperation(
+            method = "extractRenderState(Lnet/minecraft/client/gui/GuiGraphicsExtractor;)V",
+            at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/components/DebugScreenOverlay;extractLines(Lnet/minecraft/client/gui/GuiGraphicsExtractor;Ljava/util/List;ZI)V")
+    )
+    private void cooParticlesAPI$appendRuntimeCounts(DebugScreenOverlay overlay, GuiGraphicsExtractor graphics,
+                                                    List<String> originalLines, boolean left, int width,
+                                                    Operation<Void> original) {
+        if (!left) {
+            original.call(overlay, graphics, originalLines, false, width);
+            return;
+        }
+        List<String> lines = new ArrayList<>(originalLines);
         lines.add("[CPLib] Emitters: " + ParticleEmittersManager.INSTANCE.getClientEmitters().size());
         lines.add("[CPLib] Compositions: " + ParticleCompositionManager.loadedClientCount());
         lines.add("[CPLib] CParticles: " + CParticleSystemManager.totalAlive());
         lines.add("[CPLib] DisplayEntities: " + DisplayEntityManager.INSTANCE.getClientView().size());
         lines.add("[CPLib] RenderEntities: " + ClientRenderEntityManager.loadedEntityCount());
-        info.setReturnValue(lines);
+        original.call(overlay, graphics, lines, true, width);
     }
 }

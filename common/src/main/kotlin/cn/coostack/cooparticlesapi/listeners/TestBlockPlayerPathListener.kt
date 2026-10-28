@@ -8,13 +8,12 @@ import cn.coostack.cooparticlesapi.enums.DistType
 import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldRenderEvent
 import cn.coostack.cooparticlesapi.items.CooItems
 import cn.coostack.cooparticlesapi.items.TestBlockBindings
+import cn.coostack.cooparticlesapi.utils.MinecraftRendererUtil
 import net.minecraft.client.Minecraft
-import net.minecraft.client.renderer.LevelRenderer
-import net.minecraft.client.renderer.RenderType
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
-import com.mojang.blaze3d.vertex.PoseStack
+import com.mojang.blaze3d.vertex.PoseStack.Pose
 import com.mojang.blaze3d.vertex.VertexConsumer
 import kotlin.math.sqrt
 
@@ -26,39 +25,57 @@ import kotlin.math.sqrt
  */
 @EventListener(CooParticlesConstants.MOD_ID, dist = DistType.CLIENT)
 object TestBlockPlayerPathListener {
-    private const val PATH_SAMPLES = 64
 
     /**
      * 绘制当前维度内已绑定控制器的动态预览。
      *
      * 示例：绑定器放在任意一只手时都会显示同一组路径。
-     * 禁止在非 [ClientWorldRenderEvent.RenderStage.AFTER_ENTITY] 阶段重复提交顶点。
+     * 禁止在其他渲染回调重复提交相同路径。
      *
      * @param event 世界渲染事件
      */
     @EventHandler
     fun onRender(event: ClientWorldRenderEvent) {
-        if (event.stage != ClientWorldRenderEvent.RenderStage.AFTER_ENTITY) return
         val client = Minecraft.getInstance()
         val player = client.player ?: return
         val stack = InteractionHand.values()
             .map { hand -> player.getItemInHand(hand) }
             .firstOrNull { it.item === CooItems.TEST_BLOCK_BINDER.getItem() } ?: return
-        val dimension = event.world.dimension().location().toString()
-        val camera = event.camera.position
-        val consumer = event.buffer.getBuffer(RenderType.lines())
-        val partialTick = event.delta.getGameTimeDeltaPartialTick(true)
-        TestBlockBindings.read(stack)
+        val dimension = event.world.dimension().identifier().toString()
+        val camera = event.camera.pos
+        val partialTick = event.delta
+        val blockEntities = TestBlockBindings.read(stack)
             .asSequence()
             .filter { it.dimension == dimension && event.world.isLoaded(it.pos) }
             .mapNotNull { event.world.getBlockEntity(it.pos) as? TestControllerBlockEntity }
-            .forEach { blockEntity ->
-                drawPreview(event.poseStack, consumer, blockEntity, camera, partialTick)
+            .toList()
+        MinecraftRendererUtil.submitLines(event.collector, event.poseStack) { pose, consumer ->
+            blockEntities.forEach { blockEntity ->
+                drawPreview(pose, consumer, blockEntity, camera, partialTick)
             }
+        }
+        blockEntities.forEach { blockEntity ->
+            val origin = Vec3.atCenterOf(blockEntity.blockPos)
+            val positionOffset = if (blockEntity.playerPositionDynamic) {
+                blockEntity.playerPositionTrack.sample(blockEntity.positionAnimationElapsedTicks(partialTick))
+            } else {
+                blockEntity.playerOffset
+            }
+            MinecraftRendererUtil.submitLineBox(
+                event.collector,
+                event.poseStack,
+                AABB.ofSize(origin.add(positionOffset), 0.14, 0.14, 0.14),
+                camera,
+                1F,
+                0.1F,
+                0.1F,
+                1F,
+            )
+        }
     }
 
     private fun drawPreview(
-        poseStack: PoseStack,
+        pose: Pose,
         consumer: VertexConsumer,
         blockEntity: TestControllerBlockEntity,
         camera: Vec3,
@@ -66,11 +83,12 @@ object TestBlockPlayerPathListener {
     ) {
         val origin = Vec3.atCenterOf(blockEntity.blockPos)
         if (blockEntity.playerPositionDynamic) {
+            val pathSamples = 64
             var previous = origin.add(blockEntity.playerPositionTrack.sampleTimeline(0.0))
-            for (index in 1..PATH_SAMPLES) {
-                val tick = blockEntity.playerPositionTrack.durationTicks.toDouble() * index / PATH_SAMPLES.toDouble()
+            for (index in 1..pathSamples) {
+                val tick = blockEntity.playerPositionTrack.durationTicks.toDouble() * index / pathSamples.toDouble()
                 val next = origin.add(blockEntity.playerPositionTrack.sampleTimeline(tick))
-                drawLine(poseStack, consumer, previous, next, camera, 80, 190, 255)
+                drawLine(pose, consumer, previous, next, camera, 80, 190, 255)
                 previous = next
             }
         }
@@ -81,39 +99,36 @@ object TestBlockPlayerPathListener {
             blockEntity.playerOffset
         }
         val point = origin.add(positionOffset)
-        val pointBox = AABB.ofSize(point, 0.14, 0.14, 0.14).move(-camera.x, -camera.y, -camera.z)
-        LevelRenderer.renderLineBox(poseStack, consumer, pointBox, 1.0f, 0.1f, 0.1f, 1.0f)
-
         val forward = if (blockEntity.playerForwardDynamic) {
             normalize(blockEntity.playerForwardTrack.sample(blockEntity.forwardAnimationElapsedTicks(partialTick)))
         } else {
             normalize(blockEntity.playerForward)
         }
-        drawArrow(poseStack, consumer, point, forward, camera)
+        drawArrow(pose, consumer, point, forward, camera)
     }
 
     private fun drawArrow(
-        poseStack: PoseStack,
+        pose: Pose,
         consumer: VertexConsumer,
         origin: Vec3,
         forward: Vec3,
         camera: Vec3,
     ) {
         val tip = origin.add(forward.scale(1.5))
-        drawLine(poseStack, consumer, origin, tip, camera, 255, 90, 40)
+        drawLine(pose, consumer, origin, tip, camera, 255, 90, 40)
         var side = forward.cross(Vec3(0.0, 1.0, 0.0))
         if (side.lengthSqr() <= 1.0E-8) side = forward.cross(Vec3(1.0, 0.0, 0.0))
         side = normalize(side)
         val vertical = normalize(forward.cross(side))
         val base = tip.subtract(forward.scale(0.32))
-        drawLine(poseStack, consumer, tip, base.add(side.scale(0.22)), camera, 255, 90, 40)
-        drawLine(poseStack, consumer, tip, base.subtract(side.scale(0.22)), camera, 255, 90, 40)
-        drawLine(poseStack, consumer, tip, base.add(vertical.scale(0.22)), camera, 255, 90, 40)
-        drawLine(poseStack, consumer, tip, base.subtract(vertical.scale(0.22)), camera, 255, 90, 40)
+        drawLine(pose, consumer, tip, base.add(side.scale(0.22)), camera, 255, 90, 40)
+        drawLine(pose, consumer, tip, base.subtract(side.scale(0.22)), camera, 255, 90, 40)
+        drawLine(pose, consumer, tip, base.add(vertical.scale(0.22)), camera, 255, 90, 40)
+        drawLine(pose, consumer, tip, base.subtract(vertical.scale(0.22)), camera, 255, 90, 40)
     }
 
     private fun drawLine(
-        poseStack: PoseStack,
+        pose: Pose,
         consumer: VertexConsumer,
         start: Vec3,
         end: Vec3,
@@ -128,7 +143,6 @@ object TestBlockPlayerPathListener {
         val length = delta.length()
         if (length <= 1.0E-7) return
         val normal = delta.scale(1.0 / length)
-        val pose = poseStack.last().pose()
         consumer.addVertex(pose, relativeStart.x.toFloat(), relativeStart.y.toFloat(), relativeStart.z.toFloat())
             .setColor(red, green, blue, 255)
             .setNormal(normal.x.toFloat(), normal.y.toFloat(), normal.z.toFloat())

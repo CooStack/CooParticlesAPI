@@ -6,7 +6,7 @@ import cn.coostack.cooparticlesapi.renderer.pipeline.CooRenderPipeline
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooUniformValue
 import net.minecraft.core.BlockPos
 import net.minecraft.core.registries.Registries
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.resources.ResourceKey
 import net.minecraft.server.MinecraftServer
 import net.minecraft.server.level.ServerLevel
@@ -39,13 +39,13 @@ import java.util.concurrent.atomic.AtomicLong
  */
 object CooTerrainEffectManager {
     /** 按资源 ID 保存两端解析动态效果组所需的不可变方块 Pipeline 模板。 */
-    private val pipelines = ConcurrentHashMap<ResourceLocation, CooRenderPipeline<BlockState>>()
+    private val pipelines = ConcurrentHashMap<Identifier, CooRenderPipeline<BlockState>>()
 
     /** 按维度和组 ID 保存服务端当前有效的效果组快照。 */
     private val serverGroups = ConcurrentHashMap<ServerGroupKey, CooTerrainEffectGroupSnapshot>()
 
     /** 保存在线玩家最后同步的维度，用于检测传送后的补发需求。 */
-    private val playerDimensions = ConcurrentHashMap<UUID, ResourceLocation>()
+    private val playerDimensions = ConcurrentHashMap<UUID, Identifier>()
 
     /** 保护效果组复合更新和对应网络发送顺序的互斥锁。 */
     private val serverGroupsLock = Any()
@@ -85,7 +85,7 @@ object CooTerrainEffectManager {
             val startedAt = level.gameTime
             val definition = group.definition
             val snapshot = CooTerrainEffectGroupSnapshot(
-                dimension = level.dimension().location(),
+                dimension = level.dimension().identifier(),
                 id = group.id,
                 pipelineId = group.pipeline.id,
                 startedAt = startedAt,
@@ -123,7 +123,7 @@ object CooTerrainEffectManager {
      */
     fun apply(
         level: ServerLevel,
-        groupId: ResourceLocation,
+        groupId: Identifier,
         pipeline: CooRenderPipeline<BlockState>,
         positions: Iterable<BlockPos>,
         block: CooTerrainEffectGroupBuilder.() -> Unit = {}
@@ -153,12 +153,12 @@ object CooTerrainEffectManager {
     @JvmOverloads
     fun append(
         level: ServerLevel,
-        groupId: ResourceLocation,
+        groupId: Identifier,
         positions: Iterable<BlockPos>,
         delayTicks: Long = 0L
     ): Boolean {
         require(delayTicks >= 0L) { "Terrain effect position delay must not be negative" }
-        val key = ServerGroupKey(level.dimension().location(), groupId)
+        val key = ServerGroupKey(level.dimension().identifier(), groupId)
         val additions = positions
             .map { it.immutable() }
             .distinct()
@@ -179,11 +179,11 @@ object CooTerrainEffectManager {
      */
     fun append(
         level: ServerLevel,
-        groupId: ResourceLocation,
+        groupId: Identifier,
         positions: Map<BlockPos, Long>
     ): Boolean {
         require(positions.values.all { it >= 0L }) { "Terrain effect position delay must not be negative" }
-        val key = ServerGroupKey(level.dimension().location(), groupId)
+        val key = ServerGroupKey(level.dimension().identifier(), groupId)
         val additions = positions.entries.associate { (position, delay) ->
             position.immutable() to level.gameTime + delay
         }
@@ -194,6 +194,7 @@ object CooTerrainEffectManager {
      * 只移除组中的指定位置，不重发 Pipeline、uniform 或其余位置。
      *
      * 请求为空或指定位置均不在组中时仍返回 `true`。
+     * 示例：`removePositions(level, groupId, listOf(blockPos))`。
      *
      * @param level 组所属的服务端维度
      * @param groupId 要更新的组 ID
@@ -202,10 +203,10 @@ object CooTerrainEffectManager {
      */
     fun removePositions(
         level: ServerLevel,
-        groupId: ResourceLocation,
+        groupId: Identifier,
         positions: Iterable<BlockPos>
     ): Boolean {
-        val key = ServerGroupKey(level.dimension().location(), groupId)
+        val key = ServerGroupKey(level.dimension().identifier(), groupId)
         val requested = positions.mapTo(LinkedHashSet()) { it.immutable() }
         if (requested.isEmpty()) return true
         return synchronized(serverGroupsLock) {
@@ -244,11 +245,11 @@ object CooTerrainEffectManager {
      */
     fun updateUniforms(
         level: ServerLevel,
-        groupId: ResourceLocation,
+        groupId: Identifier,
         uniforms: Map<String, CooUniformValue>
     ): Boolean {
         require(uniforms.keys.all(String::isNotBlank)) { "Terrain effect uniform name must not be blank" }
-        val key = ServerGroupKey(level.dimension().location(), groupId)
+        val key = ServerGroupKey(level.dimension().identifier(), groupId)
         return synchronized(serverGroupsLock) {
             val current = serverGroups[key] ?: return false
             if (current.uniforms == uniforms) return true
@@ -273,15 +274,20 @@ object CooTerrainEffectManager {
     /**
      * 原子替换组的排序和合成选项，并发送一次 options 更新。
      *
+     * 示例：`updateOrdering(level, groupId, 1, composition)`。
+     * @param level 组所属的服务端维度
+     * @param groupId 要更新的组标识
+     * @param priority 新的绘制优先级
+     * @param composition 新的叠加组合策略
      * @return 找到组并完成更新时返回 `true`；组不存在时返回 `false`
      */
     fun updateOrdering(
         level: ServerLevel,
-        groupId: ResourceLocation,
+        groupId: Identifier,
         priority: Int,
         composition: CooTerrainEffectComposition
     ): Boolean {
-        val key = ServerGroupKey(level.dimension().location(), groupId)
+        val key = ServerGroupKey(level.dimension().identifier(), groupId)
         return synchronized(serverGroupsLock) {
             val current = serverGroups[key] ?: return false
             if (current.priority == priority && current.composition == composition) return true
@@ -308,11 +314,13 @@ object CooTerrainEffectManager {
     /**
      * 移除整组效果，并通知客户端局部重建受影响的 section。
      *
+     * 示例：`remove(level, groupId)`。
+     * @param level 组所属的服务端维度
      * @param groupId 要移除的组 ID
      * @return 找到并移除组时返回 `true`；组不存在时返回 `false`
      */
-    fun remove(level: ServerLevel, groupId: ResourceLocation): Boolean {
-        val key = ServerGroupKey(level.dimension().location(), groupId)
+    fun remove(level: ServerLevel, groupId: Identifier): Boolean {
+        val key = ServerGroupKey(level.dimension().identifier(), groupId)
         return synchronized(serverGroupsLock) {
             val removed = serverGroups.remove(key) ?: return false
             val revision = protocolRevisionCounter.incrementAndGet()
@@ -328,16 +336,17 @@ object CooTerrainEffectManager {
      * 向玩家补发其当前维度内仍有效的持久组和临时组。
      *
      * 该方法由玩家加入事件调用，也用于玩家切换维度后的状态补齐；普通效果代码无需手动调用。
+     * 示例：`syncTo(player)`。
      *
      * @param player 需要同步当前维度地形效果的服务端玩家
      */
     fun syncTo(player: ServerPlayer) {
         val level = player.level()
         val gameTime = level.gameTime
-        playerDimensions[player.uuid] = level.dimension().location()
+        playerDimensions[player.uuid] = level.dimension().identifier()
         synchronized(serverGroupsLock) {
             serverGroups.values.asSequence()
-                .filter { it.dimension == level.dimension().location() }
+                .filter { it.dimension == level.dimension().identifier() }
                 .filter { it.expiresAt == null || gameTime < it.expiresAt }
                 .sortedWith(compareBy<CooTerrainEffectGroupSnapshot> { it.priority }
                     .thenBy { it.sequence }
@@ -358,7 +367,7 @@ object CooTerrainEffectManager {
     internal fun tick(server: MinecraftServer) {
         val onlinePlayers = server.playerList.players
         onlinePlayers.forEach { player ->
-            val dimension = player.level().dimension().location()
+            val dimension = player.level().dimension().identifier()
             val previous = playerDimensions.put(player.uuid, dimension)
             if (previous != null && previous != dimension) syncTo(player)
         }
@@ -384,7 +393,7 @@ object CooTerrainEffectManager {
      * @param id Pipeline ID
      * @return 已注册模板；未注册时返回 `null`
      */
-    internal fun pipeline(id: ResourceLocation): CooRenderPipeline<BlockState>? = pipelines[id]
+    internal fun pipeline(id: Identifier): CooRenderPipeline<BlockState>? = pipelines[id]
 
     /**
      * 在持有统一更新语义的路径中把绝对生效时间追加到现有组。

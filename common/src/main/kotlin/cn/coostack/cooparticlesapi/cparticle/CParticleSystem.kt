@@ -21,7 +21,7 @@ import cn.coostack.cooparticlesapi.extend.plus
 import cn.coostack.cooparticlesapi.particles.ParticleCameraOption
 import cn.coostack.cooparticlesapi.particles.control.RemoveReason
 import net.minecraft.client.Minecraft
-import net.minecraft.client.renderer.LevelRenderer
+import net.minecraft.util.LightCoordsUtil
 import net.minecraft.core.BlockPos
 import net.minecraft.world.phys.Vec3
 import org.joml.Matrix4f
@@ -36,7 +36,7 @@ import kotlin.math.sqrt
  * # CParticleSystem — 一个 GPU 粒子池
  *
  * 一个系统 = 一份可扩容的 SoA 存储 + 一个 GL 实例缓冲 + 一个渲染层 + 一组力场.
- * 每帧一次 instanced draw；每 tick 使用 GL43 compute 模拟，或由调用方显式选择 CPU 并行模拟。
+ * 每帧一次 instanced draw；compute 可用时在 GPU 模拟，否则使用同一 SoA 的 CPU 并行模拟。
  *
  * 两种模式:
  * - [CParticleSystemMode.SIMULATED]: 发射器语义 — 粒子生成后由力场驱动, 不可单独控制
@@ -118,10 +118,10 @@ class CParticleSystem(
     /**
      * 路径约束“到达后消失”的 GPU → CPU 结束通知通道。
      *
-     * 容量按 [PATH_END_RECORD_CAPACITY] 固定：列表只记录结束槽位号，溢出时计数器仍然增长，
+     * 容量固定为 65536：列表只记录结束槽位号，溢出时计数器仍然增长，
      * CPU 会发现漏收并做一次兜底扫描，因此不需要按粒子容量分配。
      */
-    internal val pathEndBuffer = CParticlePathEndBuffer(PATH_END_RECORD_CAPACITY)
+    internal val pathEndBuffer = CParticlePathEndBuffer(65536)
 
     /** 当前死亡批次共享的只读 GPU 映射，未发生需捕获的死亡时保持为空。 */
     private var deathReadback: ByteBuffer? = null
@@ -223,7 +223,7 @@ class CParticleSystem(
     private var gpuSimulationSelected = false
 
     private fun shouldUseGpuSimulation(prepared: Boolean): Boolean {
-        if (CParticleCapabilities.forceCpuSimulation) return false
+        if (!CParticleCapabilities.useGpuSimulation()) return false
         if (prepared || gpuSimulationSelected) return true
         if (CParticleSystemManager.shouldPreferGpuForSmallSystems() ||
             store.activeSlotCount > CParticleSystemManager.smallSystemCpuThreshold
@@ -241,7 +241,7 @@ class CParticleSystem(
      * 的 system 都当作 GPU system，否则全是小池时仍会产生无意义的 GL 状态读写。
      */
     internal fun willUseGpuSimulation(): Boolean {
-        if (mode != CParticleSystemMode.SIMULATED || CParticleCapabilities.forceCpuSimulation) return false
+        if (mode != CParticleSystemMode.SIMULATED || !CParticleCapabilities.useGpuSimulation()) return false
         if (canSkipGpuDispatch()) return false
         return gpuSimulationSelected ||
             CParticleRespawnEngine.owns(this) ||
@@ -462,9 +462,9 @@ class CParticleSystem(
             // 采样世界光照 (生成时一次)
             val world = Minecraft.getInstance().level
             if (world != null) {
-                val packedLight = LevelRenderer.getLightColor(world, BlockPos.containing(worldPosition))
-                block = (packedLight shr 4) and 15
-                sky = (packedLight shr 20) and 15
+                val packedLight = LightCoordsUtil.getLightCoords(world, BlockPos.containing(worldPosition))
+                block = LightCoordsUtil.block(packedLight)
+                sky = LightCoordsUtil.sky(packedLight)
             } else {
                 block = 15; sky = 15
             }
@@ -1092,7 +1092,7 @@ class CParticleSystem(
         }
         // 纯静态零运动池无需打包 Force、查询碰撞网格或进入 compute batch；
         // 顶点 shader 通过 epochTick 推导视觉年龄，CPU ledger 负责到期回收。
-        if (!CParticleCapabilities.forceCpuSimulation && canSkipGpuDispatch() && store.killedCount == 0) {
+        if (CParticleCapabilities.useGpuSimulation() && canSkipGpuDispatch() && store.killedCount == 0) {
             tickNoopSimulation()
             return
         }
@@ -1134,9 +1134,11 @@ class CParticleSystem(
             null
         }
         val prepared = CParticleRespawnEngine.owns(this)
-        // GPU 是 CParticle 的默认模拟后端；只有显式配置小池 CPU 阈值时才允许回退。
+        // 有 compute 时优先 GPU；GL 3.3 自动使用 CPU 并保留预展开的生命关系。
         val useGpu = shouldUseGpuSimulation(prepared)
-        check(useGpu || !prepared) { "Clear prepared GPU lifetimes before switching simulation backend" }
+        check(useGpu || !prepared || !CParticleCapabilities.computeSupported) {
+            "Clear prepared GPU lifetimes before explicitly switching simulation backend"
+        }
         if (!prepared && store.spawnedCount > 0 && (!useGpu || legacyForceCount >= 0 || !packedCommandsNeedMetadata)) {
             // metadata 未在本 tick 上传；以后重新启用 selector/Charge 时必须整段重传。
             metadataGpuSynchronized = false
@@ -1211,7 +1213,7 @@ class CParticleSystem(
             store.clearKilled()
             store.clearDirty()
         } else {
-            // 只有调用方显式设置 forceCpuSimulation 才走 CPU；GPU 执行错误不会进入这里。
+            // 能力不足自动使用同一 SoA，显式 CPU 保留原回调语义；GPU 执行错误不会进入这里。
             if (legacyForceCount >= 0) {
                 CParticleCpuSimulator.simulate(
                     store, packedForces, legacyForceCount,
@@ -1466,11 +1468,16 @@ class CParticleSystem(
                 }
             }
         }
-        if (!pathEndBuffer.initialized) {
+        if (CParticleCapabilities.useGpuSimulation() && !pathEndBuffer.initialized) {
             CParticlePerfProbe.measure(CParticlePerfProbe.Stage.GL_ALLOCATE) {
                 pathEndBuffer.init()
             }
         }
+    }
+
+    /** CPU 预提交生命在统一激活和回收阶段完成后补写当前实例缓冲，不推进模拟。 */
+    internal fun uploadPreparedCpuChanges() {
+        if (glBuffer.initialized) uploadDirty()
     }
 
     private fun ensureCommandGl(metadataRequired: Boolean) {
@@ -1584,24 +1591,24 @@ class CParticleSystem(
 
 private val cParticleNextSourceId = AtomicInteger(1)
 
-/**
- * 单个 system 每 tick 最多记录的路径提前结束槽位数量。
- *
- * 列表只记录结束槽位号，溢出时 GPU 继续增长计数器但不追加，CPU 会据此做一次兜底扫描，
- * 因此不需要按粒子容量分配。65536 个 int 为 256 KiB。
- */
-private const val PATH_END_RECORD_CAPACITY = 65536
-
+/** 分配非零来源编号，避免与未指定来源的默认编号混淆。 */
 private fun nextSourceId(): Int {
     var id = cParticleNextSourceId.getAndIncrement()
     if (id == 0) id = cParticleNextSourceId.getAndIncrement()
     return id
 }
 
+/**
+ * 决定客户端 GPU 粒子系统的位置权威与更新方式。
+ *
+ * [SIMULATED] 用于发射器，出生后由力场与模拟器持续推进；
+ * [SCRIPTED] 用于组合，由 CPU 句柄写入位置并应用整组变换。
+ * 模式在系统创建时确定，不应用切换模式代替清空或重建系统。
+ */
 enum class CParticleSystemMode {
-    /** 发射器语义: 力场驱动, fire-and-forget */
+    /** 发射器语义：出生后交由力场和模拟器驱动。 */
     SIMULATED,
 
-    /** composition 语义: CPU 位置权威 + 句柄控制 + 整组变换 */
+    /** 组合语义：CPU 位置权威、句柄控制与整组变换。 */
     SCRIPTED
 }

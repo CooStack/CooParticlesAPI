@@ -6,7 +6,7 @@ import cn.coostack.cooparticlesapi.supports.sound.ServerManagedSoundInstance
 import cn.coostack.cooparticlesapi.supports.sound.ServerSoundManager
 import cn.coostack.cooparticlesapi.test.api.TestOption
 import net.minecraft.network.chat.Component
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.sounds.SoundSource
@@ -87,7 +87,7 @@ class ServerSoundStartLoopTestOption @JvmOverloads constructor(
 
     override fun startServer(player: ServerPlayer) {
         playStart(player, layer("start"))
-        loop = createLoop(player, layer("loop"), volume = 0.8f)
+        loop = createLoop(player, layer("loop"), volume = 0.8F)
     }
 
     override fun tickServer(player: ServerPlayer, tick: Int) {
@@ -117,7 +117,7 @@ class ServerSoundStartDuckLoopTestOption @JvmOverloads constructor(
     override fun startServer(player: ServerPlayer) {
         playStart(player, layer("start"))
         ducking = createDucking(player, layer("duck"))
-        loop = createLoop(player, layer("loop"), volume = 0.8f)
+        loop = createLoop(player, layer("loop"), volume = 0.8F)
     }
 
     override fun tickServer(player: ServerPlayer, tick: Int) {
@@ -149,9 +149,9 @@ class ServerSoundFadeTestOption @JvmOverloads constructor(
 
     override fun startServer(player: ServerPlayer) {
         playStart(player, layer("start"))
-        loop = createLoop(player, layer("loop"), volume = 0f)
+        loop = createLoop(player, layer("loop"), volume = 0F)
             .apply {
-                fadeIn(FADE_TICKS, targetVolume = 0.8f, fromVolume = 0f)
+                fadeIn(FADE_TICKS, targetVolume = 0.8F, fromVolume = 0F)
             }
     }
 
@@ -251,7 +251,7 @@ abstract class BaseServerSoundTestOption<T : BaseServerSoundTestOption<T>>(
     protected fun createLoop(player: ServerPlayer, layer: String, volume: Float): ServerManagedSoundInstance {
         return ServerSoundManager.instance(LOOP_SOUND, SoundSource.PLAYERS)
             .volume(volume)
-            .pitch(1f)
+            .pitch(1F)
             .entity(player)
             .name(testId)
             .layer(layer)
@@ -270,7 +270,7 @@ abstract class BaseServerSoundTestOption<T : BaseServerSoundTestOption<T>>(
                 key = "${player.uuid}:$testId:$layer",
                 world = player.level() as ServerLevel,
                 initialPos = player.position(),
-                volumeMultiplier = 0.25f,
+                volumeMultiplier = 0.25F,
                 range = 32.0,
                 whitelistSounds = setOf(START_SOUND, LOOP_SOUND, OBLITERATION_SOUND)
             ).apply {
@@ -292,10 +292,10 @@ abstract class BaseServerSoundTestOption<T : BaseServerSoundTestOption<T>>(
         ducking = null
     }
 
-    private fun playOnce(player: ServerPlayer, layer: String, sound: ResourceLocation): ServerManagedSoundInstance {
+    private fun playOnce(player: ServerPlayer, layer: String, sound: Identifier): ServerManagedSoundInstance {
         return ServerSoundManager.instance(sound, SoundSource.PLAYERS)
-            .volume(1f)
-            .pitch(1f)
+            .volume(1F)
+            .pitch(1F)
             .entity(player)
             .name(testId)
             .layer(layer)
@@ -332,6 +332,6 @@ private val START_SOUND = sound("test.laser_start")
 private val LOOP_SOUND = sound("test.laser_loop")
 private val OBLITERATION_SOUND = sound("test.laser_obliteration")
 
-private fun sound(path: String): ResourceLocation {
-    return ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, path)
+private fun sound(path: String): Identifier {
+    return Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, path)
 }

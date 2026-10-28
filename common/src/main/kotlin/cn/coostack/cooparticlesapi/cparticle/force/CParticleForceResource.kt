@@ -1,9 +1,14 @@
 package cn.coostack.cooparticlesapi.cparticle.force
 
 import net.minecraft.client.Minecraft
-import net.minecraft.resources.ResourceLocation
+import cn.coostack.cooparticlesapi.renderer.backend.glTextureId
+import cn.coostack.cooparticlesapi.renderer.backend.glSamplerId
+import net.minecraft.resources.Identifier
 import org.lwjgl.opengl.GL11
 import org.lwjgl.opengl.GL13
+import org.lwjgl.opengl.GL30
+import org.lwjgl.opengl.GL33
+import com.mojang.renderpearl.backend.opengl.GlStateManager
 import java.awt.image.BufferedImage
 import java.util.concurrent.ConcurrentHashMap
 import javax.imageio.ImageIO
@@ -17,7 +22,7 @@ import kotlin.math.floor
  */
 sealed interface CParticleForceResource {
     /** 资源注册表使用的稳定键。 */
-    val key: ResourceLocation
+    val key: Identifier
 }
 
 /**
@@ -29,9 +34,9 @@ sealed interface CParticleForceResource {
  * @property location 纹理资源 ID，例如 `cooparticlesapi:textures/force/wind.png`
  */
 data class CParticleTextureResource(
-    val location: ResourceLocation,
+    val location: Identifier,
 ) : CParticleForceResource {
-    override val key: ResourceLocation
+    override val key: Identifier
         get() = location
 }
 
@@ -44,9 +49,9 @@ data class CParticleTextureResource(
  * @property location 流场资源 ID，由客户端资源绑定层解释
  */
 data class CParticleFluidResource(
-    val location: ResourceLocation,
+    val location: Identifier,
 ) : CParticleForceResource {
-    override val key: ResourceLocation
+    override val key: Identifier
         get() = location
 }
 
@@ -161,7 +166,7 @@ object CParticleForceResourceRegistry {
     }
 }
 
-/** 资源包二维纹理的默认绑定；调用方只提供 ResourceLocation，不接触 GL texture id。 */
+/** 资源包二维纹理的默认绑定；调用方只提供 Identifier，不接触 GL texture id。 */
 private class MinecraftTextureForceBinding(
     override val resource: CParticleTextureResource,
 ) : CParticleForceResourceBinding {
@@ -179,24 +184,35 @@ private class MinecraftTextureForceBinding(
 
     private var previousActiveTexture = GL13.GL_TEXTURE0
     private var previousTexture = 0
+    /** 上次力场采样绑定前的 sampler，恢复时不能覆盖调用方的过滤状态。 */
+    private var previousSampler = 0
+    /** 上次实际绑定的单元，恢复不能依赖期间残留的 active texture。 */
+    private var boundTextureUnit = 0
 
     override fun bindCompute(textureUnit: Int) {
         val capturedActiveTexture = GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE)
         var capturedTexture: Int? = null
+        var capturedSampler: Int? = null
         try {
             GL13.glActiveTexture(GL13.GL_TEXTURE0 + textureUnit)
             val textureBinding = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D)
             capturedTexture = textureBinding
+            val samplerBinding = GL30.glGetIntegeri(GL33.GL_SAMPLER_BINDING, textureUnit)
+            capturedSampler = samplerBinding
             val texture = Minecraft.getInstance().textureManager.getTexture(resource.location)
-            GL11.glBindTexture(GL11.GL_TEXTURE_2D, texture.id)
+            GL11.glBindTexture(GL11.GL_TEXTURE_2D, texture.texture.glTextureId)
+            GL33.glBindSampler(textureUnit, texture.sampler.glSamplerId)
             previousActiveTexture = capturedActiveTexture
             previousTexture = textureBinding
+            previousSampler = samplerBinding
+            boundTextureUnit = textureUnit
         } catch (error: RuntimeException) {
             var restoreFailure: RuntimeException? = null
             val textureToRestore = capturedTexture
             if (textureToRestore != null) {
                 try {
                     GL11.glBindTexture(GL11.GL_TEXTURE_2D, textureToRestore)
+                    capturedSampler?.let { GL33.glBindSampler(textureUnit, it) }
                 } catch (restoreError: RuntimeException) {
                     restoreFailure = restoreError
                 }
@@ -212,7 +228,12 @@ private class MinecraftTextureForceBinding(
     }
 
     override fun resetCompute() {
+        GlStateManager._activeTexture(GL13.GL_TEXTURE0 + boundTextureUnit)
+        GL13.glActiveTexture(GL13.GL_TEXTURE0 + boundTextureUnit)
+        if (boundTextureUnit < 12) GlStateManager._bindTexture(previousTexture)
         GL11.glBindTexture(GL11.GL_TEXTURE_2D, previousTexture)
+        GL33.glBindSampler(boundTextureUnit, previousSampler)
+        GlStateManager._activeTexture(previousActiveTexture)
         GL13.glActiveTexture(previousActiveTexture)
     }
 

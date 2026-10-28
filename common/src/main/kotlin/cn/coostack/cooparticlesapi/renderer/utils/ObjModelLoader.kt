@@ -3,7 +3,7 @@ package cn.coostack.cooparticlesapi.renderer.utils
 import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModel
 import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelLayer
 import cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelVertex
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import org.joml.Vector2f
 import org.joml.Vector3f
 import org.joml.Vector4f
@@ -38,8 +38,8 @@ object ObjModelLoader {
      */
     @JvmStatic
     fun load(
-        id: ResourceLocation,
-        color: Vector4f = Vector4f(1f, 1f, 1f, 1f),
+        id: Identifier,
+        color: Vector4f = Vector4f(1F, 1F, 1F, 1F),
         flipV: Boolean = false,
         classLoader: ClassLoader = ObjModelLoader::class.java.classLoader
     ): RenderVertexBuilder {
@@ -56,7 +56,7 @@ object ObjModelLoader {
     fun load(
         namespace: String,
         path: String,
-        color: Vector4f = Vector4f(1f, 1f, 1f, 1f),
+        color: Vector4f = Vector4f(1F, 1F, 1F, 1F),
         flipV: Boolean = false,
         classLoader: ClassLoader = ObjModelLoader::class.java.classLoader
     ): RenderVertexBuilder {
@@ -72,7 +72,7 @@ object ObjModelLoader {
     @JvmStatic
     fun parse(
         source: String,
-        color: Vector4f = Vector4f(1f, 1f, 1f, 1f),
+        color: Vector4f = Vector4f(1F, 1F, 1F, 1F),
         flipV: Boolean = false
     ): RenderVertexBuilder {
         return parseLines(source.lineSequence().toList(), color, flipV)
@@ -84,7 +84,7 @@ object ObjModelLoader {
     @JvmStatic
     fun parse(
         input: InputStream,
-        color: Vector4f = Vector4f(1f, 1f, 1f, 1f),
+        color: Vector4f = Vector4f(1F, 1F, 1F, 1F),
         flipV: Boolean = false
     ): RenderVertexBuilder {
         return input.bufferedReader(Charsets.UTF_8).use { reader ->
@@ -98,7 +98,7 @@ object ObjModelLoader {
     @JvmStatic
     fun parseLines(
         lines: Iterable<String>,
-        color: Vector4f = Vector4f(1f, 1f, 1f, 1f),
+        color: Vector4f = Vector4f(1F, 1F, 1F, 1F),
         flipV: Boolean = false
     ): RenderVertexBuilder {
         val state = ObjParseState(defaultColor = Vector4f(color), flipV = flipV)
@@ -126,10 +126,10 @@ object ObjModelLoader {
      */
     @JvmStatic
     fun addTo(
-        id: ResourceLocation,
+        id: Identifier,
         model: cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelBuilder,
         layer: RenderEntityModelLayer,
-        color: Vector4f = Vector4f(1f, 1f, 1f, 1f),
+        color: Vector4f = Vector4f(1F, 1F, 1F, 1F),
         flipV: Boolean = false,
         classLoader: ClassLoader = ObjModelLoader::class.java.classLoader
     ): RenderVertexBuilder {
@@ -145,7 +145,7 @@ object ObjModelLoader {
         path: String,
         model: cn.coostack.cooparticlesapi.renderer.model.RenderEntityModelBuilder,
         layer: RenderEntityModelLayer,
-        color: Vector4f = Vector4f(1f, 1f, 1f, 1f),
+        color: Vector4f = Vector4f(1F, 1F, 1F, 1F),
         flipV: Boolean = false,
         classLoader: ClassLoader = ObjModelLoader::class.java.classLoader
     ): RenderVertexBuilder {
@@ -157,9 +157,9 @@ object ObjModelLoader {
      */
     @JvmStatic
     fun buildModel(
-        id: ResourceLocation,
+        id: Identifier,
         layer: RenderEntityModelLayer,
-        color: Vector4f = Vector4f(1f, 1f, 1f, 1f),
+        color: Vector4f = Vector4f(1F, 1F, 1F, 1F),
         flipV: Boolean = false,
         classLoader: ClassLoader = ObjModelLoader::class.java.classLoader
     ): RenderEntityModel {
@@ -174,7 +174,7 @@ object ObjModelLoader {
         namespace: String,
         path: String,
         layer: RenderEntityModelLayer,
-        color: Vector4f = Vector4f(1f, 1f, 1f, 1f),
+        color: Vector4f = Vector4f(1F, 1F, 1F, 1F),
         flipV: Boolean = false,
         classLoader: ClassLoader = ObjModelLoader::class.java.classLoader
     ): RenderEntityModel {
@@ -244,8 +244,8 @@ object ObjModelLoader {
             // vt u [v]
             requireLine(parts.size >= 2, lineNumber, "vt requires u")
             val u = parts[1].float(lineNumber, "u")
-            val rawV = parts.getOrNull(2)?.float(lineNumber, "v") ?: 0f
-            val v = if (flipV) 1f - rawV else rawV
+            val rawV = parts.getOrNull(2)?.float(lineNumber, "v") ?: 0F
+            val v = if (flipV) 1F - rawV else rawV
             uvs += Vector2f(u, v)
         }
 
@@ -306,7 +306,7 @@ object ObjModelLoader {
         private fun vertex(index: ObjFaceIndex, faceNormal: Vector3f, lineNumber: Int): RenderEntityModelVertex {
             val source = position(index.positionIndex, lineNumber)
             val uv = index.uvIndex?.let { uvs.getOrNull(it) }
-                ?: Vector2f(0f, 0f)
+                ?: Vector2f(0F, 0F)
             val normal = index.normalIndex?.let { normals.getOrNull(it) }
                 ?: faceNormal
             return RenderEntityModelVertex(
@@ -366,10 +366,10 @@ object ObjModelLoader {
     }
 
     private fun safeNormal(value: Vector3f): Vector3f {
-        return if (value.lengthSquared() > 1.0E-12f) {
+        return if (value.lengthSquared() > 1.0E-12F) {
             value.normalize()
         } else {
-            Vector3f(0f, 1f, 0f)
+            Vector3f(0F, 1F, 0F)
         }
     }
 

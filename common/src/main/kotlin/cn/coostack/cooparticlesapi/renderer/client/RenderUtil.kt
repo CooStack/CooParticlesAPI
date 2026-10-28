@@ -26,7 +26,7 @@ object RenderUtil {
         entity: RenderEntity,
         tickDelta: Float
     ): Matrix4fStack {
-        val camera = Minecraft.getInstance().gameRenderer.mainCamera.position.toVector3f()
+        val camera = Minecraft.getInstance().gameRenderer.mainCamera().position().toVector3f()
         val last = entity.lastRenderPos.toVector3f()
         val now = entity.pos.toVector3f()
         val x = Mth.lerp(tickDelta, last.x, now.x)

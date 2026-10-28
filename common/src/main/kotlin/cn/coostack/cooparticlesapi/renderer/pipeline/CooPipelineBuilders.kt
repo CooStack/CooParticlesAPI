@@ -1,7 +1,7 @@
 package cn.coostack.cooparticlesapi.renderer.pipeline
 
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.CooTextureFormat
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /**
  * 单个 Pipeline 节点的构建器。
@@ -16,9 +16,9 @@ class CooPipelineNodeBuilder<T : Any> internal constructor(
     private val name: String,
     private val kind: CooPipelineNodeKind
 ) {
-    private var coreShader: ResourceLocation? = null
-    private var vertexShader: ResourceLocation? = null
-    private var fragmentShader: ResourceLocation? = null
+    private var coreShader: Identifier? = null
+    private var vertexShader: Identifier? = null
+    private var fragmentShader: Identifier? = null
     private val inputs = LinkedHashMap<String, CooPipelineInputPort>()
     private val sources = LinkedHashMap<String, CooPipelineTextureSource>()
     private val targets = ArrayList<CooPipelineTarget>()
@@ -39,7 +39,7 @@ class CooPipelineNodeBuilder<T : Any> internal constructor(
      *
      * @param shader 要加载、编译或绑定的 shader 资源
      */
-    fun shader(shader: ResourceLocation) = apply {
+    fun shader(shader: Identifier) = apply {
         coreShader = shader
     }
 
@@ -50,7 +50,7 @@ class CooPipelineNodeBuilder<T : Any> internal constructor(
      *
      * @param shader 要加载、编译或绑定的 shader 资源
      */
-    fun vertex(shader: ResourceLocation) = apply {
+    fun vertex(shader: Identifier) = apply {
         vertexShader = shader
     }
 
@@ -61,7 +61,7 @@ class CooPipelineNodeBuilder<T : Any> internal constructor(
      *
      * @param shader 要加载、编译或绑定的 shader 资源
      */
-    fun fragment(shader: ResourceLocation) = apply {
+    fun fragment(shader: Identifier) = apply {
         fragmentShader = shader
     }
 
@@ -117,7 +117,7 @@ class CooPipelineNodeBuilder<T : Any> internal constructor(
      */
     fun inputTexture(
         sampler: String,
-        texture: ResourceLocation,
+        texture: Identifier,
         optional: Boolean = false,
         textureSlot: Int = inputs.size
     ) = input(sampler, CooPipelineTextureSource.Texture(texture), optional, textureSlot)
@@ -220,7 +220,7 @@ class CooPipelineNodeBuilder<T : Any> internal constructor(
      */
     fun inputFramebuffer(
         sampler: String,
-        target: ResourceLocation,
+        target: Identifier,
         attachment: Int = 0,
         optional: Boolean = false,
         textureSlot: Int = inputs.size
@@ -344,7 +344,7 @@ class CooPipelineNodeBuilder<T : Any> internal constructor(
      *
      * @param attachment 数量或从零开始的索引值，具体上限由当前资源配置决定
      */
-    fun outputToFramebuffer(target: ResourceLocation, attachment: Int = 0) = apply {
+    fun outputToFramebuffer(target: Identifier, attachment: Int = 0) = apply {
         targets += CooPipelineTarget.FramebufferColor(target, attachment)
     }
 
@@ -648,7 +648,7 @@ internal data class CooNodeBuildResult(
  * @param domain 实体、方块、通用或屏幕使用域
  */
 class CooRenderPipelineBuilder<T : Any> internal constructor(
-    private val id: ResourceLocation,
+    private val id: Identifier,
     private val domain: CooPipelineDomain
 ) {
     private var terrainLayer = CooTerrainLayer.INHERIT
@@ -692,7 +692,7 @@ class CooRenderPipelineBuilder<T : Any> internal constructor(
      *
      * @param shader 要加载、编译或绑定的 shader 资源
      */
-    fun shader(shader: ResourceLocation) = apply {
+    fun shader(shader: Identifier) = apply {
         implicitWorldUsed = true
         implicitWorld.shader(shader)
     }
@@ -708,7 +708,7 @@ class CooRenderPipelineBuilder<T : Any> internal constructor(
      *
      * @param textureSlot 数量或从零开始的索引值，具体上限由当前资源配置决定
      */
-    fun inputTexture(sampler: String, texture: ResourceLocation, textureSlot: Int = 0) = apply {
+    fun inputTexture(sampler: String, texture: Identifier, textureSlot: Int = 0) = apply {
         implicitWorldUsed = true
         implicitWorld.inputTexture(sampler, texture, textureSlot = textureSlot)
     }
@@ -964,7 +964,7 @@ class CooRenderPipelineBuilder<T : Any> internal constructor(
      *
      * @return 当前构建器或由其配置生成的结果
      */
-    fun texture(texture: ResourceLocation): CooPipelineTextureSource = CooPipelineTextureSource.Texture(texture)
+    fun texture(texture: Identifier): CooPipelineTextureSource = CooPipelineTextureSource.Texture(texture)
     /**
      * 在 `CooRenderPipelineBuilder` 中配置 `blockAtlas`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
      *
@@ -1003,7 +1003,7 @@ class CooRenderPipelineBuilder<T : Any> internal constructor(
      *
      * @return 当前构建器或由其配置生成的结果
      */
-    fun framebuffer(target: ResourceLocation, attachment: Int = 0): CooPipelineTextureSource =
+    fun framebuffer(target: Identifier, attachment: Int = 0): CooPipelineTextureSource =
         CooPipelineTextureSource.FramebufferColor(target, attachment)
     /**
      * 在 `CooRenderPipelineBuilder` 中配置 `mask`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
@@ -1081,7 +1081,7 @@ class CooRenderPipelineBuilder<T : Any> internal constructor(
      *
      * @return 当前构建器或由其配置生成的结果
      */
-    fun framebufferTarget(target: ResourceLocation, attachment: Int = 0): CooPipelineTarget =
+    fun framebufferTarget(target: Identifier, attachment: Int = 0): CooPipelineTarget =
         CooPipelineTarget.FramebufferColor(target, attachment)
 
     /** 把 fluent 参数绑定到一个或多个节点 uniform。 */

@@ -7,7 +7,7 @@ import cn.coostack.cooparticlesapi.network.packet.api.ClientContext
 import cn.coostack.cooparticlesapi.network.packet.api.CooPacket
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooBlockPipelines
 import cn.coostack.cooparticlesapi.test.options.renderer.pipeline.RenderPipelineExamples
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.world.level.block.state.BlockState
 import java.util.UUID
@@ -44,8 +44,8 @@ class PacketBindStarfieldFboBlockS2C() : CooPacket() {
     }
 
     /** @return 星空 FBO 方块类型绑定包的稳定资源 ID。 */
-    override fun id(): ResourceLocation {
-        return ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, PACKET_ID)
+    override fun id(): Identifier {
+        return Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, PACKET_ID)
     }
 
     /**

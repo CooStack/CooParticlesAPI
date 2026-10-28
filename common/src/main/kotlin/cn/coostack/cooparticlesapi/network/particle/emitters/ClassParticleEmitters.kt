@@ -1,5 +1,7 @@
 package cn.coostack.cooparticlesapi.network.particle.emitters
 
+import cn.coostack.cooparticlesapi.network.readVec3
+import cn.coostack.cooparticlesapi.network.writeVec3
 import cn.coostack.cooparticlesapi.annotations.emitter.handle.ParticleEmittersRegistryHelper
 import cn.coostack.cooparticlesapi.cparticle.CParticleSystemManager
 import cn.coostack.cooparticlesapi.cparticle.compat.CParticleEmitterBridge
@@ -534,7 +536,7 @@ abstract class ClassParticleEmitters(
             if (onTheGround) {
                 // 找方向 velocity
                 handlerList[ParticleOnGroundEvent.EVENT_ID]?.let {
-                    val offset = clipRes.direction.normal.asVec3() * 0.1
+                    val offset = clipRes.direction.unitVec3 * 0.1
                     val event = ParticleOnGroundEvent(
                         this,
                         data,

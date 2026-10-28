@@ -68,6 +68,10 @@ internal class CooEffectUvVertexConsumer(
         delegate.setColor(red, green, blue, alpha)
     }
 
+    override fun setColor(color: Int): VertexConsumer = apply {
+        delegate.setColor(color)
+    }
+
     /**
      * 在 `CooEffectUvVertexConsumer` 中配置 `setUv`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
      *
@@ -105,6 +109,14 @@ internal class CooEffectUvVertexConsumer(
         val packedU = packed and 0xFFFF
         val packedV = (packed ushr 16) and 0xFFFF
         delegate.setUv2(packedU, packedV)
+    }
+
+    override fun setUv3(u: Float, v: Float): VertexConsumer = apply {
+        delegate.setUv3(u, v)
+    }
+
+    override fun setLineWidth(width: Float): VertexConsumer = apply {
+        delegate.setLineWidth(width)
     }
 
     /**

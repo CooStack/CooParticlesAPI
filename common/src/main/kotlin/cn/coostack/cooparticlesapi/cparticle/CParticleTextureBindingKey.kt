@@ -2,7 +2,7 @@ package cn.coostack.cooparticlesapi.cparticle
 
 import net.minecraft.client.renderer.texture.MissingTextureAtlasSprite
 import net.minecraft.client.renderer.texture.TextureAtlas
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /**
  * 区分图集与独立纹理的绑定方式。
@@ -40,7 +40,7 @@ enum class CParticleTextureBindingKind {
  */
 data class CParticleTextureBindingKey(
     val kind: CParticleTextureBindingKind,
-    val location: ResourceLocation,
+    val location: Identifier,
 ) : Comparable<CParticleTextureBindingKey> {
     /**
      * 为批次排序提供稳定顺序，减少相邻系统之间的重复绑定。

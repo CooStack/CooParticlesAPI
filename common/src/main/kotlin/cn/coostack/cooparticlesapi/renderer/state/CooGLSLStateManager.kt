@@ -1,6 +1,10 @@
 package cn.coostack.cooparticlesapi.renderer.state
 
+import cn.coostack.cooparticlesapi.cparticle.CParticleIndexedBlendState
+import cn.coostack.cooparticlesapi.renderer.backend.OpenGlRenderTargetBridge
 import com.mojang.blaze3d.systems.RenderSystem
+import com.mojang.renderpearl.api.pipeline.ColorTargetState
+import com.mojang.renderpearl.backend.opengl.GlStateManager
 import org.lwjgl.opengl.GL33.GL_BLEND
 import org.lwjgl.opengl.GL33.GL_BLEND_DST_ALPHA
 import org.lwjgl.opengl.GL33.GL_BLEND_DST_RGB
@@ -14,6 +18,7 @@ import org.lwjgl.opengl.GL33.GL_DEPTH_FUNC
 import org.lwjgl.opengl.GL33.GL_DEPTH_TEST
 import org.lwjgl.opengl.GL33.GL_DEPTH_WRITEMASK
 import org.lwjgl.opengl.GL33.GL_LINE_WIDTH
+import org.lwjgl.opengl.GL33.GL_MAX_DRAW_BUFFERS
 import org.lwjgl.opengl.GL33.GL_POLYGON_OFFSET_FACTOR
 import org.lwjgl.opengl.GL33.GL_POLYGON_OFFSET_FILL
 import org.lwjgl.opengl.GL33.GL_POLYGON_OFFSET_UNITS
@@ -21,16 +26,20 @@ import org.lwjgl.opengl.GL33.GL_SCISSOR_BOX
 import org.lwjgl.opengl.GL33.GL_SCISSOR_TEST
 import org.lwjgl.opengl.GL33.glBlendEquationSeparate
 import org.lwjgl.opengl.GL33.glBlendFuncSeparate
-import org.lwjgl.opengl.GL33.glColorMask
+import org.lwjgl.opengl.GL33.glColorMaski
 import org.lwjgl.opengl.GL33.glDepthFunc
 import org.lwjgl.opengl.GL33.glDepthMask
 import org.lwjgl.opengl.GL33.glDisable
+import org.lwjgl.opengl.GL33.glDisablei
 import org.lwjgl.opengl.GL33.glEnable
+import org.lwjgl.opengl.GL33.glEnablei
 import org.lwjgl.opengl.GL33.glGetBoolean
 import org.lwjgl.opengl.GL33.glGetFloat
 import org.lwjgl.opengl.GL33.glGetInteger
+import org.lwjgl.opengl.GL33.glGetIntegeri_v
 import org.lwjgl.opengl.GL33.glGetIntegerv
 import org.lwjgl.opengl.GL33.glIsEnabled
+import org.lwjgl.opengl.GL33.glIsEnabledi
 import org.lwjgl.opengl.GL33.glLineWidth
 import org.lwjgl.opengl.GL33.glPolygonOffset
 import org.lwjgl.opengl.GL33.glScissor
@@ -66,8 +75,15 @@ class GLSLState internal constructor(
     val polygonOffsetEnabled: Boolean,
     val polygonOffsetFactor: Float,
     val polygonOffsetUnits: Float,
+    /** 兼容旧快照接口；26.3 没有独立 shader 线宽，此值与原生线宽相同。 */
     val shaderLineWidth: Float,
-    val lineWidth: Float
+    val lineWidth: Float,
+    /** 每个 draw buffer 的混合开关，避免覆盖 Iris 的辅助 attachment。 */
+    internal val attachmentBlendEnabled: BooleanArray,
+    /** 每个 draw buffer 的 RGBA 位掩码，位值与 RenderPearl 的写入掩码一致。 */
+    internal val attachmentColorMasks: IntArray,
+    /** 支持独立混合时，各 draw buffer 的源/目标 RGB、源/目标 alpha、RGB/alpha 方程。 */
+    internal val attachmentBlendFunctions: List<IntArray>,
 )
 
 /**
@@ -119,12 +135,23 @@ object CooGLSLStateManager {
     }
 }
 
+/**
+ * 不依赖 GL 的后进先出状态作用域，负责异常恢复和手动快照的平衡检查。
+ *
+ * @property captureState 捕获当前状态的回调
+ * @property restoreState 恢复指定状态的回调
+ */
 internal class GLSLStateStack<S>(
     private val captureState: () -> S,
     private val restoreState: (S) -> Unit
 ) {
+    /**
+     * @property state 此栈帧保存的状态
+     * @property scoped 是否属于不能由手动 reset 关闭的作用域
+     */
     private data class Frame<S>(val state: S, val scoped: Boolean)
 
+    /** 尚未恢复的快照，尾部为当前最内层作用域。 */
     private val frames = ArrayDeque<Frame<S>>()
 
     fun createState(): S {
@@ -218,9 +245,11 @@ internal class GLSLStateStack<S>(
     }
 }
 
+/** 在 OpenGL 3.3 基线上读取状态，并同时恢复 RenderPearl 缓存与实际 GL 状态。 */
 private object OpenGlStateBackend {
+    /** 独立 attachment 混合函数仅在驱动明确提供对应能力时读取。 */
     fun capture(): GLSLState {
-        RenderSystem.assertOnRenderThread()
+        OpenGlRenderTargetBridge.requireOpenGlBackend()
         val scissorBox = IntArray(4)
         glGetIntegerv(GL_SCISSOR_BOX, scissorBox)
         val colorMask = IntArray(4)
@@ -249,64 +278,105 @@ private object OpenGlStateBackend {
             polygonOffsetEnabled = glIsEnabled(GL_POLYGON_OFFSET_FILL),
             polygonOffsetFactor = glGetFloat(GL_POLYGON_OFFSET_FACTOR),
             polygonOffsetUnits = glGetFloat(GL_POLYGON_OFFSET_UNITS),
-            shaderLineWidth = RenderSystem.getShaderLineWidth(),
-            lineWidth = glGetFloat(GL_LINE_WIDTH)
+            shaderLineWidth = glGetFloat(GL_LINE_WIDTH),
+            lineWidth = glGetFloat(GL_LINE_WIDTH),
+            attachmentBlendEnabled = BooleanArray(glGetInteger(GL_MAX_DRAW_BUFFERS)) { glIsEnabledi(GL_BLEND, it) },
+            attachmentColorMasks = IntArray(glGetInteger(GL_MAX_DRAW_BUFFERS)) { index ->
+                val mask = IntArray(4)
+                glGetIntegeri_v(GL_COLOR_WRITEMASK, index, mask)
+                colorMaskBits(mask)
+            },
+            attachmentBlendFunctions = if (CParticleIndexedBlendState.isAvailable()) {
+                List(glGetInteger(GL_MAX_DRAW_BUFFERS)) { index ->
+                    intArrayOf(
+                        indexedInteger(GL_BLEND_SRC_RGB, index),
+                        indexedInteger(GL_BLEND_DST_RGB, index),
+                        indexedInteger(GL_BLEND_SRC_ALPHA, index),
+                        indexedInteger(GL_BLEND_DST_ALPHA, index),
+                        indexedInteger(GL_BLEND_EQUATION_RGB, index),
+                        indexedInteger(GL_BLEND_EQUATION_ALPHA, index),
+                    )
+                }
+            } else emptyList(),
         )
     }
 
+    /** 先同步缓存，再强制恢复实际状态，兼容 Iris 绕过缓存修改 GL 的场景。 */
     fun restore(state: GLSLState) {
         RenderSystem.assertOnRenderThread()
 
-        if (state.blendEnabled) RenderSystem.enableBlend() else RenderSystem.disableBlend()
-        RenderSystem.blendFuncSeparate(
+        GlStateManager._blendFuncSeparate(
             state.blendSrcRgb,
             state.blendDstRgb,
             state.blendSrcAlpha,
             state.blendDstAlpha
         )
-        RenderSystem.blendEquation(state.blendEquationRgb)
-        if (state.depthTestEnabled) RenderSystem.enableDepthTest() else RenderSystem.disableDepthTest()
-        RenderSystem.depthMask(state.depthMask)
-        RenderSystem.depthFunc(state.depthFunc)
-        if (state.cullEnabled) RenderSystem.enableCull() else RenderSystem.disableCull()
-        RenderSystem.colorMask(
-            state.colorMaskRed,
-            state.colorMaskGreen,
-            state.colorMaskBlue,
-            state.colorMaskAlpha
-        )
-        RenderSystem.polygonOffset(state.polygonOffsetFactor, state.polygonOffsetUnits)
-        if (state.polygonOffsetEnabled) RenderSystem.enablePolygonOffset() else RenderSystem.disablePolygonOffset()
+        GlStateManager._blendEquationSeparate(state.blendEquationRgb, state.blendEquationAlpha)
+        if (state.depthTestEnabled) GlStateManager._enableDepthTest() else GlStateManager._disableDepthTest()
+        GlStateManager._depthMask(state.depthMask)
+        GlStateManager._depthFunc(state.depthFunc)
+        if (state.cullEnabled) GlStateManager._enableCull() else GlStateManager._disableCull()
+        GlStateManager._polygonOffset(state.polygonOffsetFactor, state.polygonOffsetUnits)
+        if (state.polygonOffsetEnabled) GlStateManager._enablePolygonOffset() else GlStateManager._disablePolygonOffset()
         if (state.scissorEnabled) {
-            RenderSystem.enableScissor(
+            GlStateManager._scissorBox(
                 state.scissorX,
                 state.scissorY,
                 state.scissorWidth,
                 state.scissorHeight
             )
+            GlStateManager._enableScissorTest()
         } else {
-            RenderSystem.disableScissor()
+            GlStateManager._disableScissorTest()
         }
-        RenderSystem.lineWidth(state.shaderLineWidth)
 
-        setCapability(GL_BLEND, state.blendEnabled)
         glBlendFuncSeparate(state.blendSrcRgb, state.blendDstRgb, state.blendSrcAlpha, state.blendDstAlpha)
         glBlendEquationSeparate(state.blendEquationRgb, state.blendEquationAlpha)
         setCapability(GL_DEPTH_TEST, state.depthTestEnabled)
         glDepthMask(state.depthMask)
         glDepthFunc(state.depthFunc)
         setCapability(GL_CULL_FACE, state.cullEnabled)
-        glColorMask(
-            state.colorMaskRed,
-            state.colorMaskGreen,
-            state.colorMaskBlue,
-            state.colorMaskAlpha
-        )
         glPolygonOffset(state.polygonOffsetFactor, state.polygonOffsetUnits)
         setCapability(GL_POLYGON_OFFSET_FILL, state.polygonOffsetEnabled)
         glScissor(state.scissorX, state.scissorY, state.scissorWidth, state.scissorHeight)
         setCapability(GL_SCISSOR_TEST, state.scissorEnabled)
         glLineWidth(state.lineWidth)
+        state.attachmentBlendEnabled.forEachIndexed { index, enabled ->
+            if (index < ColorTargetState.MAX_COLOR_TARGETS) {
+                if (enabled) GlStateManager._enableBlend(index) else GlStateManager._disableBlend(index)
+            }
+            if (enabled) glEnablei(GL_BLEND, index) else glDisablei(GL_BLEND, index)
+        }
+        state.attachmentColorMasks.forEachIndexed { index, mask ->
+            if (index < ColorTargetState.MAX_COLOR_TARGETS) {
+                GlStateManager._colorMask(index, mask)
+            }
+            glColorMaski(
+                index,
+                mask and ColorTargetState.WRITE_RED != 0,
+                mask and ColorTargetState.WRITE_GREEN != 0,
+                mask and ColorTargetState.WRITE_BLUE != 0,
+                mask and ColorTargetState.WRITE_ALPHA != 0,
+            )
+        }
+        state.attachmentBlendFunctions.forEachIndexed { index, function ->
+            CParticleIndexedBlendState.setFactors(index, function[0], function[1], function[2], function[3])
+            CParticleIndexedBlendState.setEquation(index, function[4], function[5])
+        }
+    }
+
+    /** 将原版定义的 RGBA 写入位组合为 RenderPearl 接受的掩码。 */
+    private fun colorMaskBits(mask: IntArray): Int =
+        (if (mask[0] != 0) ColorTargetState.WRITE_RED else 0) or
+            (if (mask[1] != 0) ColorTargetState.WRITE_GREEN else 0) or
+            (if (mask[2] != 0) ColorTargetState.WRITE_BLUE else 0) or
+            (if (mask[3] != 0) ColorTargetState.WRITE_ALPHA else 0)
+
+    /** 读取一个具备独立混合能力的 attachment 状态。 */
+    private fun indexedInteger(parameter: Int, index: Int): Int {
+        val result = IntArray(1)
+        glGetIntegeri_v(parameter, index, result)
+        return result[0]
     }
 
     private fun setCapability(capability: Int, enabled: Boolean) {

@@ -40,15 +40,17 @@ class FabricModelPartPointCollector : ModelPartPointCollector {
 
         val m = poseStack.last().pose()
 
-        // cubes -> polygons -> vertices
+        // 按立方体、面和顶点逐层读取模型几何。
         for (cube in part.cubes) {
             for (poly in cube.polygons) {
-                val n = poly.vertices.size
+                val vertices = poly.vertices()
+                val n = vertices.size
                 if (n < 3) continue
 
                 // 顶点转 Vec3（应用 pose 变换）
                 val vs = Array(n) { idx ->
-                    val p: Vector3f = poly.vertices[idx].pos
+                    val vertex = vertices[idx]
+                    val p = Vector3f(vertex.x(), vertex.y(), vertex.z())
                     transformPos(m, p, pixelToUnit)
                 }
 
@@ -65,7 +67,7 @@ class FabricModelPartPointCollector : ModelPartPointCollector {
             }
         }
 
-        // children 递归
+        // 递归采样所有子部件。
         for (child in part.children.values) {
             visit(child, poseStack, density, pixelToUnit, out)
         }
@@ -75,9 +77,9 @@ class FabricModelPartPointCollector : ModelPartPointCollector {
 
     private fun transformPos(m: Matrix4f, p: Vector3f, pixelToUnit: Boolean): Vec3 {
         val tmp = Vector3f(p)
-        if (pixelToUnit) tmp.mul(1f / 16f)
+        if (pixelToUnit) tmp.mul(1F / 16F)
 
-        // position vector (w=1)
+        // 作为位置向量应用矩阵平移。
         tmp.mulPosition(m)
 
         return tmp.asVec3()

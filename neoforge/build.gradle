@@ -1,9 +1,9 @@
 plugins {
     id 'multiloader-loader'
-    id 'net.neoforged.moddev'
+    id 'net.neoforged.gradle.userdev'
 }
 tasks.javadoc {
-    // fuck javadoc encode error
+    // 当前 Javadoc 配置存在编码问题，构建时不执行该任务。
     enabled = false
 }
 
@@ -11,38 +11,36 @@ tasks.named('processResources', ProcessResources) {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
-neoForge {
-    version = neoforge_version
-    // Automatically enable neoforge AccessTransformers if the file exists
-    def at = project(':common').file('src/main/resources/META-INF/accesstransformer.cfg')
-    if (at.exists()) {
-        accessTransformers.from(at.absolutePath)
+accessTransformers {
+    file 'src/main/resources/META-INF/accesstransformer.cfg'
+}
+
+dependencies {
+    implementation "net.neoforged:neoforge:${neoforge_version}"
+    compileOnly files(fileTree(dir: "../compile_only_depend", includes: ["iris-neoforge-1.11.7+mc26.3.jar"]))
+    // NeoForge 外层发行包嵌套主体类；公共集成仅编译共享 API，不打包 Fabric 发行物。
+    compileOnly "maven.modrinth:sodium:mc26.3-0.9.2-fabric"
+    implementation "thedarkcolour:kotlinforforge-neoforge:6.4.0"
+    jarJar(implementation "com.ezylang:EvalEx:3.5.0")
+    jarJar(implementation 'io.github.classgraph:classgraph:4.8.184')
+}
+
+runs {
+    configureEach {
+        systemProperty('neoforge.enabledGameTestNamespaces', mod_id)
+        modSource sourceSets.main
     }
-    parchment {
-        minecraftVersion = parchment_minecraft
-        mappingsVersion = parchment_version
+    client {}
+    server {
+        argument '--nogui'
     }
-    runs {
-        configureEach {
-            systemProperty('neoforge.enabledGameTestNamespaces', mod_id)
-            ideName = "NeoForge ${it.name.capitalize()} (${project.path})" // Unify the run config names with fabric
-        }
-        client {
-            client()
-        }
-        data {
-            data()
-            programArguments.addAll '--mod', project.mod_id, '--all', '--output', file('src/generated/resources/').getAbsolutePath(), '--existing', file('src/main/resources/').getAbsolutePath()
-        }
-        server {
-            server()
-        }
+    clientData {
+        arguments.addAll '--mod', project.mod_id, '--all', '--output', file('src/generated/resources/').getAbsolutePath(), '--existing', file('src/main/resources/').getAbsolutePath()
     }
-    mods {
-        "${mod_id}" {
-            sourceSet sourceSets.main
-        }
-    }
+}
+
+configurations {
+    runtimeClasspath.extendsFrom(localRuntime)
 }
 
 tasks.register("sourceWithCommon", Jar) {
@@ -55,12 +53,23 @@ tasks.register("sourceWithCommon", Jar) {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 //    exclude "META-INT/**"
     destinationDirectory.set(file("../builds/sources"))
-    archiveFileName = "${rootProject.mod_name}-NeoForge-Source-${rootProject.version}.jar"
+    archiveFileName = "${rootProject.mod_name}-NeoForge-Source-${rootProject.minecraft_version}-${rootProject.version}.jar"
 }
 tasks.named('jar', Jar) {
-    destinationDirectory.set(file("../builds/jar")) // 输出到 build/customLibs
-    archiveFileName.set("${rootProject.mod_name}-NeoForge-${rootProject.minecraft_version}-${rootProject.version}.jar")
+    // 普通 jar 仅作为 jarJar 的输入，避免被误当作完整发行物。
+    destinationDirectory.set(layout.buildDirectory.dir("libs"))
+    archiveClassifier.set("plain")
+    archiveFileName.set("${rootProject.mod_name}-NeoForge-${rootProject.minecraft_version}-${rootProject.version}-plain.jar")
     dependsOn(tasks.named("sourceWithCommon"))
+}
+tasks.named('jarJar', Jar) {
+    // 用户分发目录与 Maven 主工件共用包含运行库和 jarjar metadata 的完整工件。
+    destinationDirectory.set(file("../builds/jar"))
+    archiveClassifier.set("")
+    archiveFileName.set("${rootProject.mod_name}-NeoForge-${rootProject.minecraft_version}-${rootProject.version}.jar")
+}
+tasks.named('assemble') {
+    dependsOn(tasks.named("jarJar"))
 }
 def properties = new Properties()
 def repoFile = rootProject.file("repo.properties")
@@ -104,10 +113,10 @@ publishing {
     publications {
         mavenJava(MavenPublication) {
             groupId = rootProject.group.toString()
-            artifactId = "${rootProject.artifact}-neoforge"
+            artifactId = "${rootProject.artifact}-${rootProject.minecraft_version}-neoforge"
             version = rootProject.version.toString()
 
-            artifact(tasks.named("jar"))
+            artifact(tasks.named("jarJar"))
             artifact(tasks.named("sourceWithCommon")) {
                 classifier = "sources"
             }
@@ -135,16 +144,6 @@ publishing {
     }
 }
 
-dependencies {
-    compileOnly fileTree(dir: "../compile_only_depend", includes: ["*.jar"])
-    compileOnly "maven.modrinth:sodium:mc1.21.1-0.6.13-neoforge"
-    compileOnly "org.sinytra.forgified-fabric-api:fabric-renderer-api-v1:3.4.0+9c40919e19"
-    implementation "thedarkcolour:kotlinforforge-neoforge:5.10.0"
-    jarJar(implementation "com.ezylang:EvalEx:3.5.0")
-    jarJar(implementation 'io.github.classgraph:classgraph:4.8.184')
-    additionalRuntimeClasspath fileTree(dir: "../depend", includes: ["*.jar"])
-    additionalRuntimeClasspath 'io.github.classgraph:classgraph:4.8.184'
-}
 sourceSets.main.resources {
     srcDir 'src/generated/resources'
     srcDir '../fabric/src/main/generated/'

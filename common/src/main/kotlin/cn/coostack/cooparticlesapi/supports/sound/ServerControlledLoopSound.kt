@@ -3,13 +3,13 @@ package cn.coostack.cooparticlesapi.supports.sound
 import net.minecraft.client.Minecraft
 import net.minecraft.client.resources.sounds.AbstractTickableSoundInstance
 import net.minecraft.client.resources.sounds.SoundInstance
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.sounds.SoundEvent
 import net.minecraft.sounds.SoundSource
 import net.minecraft.world.phys.Vec3
 
 class ServerControlledLoopSound(
-    soundId: ResourceLocation,
+    soundId: Identifier,
     source: SoundSource,
     private val entityId: Int,
     fallbackPos: Vec3,

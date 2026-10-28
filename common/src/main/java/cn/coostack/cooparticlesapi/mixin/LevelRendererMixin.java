@@ -5,405 +5,133 @@ import cn.coostack.cooparticlesapi.cparticle.CParticleSystemManager;
 import cn.coostack.cooparticlesapi.renderer.client.ClientRenderEntityManager;
 import cn.coostack.cooparticlesapi.renderer.client.ClientRenderPipelineManager;
 import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainPipelineManager;
-import net.minecraft.client.Camera;
-import net.minecraft.client.DeltaTracker;
-import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.client.renderer.GameRenderer;
+import cn.coostack.cooparticlesapi.renderer.terrain.VanillaTerrainOverlay;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
+import com.mojang.renderpearl.api.textures.GpuSampler;
+import com.mojang.renderpearl.api.textures.GpuTextureView;
 import net.minecraft.client.renderer.LevelRenderer;
-import net.minecraft.client.renderer.LightTexture;
-import net.minecraft.client.renderer.RenderType;
-import org.jetbrains.annotations.Nullable;
-import org.joml.Matrix4f;
+import net.minecraft.client.renderer.chunk.ChunkSectionsToRender;
+import net.minecraft.client.renderer.oit.OitRenderPassProvider;
+import net.minecraft.client.renderer.oit.OitStage;
+import net.minecraft.client.renderer.state.level.CameraRenderState;
+import net.minecraft.client.renderer.state.level.LevelRenderState;
+import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import java.util.ArrayList;
 
 /**
- * 把 Coo 粒子系统、地形 Pipeline 和统一后处理生命周期接入原版世界渲染器。
+ * 将 Coo 世界特效接入 26.3 的提取状态、FrameGraph 执行与 OIT 合成生命周期。
  *
- * <p>地形覆盖在对应原版 section layer 绘制后提交；Sodium 使用独立兼容路径，
- * Iris shader pack 激活时则把覆盖绘制推迟到最终合成之后。
+ * <p>只在已执行的绘制阶段访问场景目标，不在构建 FrameGraph 时执行 OpenGL 绘制。
+ * Iris 最终合成在同一 popMatrix 入口的高优先级 hook 中完成，本类随后提交覆盖与后处理。
  */
 @Mixin(value = LevelRenderer.class, priority = 900)
-public class LevelRendererMixin {
-    @Shadow
-    @Nullable
-    private ClientLevel level;
+public abstract class LevelRendererMixin {
+    /** 当前帧由原版提取并传入世界渲染器的状态，不缓存世界实体。 */
+    @Shadow @Final private LevelRenderState levelRenderState;
 
-    @Shadow
-    private void renderSectionLayer(RenderType renderType,
-                                    double cameraX,
-                                    double cameraY,
-                                    double cameraZ,
-                                    Matrix4f frustumMatrix,
-                                    Matrix4f projectionMatrix) {
-        throw new AssertionError();
-    }
-
-    @Inject(method = "renderLevel", at = @At("HEAD"))
-    private void cooParticlesAPI$beginRenderFrame(DeltaTracker deltaTracker,
-                                                  boolean renderBlockOutline,
-                                                  Camera camera,
-                                                  GameRenderer gameRenderer,
-                                                  LightTexture lightTexture,
-                                                  Matrix4f frustumMatrix,
-                                                  Matrix4f projectionMatrix,
-                                                  CallbackInfo info) {
+    /** 清除上一帧未消费的粒子和地形状态，并处理本帧变更。 */
+    @Inject(method = "render", at = @At("HEAD"))
+    private void beginCooRenderFrame(CallbackInfo callback) {
         CParticleSystemManager.beginRenderFrame();
         CooTerrainPipelineManager.updateCompatibilityState();
-        CooTerrainPipelineManager.beginRenderFrame(deltaTracker.getGameTimeDeltaPartialTick(true));
-    }
-
-    @Inject(
-            method = "renderLevel",
-            at = @At(
-                    value = "INVOKE",
-                    target = "Lnet/minecraft/client/renderer/LevelRenderer;renderSectionLayer(Lnet/minecraft/client/renderer/RenderType;DDDLorg/joml/Matrix4f;Lorg/joml/Matrix4f;)V",
-                    ordinal = 0,
-                    shift = At.Shift.AFTER
-            )
-    )
-    private void cooParticlesAPI$renderSolidTerrainPipelines(DeltaTracker deltaTracker,
-                                                              boolean renderBlockOutline,
-                                                              Camera camera,
-                                                              GameRenderer gameRenderer,
-                                                              LightTexture lightTexture,
-                                                              Matrix4f frustumMatrix,
-                                                              Matrix4f projectionMatrix,
-                                                              CallbackInfo info) {
-        renderTerrainPipelines(RenderType.solid(), camera, frustumMatrix, projectionMatrix);
-    }
-
-    @Inject(
-            method = "renderLevel",
-            at = @At(
-                    value = "INVOKE",
-                    target = "Lnet/minecraft/client/renderer/LevelRenderer;renderSectionLayer(Lnet/minecraft/client/renderer/RenderType;DDDLorg/joml/Matrix4f;Lorg/joml/Matrix4f;)V",
-                    ordinal = 1,
-                    shift = At.Shift.AFTER
-            )
-    )
-    private void cooParticlesAPI$renderCutoutMippedTerrainPipelines(DeltaTracker deltaTracker,
-                                                                    boolean renderBlockOutline,
-                                                                    Camera camera,
-                                                                    GameRenderer gameRenderer,
-                                                                    LightTexture lightTexture,
-                                                                    Matrix4f frustumMatrix,
-                                                                    Matrix4f projectionMatrix,
-                                                                    CallbackInfo info) {
-        renderTerrainPipelines(RenderType.cutoutMipped(), camera, frustumMatrix, projectionMatrix);
-    }
-
-    @Inject(
-            method = "renderLevel",
-            at = @At(
-                    value = "INVOKE",
-                    target = "Lnet/minecraft/client/renderer/LevelRenderer;renderSectionLayer(Lnet/minecraft/client/renderer/RenderType;DDDLorg/joml/Matrix4f;Lorg/joml/Matrix4f;)V",
-                    ordinal = 2,
-                    shift = At.Shift.AFTER
-            )
-    )
-    private void cooParticlesAPI$renderCutoutTerrainPipelines(DeltaTracker deltaTracker,
-                                                               boolean renderBlockOutline,
-                                                               Camera camera,
-                                                               GameRenderer gameRenderer,
-                                                               LightTexture lightTexture,
-                                                               Matrix4f frustumMatrix,
-                                                               Matrix4f projectionMatrix,
-                                                               CallbackInfo info) {
-        renderTerrainPipelines(RenderType.cutout(), camera, frustumMatrix, projectionMatrix);
-    }
-
-    @Inject(
-            method = "renderLevel",
-            at = @At(
-                    value = "INVOKE",
-                    target = "Lnet/minecraft/client/renderer/LevelRenderer;renderSectionLayer(Lnet/minecraft/client/renderer/RenderType;DDDLorg/joml/Matrix4f;Lorg/joml/Matrix4f;)V",
-                    ordinal = 3
-            )
-    )
-    private void cooParticlesAPI$captureTranslucentTerrainDepthBefore(DeltaTracker deltaTracker,
-                                                                       boolean renderBlockOutline,
-                                                                       Camera camera,
-                                                                       GameRenderer gameRenderer,
-                                                                       LightTexture lightTexture,
-                                                                       Matrix4f frustumMatrix,
-                                                                       Matrix4f projectionMatrix,
-                                                                       CallbackInfo info) {
-        CooTerrainPipelineManager.captureTranslucentTerrainDepthBefore();
-    }
-
-    @Inject(
-            method = "renderLevel",
-            at = @At(
-                    value = "INVOKE",
-                    target = "Lnet/minecraft/client/renderer/LevelRenderer;renderSectionLayer(Lnet/minecraft/client/renderer/RenderType;DDDLorg/joml/Matrix4f;Lorg/joml/Matrix4f;)V",
-                    ordinal = 5
-            )
-    )
-    private void cooParticlesAPI$captureFabulousTranslucentTerrainDepthBefore(DeltaTracker deltaTracker,
-                                                                               boolean renderBlockOutline,
-                                                                               Camera camera,
-                                                                               GameRenderer gameRenderer,
-                                                                               LightTexture lightTexture,
-                                                                               Matrix4f frustumMatrix,
-                                                                               Matrix4f projectionMatrix,
-                                                                               CallbackInfo info) {
-        CooTerrainPipelineManager.captureTranslucentTerrainDepthBefore();
-    }
-
-    @Inject(
-            method = "renderLevel",
-            at = @At(
-                    value = "INVOKE",
-                    target = "Lnet/minecraft/client/renderer/LevelRenderer;renderSectionLayer(Lnet/minecraft/client/renderer/RenderType;DDDLorg/joml/Matrix4f;Lorg/joml/Matrix4f;)V",
-                    ordinal = 3,
-                    shift = At.Shift.AFTER
-            )
-    )
-    private void cooParticlesAPI$captureTranslucentTerrainDepthAfter(DeltaTracker deltaTracker,
-                                                                      boolean renderBlockOutline,
-                                                                      Camera camera,
-                                                                      GameRenderer gameRenderer,
-                                                                      LightTexture lightTexture,
-                                                                      Matrix4f frustumMatrix,
-                                                                      Matrix4f projectionMatrix,
-                                                                      CallbackInfo info) {
-        CooTerrainPipelineManager.captureTranslucentTerrainDepthAfter();
-    }
-
-    @Inject(
-            method = "renderLevel",
-            at = @At(
-                    value = "INVOKE",
-                    target = "Lnet/minecraft/client/renderer/LevelRenderer;renderSectionLayer(Lnet/minecraft/client/renderer/RenderType;DDDLorg/joml/Matrix4f;Lorg/joml/Matrix4f;)V",
-                    ordinal = 5,
-                    shift = At.Shift.AFTER
-            )
-    )
-    private void cooParticlesAPI$captureFabulousTranslucentTerrainDepthAfter(DeltaTracker deltaTracker,
-                                                                              boolean renderBlockOutline,
-                                                                              Camera camera,
-                                                                              GameRenderer gameRenderer,
-                                                                              LightTexture lightTexture,
-                                                                              Matrix4f frustumMatrix,
-
-                                                                              Matrix4f projectionMatrix,
-                                                                              CallbackInfo info) {
-        CooTerrainPipelineManager.captureTranslucentTerrainDepthAfter();
-    }
-
-    @Inject(
-            method = "renderLevel",
-            at = @At(
-                    value = "INVOKE",
-                    target = "Lnet/minecraft/client/renderer/LevelRenderer;renderSectionLayer(Lnet/minecraft/client/renderer/RenderType;DDDLorg/joml/Matrix4f;Lorg/joml/Matrix4f;)V",
-                    ordinal = 3,
-                    shift = At.Shift.AFTER
-            )
-    )
-    private void cooParticlesAPI$renderTranslucentTerrainPipelines(DeltaTracker deltaTracker,
-                                                                    boolean renderBlockOutline,
-                                                                    Camera camera,
-                                                                    GameRenderer gameRenderer,
-                                                                    LightTexture lightTexture,
-                                                                    Matrix4f frustumMatrix,
-                                                                    Matrix4f projectionMatrix,
-                                                                    CallbackInfo info) {
-        renderTerrainPipelines(RenderType.translucent(), camera, frustumMatrix, projectionMatrix);
-    }
-    @Inject(
-            method = "renderLevel",
-            at = @At(
-                    value = "INVOKE",
-                    target = "Lnet/minecraft/client/renderer/LevelRenderer;renderSectionLayer(Lnet/minecraft/client/renderer/RenderType;DDDLorg/joml/Matrix4f;Lorg/joml/Matrix4f;)V",
-                    ordinal = 4,
-                    shift = At.Shift.AFTER
-            )
-    )
-    private void cooParticlesAPI$renderTripwireTerrainPipelines(DeltaTracker deltaTracker,
-                                                                boolean renderBlockOutline,
-                                                                Camera camera,
-                                                                GameRenderer gameRenderer,
-                                                                LightTexture lightTexture,
-                                                                Matrix4f frustumMatrix,
-                                                                Matrix4f projectionMatrix,
-                                                                CallbackInfo info) {
-        renderTerrainPipelines(RenderType.tripwire(), camera, frustumMatrix, projectionMatrix);
-    }
-
-    @Inject(
-            method = "renderLevel",
-            at = @At(
-                    value = "INVOKE",
-                    target = "Lnet/minecraft/client/renderer/LevelRenderer;renderSectionLayer(Lnet/minecraft/client/renderer/RenderType;DDDLorg/joml/Matrix4f;Lorg/joml/Matrix4f;)V",
-                    ordinal = 5,
-                    shift = At.Shift.AFTER
-            )
-    )
-    private void cooParticlesAPI$renderFabulousTranslucentTerrainPipelines(DeltaTracker deltaTracker,
-                                                                           boolean renderBlockOutline,
-                                                                           Camera camera,
-                                                                           GameRenderer gameRenderer,
-                                                                           LightTexture lightTexture,
-                                                                           Matrix4f frustumMatrix,
-                                                                           Matrix4f projectionMatrix,
-                                                                           CallbackInfo info) {
-        renderTerrainPipelines(RenderType.translucent(), camera, frustumMatrix, projectionMatrix);
-    }
-
-    @Inject(
-            method = "renderLevel",
-            at = @At(
-                    value = "INVOKE",
-                    target = "Lnet/minecraft/client/renderer/LevelRenderer;renderSectionLayer(Lnet/minecraft/client/renderer/RenderType;DDDLorg/joml/Matrix4f;Lorg/joml/Matrix4f;)V",
-                    ordinal = 6,
-                    shift = At.Shift.AFTER
-            )
-    )
-    private void cooParticlesAPI$renderFabulousTripwireTerrainPipelines(DeltaTracker deltaTracker,
-                                                                        boolean renderBlockOutline,
-                                                                        Camera camera,
-                                                                        GameRenderer gameRenderer,
-                                                                        LightTexture lightTexture,
-                                                                        Matrix4f frustumMatrix,
-                                                                        Matrix4f projectionMatrix,
-                                                                        CallbackInfo info) {
-        renderTerrainPipelines(RenderType.tripwire(), camera, frustumMatrix, projectionMatrix);
-    }
-
-    /**
-     * 绘制建立在一个原版 terrain layer 上的全部 Coo 覆盖层。
-     *
-     * <p>Sodium 已接管时不进入原版路径。带后处理的加法 Mapping 只登记 attachment 捕获回调，
-     * 避免先写世界目标再重放同一 section；其余覆盖层按普通或 Iris 最终合成路径绘制。任一覆盖层失败都会切回原版几何。
-     *
-     * @param baseLayer 刚完成绘制的原版 terrain layer
-     * @param camera 当前世界相机
-     * @param frustumMatrix 当前视锥矩阵
-     * @param projectionMatrix 当前投影矩阵
-     */
-    private void renderTerrainPipelines(RenderType baseLayer,
-                                        Camera camera,
-                                        Matrix4f frustumMatrix,
-                                        Matrix4f projectionMatrix) {
-        if (!CooTerrainPipelineManager.isTerrainOverlayEnabled()) {
-            return;
-        }
-        if (CooTerrainPipelineManager.usesSodiumTerrainOverlay()) {
-            return;
-        }
-        var layers = CooTerrainPipelineManager.layersFor(baseLayer);
-        if (layers.isEmpty()) {
-            return;
-        }
-        var immediateLayers = new ArrayList<RenderType>();
-        for (RenderType renderType : layers) {
-            Runnable draw = () -> renderSectionLayer(
-                    renderType,
-                    camera.getPosition().x,
-                    camera.getPosition().y,
-                    camera.getPosition().z,
-                    frustumMatrix,
-                    projectionMatrix
-            );
-            if (CooTerrainPipelineManager.isTerrainPostRenderType(renderType)) {
-                CooTerrainPipelineManager.recordPostDraw(renderType, draw);
-            } else if (CooTerrainPipelineManager.shouldDeferVanillaTerrainOverlay()) {
-                CooTerrainPipelineManager.deferVanillaTerrainOverlay(renderType, draw);
-            } else {
-                immediateLayers.add(renderType);
-            }
-        }
-        if (immediateLayers.isEmpty()) {
-            return;
-        }
-        if (!CooTerrainPipelineManager.beginOverlayBatch(immediateLayers)) {
-            return;
-        }
-        try {
-            if (!CooTerrainPipelineManager.isTerrainOverlayEnabled()) {
-                return;
-            }
-            for (RenderType renderType : immediateLayers) {
-                try {
-                    renderSectionLayer(
-                            renderType,
-                            camera.getPosition().x,
-                            camera.getPosition().y,
-                            camera.getPosition().z,
-                            frustumMatrix,
-                            projectionMatrix
-                    );
-                } catch (RuntimeException error) {
-                    if (!CooTerrainPipelineManager.handleOverlayDrawFailure(renderType, error)) {
-                        throw error;
-                    }
-                    break;
-                }
-            }
-        } finally {
-            CooTerrainPipelineManager.endOverlayBatch();
-        }
-    }
-
-    // ordinal=10 对应原版 entities 阶段入口；此时 terrain 已完成且实体尚未绘制。
-    @Inject(method = "renderLevel",
-            at = @At(value = "INVOKE",
-                    target = "Lnet/minecraft/util/profiling/ProfilerFiller;popPush(Ljava/lang/String;)V",
-                    ordinal = 10))
-    public void renderBeforeEntity(DeltaTracker deltaTracker,
-                                   boolean renderBlockOutline,
-                                   Camera camera,
-                                   GameRenderer gameRenderer,
-                                   LightTexture lightTexture,
-                                   Matrix4f frustumMatrix,
-                                   Matrix4f projectionMatrix,
-                                   CallbackInfo info) {
-
-        if (level == null) {
-            return;
-        }
+        CooTerrainPipelineManager.beginRenderFrame(levelRenderState.worldPartialTicks);
         CooParticlesAPIClient.initShaderPrograms();
         CooParticlesAPIClient.syncRenderBackend();
-        boolean shouldTick = level.tickRateManager().runsNormally();
-        float tickDelta = deltaTracker.getGameTimeDeltaPartialTick(!shouldTick);
-        ClientRenderPipelineManager.INSTANCE.beginFrame(tickDelta, frustumMatrix, projectionMatrix);
-        CooTerrainPipelineManager.captureOpaqueTerrainDepth();
-        boolean irisShaderPackInUse = CooParticlesAPIClient.checkIrisShaderPackUsed();
+    }
+
+    /** 此时主 RenderPass 已打开，真实颜色和深度目标均已绑定。 */
+    @Inject(method = "executeSolid", at = @At("HEAD"))
+    private void beginCooWorldPass(CallbackInfo callback) {
+        CameraRenderState camera = levelRenderState.cameraRenderState;
+        ClientRenderPipelineManager.INSTANCE.beginFrame(
+                levelRenderState.worldPartialTicks, camera.viewRotationMatrix, camera.projectionMatrix);
         ClientRenderEntityManager.INSTANCE.beginWorldRenderFrame();
+    }
+
+    /** 地形已绘制而实体尚未执行时捕获不透明深度，并保留 Iris 实体世界通道。 */
+    @Inject(method = "executeSolid", at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/client/renderer/feature/FeatureRenderDispatcher$PreparedFrame;executeSolid(Lcom/mojang/renderpearl/api/commands/RenderPass;)V"))
+    private void beforeCooEntityFeatures(CallbackInfo callback) {
+        CameraRenderState camera = levelRenderState.cameraRenderState;
+        if (!CooTerrainPipelineManager.usesSodiumTerrainOverlay()) {
+            VanillaTerrainOverlay.renderOpaque(
+                    (LevelRenderer) (Object) this, camera, levelRenderState.worldPartialTicks);
+        }
+        CooTerrainPipelineManager.captureOpaqueTerrainDepth();
         ClientRenderEntityManager.INSTANCE.renderIrisWorldPass(
-                tickDelta,
-                frustumMatrix,
-                projectionMatrix,
-                irisShaderPackInUse
-        );
+                levelRenderState.worldPartialTicks,
+                camera.viewRotationMatrix,
+                camera.projectionMatrix,
+                CooParticlesAPIClient.checkIrisShaderPackUsed());
         ClientRenderPipelineManager.INSTANCE.renderIrisCooFxWorldPass();
     }
 
-    @Inject(method = "renderLevel", at = @At("RETURN"))
-    public void renderOnTail(DeltaTracker deltaTracker,
-                             boolean renderBlockOutline,
-                             Camera camera,
-                             GameRenderer gameRenderer,
-                             LightTexture lightTexture,
-                             Matrix4f frustumMatrix,
-                             Matrix4f projectionMatrix,
-                             CallbackInfo info) {
+    /** 两条透明路线共用明确的阶段边界，不依赖旧 renderSectionLayer 的 ordinal。 */
+    @Inject(method = {"executeClassicTransparency", "executeOit"}, at = @At("HEAD"))
+    private void beforeCooTranslucents(CallbackInfo callback) {
+        CooTerrainPipelineManager.captureTranslucentTerrainDepthBefore();
+    }
 
-        if (level == null) {
+    /** OIT 辅助颜色不作为 SceneColor，只捕获对应阶段的深度。 */
+    @Inject(method = {"executeClassicTransparency", "executeOit"}, at = @At("RETURN"))
+    private void afterCooTranslucents(CallbackInfo callback) {
+        CooTerrainPipelineManager.captureTranslucentTerrainDepthAfter();
+    }
+
+    /**
+     * 仅在原版正在执行的 terrain OIT 调用范围借用目标。
+     * Sodium 在原调用内部提交覆盖；原版路径随后为覆盖创建同参数 pass。
+     */
+    @WrapOperation(method = "executeOit", at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/client/renderer/chunk/ChunkSectionsToRender;renderOit(" +
+                    "Lcom/mojang/renderpearl/api/textures/GpuSampler;" +
+                    "Lnet/minecraft/client/renderer/oit/OitStage;" +
+                    "Lnet/minecraft/client/renderer/oit/OitRenderPassProvider$Parameters;" +
+                    "Lcom/mojang/renderpearl/api/textures/GpuTextureView;" +
+                    "Lcom/mojang/renderpearl/api/textures/GpuTextureView;)V"))
+    private void submitCooOitTerrain(
+            ChunkSectionsToRender sections, GpuSampler sampler, OitStage stage,
+            OitRenderPassProvider.Parameters parameters, GpuTextureView atlas, GpuTextureView lightmap,
+            Operation<Void> original
+    ) {
+        if (CooTerrainPipelineManager.shouldPreserveVanillaTerrainGeometry()) {
+            original.call(sections, sampler, stage, parameters, atlas, lightmap);
             return;
         }
-        CooParticlesAPIClient.initShaderPrograms();
-        CooParticlesAPIClient.syncRenderBackend();
-        boolean shouldTick = level.tickRateManager().runsNormally();
-        float tickDelta = deltaTracker.getGameTimeDeltaPartialTick(!shouldTick);
-        if (CooTerrainPipelineManager.deferFrameFinish(tickDelta, frustumMatrix, projectionMatrix)) {
-            return;
+        CooTerrainPipelineManager.beginNativeOit(stage, parameters);
+        try {
+            original.call(sections, sampler, stage, parameters, atlas, lightmap);
+            if (!CooTerrainPipelineManager.usesSodiumTerrainOverlay()) {
+                VanillaTerrainOverlay.renderOit((LevelRenderer) (Object) this,
+                        levelRenderState.cameraRenderState, stage, parameters);
+            }
+        } finally {
+            CooTerrainPipelineManager.endNativeOit();
         }
-        ClientRenderPipelineManager.INSTANCE.finishLevelRender(tickDelta, frustumMatrix, projectionMatrix);
+    }
+
+    /**
+     * FrameGraph 和 Iris finalize 均完成后、手部清深度前执行世界覆盖。
+     *
+     * <p>矩阵仍由本帧 CameraRenderState 提供，不读取已经清空的 FrameGraph 资源句柄。
+     */
+    @Inject(method = "render", at = @At(value = "INVOKE",
+            target = "Lorg/joml/Matrix4fStack;popMatrix()Lorg/joml/Matrix4fStack;"))
+    private void finishCooWorldFrame(CallbackInfo callback) {
+        CameraRenderState camera = levelRenderState.cameraRenderState;
+        if (!CooTerrainPipelineManager.usesSodiumTerrainOverlay()) {
+            VanillaTerrainOverlay.render(
+                    (LevelRenderer) (Object) this, camera, levelRenderState.worldPartialTicks);
+        }
+        if (!CooTerrainPipelineManager.deferFrameFinish(
+                levelRenderState.worldPartialTicks, camera.viewRotationMatrix, camera.projectionMatrix)) {
+            ClientRenderPipelineManager.INSTANCE.finishLevelRender(
+                    levelRenderState.worldPartialTicks, camera.viewRotationMatrix, camera.projectionMatrix);
+        }
     }
 }

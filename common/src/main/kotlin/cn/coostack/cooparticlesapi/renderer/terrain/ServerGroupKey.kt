@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi.renderer.terrain
 
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /**
  * 服务端效果组存储键。
@@ -9,6 +9,6 @@ import net.minecraft.resources.ResourceLocation
  * @property id 组 ID
  */
 internal data class ServerGroupKey(
-    val dimension: ResourceLocation,
-    val id: ResourceLocation
+    val dimension: Identifier,
+    val id: Identifier
 )

@@ -2,7 +2,7 @@ package cn.coostack.cooparticlesapi.renderer.terrain
 
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooUniformValue
 import net.minecraft.core.BlockPos
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /**
  * 在服务端和客户端之间同步的效果组完整快照。
@@ -20,9 +20,9 @@ import net.minecraft.resources.ResourceLocation
  * @property revision 用于丢弃乱序网络更新的单调版本号
  */
 data class CooTerrainEffectGroupSnapshot(
-    val dimension: ResourceLocation,
-    val id: ResourceLocation,
-    val pipelineId: ResourceLocation,
+    val dimension: Identifier,
+    val id: Identifier,
+    val pipelineId: Identifier,
     val startedAt: Long,
     val expiresAt: Long?,
     val activations: Map<BlockPos, Long>,

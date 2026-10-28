@@ -5,17 +5,15 @@ import cn.coostack.cooparticlesapi.network.packet.api.CooClientPacketManager
 import cn.coostack.cooparticlesapi.network.packet.testblock.PacketOpenTestControllerScreenS2C
 import cn.coostack.cooparticlesapi.network.packet.testblock.PacketUpdateTestControllerC2S
 import cn.coostack.cooparticlesapi.test.api.TestOptionParamCodec
+import cn.coostack.cooparticlesapi.utils.MinecraftRendererUtil
 import net.minecraft.client.Minecraft
+import com.mojang.blaze3d.platform.InputConstants
 import net.minecraft.client.gui.screens.PauseScreen
-import net.minecraft.client.gui.screens.Screen
-import net.minecraft.client.renderer.LevelRenderer
-import net.minecraft.client.renderer.RenderType
 import net.minecraft.network.chat.Component
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.BlockHitResult
 import net.minecraft.world.phys.HitResult
 import net.minecraft.world.phys.Vec3
-import org.lwjgl.glfw.GLFW
 import kotlin.math.sqrt
 
 object TestControllerPickClient {
@@ -96,7 +94,7 @@ object TestControllerPickClient {
         )
         escWasDown = false
         useWasDown = false
-        Minecraft.getInstance().player?.displayClientMessage(Component.literal(pickHint(kind)), true)
+        Minecraft.getInstance().player?.sendOverlayMessage(Component.literal(pickHint(kind)))
     }
 
     fun cancel() {
@@ -131,16 +129,16 @@ object TestControllerPickClient {
             return true
         }
         val current = request ?: return false
-        if (!Screen.hasShiftDown()) {
+        if (!Minecraft.getInstance().hasShiftDown()) {
             return false
         }
         val client = Minecraft.getInstance()
-        if (client.screen != null) {
+        if (client.gui.screen() != null) {
             return false
         }
         val level = client.level ?: return false
         val player = client.player ?: return false
-        if (level.dimension().location().toString() != current.packet.dimension) {
+        if (level.dimension().identifier().toString() != current.packet.dimension) {
             cancel()
             return false
         }
@@ -162,19 +160,19 @@ object TestControllerPickClient {
         val current = request ?: return
         val level = client.level ?: return cancel()
         val player = client.player ?: return cancel()
-        if (level.dimension().location().toString() != current.packet.dimension) {
+        if (level.dimension().identifier().toString() != current.packet.dimension) {
             cancel()
             return
         }
-        if (client.screen != null) {
-            if (client.screen is PauseScreen) {
+        if (client.gui.screen() != null) {
+            if (client.gui.screen() is PauseScreen) {
                 cancelAndReopen(client, current)
             } else {
                 cancel()
             }
             return
         }
-        val escDown = GLFW.glfwGetKey(client.window.window, GLFW.GLFW_KEY_ESCAPE) == GLFW.GLFW_PRESS
+        val escDown = InputConstants.isKeyDown(InputConstants.KEY_ESCAPE)
         if (escDown && !escWasDown) {
             cancelAndReopen(client, current)
             return
@@ -183,7 +181,7 @@ object TestControllerPickClient {
         val useDown = isUseDown(client)
         val useClicked = client.options.keyUse.consumeClick() || (useDown && !useWasDown)
         useWasDown = useDown
-        if (!Screen.hasShiftDown() || !useClicked) {
+        if (!client.hasShiftDown() || !useClicked) {
             return
         }
         val target = currentTarget(client, current) ?: return
@@ -192,30 +190,21 @@ object TestControllerPickClient {
 
     fun render(event: ClientWorldRenderEvent) {
         val current = request ?: return
-        if (event.stage != ClientWorldRenderEvent.RenderStage.AFTER_ENTITY) {
-            return
-        }
         val client = Minecraft.getInstance()
-        if (event.world.dimension().location().toString() != current.packet.dimension) {
+        if (event.world.dimension().identifier().toString() != current.packet.dimension) {
             return
         }
         val target = currentTarget(client, current) ?: return
-        val camera = event.camera.position
-        val consumer = event.buffer.getBuffer(RenderType.lines())
-        val box = target.box.move(-camera.x, -camera.y, -camera.z)
-        LevelRenderer.renderLineBox(event.poseStack, consumer, box, 0.2F, 1.0F, 0.2F, 1.0F)
+        val camera = event.camera.pos
+        MinecraftRendererUtil.submitLineBox(
+            event.collector, event.poseStack, target.box, camera, 0.2F, 1F, 0.2F, 1F
+        )
         val origin = origin(current.packet)
         if (origin.distanceTo(target.point) <= 96.0) {
-            val start = origin.subtract(camera)
-            val end = target.point.subtract(camera)
-            val normal = end.subtract(start).normal()
-            val pose = event.poseStack.last().pose()
-            consumer.addVertex(pose, start.x.toFloat(), start.y.toFloat(), start.z.toFloat())
-                .setColor(60, 255, 60, 255)
-                .setNormal(normal.x.toFloat(), normal.y.toFloat(), normal.z.toFloat())
-            consumer.addVertex(pose, end.x.toFloat(), end.y.toFloat(), end.z.toFloat())
-                .setColor(60, 255, 60, 255)
-                .setNormal(normal.x.toFloat(), normal.y.toFloat(), normal.z.toFloat())
+            MinecraftRendererUtil.submitLine(
+                event.collector, event.poseStack, origin, target.point, camera,
+                60F / 255F, 1F, 60F / 255F, 1F,
+            )
         }
     }
 
@@ -272,8 +261,7 @@ object TestControllerPickClient {
     }
 
     private fun isUseDown(client: Minecraft): Boolean {
-        return GLFW.glfwGetMouseButton(client.window.window, GLFW.GLFW_MOUSE_BUTTON_RIGHT) == GLFW.GLFW_PRESS ||
-                client.options.keyUse.isDown
+        return client.mouseHandler.isRightPressed || client.options.keyUse.isDown
     }
 
     private fun currentTarget(client: Minecraft, current: TestControllerPickRequest): TestControllerPickTarget? {
@@ -303,13 +291,13 @@ object TestControllerPickClient {
         val onCancelled = current.onCancelled
         val packet = reopenPacket(current)
         cancel()
-        client.setScreen(null)
-        client.player?.displayClientMessage(Component.literal("已取消拾取"), true)
+        client.gui.setScreen(null)
+        client.player?.sendOverlayMessage(Component.literal("已取消拾取"))
         if (onCancelled != null) {
             onCancelled()
             return
         }
-        client.setScreen(TestControllerScreen(packet, current.kind == TestControllerPickKind.PARAM_POSITION))
+        client.setScreenAndShow(TestControllerScreen(packet, current.kind == TestControllerPickKind.PARAM_POSITION))
     }
 
     private fun reopenPacket(current: TestControllerPickRequest): PacketOpenTestControllerScreenS2C {

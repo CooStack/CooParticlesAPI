@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi.entities.structure.client
 
-import net.minecraft.client.gui.GuiGraphics
+import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.client.gui.components.Button
 import net.minecraft.client.gui.components.EditBox
@@ -29,7 +29,7 @@ class ModelStructureScreen(private val parent: ModelEditorScreen, private val na
         repeat(6) { index ->
             rows.add(addRenderableWidget(Button.builder(Component.empty()) { button ->
                 parent.select(button.message.string)
-                minecraft?.setScreen(parent)
+                minecraft.setScreenAndShow(parent)
             }.bounds(x, y + 50 + index * 23, 310, 20).build()))
         }
         addRenderableWidget(Button.builder(Component.literal("上一页")) { page = (page - 1).coerceAtLeast(0); refresh() }
@@ -51,11 +51,11 @@ class ModelStructureScreen(private val parent: ModelEditorScreen, private val na
     }
 
     /** 在原版背景和按钮之后绘制清晰标题及分页提示。 */
-    override fun render(context: GuiGraphics, mouseX: Int, mouseY: Int, delta: Float) {
-        super.render(context, mouseX, mouseY, delta)
-        context.drawCenteredString(font, title, width / 2, (height - 230) / 2 + 5, 0xFFFFFF)
-        context.drawCenteredString(font, "第 ${page + 1} 页 · 未列出时可返回直接输入 ID", width / 2, (height - 230) / 2 + 191, 0xCCCCCC)
+    override fun extractRenderState(context: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, delta: Float) {
+        super.extractRenderState(context, mouseX, mouseY, delta)
+        context.centeredText(font, title, width / 2, (height - 230) / 2 + 5, 0xFFFFFF)
+        context.centeredText(font, "第 ${page + 1} 页 · 未列出时可返回直接输入 ID", width / 2, (height - 230) / 2 + 191, 0xCCCCCC)
     }
-    override fun onClose() { minecraft?.setScreen(parent) }
+    override fun onClose() { minecraft.setScreenAndShow(parent) }
     override fun isPauseScreen(): Boolean = false
 }

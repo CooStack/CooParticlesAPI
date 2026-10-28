@@ -4,7 +4,7 @@ import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooRenderPipeline
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooUniformValue
 import net.minecraft.core.BlockPos
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.level.block.state.BlockState
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
@@ -29,7 +29,7 @@ object CooTerrainEffectRegistry {
     /** 保存每个组最后接受的协议 revision，包括近期已删除组的 tombstone。 */
     private val protocolRevisions = ConcurrentHashMap<GroupKey, Long>()
     private val revisionCounter = AtomicLong()
-    private val missingPipelines = ConcurrentHashMap.newKeySet<ResourceLocation>()
+    private val missingPipelines = ConcurrentHashMap.newKeySet<Identifier>()
 
     /**
      * 安装或替换一个完整效果组快照。
@@ -101,8 +101,8 @@ object CooTerrainEffectRegistry {
      */
     @Synchronized
     fun append(
-        dimension: ResourceLocation,
-        groupId: ResourceLocation,
+        dimension: Identifier,
+        groupId: Identifier,
         revision: Long,
         additions: Map<BlockPos, Long>
     ) {
@@ -151,7 +151,7 @@ object CooTerrainEffectRegistry {
      * @param revision 本次网络更新的单调版本号
      */
     @Synchronized
-    fun remove(dimension: ResourceLocation, groupId: ResourceLocation, revision: Long) {
+    fun remove(dimension: Identifier, groupId: Identifier, revision: Long) {
         val key = GroupKey(dimension, groupId)
         if (!acceptRevision(key, revision)) return
         pendingGroups.remove(key)
@@ -170,8 +170,8 @@ object CooTerrainEffectRegistry {
      */
     @Synchronized
     fun removePositions(
-        dimension: ResourceLocation,
-        groupId: ResourceLocation,
+        dimension: Identifier,
+        groupId: Identifier,
         revision: Long,
         positions: Set<BlockPos>
     ) {
@@ -224,8 +224,8 @@ object CooTerrainEffectRegistry {
      */
     @Synchronized
     fun updateUniforms(
-        dimension: ResourceLocation,
-        groupId: ResourceLocation,
+        dimension: Identifier,
+        groupId: Identifier,
         revision: Long,
         uniforms: Map<String, CooUniformValue>
     ) {
@@ -266,8 +266,8 @@ object CooTerrainEffectRegistry {
     /** 原子替换组的排序和合成字段。 */
     @Synchronized
     fun updateOrdering(
-        dimension: ResourceLocation,
-        groupId: ResourceLocation,
+        dimension: Identifier,
+        groupId: Identifier,
         revision: Long,
         priority: Int,
         composition: CooTerrainEffectComposition
@@ -305,7 +305,7 @@ object CooTerrainEffectRegistry {
      * @param dimension 查询维度 ID
      * @return 已解析组在前、按组 ID 排序的调试快照
      */
-    fun debugGroups(dimension: ResourceLocation): List<CooTerrainEffectDebugGroup> {
+    fun debugGroups(dimension: Identifier): List<CooTerrainEffectDebugGroup> {
         val resolved = groups.entries.asSequence()
             .filter { (key, _) -> key.dimension == dimension }
             .map { (_, stored) -> CooTerrainEffectDebugGroup(stored.snapshot, true) }
@@ -326,7 +326,7 @@ object CooTerrainEffectRegistry {
      * @return sequence 最新的有效组；没有匹配时返回 `null`
      */
     fun groupAt(
-        dimension: ResourceLocation,
+        dimension: Identifier,
         position: BlockPos,
         gameTime: Long
     ): CooResolvedTerrainEffectGroup? {
@@ -344,7 +344,7 @@ object CooTerrainEffectRegistry {
      * @return 按 sequence 从新到旧排列的效果组
      */
     fun groupsAt(
-        dimension: ResourceLocation,
+        dimension: Identifier,
         position: BlockPos,
         gameTime: Long
     ): List<CooResolvedTerrainEffectGroup> {
@@ -371,7 +371,7 @@ object CooTerrainEffectRegistry {
      * @param gameTime 当前维度的绝对游戏 tick
      */
     @Synchronized
-    fun advance(dimension: ResourceLocation, gameTime: Long) {
+    fun advance(dimension: Identifier, gameTime: Long) {
         pendingGroups.entries.removeIf { (key, snapshot) ->
             key.dimension == dimension && snapshot.expiresAt?.let { gameTime >= it } == true
         }
@@ -403,7 +403,7 @@ object CooTerrainEffectRegistry {
      * @return 匹配组中该位置的绝对生效 tick；没有匹配时返回 `null`
      */
     fun activationAt(
-        dimension: ResourceLocation,
+        dimension: Identifier,
         position: BlockPos,
         pipeline: CooRenderPipeline<BlockState>,
         gameTime: Long
@@ -421,7 +421,7 @@ object CooTerrainEffectRegistry {
      * @param dimension 要消费变更的维度 ID
      * @return 需要重新编译所在 section 的方块坐标集合
      */
-    fun drainChangedPositions(dimension: ResourceLocation): Set<BlockPos> {
+    fun drainChangedPositions(dimension: Identifier): Set<BlockPos> {
         val result = LinkedHashSet<BlockPos>()
         changedPositions.removeIf { key ->
             if (key.dimension != dimension) return@removeIf false
@@ -447,7 +447,7 @@ object CooTerrainEffectRegistry {
      * @param pipelineId 新注册的 Pipeline ID
      */
     @Synchronized
-    fun onPipelineRegistered(pipelineId: ResourceLocation) {
+    fun onPipelineRegistered(pipelineId: Identifier) {
         val template = CooTerrainEffectManager.pipeline(pipelineId) ?: return
         val ready = pendingGroups.entries.filter { it.value.pipelineId == pipelineId }
         ready.forEach { (key, snapshot) ->

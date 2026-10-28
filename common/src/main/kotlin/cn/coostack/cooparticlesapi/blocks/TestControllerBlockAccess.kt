@@ -10,7 +10,7 @@ import net.minecraft.core.BlockPos
 import net.minecraft.core.registries.Registries
 import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceKey
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.server.MinecraftServer
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
@@ -19,7 +19,7 @@ import net.minecraft.world.level.Level
 
 object TestControllerBlockAccess {
     fun dimensionId(level: Level): String {
-        return level.dimension().location().toString()
+        return level.dimension().identifier().toString()
     }
 
     fun find(server: MinecraftServer, dimension: String, pos: BlockPos): TestControllerBlockEntity? {
@@ -55,7 +55,7 @@ object TestControllerBlockAccess {
         }
 
         val resolved = bindings.map { binding ->
-            val blockEntity = find(player.server, binding.dimension, binding.pos)
+            val blockEntity = find(player.level().server, binding.dimension, binding.pos)
             val currentIndex = blockEntity?.currentIndex() ?: 0
             BoundControllerEntry(
                 dimension = binding.dimension,
@@ -76,7 +76,7 @@ object TestControllerBlockAccess {
 
         if (resolved.size == 1 && resolved.first().loaded) {
             val only = resolved.first()
-            val blockEntity = find(player.server, only.dimension, only.pos) ?: return
+            val blockEntity = find(player.level().server, only.dimension, only.pos) ?: return
             openControllerScreen(player, blockEntity)
             return
         }
@@ -87,7 +87,7 @@ object TestControllerBlockAccess {
     fun stopBoundTests(player: ServerPlayer, stack: ItemStack): Int {
         var stopped = 0
         TestBlockBindings.read(stack).forEach { binding ->
-            val blockEntity = find(player.server, binding.dimension, binding.pos) ?: return@forEach
+            val blockEntity = find(player.level().server, binding.dimension, binding.pos) ?: return@forEach
             if (blockEntity.isRunning()) {
                 blockEntity.stopTest()
                 stopped++
@@ -99,7 +99,7 @@ object TestControllerBlockAccess {
     fun toggleBoundTests(player: ServerPlayer, stack: ItemStack): BoundToggleResult {
         val removed = pruneInvalidLoadedBindings(player, stack)
         val blockEntities = TestBlockBindings.read(stack)
-            .mapNotNull { binding -> find(player.server, binding.dimension, binding.pos) }
+            .mapNotNull { binding -> find(player.level().server, binding.dimension, binding.pos) }
         val running = blockEntities.filter { blockEntity -> blockEntity.isRunning() }
         if (running.isNotEmpty()) {
             running.forEach { blockEntity -> blockEntity.stopTest() }
@@ -116,7 +116,7 @@ object TestControllerBlockAccess {
             return 0
         }
 
-        val retained = bindings.filterNot { binding -> isInvalidLoadedBinding(player.server, binding) }
+        val retained = bindings.filterNot { binding -> isInvalidLoadedBinding(player.level().server, binding) }
         val removed = bindings.size - retained.size
         if (removed > 0) {
             TestBlockBindings.replaceAll(stack, retained)
@@ -133,7 +133,7 @@ object TestControllerBlockAccess {
     }
 
     private fun getLevel(server: MinecraftServer, dimension: String): ServerLevel? {
-        val location = ResourceLocation.tryParse(dimension) ?: return null
+        val location = Identifier.tryParse(dimension) ?: return null
         val key = ResourceKey.create(Registries.DIMENSION, location)
         return server.getLevel(key)
     }

@@ -3,22 +3,19 @@ package cn.coostack.cooparticlesapi.test.options.display
 import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
 import cn.coostack.cooparticlesapi.annotations.CodecField
 import cn.coostack.cooparticlesapi.annotations.display.handle.DisplayEntityRegistryHelper
-import cn.coostack.cooparticlesapi.display.CooParticlesRenderTypes
 import cn.coostack.cooparticlesapi.display.DisplayEntity
 import cn.coostack.cooparticlesapi.extend.minus
-import cn.coostack.cooparticlesapi.mixin.events.world.client.ItemRendererInvoker
 import cn.coostack.cooparticlesapi.utils.MinecraftRendererUtil
 import com.mojang.blaze3d.vertex.PoseStack
-import net.minecraft.client.Camera
-import net.minecraft.client.Minecraft
-import net.minecraft.client.renderer.LightTexture
-import net.minecraft.client.renderer.MultiBufferSource
-import net.minecraft.client.renderer.RenderType
+import net.minecraft.util.LightCoordsUtil
+import net.minecraft.client.renderer.SubmitNodeCollector
+import net.minecraft.client.renderer.rendertype.RenderTypes
+import net.minecraft.client.renderer.state.level.CameraRenderState
 import net.minecraft.client.renderer.texture.OverlayTexture
 import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.server.level.ServerLevel
-import net.minecraft.world.inventory.InventoryMenu
+import net.minecraft.world.item.ItemDisplayContext
 import net.minecraft.world.item.Items
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
@@ -39,48 +36,36 @@ class TestBlockDisplayEntity(pos: Vec3, world: Level?) : DisplayEntity(pos, worl
     @CodecField
     var direction = Vec3(0.0, 1.0, 0.0)
 
-    override fun render(
+    override fun submit(
         view: Matrix4f,
         proj: Matrix4f,
         modelMatrixStack: PoseStack,
-        buffer: MultiBufferSource,
+        collector: SubmitNodeCollector,
         delta: Float,
-        camera: Camera
+        camera: CameraRenderState
     ) {
-        modelMatrixStack.pushPose()
-        val renderer = Minecraft.getInstance().itemRenderer
-        val item = Items.WHITE_CONCRETE.defaultInstance
-        val seaLantern = renderer.getModel(item, world, null, 1)
-        val invoker = renderer as ItemRendererInvoker
-        val consumer = buffer.getBuffer(
-            CooParticlesRenderTypes.entityCutoutEmissive(InventoryMenu.BLOCK_ATLAS, 25f)
-        )
-        // 左下角 到 右上角
+        val level = world ?: return
+        val item = Items.CONCRETE.white().defaultInstance
         MinecraftRendererUtil.applyAtPoint(renderCenterOffset(), modelMatrixStack) {
-            scale(5f, 5f, 5f)
+            scale(5F, 5F, 5F)
         }
-        invoker.renderModel(
-            seaLantern,
+        MinecraftRendererUtil.submitItem(
             item,
-            LightTexture.FULL_BRIGHT,
-            OverlayTexture.NO_OVERLAY,
+            ItemDisplayContext.NONE,
+            level,
+            null,
+            1,
             modelMatrixStack,
-            consumer
+            collector,
+            LightCoordsUtil.FULL_BRIGHT,
+            OverlayTexture.NO_OVERLAY,
         )
-        // 左下角
-        modelMatrixStack.popPose()
         MinecraftRendererUtil.applyAtPoint(renderCenterOffset(), modelMatrixStack) {
-            buffer.getBuffer(RenderType.LINES)
-                .addVertex(modelMatrixStack.last(), 0f, 0f, -2f)
-                .setNormal(modelMatrixStack.last(), 0f, 1f, 0f)
-                .setColor(255, 255, 255, 255)
-                .setLight(LightTexture.FULL_BRIGHT)
-                .addVertex(modelMatrixStack.last(), 0f, 0f, 2f)
-                .setNormal(modelMatrixStack.last(), 0f, 1f, 0f)
-                .setColor(255, 255, 128, 255)
-                .setLight(LightTexture.FULL_BRIGHT)
+            collector.submitCustomGeometry(modelMatrixStack, RenderTypes.LINES) { pose, vertices ->
+                vertices.addVertex(pose, 0F, 0F, -2F).setColor(255, 255, 255, 255)
+                vertices.addVertex(pose, 0F, 0F, 2F).setColor(255, 255, 128, 255)
+            }
         }
-
     }
 
 

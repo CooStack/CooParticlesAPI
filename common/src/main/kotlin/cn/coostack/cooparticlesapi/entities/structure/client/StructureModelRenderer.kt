@@ -1,49 +1,50 @@
 package cn.coostack.cooparticlesapi.entities.structure.client
 
-import cn.coostack.cooparticlesapi.entities.structure.StructureSnapshot
 import cn.coostack.cooparticlesapi.entities.structure.StructureModelEntity
-import net.minecraft.world.level.block.RenderShape
-import net.minecraft.world.level.block.state.BlockState
-import net.minecraft.world.level.block.entity.BlockEntity
+import cn.coostack.cooparticlesapi.entities.structure.StructureSnapshot
+import cn.coostack.cooparticlesapi.platform.CooClientServices
+import com.mojang.blaze3d.vertex.PoseStack
 import net.minecraft.client.Minecraft
+import net.minecraft.util.LightCoordsUtil
 import net.minecraft.client.renderer.texture.OverlayTexture
-import net.minecraft.client.renderer.LightTexture
-import net.minecraft.client.renderer.ItemBlockRenderTypes
-import net.minecraft.client.renderer.RenderType
+import net.minecraft.client.renderer.SubmitNodeCollector
 import net.minecraft.client.renderer.culling.Frustum
-import net.minecraft.client.renderer.LevelRenderer
-import net.minecraft.client.renderer.MultiBufferSource
-import com.mojang.blaze3d.vertex.VertexConsumer
 import net.minecraft.client.renderer.entity.EntityRenderer
 import net.minecraft.client.renderer.entity.EntityRendererProvider
-import net.minecraft.client.renderer.texture.TextureAtlas
-import com.mojang.blaze3d.vertex.PoseStack
-import net.minecraft.world.entity.LivingEntity
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.client.renderer.entity.state.EntityRenderState
+import net.minecraft.client.renderer.feature.ModelFeatureRenderer
+import net.minecraft.client.renderer.state.level.CameraRenderState
 import net.minecraft.core.BlockPos
+import net.minecraft.resources.Identifier
+import net.minecraft.world.entity.EntityType
+import net.minecraft.world.level.block.RenderShape
+import net.minecraft.world.level.block.entity.BlockEntity
+import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.Vec3
-import net.minecraft.util.RandomSource
-import cn.coostack.cooparticlesapi.platform.CooClientServices
 import java.util.WeakHashMap
 import kotlin.math.sqrt
 
-/** 复用原版方块和方块实体渲染管线，所有顶点接受同一模型变换及死亡覆盖。 */
-class StructureModelRenderer(context: EntityRendererProvider.Context) : EntityRenderer<StructureModelEntity>(context) {
-    /** 原版方块批次入口，无自定义着色器或额外渲染阶段。 */
-    private val blocks = context.blockRenderDispatcher
-    /** 展示用方块实体缓存，不运行 tick；快照替换或世界退出后可释放。 */
+/**
+ * 结构实体的 26.3 提取/提交 renderer。
+ *
+ * 方块状态和姿势变换在提取阶段生成轻量状态；方块、流体与方块实体在提交阶段进入各自材质队列。
+ * 旧 `VertexBuffer` 持久网格缓存不属于此 renderer；目标版本的提交队列拥有几何和排序生命周期。
+ */
+class StructureModelRenderer(context: EntityRendererProvider.Context) :
+    EntityRenderer<StructureModelEntity, StructureModelRenderState>(context) {
     private val displays = WeakHashMap<StructureSnapshot, Map<BlockPos, BlockEntity>>()
-    /** 快照内同层模型连续提交，避免交替切换固体、镂空层而逐块刷新缓冲；不持有快照本身。 */
-    private val batches = WeakHashMap<StructureSnapshot, Map<RenderType, List<Pair<BlockPos, BlockState>>>>()
-    /** 流体单独提交，避免打断普通方块批次；快照替换后旧条目可释放。 */
-    private val fluids = WeakHashMap<StructureSnapshot, List<Pair<BlockPos, BlockState>>>()
-    /** 自定义 FRAPI 模型可能动态生成顶点，未声明静态语义时整份结构走即时路径。 */
-    private val cacheable = WeakHashMap<StructureSnapshot, Boolean>()
-    /** 分组对应的材质资源和画质代次。 */
-    private var meshGeneration = -1L
+    private val blockEntities = Minecraft.getInstance().blockEntityRenderDispatcher
 
-    /** 按可见范围的最近点检查距离，避免远离实体身体的倒地模型被提前裁掉。 */
-    override fun shouldRender(entity: StructureModelEntity, frustum: Frustum, x: Double, y: Double, z: Double): Boolean {
+    override fun createRenderState(): StructureModelRenderState = StructureModelRenderState()
+
+    override fun shouldRender(
+        entity: StructureModelEntity,
+        frustum: Frustum,
+        x: Double,
+        y: Double,
+        z: Double,
+        partialTick: Float,
+    ): Boolean {
         val bounds = entity.boundingBoxForCulling.inflate(0.5)
         val dx = x - x.coerceIn(bounds.minX, bounds.maxX)
         val dy = y - y.coerceIn(bounds.minY, bounds.maxY)
@@ -51,139 +52,162 @@ class StructureModelRenderer(context: EntityRendererProvider.Context) : EntityRe
         return entity.shouldRenderAtSqrDistance(dx * dx + dy * dy + dz * dz) && frustum.isVisible(bounds)
     }
 
-    /** 绘制静态结构快照，动画只改变显示矩阵，死亡后的物理碰撞已由实体停用。 */
-    override fun render(entity: StructureModelEntity, yaw: Float, tickDelta: Float, matrices: PoseStack,
-                        vertexConsumers: MultiBufferSource, light: Int) {
-        val snapshot = entity.snapshot ?: return
-        val settings = entity.settings
-        if (!entity.isAlive && !settings.deathAnimation) return
-        val client = Minecraft.getInstance()
-        if (meshGeneration != StructureModelMeshes.generation) {
-            batches.clear()
-            cacheable.clear()
-            meshGeneration = StructureModelMeshes.generation
-        }
-        val overlay = OverlayTexture.pack(0F, entity.hurtTime > 0 || (entity.deathTime > 0 && settings.deathAnimation))
-        matrices.pushPose()
-        val originOffset = entity.modelOriginOffset
-        matrices.translate(originOffset.x, originOffset.y, originOffset.z)
-        val deathDegrees = if (entity.deathTime > 0 && settings.deathAnimation) {
-            val progress = sqrt(((entity.deathTime + tickDelta - 1F) / 20 * 1.6F).coerceAtLeast(0F))
+    override fun extractRenderState(
+        entity: StructureModelEntity,
+        state: StructureModelRenderState,
+        partialTick: Float,
+    ) {
+        super.extractRenderState(entity, state, partialTick)
+        state.entity = entity
+        state.partialTick = partialTick
+        state.visible = entity.isAlive || entity.settings.deathAnimation
+        state.origin = Vec3(
+            entity.xo + (entity.x - entity.xo) * partialTick,
+            entity.yo + (entity.y - entity.yo) * partialTick,
+            entity.zo + (entity.z - entity.zo) * partialTick,
+        ).add(entity.modelOriginOffset)
+        state.deathDegrees = if (entity.deathTime > 0 && entity.settings.deathAnimation) {
+            val progress = sqrt(((entity.deathTime + partialTick - 1F) / 20F * 1.6F).coerceAtLeast(0F))
                 .coerceAtMost(1F)
             progress * 90F
-        } else 0F
-        settings.applyModelTransform(matrices, deathDegrees)
-        val blockEntities = displays.getOrPut(snapshot) {
+        } else {
+            0F
+        }
+        state.overlay = OverlayTexture.pack(
+            0F,
+            entity.hurtTime > 0 || (entity.deathTime > 0 && entity.settings.deathAnimation),
+        )
+        state.packedLight = getPackedLightCoords(entity, partialTick)
+    }
+
+    override fun submit(
+        state: StructureModelRenderState,
+        matrices: PoseStack,
+        collector: SubmitNodeCollector,
+        cameraState: CameraRenderState,
+    ) {
+        val entity = state.entity ?: return
+        val snapshot = entity.snapshot ?: return
+        if (!state.visible) return
+
+        val client = Minecraft.getInstance()
+        val snapshotBlockEntities = displays.getOrPut(snapshot) {
             snapshot.blockData.mapNotNull { (pos, data) ->
                 BlockEntity.loadStatic(pos, snapshot.getBlockState(pos), data, entity.registryAccess())?.let {
-                    it.level = entity.level()
+                    // 原版同时暴露受保护字段和非对称访问器，Kotlin 无法生成可写 level 属性。
+                    it.setLevel(entity.level())
                     pos to it
                 }
             }.toMap()
         }
-        val localMatrices = PoseStack()
-        settings.applyModelTransform(localMatrices, deathDegrees)
-        val origin = Vec3(
-            entity.xo + (entity.x - entity.xo) * tickDelta,
-            entity.yo + (entity.y - entity.yo) * tickDelta,
-            entity.zo + (entity.z - entity.zo) * tickDelta
-        ).add(entity.modelOriginOffset)
-        // 未加入世界的物品和 GUI 模型必须保留调用方的展示光照，不能采样其占位坐标零点。
+        val localPose = PoseStack()
+        entity.settings.applyModelTransform(localPose, state.deathDegrees)
         val tracked = entity.level().getEntity(entity.id) === entity
-        val view = StructureRenderView(snapshot, entity.level(), origin, localMatrices.last().pose(),
-            if (tracked) null else light, blockEntities)
-        val luminousView = StructureRenderView(snapshot, entity.level(), origin, localMatrices.last().pose(),
-            LightTexture.FULL_BRIGHT, blockEntities)
-        val modelBatches = batches.getOrPut(snapshot) {
-            snapshot.states.entries.asSequence().filter { it.value.renderShape == RenderShape.MODEL }
-                .map { it.key to it.value }.groupBy { ItemBlockRenderTypes.getMovingBlockRenderType(it.second) }
-        }
-        val cached = tracked && overlay == OverlayTexture.NO_OVERLAY && entity.deathTime == 0 &&
-            entity.xo == entity.x && entity.yo == entity.y && entity.zo == entity.z &&
-            entity.xOld == entity.x && entity.yOld == entity.y && entity.zOld == entity.z &&
-            modelBatches.keys.any { StructureModelMeshes.supportsLayer(it) } &&
-            cacheable.getOrPut(snapshot) {
-                modelBatches.values.all { entries ->
-                    entries.all { (_, state) ->
-                        CooClientServices.STRUCTURE_BLOCK_RENDERER.canCache(blocks.getBlockModel(state))
-                    }
+        val view = StructureRenderView(
+            snapshot,
+            entity.level(),
+            state.origin,
+            localPose.last().pose(),
+            if (tracked) null else state.packedLight,
+            snapshotBlockEntities,
+        )
+        val luminousView = StructureRenderView(
+            snapshot,
+            entity.level(),
+            state.origin,
+            localPose.last().pose(),
+            LightCoordsUtil.FULL_BRIGHT,
+            snapshotBlockEntities,
+        )
+        val clientPose = matrices
+        clientPose.pushPose()
+        try {
+            val originOffset = entity.modelOriginOffset
+            clientPose.translate(originOffset.x, originOffset.y, originOffset.z)
+            entity.settings.applyModelTransform(clientPose, state.deathDegrees)
+            val modelEntries = snapshot.states.entries.filter { it.value.renderShape == RenderShape.MODEL }
+            for ((pos, blockState) in modelEntries) {
+                val materialView = if (
+                    blockState.lightEmission > 0 || blockState.emissiveRendering()
+                ) {
+                    luminousView
+                } else {
+                    view
                 }
-            } &&
-            StructureModelMeshes.draw(entity, origin, vertexConsumers) { mesh ->
-                for ((layer, entries) in modelBatches) {
-                    if (!StructureModelMeshes.supportsLayer(layer)) continue
-                    mesh.buildLayer(layer) { vertices, local ->
-                        renderBatch(entries, view, luminousView, local, vertices, entity.level().random)
-                    }
-                }
-                mesh.sections.addAll(view.sampledSections)
-                mesh.sections.addAll(luminousView.sampledSections)
-            }
-        for ((layer, entries) in modelBatches) {
-            if (cached && StructureModelMeshes.supportsLayer(layer)) continue
-            for ((pos, state) in entries) {
-                val luminous = state.lightEmission > 0 || state.emissiveRendering(view, pos)
-                matrices.pushPose()
+                clientPose.pushPose()
                 try {
-                    matrices.translate(pos.x.toDouble(), pos.y.toDouble(), pos.z.toDouble())
-                    CooClientServices.STRUCTURE_BLOCK_RENDERER.render(
-                        if (luminous) luminousView else view, pos, state, blockEntities[pos],
-                        matrices, vertexConsumers, entity.level().random, overlay)
+                    clientPose.translate(pos.x.toDouble(), pos.y.toDouble(), pos.z.toDouble())
+                    CooClientServices.STRUCTURE_BLOCK_RENDERER.submit(
+                        materialView,
+                        pos,
+                        blockState,
+                        clientPose,
+                        collector,
+                        entity.level().random,
+                        state.overlay,
+                    )
                 } finally {
-                    matrices.popPose()
+                    clientPose.popPose()
                 }
             }
-        }
-        val fluidEntries = fluids.getOrPut(snapshot) {
-            snapshot.states.entries.filter { !it.value.fluidState.isEmpty }.map { it.key to it.value }
-        }
-        for ((pos, state) in fluidEntries) {
-            val blockLight = LevelRenderer.getLightColor(view, state, pos)
-            matrices.pushPose()
-            matrices.translate(pos.x.toDouble(), pos.y.toDouble(), pos.z.toDouble())
-            blocks.renderLiquid(pos, view, StructureFluidVertices(
-                vertexConsumers.getBuffer(RenderType.entityTranslucent(TextureAtlas.LOCATION_BLOCKS)),
-                matrices.last(), pos, overlay, blockLight
-            ), state, state.fluidState)
-            matrices.popPose()
-        }
-        for ((pos, display) in blockEntities) {
-            matrices.pushPose()
-            matrices.translate(pos.x.toDouble(), pos.y.toDouble(), pos.z.toDouble())
-            val blockLight = LevelRenderer.getLightColor(view, snapshot.getBlockState(pos), pos)
-            client.blockEntityRenderDispatcher.renderItem(display, matrices, vertexConsumers, blockLight, overlay)
-            matrices.popPose()
-        }
-        matrices.popPose()
-        super.render(entity, yaw, tickDelta, matrices, vertexConsumers, light)
-    }
-
-    /**
-     * 即时路径与网格构建共用同一方块渲染算法，保留植物染色、AO、内部面剔除和发光材质。
-     * @param entries 每项为结构局部格坐标及其只读状态
-     * @param view 普通材质的实时世界采样
-     * @param luminousView 发光材质的满亮采样
-     * @param matrices 调用方的局部或最终矩阵，返回时恢复
-     * @param vertices 当前原版层的顶点接收器
-     * @param random 原版模型随机源，每块使用固定渲染种子
-     */
-    private fun renderBatch(entries: List<Pair<BlockPos, BlockState>>, view: StructureRenderView,
-                            luminousView: StructureRenderView, matrices: PoseStack,
-                            vertices: VertexConsumer, random: RandomSource) {
-        for ((pos, state) in entries) {
-            val materialView = if (state.lightEmission > 0 || state.emissiveRendering(view, pos)) luminousView else view
-            matrices.pushPose()
-            try {
-                matrices.translate(pos.x.toDouble(), pos.y.toDouble(), pos.z.toDouble())
-                blocks.modelRenderer.tesselateBlock(
-                    materialView, blocks.getBlockModel(state), state, pos, matrices, vertices,
-                    true, random, state.getSeed(pos), OverlayTexture.NO_OVERLAY
-                )
-            } finally {
-                matrices.popPose()
+            for ((pos, blockState) in snapshot.states) {
+                val fluidState = blockState.fluidState
+                if (fluidState.isEmpty) continue
+                val materialView = if (blockState.lightEmission > 0) luminousView else view
+                clientPose.pushPose()
+                try {
+                    clientPose.translate(pos.x.toDouble(), pos.y.toDouble(), pos.z.toDouble())
+                    CooClientServices.STRUCTURE_BLOCK_RENDERER.submitFluid(
+                        materialView,
+                        pos,
+                        blockState,
+                        fluidState,
+                        clientPose,
+                        collector,
+                        state.overlay,
+                    )
+                } finally {
+                    clientPose.popPose()
+                }
             }
+            for ((pos, blockEntity) in snapshotBlockEntities) {
+                val extracted = blockEntities.tryExtractRenderState(
+                    blockEntity,
+                    state.partialTick,
+                    null as ModelFeatureRenderer.CrumblingOverlay?,
+                    false,
+                ) ?: continue
+                clientPose.pushPose()
+                try {
+                    clientPose.translate(pos.x.toDouble(), pos.y.toDouble(), pos.z.toDouble())
+                    blockEntities.submit(extracted, clientPose, collector, cameraState)
+                } finally {
+                    clientPose.popPose()
+                }
+            }
+        } finally {
+            clientPose.popPose()
         }
     }
+}
 
-    override fun getTextureLocation(entity: StructureModelEntity): ResourceLocation = TextureAtlas.LOCATION_BLOCKS
+/**
+ * 每帧由实体数据提取器填充的结构提交快照。
+ *
+ * @property entity 来源结构实体；仅在当前客户端帧的提取与提交阶段使用
+ * @property partialTick 当前帧实体插值
+ * @property visible 是否应绘制当前生命/死亡动画状态
+ * @property origin 当前帧的结构世界锚点
+ * @property deathDegrees 当前帧死亡侧翻角度
+ * @property overlay 当前帧伤害覆盖纹理坐标
+ * @property packedLight 原 renderer 计算的实体光照
+ */
+class StructureModelRenderState : EntityRenderState() {
+    var entity: StructureModelEntity? = null
+    var partialTick = 0F
+    var visible = false
+    var origin = Vec3.ZERO
+    var deathDegrees = 0F
+    var overlay = 0
+    var packedLight = 0
 }

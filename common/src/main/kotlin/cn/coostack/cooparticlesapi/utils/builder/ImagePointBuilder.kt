@@ -2,13 +2,13 @@ package cn.coostack.cooparticlesapi.utils.builder
 
 import cn.coostack.cooparticlesapi.utils.ImageUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /**
  * 通过黑白的图片获取到点的集合
  * 会自动便宜图形中心点
  */
-class ImagePointBuilder(val image: ResourceLocation) {
+class ImagePointBuilder(val image: Identifier) {
     private var scale = 1.0
     private var step = 0.01
 

@@ -23,7 +23,7 @@ object StructureInteractionEvents {
         }
     }
 
-    /** 普通实体交互入口。 */
+    /** 26.3 将普通和命中实体局部位置的交互合并到同一个事件入口。 */
     @SubscribeEvent
     @JvmStatic
     fun entity(event: PlayerInteractEvent.EntityInteract) {
@@ -34,14 +34,4 @@ object StructureInteractionEvents {
         }
     }
 
-    /** 命中实体局部位置时也须拦截，成功后不会回落到普通实体交互。 */
-    @SubscribeEvent
-    @JvmStatic
-    fun entityAt(event: PlayerInteractEvent.EntityInteractSpecific) {
-        val result = CooEventBus.call(PlayerUseEntityEvent(event.entity, event.hand, event.target)).result
-        if (result != InteractionResult.PASS) {
-            event.cancellationResult = result
-            event.isCanceled = true
-        }
-    }
 }

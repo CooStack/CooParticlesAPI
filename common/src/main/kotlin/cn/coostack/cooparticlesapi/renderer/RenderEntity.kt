@@ -1,5 +1,8 @@
 package cn.coostack.cooparticlesapi.renderer
 
+import cn.coostack.cooparticlesapi.network.readVec3
+import cn.coostack.cooparticlesapi.network.writeVec3
+
 import cn.coostack.cooparticlesapi.api.controler.Tickable
 import cn.coostack.cooparticlesapi.network.packet.server.PacketRenderEntityS2C
 import cn.coostack.cooparticlesapi.api.controler.server.ServerControler
@@ -8,7 +11,7 @@ import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import io.netty.buffer.Unpooled
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
@@ -413,7 +416,7 @@ abstract class RenderEntity(var world: Level?, var pos: Vec3 = Vec3.ZERO) : Serv
      *
      * 因此同一种实体的服务端和客户端必须保持完全一致。
      */
-    abstract fun getRenderID(): ResourceLocation
+    abstract fun getRenderID(): Identifier
 
     /**
      * 直接把实体移动到指定坐标。

@@ -241,7 +241,7 @@ object CooServerPacketManager {
             PerformanceStatusNetworkEndpoint.SERVER,
             envelope.data.size,
         )
-        val server = sender.server
+        val server = sender.level().server
         server.execute {
             handleC2SInternal(envelope, sender)
         }

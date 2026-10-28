@@ -10,7 +10,7 @@ import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /** 为了兼容 傻逼的 neoforge 的 延迟注册 做出以下修改 */
 object CooModParticles {
@@ -312,14 +312,23 @@ object CooModParticles {
     fun reg() {
     }
 
-    fun <T : ParticleOptions?> register(
+    /**
+     * 注册具有非空选项和对应双端 codec 的粒子类型。
+     *
+     * @param id 模组命名空间下的粒子路径
+     * @param alwaysShow 是否绕过原版粒子数量限制
+     * @param codecGetter 创建资源数据编解码器
+     * @param packetCodec 创建网络编解码器，须与粒子选项字段顺序一致
+     * @return 延迟注册的类型句柄
+     */
+    fun <T : ParticleOptions> register(
         id: String, alwaysShow: Boolean,
         codecGetter: (type: ParticleType<T>) -> MapCodec<T>,
         packetCodec: (type: ParticleType<T>) -> StreamCodec<FriendlyByteBuf, T>,
     ): CommonDeferredRegistry<ParticleType<T>> {
         val registry = CommonDeferredRegistry(
             BuiltInRegistries.PARTICLE_TYPE,
-            ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, id)
+            Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, id)
         ) {
             object : ParticleType<T>(alwaysShow) {
                 override fun codec(): MapCodec<T> {

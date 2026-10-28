@@ -21,7 +21,7 @@ sealed interface CooTerrainMappingRegion {
     /** 将版本化带类型标签联合体写入网络缓冲区。 */
     fun encode(buffer: FriendlyByteBuf) {
         buffer.writeVarInt(WIRE_VERSION)
-        buffer.writeResourceLocation(type.id)
+        buffer.writeIdentifier(type.id)
         when (this) {
             is Sphere -> {
                 buffer.writeDouble(center.x)
@@ -205,7 +205,7 @@ sealed interface CooTerrainMappingRegion {
         fun decode(buffer: FriendlyByteBuf): CooTerrainMappingRegion {
             val version = buffer.readVarInt()
             require(version in 1..WIRE_VERSION) { "Unsupported terrain mapping region version: $version" }
-            val typeId = buffer.readResourceLocation()
+            val typeId = buffer.readIdentifier()
             val type = CooTerrainMappingRegionType.fromId(typeId)
             require(version != 1 || type == CooTerrainMappingRegionType.SPHERE) {
                 "Terrain mapping region version 1 only supports sphere"

@@ -4,7 +4,7 @@ import cn.coostack.cooparticlesapi.performance.PerformanceStatusNetworkEndpoint;
 import cn.coostack.cooparticlesapi.performance.PerformanceStatusNetworkMetrics;
 import io.netty.channel.ChannelHandlerContext;
 import net.minecraft.network.Connection;
-import net.minecraft.network.PacketSendListener;
+import io.netty.channel.ChannelFutureListener;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.PacketFlow;
 import org.spongepowered.asm.mixin.Final;
@@ -36,12 +36,12 @@ public abstract class PerformanceStatusVanillaPacketMixin {
 
     /** 在包实际提交给 Netty pipeline 前记录一个发送包。 */
     @Inject(
-            method = "doSendPacket(Lnet/minecraft/network/protocol/Packet;Lnet/minecraft/network/PacketSendListener;Z)V",
+            method = "doSendPacket(Lnet/minecraft/network/protocol/Packet;Lio/netty/channel/ChannelFutureListener;Z)V",
             at = @At("HEAD")
     )
     private void cooparticlesapi$recordVanillaSent(
             Packet<?> packet,
-            PacketSendListener listener,
+            ChannelFutureListener listener,
             boolean flush,
             CallbackInfo callbackInfo
     ) {

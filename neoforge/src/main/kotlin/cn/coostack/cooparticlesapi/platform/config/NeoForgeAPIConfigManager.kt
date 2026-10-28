@@ -4,12 +4,12 @@ import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.config.APIConfig
 import cn.coostack.cooparticlesapi.platform.APIConfigManager
 import com.google.gson.GsonBuilder
-import net.neoforged.fml.loading.FMLLoader
+import net.neoforged.fml.loading.FMLPaths
 import java.nio.file.Files
 
 class NeoForgeAPIConfigManager : APIConfigManager {
     private val gson = GsonBuilder().setPrettyPrinting().create()
-    private val path = FMLLoader.getGamePath().resolve("config").resolve("${CooParticlesConstants.MOD_ID}.json")
+    private val path = FMLPaths.CONFIGDIR.get().resolve("${CooParticlesConstants.MOD_ID}.json")
 
     private var withConfig: APIConfig? = null
 
@@ -32,6 +32,7 @@ class NeoForgeAPIConfigManager : APIConfigManager {
     override fun saveConfig() {
         withConfig ?: return
         val json = gson.toJson(withConfig)
+        Files.createDirectories(path.parent)
         Files.writeString(path, json)
     }
 }

@@ -1,263 +1,288 @@
 package cn.coostack.cooparticlesapi.particles
 
+import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.compat.IrisCompat
+import cn.coostack.cooparticlesapi.mixin.ParticleRenderTypeCreateInvoker
 import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableParticleData
-import cn.coostack.cooparticlesapi.network.particle.emitters.ControlableParticleData.Companion.particleTexturesMapper
-import com.mojang.blaze3d.platform.GlStateManager
-import com.mojang.blaze3d.systems.RenderSystem
-import com.mojang.blaze3d.vertex.BufferBuilder
 import com.mojang.blaze3d.vertex.DefaultVertexFormat
-import com.mojang.blaze3d.vertex.Tesselator
-import com.mojang.blaze3d.vertex.VertexFormat
+import com.mojang.renderpearl.api.GpuFormat
+import com.mojang.renderpearl.api.pipeline.BlendFactor
+import com.mojang.renderpearl.api.pipeline.BlendFunction
+import com.mojang.renderpearl.api.pipeline.ColorTargetState
+import com.mojang.renderpearl.api.pipeline.CompareOp
+import com.mojang.renderpearl.api.pipeline.DepthStencilState
+import com.mojang.renderpearl.api.pipeline.PrimitiveTopology
+import com.mojang.renderpearl.api.pipeline.RenderPipeline
 import net.minecraft.client.particle.ParticleRenderType
-import net.minecraft.client.renderer.GameRenderer
-import net.minecraft.client.renderer.ShaderInstance
+import net.minecraft.client.renderer.BindGroupLayouts
+import net.minecraft.client.renderer.rendertype.RenderSetup
+import net.minecraft.client.renderer.rendertype.RenderType
 import net.minecraft.client.renderer.texture.TextureAtlas
-import net.minecraft.client.renderer.texture.TextureManager
+import net.minecraft.resources.Identifier
 import net.minecraft.server.packs.resources.ResourceManager
+import java.util.Optional
 
+/**
+ * 将 Coo 普通粒子图层注册到 26.3 的 RenderPearl 管线和延迟几何提交。
+ *
+ * 图层身份和名称供粒子分组及网络序列化共用；只在客户端初始化阶段注册。
+ * 示例：`particle.textureSheet = CooParticleTextureSheet.ADDITION_BLEND_TRANSLUCENT`。
+ * 不直接修改 OpenGL 状态，Iris 的自定义管线支持仍须按实际版本验证。
+ */
 object CooParticleTextureSheet {
+    /** 按注册顺序保存的共享图层身份，外部只能读取副本。 */
+    private val registeredSheets = mutableListOf<ParticleRenderType>()
+    /** 图层身份到不可变资源绑定的注册表。 */
+    private val sheetLayers = linkedMapOf<ParticleRenderType, SheetLayer>()
+    /** 网络名称到共享图层身份的索引。 */
+    private val sheetNames = linkedMapOf<String, ParticleRenderType>()
+    /** 交给原版资源加载阶段预编译的管线注册表。 */
+    private val pipelines = mutableListOf<RenderPipeline>()
 
-    @JvmStatic
-    val sheets = mutableListOf<ParticleRenderType>()
-    private var boundedTranslucentShader: ShaderInstance? = null
-
-    /**
-     * 使用加法混合不透明度粒子
-     *
-     * 算是个半透明粒子吧？ 但是alpha由于混合算法问题不怎么生效
-     */
-    @JvmStatic
-    val ADDITION_BLEND = register(object : ParticleRenderType {
-        override fun begin(
-            tesselator: Tesselator,
-            manager: TextureManager
-        ): BufferBuilder {
-            RenderSystem.depthMask(true)
-            RenderSystem.setShaderTexture(0, TextureAtlas.LOCATION_PARTICLES)
-            RenderSystem.enableBlend()
-            RenderSystem.blendFunc(
-                GlStateManager.SourceFactor.ONE,
-                GlStateManager.DestFactor.ONE
-            )
-            return tesselator.begin(
-                VertexFormat.Mode.QUADS, DefaultVertexFormat.PARTICLE
-            )
-        }
-
-        override fun toString(): String {
-            return "ADDITION_BLEND"
-        }
-    })
-
-    /**
-     * 使用带透明度的加法混合粒子
-     *
-     * 和上面比起来 alpha的参与更强 （alpha * rgb)
-     */
-    @JvmStatic
-    val ADDITION_BLEND_TRANSLUCENT = register(object : ParticleRenderType {
-        override fun begin(
-            tesselator: Tesselator,
-            manager: TextureManager
-        ): BufferBuilder {
-            // 半透明
-            RenderSystem.depthMask(true)
-            RenderSystem.setShaderTexture(0, TextureAtlas.LOCATION_PARTICLES)
-            RenderSystem.enableBlend()
-            RenderSystem.blendFunc(
-                GlStateManager.SourceFactor.SRC_ALPHA,
-                GlStateManager.DestFactor.ONE
-            )
-            return tesselator.begin(
-                VertexFormat.Mode.QUADS, DefaultVertexFormat.PARTICLE
-            )
-        }
-
-        override fun toString(): String {
-            return "ADDITION_BLEND_TRANSLUCENT"
-        }
-    })
-
-    /**
-     * 使用带透明度的加法混合粒子, 但不写入深度.
-     *
-     * 适合大量半透明发光粒子叠加: 仍使用 vanilla 粒子 atlas 和 PARTICLE 顶点格式,
-     * 只关闭深度写入以避免先渲染的半透明粒子挡住后面的半透明粒子.
-     *
-     * 缺点、会被云层穿透 不过开光影的情况下似乎不会出现这个问题
-     */
-    @JvmStatic
-    val ADDITION_BLEND_TRANSLUCENT_NO_DEPTH_WRITE = register(object : ParticleRenderType {
-        override fun begin(
-            tesselator: Tesselator,
-            manager: TextureManager
-        ): BufferBuilder {
-            RenderSystem.depthMask(false)
-            RenderSystem.setShaderTexture(0, TextureAtlas.LOCATION_PARTICLES)
-            RenderSystem.enableBlend()
-            RenderSystem.blendFunc(
-                GlStateManager.SourceFactor.SRC_ALPHA,
-                GlStateManager.DestFactor.ONE
-            )
-            return tesselator.begin(
-                VertexFormat.Mode.QUADS, DefaultVertexFormat.PARTICLE
-            )
-        }
-
-        override fun toString(): String {
-            return "ADDITION_BLEND_TRANSLUCENT_NO_DEPTH_WRITE"
-        }
-    })
-
-    /**
-     * 使用原版半透明混合但不写入深度。
-     *
-     * 示例：大量烟雾或薄片互相穿插时使用此层，Alpha 为零时不会改变背景。
-     * 禁止把它用于需要遮挡后续粒子的实体表面。
-     */
-    @JvmStatic
+    /** 光照图粒子图层，透明混合并写入深度。 */
+    val PARTICLE_SHEET_LIT = registerSheet(
+        "PARTICLE_SHEET_LIT",
+        BlendFunction.TRANSLUCENT,
+        true,
+    )
+    /** 不透明粒子图层，关闭混合并写入深度。 */
+    val PARTICLE_SHEET_OPAQUE = registerSheet(
+        "PARTICLE_SHEET_OPAQUE",
+        null,
+        true,
+    )
+    /** 透明混合粒子图层，保留旧版深度写入语义。 */
+    val PARTICLE_SHEET_TRANSLUCENT = registerSheet(
+        "PARTICLE_SHEET_TRANSLUCENT",
+        BlendFunction.TRANSLUCENT,
+        true,
+    )
+    /** 透明混合但不写入深度的粒子图层。 */
     val PARTICLE_SHEET_TRANSLUCENT_NO_DEPTH_WRITE = registerSheet(
         "PARTICLE_SHEET_TRANSLUCENT_NO_DEPTH_WRITE",
+        BlendFunction.TRANSLUCENT,
         false,
-        GlStateManager.SourceFactor.SRC_ALPHA,
-        GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA,
-        GlStateManager.SourceFactor.ONE,
-        GlStateManager.DestFactor.ZERO,
+    )
+    /** 使用方块图集且不混合的落尘图层。 */
+    val TERRAIN_SHEET = registerSheet(
+        "TERRAIN_SHEET",
+        null,
+        true,
+        TextureAtlas.LOCATION_BLOCKS,
+    )
+    /** 保留粒子生命周期而不提交几何的共享图层。 */
+    val NO_RENDER = registerSheet(
+        "NO_RENDER",
+        null,
+        true,
+        render = false,
+    )
+    /** 供旧调用方使用的默认自定义透明图层。 */
+    val CUSTOM = registerSheet(
+        "CUSTOM",
+        BlendFunction.TRANSLUCENT,
+        true,
     )
 
-    /**
-     * 使用有界 Screen Blend，并写入深度。
-     *
-     * 示例：需要提亮背景但不能在 HDR 目标中无限累加时使用此层。
-     * 禁止把它当作支持逐粒子 Alpha 的普通半透明层。
-     */
-    @JvmStatic
+    /** 源色与目标色直接相加，写入深度。 */
+    val ADDITION_BLEND = registerSheet(
+        "ADDITION_BLEND",
+        BlendFunction(BlendFactor.ONE, BlendFactor.ONE),
+        true,
+    )
+    /** 按源透明度加色，写入深度。 */
+    val ADDITION_BLEND_TRANSLUCENT = registerSheet(
+        "ADDITION_BLEND_TRANSLUCENT",
+        BlendFunction(BlendFactor.SRC_ALPHA, BlendFactor.ONE, BlendFactor.SRC_ALPHA, BlendFactor.ONE),
+        true,
+    )
+    /** 按源透明度加色，不写入深度。 */
+    val ADDITION_BLEND_TRANSLUCENT_NO_DEPTH_WRITE = registerSheet(
+        "ADDITION_BLEND_TRANSLUCENT_NO_DEPTH_WRITE",
+        BlendFunction(BlendFactor.SRC_ALPHA, BlendFactor.ONE, BlendFactor.SRC_ALPHA, BlendFactor.ONE),
+        false,
+    )
+    /** 限制源色范围的滤色混合，保留目标透明度并写入深度。 */
     val ADDITION_BLEND_NOT_HDR = registerSheet(
         "ADDITION_BLEND_NOT_HDR",
+        BlendFunction(BlendFactor.ONE, BlendFactor.ONE_MINUS_SRC_COLOR, BlendFactor.ZERO, BlendFactor.ONE),
         true,
-        GlStateManager.SourceFactor.ONE,
-        GlStateManager.DestFactor.ONE_MINUS_SRC_COLOR,
-        GlStateManager.SourceFactor.ZERO,
-        GlStateManager.DestFactor.ONE,
+        boundedAlpha = true,
     )
-
-    /**
-     * 使用有界 Screen Blend，但不写入深度。
-     *
-     * 示例：大量非透明发光薄片叠加时可避免深度互相截断。
-     * 禁止用于必须写入深度的遮挡物。
-     */
-    @JvmStatic
+    /** 限制源色范围的滤色混合，保留目标透明度且不写入深度。 */
     val ADDITION_BLEND_NOT_HDR_NO_DEPTH_WRITE = registerSheet(
         "ADDITION_BLEND_NOT_HDR_NO_DEPTH_WRITE",
+        BlendFunction(BlendFactor.ONE, BlendFactor.ONE_MINUS_SRC_COLOR, BlendFactor.ZERO, BlendFactor.ONE),
         false,
-        GlStateManager.SourceFactor.ONE,
-        GlStateManager.DestFactor.ONE_MINUS_SRC_COLOR,
-        GlStateManager.SourceFactor.ZERO,
-        GlStateManager.DestFactor.ONE,
+        boundedAlpha = true,
     )
-
-    /**
-     * 使用有界 Screen Blend，并写入深度。
-     *
-     * 示例：大量同色粒子叠加时，颜色会继续趋近白色，但不会超过颜色上限。
-     * 禁止改回普通 Alpha 混合，否则叠加结果只会趋近源颜色。
-     */
-    @JvmStatic
+    /** 按源透明度预乘的有界滤色图层，写入深度。 */
     val ADDITION_BLEND_TRANSLUCENT_NOT_HDR = registerSheet(
         "ADDITION_BLEND_TRANSLUCENT_NOT_HDR",
+        BlendFunction(BlendFactor.ONE, BlendFactor.ONE_MINUS_SRC_COLOR, BlendFactor.ZERO, BlendFactor.ONE),
         true,
-        GlStateManager.SourceFactor.ONE,
-        GlStateManager.DestFactor.ONE_MINUS_SRC_COLOR,
-        GlStateManager.SourceFactor.ZERO,
-        GlStateManager.DestFactor.ONE,
-        true,
+        boundedAlpha = true,
     )
-
-    /**
-     * 使用有界 Screen Blend，但不写入深度。
-     *
-     * 示例：大量非 HDR 粒子互相穿插时使用此层，重叠颜色仍会趋近白色。
-     * 禁止用于需要由粒子深度遮挡后续几何的场景。
-     */
-    @JvmStatic
+    /** 按源透明度预乘的有界滤色图层，不写入深度。 */
     val ADDITION_BLEND_TRANSLUCENT_NOT_HDR_NO_DEPTH_WRITE = registerSheet(
         "ADDITION_BLEND_TRANSLUCENT_NOT_HDR_NO_DEPTH_WRITE",
+        BlendFunction(BlendFactor.ONE, BlendFactor.ONE_MINUS_SRC_COLOR, BlendFactor.ZERO, BlendFactor.ONE),
         false,
-        GlStateManager.SourceFactor.ONE,
-        GlStateManager.DestFactor.ONE_MINUS_SRC_COLOR,
-        GlStateManager.SourceFactor.ZERO,
-        GlStateManager.DestFactor.ONE,
-        true,
+        boundedAlpha = true,
     )
 
-    fun init() {
-        ControlableParticleData.registerRenderType(ParticleRenderType.PARTICLE_SHEET_LIT)
-        ControlableParticleData.registerRenderType(ParticleRenderType.TERRAIN_SHEET)
-        ControlableParticleData.registerRenderType(ParticleRenderType.NO_RENDER)
-        ControlableParticleData.registerRenderType(ParticleRenderType.CUSTOM)
-        ControlableParticleData.registerRenderType(ParticleRenderType.PARTICLE_SHEET_OPAQUE)
-        ControlableParticleData.registerRenderType(ParticleRenderType.PARTICLE_SHEET_TRANSLUCENT)
-    }
+    /** 触发共享图层初始化；实际着色器由原版管线资源生命周期管理。 */
+    @JvmStatic
+    fun init() = Unit
 
-    /** 资源重载后重新创建有界透明粒子 shader。 */
-    fun reloadShader(resourceManager: ResourceManager) {
-        releaseShader()
-        boundedTranslucentShader = ShaderInstance(
-            resourceManager,
-            "coo_particle_screen",
-            DefaultVertexFormat.PARTICLE,
-        ).also(IrisCompat::markUnskippable)
-    }
+    /**
+     * 保留旧版资源重载入口，26.3 不再自行创建或销毁着色器程序。
+     *
+     * @param resourceManager 当前重载的资源管理器，管线资源由原版读取
+     */
+    @JvmStatic
+    fun reloadShader(resourceManager: ResourceManager) = Unit
 
-    /** 释放当前资源周期持有的有界透明粒子 shader。 */
-    fun releaseShader() {
-        boundedTranslucentShader?.close()
-        boundedTranslucentShader = null
-    }
+    /** 保留旧版释放入口，避免释放由原版与可选 Iris 路径拥有的程序。 */
+    @JvmStatic
+    fun releaseShader() = Unit
 
+    /**
+     * 注册外部图层的默认透明绘制绑定；同一身份重复注册无副作用。
+     *
+     * @param type 具有稳定网络名称的共享图层身份
+     * @return 原样返回 [type]
+     */
+    @JvmStatic
     fun register(type: ParticleRenderType): ParticleRenderType {
-        sheets.add(type)
-        ControlableParticleData.registerRenderType(type)
+        if (type !in sheetLayers) {
+            registerSheet(type.name(), BlendFunction.TRANSLUCENT, true, type = type)
+        }
         return type
     }
 
     /**
-     * 创建并注册一个使用粒子图集与 PARTICLE 顶点格式的渲染层。
+     * 为旧调用方保留的图层注册入口。
      *
-     * 示例：传入 `SRC_ALPHA / ONE_MINUS_SRC_ALPHA` 创建普通半透明层。
-     * 禁止传入依赖自定义顶点属性或自定义纹理绑定的混合配置。
-     *
-     * @param name ParticleRenderType 的稳定名称
-     * @param depthWrite 是否写入深度
-     * @param sourceRgb RGB 源混合因子
-     * @param destinationRgb RGB 目标混合因子
-     * @param sourceAlpha Alpha 源混合因子
-     * @param destinationAlpha Alpha 目标混合因子
-     * @param useBoundedTranslucentShader 是否在最终片元 Alpha 已知后执行有界预乘
-     * @return 已注册的 ParticleRenderType
+     * @param type 待注册的共享图层身份
+     * @return 已注册的 [type]
      */
+    @JvmStatic
+    fun registerRenderType(type: ParticleRenderType): ParticleRenderType = register(type)
+
+    /** @return 按注册顺序复制的图层列表，不暴露注册表的可变所有权 */
+    @JvmStatic
+    fun getSheets(): List<ParticleRenderType> = registeredSheets.toList()
+
+    /** @return 供原版预编译的管线副本 */
+    @JvmStatic
+    fun getPipelines(): List<RenderPipeline> = pipelines.toList()
+
+    /**
+     * @param type 已注册的图层身份
+     * @return 原版命令收集器接受的绘制类型；不绘制或未知图层返回 null
+     */
+    @JvmStatic
+    fun getRenderType(type: ParticleRenderType): RenderType? {
+        val layer = sheetLayers[type] ?: return null
+        val renderType = layer.renderType ?: return null
+        return if (layer.boundedAlpha) renderType else IrisCompat.wrapParticleRenderType(renderType)
+    }
+
+    /**
+     * @param type 请求的图层身份
+     * @return 图层资源绑定；未知图层使用默认光照图层
+     */
+    @JvmStatic
+    fun getLayer(type: ParticleRenderType): SheetLayer =
+        sheetLayers[type] ?: sheetLayers[PARTICLE_SHEET_LIT]!!
+
+    /**
+     * @param name 网络中保存的稳定图层名称
+     * @return 对应的共享图层；未知名称返回 null
+     */
+    @JvmStatic
+    fun textureSheetFromString(name: String): ParticleRenderType? = sheetNames[name]
+
+    /** 创建并记录图层、管线与网络名称；混合和深度行为由调用方明确选择。 */
     private fun registerSheet(
         name: String,
+        blend: BlendFunction?,
         depthWrite: Boolean,
-        sourceRgb: GlStateManager.SourceFactor,
-        destinationRgb: GlStateManager.DestFactor,
-        sourceAlpha: GlStateManager.SourceFactor,
-        destinationAlpha: GlStateManager.DestFactor,
-        useBoundedTranslucentShader: Boolean = false,
-    ): ParticleRenderType = register(object : ParticleRenderType {
-        override fun begin(tesselator: Tesselator, manager: TextureManager): BufferBuilder {
-            RenderSystem.depthMask(depthWrite)
-            RenderSystem.setShaderTexture(0, TextureAtlas.LOCATION_PARTICLES)
-            if (useBoundedTranslucentShader) {
-                RenderSystem.setShader { boundedTranslucentShader ?: GameRenderer.getParticleShader() }
-            }
-            RenderSystem.enableBlend()
-            RenderSystem.blendFuncSeparate(sourceRgb, destinationRgb, sourceAlpha, destinationAlpha)
-            return tesselator.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.PARTICLE)
+        atlas: Identifier = TextureAtlas.LOCATION_PARTICLES,
+        render: Boolean = true,
+        boundedAlpha: Boolean = false,
+        type: ParticleRenderType = ParticleRenderType(name, name.take(2)),
+    ): ParticleRenderType {
+        if (type in sheetLayers) return type
+        val pipeline = createPipeline(name, blend, depthWrite, boundedAlpha)
+        if (render && !boundedAlpha) {
+            IrisCompat.assignPipeline(pipeline, if (blend == null) "PARTICLES" else "PARTICLES_TRANSLUCENT")
         }
+        val renderType = if (render) {
+            val setup = RenderSetup.builder(pipeline)
+                .withTexture("Sampler0", atlas)
+                .useLightmap()
+                .apply { if (blend != null) sortOnUpload() }
+                .createRenderSetup()
+            ParticleRenderTypeCreateInvoker.createParticleRenderType(name, setup)
+        } else {
+            null
+        }
+        sheetLayers[type] = SheetLayer(atlas, pipeline, renderType, boundedAlpha, depthWrite)
+        sheetNames[name] = type
+        if (type !in registeredSheets) registeredSheets.add(type)
+        if (pipeline !in pipelines) pipelines.add(pipeline)
+        ControlableParticleData.registerRenderType(type)
+        return type
+    }
 
-        override fun toString(): String = name
-    })
+    /** 沿用原版粒子的顶点格式、光照和雾绑定，并显式保留旧图层混合语义。 */
+    private fun createPipeline(
+        name: String,
+        blend: BlendFunction?,
+        depthWrite: Boolean,
+        boundedAlpha: Boolean,
+    ): RenderPipeline {
+        val fragment = if (boundedAlpha) {
+            Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "core/coo_particle_screen")
+        } else {
+            Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "core/coo_particle")
+        }
+        return RenderPipeline.builder()
+            .withLocation(Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "pipeline/controlable_particle/${name.lowercase()}"))
+            .withBindGroupLayout(BindGroupLayouts.GLOBALS)
+            .withBindGroupLayout(BindGroupLayouts.PROJECTION)
+            .withBindGroupLayout(BindGroupLayouts.DYNAMIC_TRANSFORMS)
+            .withBindGroupLayout(BindGroupLayouts.FOG)
+            .withVertexShader("core/particle")
+            .withFragmentShader(fragment)
+            .withBindGroupLayout(BindGroupLayouts.SAMPLER0_SAMPLER2)
+            .withVertexBinding(0, DefaultVertexFormat.PARTICLE)
+            .withPrimitiveTopology(PrimitiveTopology.QUADS)
+            .withCull(false)
+            .withDepthStencilState(DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, depthWrite))
+            .withColorTargetState(
+                blend?.let(::ColorTargetState)
+                    ?: ColorTargetState(Optional.empty(), GpuFormat.RGBA8_UNORM, ColorTargetState.WRITE_ALL),
+            )
+            .build()
+    }
+
+    /**
+     * 一次注册后不变的图层资源绑定。
+     *
+     * @property atlas 图层使用的图集标识
+     * @property pipeline 由原版管理和预编译的 RenderPearl 管线
+     * @property renderType 命令收集器绘制类型，不绘制时为 null
+     * @property boundedAlpha 是否必须保留自定义片元中的颜色限制与 Alpha 预乘
+     * @property depthWrite 是否在当前图层写入场景深度
+     */
+    data class SheetLayer(
+        val atlas: Identifier,
+        val pipeline: RenderPipeline,
+        val renderType: RenderType?,
+        val boundedAlpha: Boolean,
+        val depthWrite: Boolean,
+    )
 }

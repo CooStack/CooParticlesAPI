@@ -1,7 +1,6 @@
 modLoader = "kotlinforforge" #mandatory
-loaderVersion = "${neoforge_loader_version_range}" #mandatory
+loaderVersion = "[6.0,)" #mandatory
 license = "${license}" # Review your options at https://choosealicense.com/.+
-accessTransformer = "META-INF/accesstransformer.cfg"
 #issueTrackerURL="https://change.me.to.your.issue.tracker.example.invalid/" #optional
 [[mods]] #mandatory
 modId = "${mod_id}" #mandatory
@@ -13,6 +12,8 @@ logoFile = "${mod_id}.png" #optional
 credits = "${credits}" #optional
 authors = "${mod_author}" #optional
 description = '''${description}''' #mandatory (Supports multiline text)
+[[accessTransformers]]
+file = "META-INF/accesstransformer.cfg"
 [[mixins]]
 config = "${mod_id}.mixins.json"
 [[mixins]]
@@ -41,6 +42,6 @@ side = "BOTH"
 [[dependencies."${mod_id}"]]
 modId = "kotlinforforge"
 type = "required"  # KotlinForForge 必须依赖
-versionRange = "[5.7.0,)"  # KotlinForForge 版本范围
+versionRange = "[6.0,)"  # KotlinForForge 版本范围
 ordering = "NONE"
 side = "BOTH"

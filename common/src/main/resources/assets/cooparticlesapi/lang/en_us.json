@@ -1,5 +1,7 @@
 {
   "key.categories.cooparticlesapi": "CooParticlesAPI",
+  "key.category.cooparticlesapi.general": "CooParticlesAPI",
+  "key.category.cooparticlesapi.test": "CooParticlesAPI Tests",
   "key.cooparticlesapi.status_modifier": "Status modifier",
   "key.cooparticlesapi.status_open": "Open Status",
   "block.cooparticlesapi.structure_model": "结构模型方块",

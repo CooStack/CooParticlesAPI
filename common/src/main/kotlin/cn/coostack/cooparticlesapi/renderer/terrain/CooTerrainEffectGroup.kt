@@ -1,7 +1,7 @@
 package cn.coostack.cooparticlesapi.renderer.terrain
 
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooRenderPipeline
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.level.block.state.BlockState
 
 /**
@@ -26,7 +26,7 @@ import net.minecraft.world.level.block.state.BlockState
  * @param block 配置位置、生效延迟、uniform 和持续时间的构建块
  */
 class CooTerrainEffectGroup(
-    val id: ResourceLocation,
+    val id: Identifier,
     val pipeline: CooRenderPipeline<BlockState>,
     block: CooTerrainEffectGroupBuilder.() -> Unit
 ) {

@@ -7,7 +7,7 @@ import cn.coostack.cooparticlesapi.network.packet.api.CooPacket
 import cn.coostack.cooparticlesapi.performance.PerformanceStatusNetworkTotals
 import cn.coostack.cooparticlesapi.performance.PerformanceStatusServerSnapshot
 import cn.coostack.cooparticlesapi.performance.PerformanceStatusVanillaPacketTotals
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /** 服务端返回给单个查看者的固定字段 Status 快照。 */
 @CooAutoRegister
@@ -103,8 +103,8 @@ class PacketPerformanceStatusSnapshotS2C : CooPacket() {
     @CodecField var vanillaNetworkSentPackets: Long = 0L
 
     /** 返回该业务包的稳定协议 ID。 */
-    override fun id(): ResourceLocation {
-        return ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, PACKET_ID)
+    override fun id(): Identifier {
+        return Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, PACKET_ID)
     }
 
     /** 把协议字段恢复为不可变服务端快照。 */

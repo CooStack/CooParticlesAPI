@@ -21,8 +21,8 @@ class TestModelComposition(position: Vec3, world: Level? = null) : AutoParticleC
             .collectSamplePoints(
                 model, PoseStack()
                     .apply {
-                        scale(3f, 3f, 3f)
-                        mulPose(Axis.ZP.rotationDegrees(180f))
+                        scale(3F, 3F, 3F)
+                        rotate(Axis.ZP.rotationDegrees(180F))
                     }, 16
             )
         return points.map {

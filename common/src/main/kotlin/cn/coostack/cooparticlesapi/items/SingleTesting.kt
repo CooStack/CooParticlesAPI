@@ -15,7 +15,7 @@ import cn.coostack.cooparticlesapi.test.options.particle.server.BarrierSwordGrou
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.InteractionHand
-import net.minecraft.world.InteractionResultHolder
+import net.minecraft.world.InteractionResult
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.Item
@@ -26,8 +26,8 @@ import java.util.function.Predicate
 
 class SingleTesting : Item(Properties().stacksTo(1)) {
 
-    override fun use(world: Level, user: Player, hand: InteractionHand): InteractionResultHolder<ItemStack> {
-        val res = InteractionResultHolder.success(user.getItemInHand(hand))
+    override fun use(world: Level, user: Player, hand: InteractionHand): InteractionResult {
+        val res = InteractionResult.SUCCESS
         if (world.isClientSide) {
             return res
         }
@@ -43,7 +43,7 @@ class SingleTesting : Item(Properties().stacksTo(1)) {
                 template.apply {
                     setTextureSheet(CooParticleTextureSheet.ADDITION_BLEND)
                     color = Math3DUtil.colorOf(210, 80, 255)
-                    size = 1.8f
+                    size = 1.8F
                 }
             }
         ParticleEmittersManager.spawnEmitters(emitter)

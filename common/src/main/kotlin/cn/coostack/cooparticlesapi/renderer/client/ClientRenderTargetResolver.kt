@@ -1,18 +1,28 @@
 package cn.coostack.cooparticlesapi.renderer.client
 
 import cn.coostack.cooparticlesapi.accessor.LevelRendererAccessor
+import cn.coostack.cooparticlesapi.CooParticlesConstants
+import cn.coostack.cooparticlesapi.renderer.backend.OpenGlRenderTargetBridge
+import cn.coostack.cooparticlesapi.renderer.backend.OpenGlRenderTargetBridge.bindFramebuffer as glBindFramebuffer
+import cn.coostack.cooparticlesapi.renderer.backend.colorTextureId
+import cn.coostack.cooparticlesapi.renderer.backend.depthTextureId
+import cn.coostack.cooparticlesapi.renderer.backend.frameBufferId
 import com.mojang.blaze3d.pipeline.RenderTarget
 import net.minecraft.client.Minecraft
 import org.lwjgl.opengl.GL33.GL_DEPTH_ATTACHMENT
-import org.lwjgl.opengl.GL33.GL_FRAMEBUFFER
 import org.lwjgl.opengl.GL33.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE
 import org.lwjgl.opengl.GL33.GL_FRAMEBUFFER_BINDING
 import org.lwjgl.opengl.GL33.GL_NONE
-import org.lwjgl.opengl.GL33.glBindFramebuffer
+import org.lwjgl.opengl.GL33.GL_READ_FRAMEBUFFER
+import org.lwjgl.opengl.GL33.GL_READ_FRAMEBUFFER_BINDING
 import org.lwjgl.opengl.GL33.glGetFramebufferAttachmentParameteri
 import org.lwjgl.opengl.GL33.glGetInteger
-import java.util.LinkedHashMap
 
+/**
+ * 当前命令阶段的场景颜色、深度与最终合成目标。
+ *
+ * 显式 FBO 编号优先于目标桥接编号，避免 Iris 外部 FBO 被主目标代替。
+ */
 data class ResolvedRenderTargets(
     val sceneColorTarget: RenderTarget,
     val sceneDepthTarget: RenderTarget,
@@ -34,14 +44,23 @@ data class ResolvedRenderTargets(
         get() = finalCompositeTarget.height
 }
 
+/**
+ * 根据实际 GL attachment 识别当前场景与最终绘制目标，保留 Iris 外部 FBO 的所有权。
+ *
+ * 客户端 OpenGL 绘制入口调用 [resolveCurrentTargets]，不可跨帧缓存结果。
+ */
 object ClientRenderTargetResolver {
+    /**
+     * 参与目标选择的诊断标签与原版目标。
+     * @property label 用于日志的来源名称
+     * @property target 不接管所有权的原版目标
+     */
     private data class NamedTarget(
         val label: String,
         val target: RenderTarget
     )
 
     private var lastFallbackSignature: String? = null
-    private var lastSceneSourceSignature: String? = null
     private var lastExternalFramebufferSignature: String? = null
 
     /**
@@ -52,8 +71,9 @@ object ClientRenderTargetResolver {
      * @return 匹配当前条件的对象或状态；可空返回值表示没有可用结果
      */
     fun resolveCurrentTargets(): ResolvedRenderTargets {
+        OpenGlRenderTargetBridge.requireOpenGlBackend()
         val minecraft = Minecraft.getInstance()
-        val mainTarget = minecraft.mainRenderTarget
+        val mainTarget = minecraft.gameRenderer.mainRenderTarget()
         val accessor = minecraft.levelRenderer as? LevelRendererAccessor
         val boundFramebufferId = glGetInteger(GL_FRAMEBUFFER_BINDING)
         val candidates = LinkedHashMap<Int, NamedTarget>()
@@ -75,26 +95,25 @@ object ClientRenderTargetResolver {
         }
 
         addCandidate("main", mainTarget)
-        accessor?.let {
-            addCandidate("translucent", it.translucentTarget())
-            addCandidate("itemEntity", it.itemEntityTarget())
-            addCandidate("particles", it.particlesTarget())
-            addCandidate("weather", it.weatherTarget())
-            addCandidate("clouds", it.cloudsTarget())
-        }
+        val passTargets = accessor?.availableFrameTargets().orEmpty()
+        passTargets["main"]?.let { addCandidate("frame-main", it) }
 
         val matchedTarget = candidates[boundFramebufferId]
-        val usesExternalFramebuffer = matchedTarget == null && boundFramebufferId > 0
+            ?: candidates.values.firstOrNull { OpenGlRenderTargetBridge.matches(it.target, boundFramebufferId) }
+        val boundToOitTarget = passTargets.any { (purpose, target) ->
+            purpose != "main" && OpenGlRenderTargetBridge.matches(target, boundFramebufferId)
+        }
+        val usesExternalFramebuffer = matchedTarget == null && boundFramebufferId > 0 && !boundToOitTarget
         val finalTarget = if (usesExternalFramebuffer) {
             logExternalFramebuffer(boundFramebufferId, candidates.values.toList())
             NamedTarget("external-bound", mainTarget)
         } else {
-            matchedTarget ?: chooseFallback(mainTarget, accessor, boundFramebufferId, candidates.values.toList())
+            matchedTarget ?: chooseFallback(mainTarget, boundFramebufferId, candidates.values.toList())
         }
         val sceneSourceTarget = if (usesExternalFramebuffer) {
             NamedTarget("external-bound-scene", mainTarget)
         } else {
-            chooseSceneSource(mainTarget, accessor, finalTarget)
+            finalTarget
         }
         val sceneDepthTarget = if (sceneSourceTarget.target.depthTextureId > 0) {
             sceneSourceTarget.target
@@ -111,9 +130,16 @@ object ClientRenderTargetResolver {
             finalCompositeTarget = finalTarget.target,
             boundFramebufferId = boundFramebufferId,
             targetLabel = finalTarget.label,
-            sceneColorFramebufferId = if (usesExternalFramebuffer) boundFramebufferId else sceneSourceTarget.target.frameBufferId,
-            sceneDepthFramebufferId = if (usesExternalFramebuffer) externalDepthFramebufferId else sceneDepthTarget.frameBufferId,
-            finalCompositeFramebufferId = if (usesExternalFramebuffer) boundFramebufferId else finalTarget.target.frameBufferId,
+            sceneColorFramebufferId = when {
+                usesExternalFramebuffer || sceneSourceTarget.target === matchedTarget?.target -> boundFramebufferId
+                else -> sceneSourceTarget.target.frameBufferId
+            },
+            sceneDepthFramebufferId = when {
+                usesExternalFramebuffer -> externalDepthFramebufferId
+                sceneDepthTarget === matchedTarget?.target -> boundFramebufferId
+                else -> sceneDepthTarget.frameBufferId
+            },
+            finalCompositeFramebufferId = if (usesExternalFramebuffer || matchedTarget != null) boundFramebufferId else finalTarget.target.frameBufferId,
             externalFramebuffer = usesExternalFramebuffer
         )
     }
@@ -133,58 +159,27 @@ object ClientRenderTargetResolver {
         if (framebufferId <= 0) {
             return false
         }
-        val previousFramebuffer = glGetInteger(GL_FRAMEBUFFER_BINDING)
+        val previousFramebuffer = glGetInteger(GL_READ_FRAMEBUFFER_BINDING)
         return try {
-            glBindFramebuffer(GL_FRAMEBUFFER, framebufferId)
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, framebufferId)
             glGetFramebufferAttachmentParameteri(
-                GL_FRAMEBUFFER,
+                GL_READ_FRAMEBUFFER,
                 GL_DEPTH_ATTACHMENT,
                 GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE
             ) != GL_NONE
         } finally {
-            glBindFramebuffer(GL_FRAMEBUFFER, previousFramebuffer)
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, previousFramebuffer)
         }
-    }
-
-    private fun chooseSceneSource(
-        mainTarget: RenderTarget,
-        accessor: LevelRendererAccessor?,
-        finalTarget: NamedTarget
-    ): NamedTarget {
-        if (accessor == null || !accessor.hasTransparencyChain()) {
-            return finalTarget
-        }
-        if (finalTarget.target.frameBufferId != mainTarget.frameBufferId) {
-            return finalTarget
-        }
-        val selected = NamedTarget("main-scene", mainTarget)
-        logSceneSource(finalTarget, selected)
-        return selected
     }
 
     private fun chooseFallback(
         mainTarget: RenderTarget,
-        accessor: LevelRendererAccessor?,
         boundFramebufferId: Int,
         candidates: List<NamedTarget>
     ): NamedTarget {
         if (boundFramebufferId == 0) {
             logFallback(boundFramebufferId, candidates, "default-framebuffer", "main-fallback")
             return NamedTarget("main-fallback", mainTarget)
-        }
-        if (accessor == null) {
-            logFallback(boundFramebufferId, candidates, "no-accessor", "main-fallback")
-            return NamedTarget("main-fallback", mainTarget)
-        }
-        if (accessor.hasTransparencyChain()) {
-            accessor.itemEntityTarget()?.let {
-                logFallback(boundFramebufferId, candidates, "transparency-chain", "itemEntity-fallback")
-                return NamedTarget("itemEntity-fallback", it)
-            }
-            accessor.translucentTarget()?.let {
-                logFallback(boundFramebufferId, candidates, "transparency-chain", "translucent-fallback")
-                return NamedTarget("translucent-fallback", it)
-            }
         }
         logFallback(boundFramebufferId, candidates, "main-default", "main-fallback")
         return NamedTarget("main-fallback", mainTarget)
@@ -203,7 +198,7 @@ object ClientRenderTargetResolver {
         }
         lastFallbackSignature = signature
         if (reason == "main-default" || reason == "default-framebuffer") {
-            cn.coostack.cooparticlesapi.CooParticlesConstants.logger.debug(
+            CooParticlesConstants.logger.debug(
                 "Falling back post target selection boundFbo={} reason={} selected={} candidates={}",
                 boundFramebufferId,
                 reason,
@@ -211,7 +206,7 @@ object ClientRenderTargetResolver {
                 candidateSummary
             )
         } else {
-            cn.coostack.cooparticlesapi.CooParticlesConstants.logger.warn(
+            CooParticlesConstants.logger.warn(
                 "Falling back post target selection boundFbo={} reason={} selected={} candidates={}",
                 boundFramebufferId,
                 reason,
@@ -228,33 +223,11 @@ object ClientRenderTargetResolver {
             return
         }
         lastExternalFramebufferSignature = signature
-        cn.coostack.cooparticlesapi.CooParticlesConstants.logger.info(
+        CooParticlesConstants.logger.info(
             "Using externally bound post framebuffer boundFbo={} candidates={}",
             boundFramebufferId,
             candidateSummary
         )
     }
 
-    private fun logSceneSource(finalTarget: NamedTarget, sceneSource: NamedTarget) {
-        val signature = "${finalTarget.label}:${finalTarget.target.frameBufferId}|${sceneSource.label}:${sceneSource.target.frameBufferId}"
-        if (signature == lastSceneSourceSignature) {
-            return
-        }
-        lastSceneSourceSignature = signature
-        if (finalTarget.target.frameBufferId == sceneSource.target.frameBufferId) {
-            cn.coostack.cooparticlesapi.CooParticlesConstants.logger.debug(
-                "Scene source target aligned with final target label={} fbo={}",
-                finalTarget.label,
-                finalTarget.target.frameBufferId
-            )
-        } else {
-            cn.coostack.cooparticlesapi.CooParticlesConstants.logger.info(
-                "Scene source target differs from final target final={}({}) scene={}({})",
-                finalTarget.label,
-                finalTarget.target.frameBufferId,
-                sceneSource.label,
-                sceneSource.target.frameBufferId
-            )
-        }
-    }
 }

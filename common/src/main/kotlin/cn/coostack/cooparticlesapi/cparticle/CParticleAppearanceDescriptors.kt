@@ -2,6 +2,7 @@ package cn.coostack.cooparticlesapi.cparticle
 
 import cn.coostack.cooparticlesapi.network.particle.emitters.command.curve.BezierFloatKeyframe
 import com.mojang.blaze3d.systems.RenderSystem
+import net.minecraft.client.Minecraft
 import org.lwjgl.BufferUtils
 import org.lwjgl.opengl.GL11.glBindTexture
 import org.lwjgl.opengl.GL11.glDeleteTextures
@@ -206,34 +207,34 @@ object CParticleAppearanceDescriptors {
                         encodedKeyCount(definition.color) * PACKED_CURVE_RADIX).toFloat()
             )
         for (i in 0 until CParticleCurve.MAX_KEYS) {
-            target.put(definition.alpha?.times?.getOrNull(i) ?: 0f)
-                .put(definition.alpha?.values?.getOrNull(i) ?: 0f)
-                .put(definition.scale?.times?.getOrNull(i) ?: 0f)
-                .put(definition.scale?.values?.getOrNull(i) ?: 0f)
+            target.put(definition.alpha?.times?.getOrNull(i) ?: 0F)
+                .put(definition.alpha?.values?.getOrNull(i) ?: 0F)
+                .put(definition.scale?.times?.getOrNull(i) ?: 0F)
+                .put(definition.scale?.values?.getOrNull(i) ?: 0F)
         }
         for (i in 0 until CParticleCurve.MAX_KEYS) {
-            target.put(definition.scaleX?.times?.getOrNull(i) ?: 0f)
-                .put(definition.scaleX?.values?.getOrNull(i) ?: 0f)
-                .put(definition.scaleY?.times?.getOrNull(i) ?: 0f)
-                .put(definition.scaleY?.values?.getOrNull(i) ?: 0f)
+            target.put(definition.scaleX?.times?.getOrNull(i) ?: 0F)
+                .put(definition.scaleX?.values?.getOrNull(i) ?: 0F)
+                .put(definition.scaleY?.times?.getOrNull(i) ?: 0F)
+                .put(definition.scaleY?.values?.getOrNull(i) ?: 0F)
         }
         for (i in 0 until CParticleColorCurve.MAX_KEYS) {
             val offset = i * CParticleColorCurveDefinition.ENTRY_SIZE
-            target.put(definition.color?.entries?.getOrNull(offset) ?: 0f)
-                .put(definition.color?.entries?.getOrNull(offset + 1) ?: 0f)
-                .put(definition.color?.entries?.getOrNull(offset + 2) ?: 0f)
-                .put(definition.color?.entries?.getOrNull(offset + 3) ?: 0f)
+            target.put(definition.color?.entries?.getOrNull(offset) ?: 0F)
+                .put(definition.color?.entries?.getOrNull(offset + 1) ?: 0F)
+                .put(definition.color?.entries?.getOrNull(offset + 2) ?: 0F)
+                .put(definition.color?.entries?.getOrNull(offset + 3) ?: 0F)
         }
         listOf(definition.alpha, definition.scale, definition.scaleX, definition.scaleY).forEach { curve ->
             for (i in 0 until CParticleCurve.MAX_KEYS * CParticleBezierMath.SCALAR_HANDLE_COMPONENTS) {
-                target.put(curve?.handles?.getOrNull(i) ?: 0f)
+                target.put(curve?.handles?.getOrNull(i) ?: 0F)
             }
         }
         for (i in 0 until CParticleColorCurve.MAX_KEYS * CParticleColorCurveDefinition.ENTRY_SIZE) {
-            target.put(definition.color?.outHandles?.getOrNull(i) ?: 0f)
+            target.put(definition.color?.outHandles?.getOrNull(i) ?: 0F)
         }
         for (i in 0 until CParticleColorCurve.MAX_KEYS * CParticleColorCurveDefinition.ENTRY_SIZE) {
-            target.put(definition.color?.inHandles?.getOrNull(i) ?: 0f)
+            target.put(definition.color?.inHandles?.getOrNull(i) ?: 0F)
         }
     }
 
@@ -344,7 +345,7 @@ object CParticleAppearanceDescriptors {
             if (texture != 0) glDeleteTextures(texture)
             if (buffer != 0) glDeleteBuffers(buffer)
         } else {
-            RenderSystem.recordRenderCall {
+            Minecraft.getInstance().execute {
                 if (texture != 0) glDeleteTextures(texture)
                 if (buffer != 0) glDeleteBuffers(buffer)
             }

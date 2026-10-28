@@ -60,14 +60,14 @@ import cn.coostack.cooparticlesapi.test.options.particle.style.RomaMagicTestStyl
 import cn.coostack.cooparticlesapi.test.options.renderer.world.DemoWorldRenderEffectOptions
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
 import kotlin.math.PI
 
 class BlockAPITestGroupBuilder(private val player: Player) : TestGroupBuilder {
-    override fun groupID(): ResourceLocation {
+    override fun groupID(): Identifier {
         return ID
     }
 
@@ -524,6 +524,6 @@ class BlockAPITestGroupBuilder(private val player: Player) : TestGroupBuilder {
 
         /** 注册与构建结果共同使用的方块测试组 ID。 */
         @JvmField
-        val ID: ResourceLocation = ofID("block-api-test-group-builder")
+        val ID: Identifier = ofID("block-api-test-group-builder")
     }
 }

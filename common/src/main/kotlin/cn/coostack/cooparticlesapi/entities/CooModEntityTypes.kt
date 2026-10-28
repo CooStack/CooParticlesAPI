@@ -3,7 +3,9 @@ package cn.coostack.cooparticlesapi.entities
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.entities.structure.StructureModelEntity
 import cn.coostack.cooparticlesapi.platform.registry.CommonDeferredEntityType
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
+import net.minecraft.resources.ResourceKey
+import net.minecraft.core.registries.Registries
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.EntityType
 import net.minecraft.world.entity.MobCategory
@@ -20,15 +22,16 @@ object CooModEntityTypes {
     /** 原有的渲染测试实体类型。 */
     val TEST_RENDER = register("test_render") { entityId ->
         EntityType.Builder.of(::TestRenderEntity, MobCategory.MISC)
-            .sized(0.1f, 0.1f)
+            .sized(0.1F, 0.1F)
             .clientTrackingRange(16)
-            .build(entityId.toString())
+            .build(ResourceKey.create(Registries.ENTITY_TYPE, entityId))
     }
 
     /** 静态结构不规则碰撞实体，两端共享注册实例。 */
     val STRUCTURE_MODEL = register("structure_model") { entityId ->
         EntityType.Builder.of(::StructureModelEntity, MobCategory.MISC)
-            .sized(1F, 1F).clientTrackingRange(10).updateInterval(1).build(entityId.toString())
+            .sized(1F, 1F).clientTrackingRange(10).updateInterval(1)
+            .build(ResourceKey.create(Registries.ENTITY_TYPE, entityId))
     }
 
     /**
@@ -41,9 +44,9 @@ object CooModEntityTypes {
      */
     fun <T : Entity> register(
         id: String,
-        supplier: (ResourceLocation) -> EntityType<T>
+        supplier: (Identifier) -> EntityType<T>
     ): CommonDeferredEntityType<T> {
-        val entityId = ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, id)
+        val entityId = Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, id)
         val type =
             CommonDeferredEntityType(entityId) { supplier(entityId) }
         types.add(type)

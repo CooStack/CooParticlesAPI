@@ -4,7 +4,7 @@ import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.renderer.RenderEntity
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.CooTextureFormat
 import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainEffectManager
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.level.block.state.BlockState
 
 /** 实体、方块和通用渲染图的公开入口。 */
@@ -92,7 +92,7 @@ object CooPipelines {
      * @return 当前操作计算、更新或查询得到的结果
      */
     fun <T : RenderEntity> entity(
-        id: ResourceLocation,
+        id: Identifier,
         block: CooRenderPipelineBuilder<T>.() -> Unit
     ): CooRenderPipeline<T> {
         return CooRenderPipelineBuilder<T>(id, CooPipelineDomain.ENTITY).apply(block).build()
@@ -110,7 +110,7 @@ object CooPipelines {
      * @return 当前操作计算、更新或查询得到的结果
      */
     fun block(
-        id: ResourceLocation,
+        id: Identifier,
         block: CooRenderPipelineBuilder<BlockState>.() -> Unit
     ): CooRenderPipeline<BlockState> {
         val pipeline = CooRenderPipelineBuilder<BlockState>(id, CooPipelineDomain.BLOCK).apply(block).build()
@@ -129,7 +129,7 @@ object CooPipelines {
      * @return 根据当前输入生成的新对象或数据结果
      */
     fun <T : Any> generic(
-        id: ResourceLocation,
+        id: Identifier,
         block: CooRenderPipelineBuilder<T>.() -> Unit
     ): CooRenderPipeline<T> {
         return CooRenderPipelineBuilder<T>(id, CooPipelineDomain.GENERIC).apply(block).build()
@@ -147,13 +147,13 @@ object CooPipelines {
      * @return 当前操作计算、更新或查询得到的结果
      */
     internal fun screen(
-        id: ResourceLocation,
+        id: Identifier,
         block: CooRenderPipelineBuilder<Any>.() -> Unit
     ): CooRenderPipeline<Any> {
         return CooRenderPipelineBuilder<Any>(id, CooPipelineDomain.SCREEN).apply(block).build()
     }
 
-    private fun id(path: String): ResourceLocation {
-        return ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, path)
+    private fun id(path: String): Identifier {
+        return Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, path)
     }
 }

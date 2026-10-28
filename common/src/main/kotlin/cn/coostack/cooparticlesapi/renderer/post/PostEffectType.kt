@@ -2,7 +2,7 @@ package cn.coostack.cooparticlesapi.renderer.post
 
 import cn.coostack.cooparticlesapi.renderer.backend.RenderBackendCapability
 import cn.coostack.cooparticlesapi.renderer.effects.RenderEffectDescriptor
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /**
  * Pipeline compiler 生成的内部执行类型，不属于公开渲染 API。
@@ -13,7 +13,7 @@ import net.minecraft.resources.ResourceLocation
  * @property defaultSubject 调用 [create] 时没有显式传入 subject 所使用的默认对象
  */
 internal class PostEffectType(
-    val id: ResourceLocation,
+    val id: Identifier,
     val model: PostEffectModel,
     val chain: PostEffectChain,
     val requiredCapabilities: Set<RenderBackendCapability>,

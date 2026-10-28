@@ -5,7 +5,7 @@ import cn.coostack.cooparticlesapi.annotations.CodecField
 import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
 import cn.coostack.cooparticlesapi.renderer.AutoRenderEntity
 import cn.coostack.cooparticlesapi.utils.interpolator.data.InterpolatorVec3d
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
@@ -41,7 +41,7 @@ class DemoMaskBloomStraightLaserRenderEntity(
     /** 激光稳定阶段使用的最大世界半径。 */
     var maxRadius: Float = 0.22F
 
-    override fun getRenderID(): ResourceLocation = ID
+    override fun getRenderID(): Identifier = ID
 
     override fun clientTick() {
         updateLifecycle()
@@ -163,7 +163,7 @@ class DemoMaskBloomStraightLaserRenderEntity(
         internal const val MIN_BEAM_LENGTH = 0.05F
 
         @JvmField
-        val ID: ResourceLocation = ResourceLocation.fromNamespaceAndPath(
+        val ID: Identifier = Identifier.fromNamespaceAndPath(
             CooParticlesConstants.MOD_ID,
             RENDER_ENTITY_ID
         )

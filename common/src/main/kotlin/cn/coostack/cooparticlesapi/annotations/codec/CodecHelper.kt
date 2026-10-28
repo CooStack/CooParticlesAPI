@@ -1,5 +1,7 @@
 package cn.coostack.cooparticlesapi.annotations.codec
 
+import cn.coostack.cooparticlesapi.network.readVec3
+import cn.coostack.cooparticlesapi.network.writeVec3
 import cn.coostack.cooparticlesapi.CodecHelperJava
 import cn.coostack.cooparticlesapi.animation.timeline.ValueConstSpeedAnimator
 import cn.coostack.cooparticlesapi.animation.timeline.ValueConstTimeAnimator
@@ -396,7 +398,7 @@ object CodecHelper {
      * @param codec 他的编解码器
      */
     @JvmStatic
-    fun <T> register(type: Class<T>, codec: StreamCodec<out FriendlyByteBuf, T>) {
+    fun <T : Any> register(type: Class<T>, codec: StreamCodec<out FriendlyByteBuf, T>) {
         supposedTypes[type.name] = codec
         registryRequiredTypes.remove(type.name)
     }
@@ -412,7 +414,7 @@ object CodecHelper {
      * @param codec 需要 [RegistryFriendlyByteBuf] 的 codec
      */
     @JvmStatic
-    fun <T> registerRegistry(
+    fun <T : Any> registerRegistry(
         type: Class<T>,
         codec: StreamCodec<RegistryFriendlyByteBuf, T>,
     ) {

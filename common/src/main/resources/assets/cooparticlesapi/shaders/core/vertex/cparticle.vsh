@@ -23,7 +23,6 @@ uniform vec3 uOriginRelCam;  // 系统原点 - 相机位置 (CPU 双精度相减
 uniform float uPartial;      // tick 插值
 uniform vec3 uCamLeft;       // 相机左向量 (q * X̂, 与原版粒子渲染基一致)
 uniform vec3 uCamUp;         // 相机上向量
-uniform int uFogShape;       // 0=球 1=圆柱
 uniform int uSystemTick;
 uniform int uHasMask;
 uniform int uIrisExpansion;
@@ -73,7 +72,7 @@ out vec2 vMaskUv;
 out vec3 vMaskTint;
 out vec4 vColor;
 out vec2 vLightUv;
-out float vFogDistance;
+out vec2 vFogDistance;
 out vec3 tfPosition;
 out vec2 tfUv;
 flat out uvec2 tfPacked;
@@ -439,7 +438,7 @@ void main() {
         vMaskTint = vec3(1.0);
         vColor = vec4(0.0);
         vLightUv = vec2(0.0);
-        vFogDistance = 0.0;
+        vFogDistance = vec2(0.0);
         tfPosition = vec3(0.0, 0.0, -2.0);
         tfUv = vec2(0.0);
         tfPacked = uvec2(0u);
@@ -633,8 +632,6 @@ void main() {
         uint(blockLight * 16) | (uint(skyLight * 16) << 16u)
     );
 
-    // 原版雾距离
-    vFogDistance = uFogShape == 1
-        ? max(length(posRelCam.xz), abs(posRelCam.y))
-        : length(posRelCam);
+    // 对应原版 particle.vsh 的摄像机相对 Position，不能把 yaw/pitch 旋转后的柱轴当作世界竖轴。
+    vFogDistance = vec2(length(posRelCam), max(length(posRelCam.xz), abs(posRelCam.y)));
 }

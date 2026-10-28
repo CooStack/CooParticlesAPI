@@ -56,6 +56,12 @@ class CooFxMeshParticleRenderer {
     private var frameUploadPrepared = false
     private val drawStateScope = CooFxRenderStateScope(::captureDrawState, ::restoreDrawState)
     private val frameUploadAllocator = CooFxFrameUploadAllocator()
+    /** 当前同步批次已经上传的数据，只允许在下一次批次绑定前重绘。 */
+    private var preparedBatch: CooFxMeshInstanceBatch? = null
+    /** 当前已上传批次所属的静态 mesh 绑定。 */
+    private var preparedBinding: CooFxMeshDrawBinding? = null
+    /** 当前实例和节点矩阵的流式区间，不为额外 pass 重复预留容量。 */
+    private var preparedUploadRange: CooFxFrameUploadRange? = null
 
     val initialized: Boolean
         get() = instanceBuffer != 0 && nodeMatrixBuffer != 0
@@ -92,6 +98,9 @@ class CooFxMeshParticleRenderer {
     internal fun finishFrame() {
         frameUploadPrepared = false
         frameUploadAllocator.clear()
+        preparedBatch = null
+        preparedBinding = null
+        preparedUploadRange = null
     }
 
     /**
@@ -122,7 +131,7 @@ class CooFxMeshParticleRenderer {
         }
     }
 
-    /** 把一个 CooFX instanced batch 展开成原版 NEW_ENTITY 顶点，供 Iris entity program 消费。 */
+    /** 把一个 CooFX instanced batch 展开成原版 ENTITY 顶点，供 Iris entity program 消费。 */
     fun expandForIrisEntity(
         batch: CooFxMeshInstanceBatch,
         binding: CooFxMeshDrawBinding,
@@ -169,15 +178,37 @@ class CooFxMeshParticleRenderer {
         }
     }
 
-    /** 使用当前 Iris entity program 绘制最近一次 GPU 展开的 NEW_ENTITY 顶点。 */
+    /** 使用当前 Iris entity program 的实际 attribute location 绘制最近一次 GPU 展开的 ENTITY 顶点。 */
     fun drawExpandedIrisEntity(vertexCount: Int) {
         if (expandedEntityVao == 0 || vertexCount <= 0 || vertexCount != expandedEntityVertexCount) return
         val previousVao = glGetInteger(GL_VERTEX_ARRAY_BINDING)
+        val previousArrayBuffer = glGetInteger(GL_ARRAY_BUFFER_BINDING)
         try {
             glBindVertexArray(expandedEntityVao)
+            glBindBuffer(GL_ARRAY_BUFFER, expandedEntityVbo)
+            configureExpandedEntityVao()
             glDrawArrays(GL_TRIANGLES, 0, vertexCount)
         } finally {
             restoreVertexArray(previousVao)
+            glBindBuffer(GL_ARRAY_BUFFER, previousArrayBuffer)
+        }
+    }
+
+    /**
+     * 在同一同步批次内复用最近一次上传的实例数据，供 Iris 回退与自发光额外 pass 使用。
+     *
+     * @param batch 必须为最近一次成功展开或绘制的同一个批次对象
+     * @param binding 必须与该批次上传时的静态 mesh 绑定相同
+     * @throws IllegalStateException 批次已被替换、结束或从未上传
+     */
+    internal fun drawPreparedBatch(batch: CooFxMeshInstanceBatch, binding: CooFxMeshDrawBinding) {
+        check(preparedBatch === batch && preparedBinding == binding) { "CooFX prepared batch is no longer current" }
+        val range = checkNotNull(preparedUploadRange)
+        withDrawState {
+            configureBatchBinding(binding, range)
+            glDrawElementsInstanced(
+                GL_TRIANGLES, binding.indexCount, binding.indexType, binding.indexByteOffset, batch.instanceCount,
+            )
         }
     }
 
@@ -224,13 +255,25 @@ class CooFxMeshParticleRenderer {
         } else {
             CooFxFrameUploadRange(0L, 0L)
         }
+        glBindBuffer(GL_ARRAY_BUFFER, instanceBuffer)
+        if (!useFrameUpload) ensureCapacity(instanceBytes)
+        scratch = upload(batch.instanceData, scratch, uploadRange.instanceByteOffset)
+        glBindBuffer(GL_ARRAY_BUFFER, nodeMatrixBuffer)
+        if (!useFrameUpload) ensureNodeMatrixCapacity(nodeMatrixBytes)
+        nodeMatrixScratch = upload(batch.nodeMatrixData, nodeMatrixScratch, uploadRange.nodeMatrixByteOffset)
+        configureBatchBinding(binding, uploadRange)
+        preparedBatch = batch
+        preparedBinding = binding
+        preparedUploadRange = uploadRange
+    }
+
+    /** 只恢复输入布局与已上传区间，不上传数据或推进帧分配器。 */
+    private fun configureBatchBinding(binding: CooFxMeshDrawBinding, uploadRange: CooFxFrameUploadRange) {
         glBindVertexArray(binding.vertexArrayObject)
         glVertexAttrib3f(1, 0F, 1F, 0F)
         glVertexAttrib2f(2, 0F, 0F)
         glVertexAttrib4f(3, 1F, 1F, 1F, 1F)
         glBindBuffer(GL_ARRAY_BUFFER, instanceBuffer)
-        if (!useFrameUpload) ensureCapacity(instanceBytes)
-        scratch = upload(batch.instanceData, scratch, uploadRange.instanceByteOffset)
         val instanceAttributes = CooFxMeshInstanceLayout.attributes(binding.firstInstanceAttributeLocation)
         instanceAttributes.forEach { attribute ->
             glVertexAttribPointer(
@@ -245,8 +288,6 @@ class CooFxMeshParticleRenderer {
             CParticleCapabilities.setVertexAttribDivisor(attribute.shaderLocation, attribute.divisor)
         }
         glBindBuffer(GL_ARRAY_BUFFER, nodeMatrixBuffer)
-        if (!useFrameUpload) ensureNodeMatrixCapacity(nodeMatrixBytes)
-        nodeMatrixScratch = upload(batch.nodeMatrixData, nodeMatrixScratch, uploadRange.nodeMatrixByteOffset)
         val firstNodeMatrixLocation = binding.firstInstanceAttributeLocation + instanceAttributes.size
         repeat(3) { row ->
             val location = firstNodeMatrixLocation + row
@@ -407,9 +448,9 @@ class CooFxMeshParticleRenderer {
                 }
                 byteStride += componentBytes * varyingSize[0]
             }
-            require(byteStride == DefaultVertexFormat.NEW_ENTITY.vertexSize) {
-                "CooFX Iris feedback stride=$byteStride 与 NEW_ENTITY=" +
-                    "${DefaultVertexFormat.NEW_ENTITY.vertexSize} 不一致"
+            require(byteStride == DefaultVertexFormat.ENTITY.vertexSize) {
+                "CooFX Iris feedback stride=$byteStride 与 ENTITY=" +
+                    "${DefaultVertexFormat.ENTITY.vertexSize} 不一致"
             }
         }
         validatedFeedbackProgram = program
@@ -424,21 +465,6 @@ class CooFxMeshParticleRenderer {
                 expandedEntityVbo = glGenBuffers()
                 glBindVertexArray(expandedEntityVao)
                 glBindBuffer(GL_ARRAY_BUFFER, expandedEntityVbo)
-                MemoryStack.stackPush().use { stack ->
-                    val previousIntegerValues = stack.mallocInt(12)
-                    val previousFloatValues = stack.mallocFloat(12)
-                    val irisLocations = intArrayOf(6, 7, 8)
-                    irisLocations.forEachIndexed { index, location ->
-                        glGetVertexAttribIiv(location, GL_CURRENT_VERTEX_ATTRIB, previousIntegerValues.position(index * 4))
-                        glGetVertexAttribfv(location, GL_CURRENT_VERTEX_ATTRIB, previousFloatValues.position(index * 4))
-                    }
-                    DefaultVertexFormat.NEW_ENTITY.setupBufferState()
-                    configureExpandedEntityVao()
-                    irisLocations.forEachIndexed { index, location ->
-                        glVertexAttribI4iv(location, previousIntegerValues.position(index * 4))
-                        glVertexAttrib4fv(location, previousFloatValues.position(index * 4))
-                    }
-                }
             } finally {
                 restoreVertexArray(previousVao)
                 glBindBuffer(GL_ARRAY_BUFFER, previousArrayBuffer)
@@ -454,7 +480,7 @@ class CooFxMeshParticleRenderer {
             glBindBuffer(GL_ARRAY_BUFFER, expandedEntityVbo)
             glBufferData(
                 GL_ARRAY_BUFFER,
-                nextCapacity.toLong() * DefaultVertexFormat.NEW_ENTITY.vertexSize,
+                nextCapacity.toLong() * DefaultVertexFormat.ENTITY.vertexSize,
                 GL_STREAM_DRAW,
             )
         } finally {
@@ -463,29 +489,43 @@ class CooFxMeshParticleRenderer {
         expandedEntityCapacity = nextCapacity
     }
 
+    /**
+     * 按目标 program 的已链接属性位置设置 26.3 ENTITY 布局。
+     *
+     * Iris 的 VanillaTransformer 将语义名改为 iris_ 前缀；FallbackShader 保留原版语义名。
+     * 不启用未提供数据的扩展属性，也不修改调用方的全局 generic attribute 常量。
+     */
     private fun configureExpandedEntityVao() {
-        val stride = DefaultVertexFormat.NEW_ENTITY.vertexSize
-        glVertexAttribPointer(0, 3, GL_FLOAT, false, stride, 0L)
-        glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, true, stride, 12L)
-        glVertexAttribPointer(2, 2, GL_FLOAT, false, stride, 16L)
-        glVertexAttribIPointer(3, 2, GL_SHORT, stride, 24L)
-        glVertexAttribIPointer(4, 2, GL_SHORT, stride, 28L)
-        glVertexAttribPointer(5, 3, GL_BYTE, true, stride, 32L)
-        repeat(6) { location -> glEnableVertexAttribArray(location) }
-        repeat(6) { location -> CParticleCapabilities.setVertexAttribDivisor(location, 0) }
-        disableExpandedIrisAttributes()
-    }
-
-    private fun disableExpandedIrisAttributes() {
-        glDisableVertexAttribArray(6)
-        glDisableVertexAttribArray(7)
-        glDisableVertexAttribArray(8)
-        CParticleCapabilities.setVertexAttribDivisor(6, 0)
-        CParticleCapabilities.setVertexAttribDivisor(7, 0)
-        CParticleCapabilities.setVertexAttribDivisor(8, 0)
-        glVertexAttribI3i(6, 0, 0, 0)
-        glVertexAttrib2f(7, 0F, 0F)
-        glVertexAttrib4f(8, 1F, 0F, 0F, 1F)
+        val program = glGetInteger(GL_CURRENT_PROGRAM)
+        check(program > 0) { "Expanded CooFX entity draw requires an active Iris program" }
+        val stride = DefaultVertexFormat.ENTITY.vertexSize
+        repeat(vertexAttributeCount) { location ->
+            glDisableVertexAttribArray(location)
+            CParticleCapabilities.setVertexAttribDivisor(location, 0)
+        }
+        fun location(semantic: String): Int {
+            val irisLocation = glGetAttribLocation(program, "iris_$semantic")
+            return if (irisLocation >= 0) irisLocation else glGetAttribLocation(program, semantic)
+        }
+        fun floatingAttribute(semantic: String, size: Int, type: Int, normalized: Boolean, offset: Long) {
+            val location = location(semantic)
+            if (location < 0) return
+            glVertexAttribPointer(location, size, type, normalized, stride, offset)
+            glEnableVertexAttribArray(location)
+        }
+        fun integerAttribute(semantic: String, offset: Long) {
+            val location = location(semantic)
+            if (location < 0) return
+            glVertexAttribIPointer(location, 2, GL_SHORT, stride, offset)
+            glEnableVertexAttribArray(location)
+        }
+        check(location("Position") >= 0) { "Iris entity program does not expose a supported position attribute" }
+        floatingAttribute("Position", 3, GL_FLOAT, false, 0L)
+        floatingAttribute("Color", 4, GL_UNSIGNED_BYTE, true, 12L)
+        floatingAttribute("UV0", 2, GL_FLOAT, false, 16L)
+        integerAttribute("UV1", 24L)
+        integerAttribute("UV2", 28L)
+        floatingAttribute("Normal", 3, GL_BYTE, true, 32L)
     }
 
     private fun upload(data: FloatArray, currentScratch: FloatBuffer?, byteOffset: Long): FloatBuffer {

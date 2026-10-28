@@ -8,7 +8,7 @@ import net.minecraft.world.item.component.CustomData
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.ItemStack
-import net.minecraft.nbt.Tag
+import net.minecraft.nbt.NbtOps
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.level.Level
@@ -23,7 +23,7 @@ object ModelItemBehavior {
      */
     @JvmStatic
     fun isSkinned(stack: ItemStack): Boolean = !stack.`is`(StructureModels.HELD_MODEL) &&
-        stack.get(DataComponents.CUSTOM_DATA)?.copyTag()?.contains("ModelData", Tag.TAG_BYTE_ARRAY.toInt()) == true
+        stack.get(DataComponents.CUSTOM_DATA)?.copyTag()?.getByteArray("ModelData")?.isPresent == true
 
     /**
      * 校验潜行右键的模型重新放置开关，未开启时继续执行目标物品行为。
@@ -46,7 +46,7 @@ object ModelItemBehavior {
         val source = before.get(DataComponents.CUSTOM_DATA)?.copyTag() ?: return
         val target = result.get(DataComponents.CUSTOM_DATA)?.copyTag() ?: CompoundTag()
         target.put("ModelData", source.get("ModelData")!!.copy())
-        target.putString("model_event_id", source.getString("model_event_id"))
+        target.putString("model_event_id", source.getStringOr("model_event_id", ""))
         source.get("attachment")?.let { target.put("attachment", it.copy()) }
         result.set(DataComponents.CUSTOM_DATA, CustomData.of(target))
         before.get(DataComponents.CUSTOM_NAME)?.let { result.set(DataComponents.CUSTOM_NAME, it) }
@@ -72,7 +72,9 @@ object ModelItemBehavior {
         sample.remove(DataComponents.CUSTOM_NAME)
         sample.set(DataComponents.MAX_STACK_SIZE, sample.item.components().get(DataComponents.MAX_STACK_SIZE) ?: 1)
         val properties = data.settings.itemProperties.copy(
-            simulatedStack = sample.save(world.registryAccess()).toString(),
+            simulatedStack = ItemStack.CODEC.encodeStart(
+                world.registryAccess().createSerializationContext(NbtOps.INSTANCE), sample
+            ).getOrThrow().toString(),
             boundItem = "", components = "{}", overrideFood = false
         )
         require(properties.valid()) { "当前模拟物品数据过大" }

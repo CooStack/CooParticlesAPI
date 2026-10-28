@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi.renderer.shader.api.glsl
 
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /**
  * 单个 OpenGL shader 对象抽象。
@@ -36,5 +36,5 @@ interface GlShader {
      *
      * 返回 `null` 表示它不是从资源系统直接托管加载的。
      */
-    fun sourceLocation(): ResourceLocation? = null
+    fun sourceLocation(): Identifier? = null
 }

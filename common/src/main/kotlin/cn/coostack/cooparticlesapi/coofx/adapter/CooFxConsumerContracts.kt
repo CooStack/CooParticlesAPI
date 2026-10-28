@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi.coofx.adapter
 
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.server.packs.resources.ResourceManager
 import org.joml.Matrix4f
 import org.joml.Matrix4fc
@@ -15,7 +15,7 @@ sealed interface CooFxParameterValue {
 
     data class IntValue(val value: Int) : CooFxParameterValue
     data class BooleanValue(val value: Boolean) : CooFxParameterValue
-    data class ResourceValue(val value: ResourceLocation) : CooFxParameterValue
+    data class ResourceValue(val value: Identifier) : CooFxParameterValue
 }
 
 data class CooFxWorldTransform(
@@ -59,7 +59,7 @@ object CooFxEmitterParameterNames {
 }
 
 class CooFxPlayRequest(
-    val resourceId: ResourceLocation,
+    val resourceId: Identifier,
     val transform: CooFxWorldTransform,
     val requestSeed: Long,
     val clipId: String? = null,
@@ -82,7 +82,7 @@ class CooFxPlayRequest(
  * compiled clip；资产没有动画时保持 bind pose。[playbackSpeed] 为零时暂停在起始姿态。
  */
 class CooFxModelPlayRequest(
-    val resourceId: ResourceLocation,
+    val resourceId: Identifier,
     val transform: CooFxWorldTransform,
     val requestSeed: Long,
     val clipId: String? = null,
@@ -100,7 +100,7 @@ class CooFxModelPlayRequest(
 }
 
 data class CooFxEmitterRequest(
-    val resourceId: ResourceLocation,
+    val resourceId: Identifier,
     val emitterId: String,
     val transform: CooFxWorldTransform,
     val requestSeed: Long
@@ -118,7 +118,7 @@ data class CooFxEmitterRequest(
 }
 
 data class CooFxPlaybackFailure(
-    val resourceId: ResourceLocation,
+    val resourceId: Identifier,
     val stage: String,
     val message: String,
     val cause: Throwable? = null

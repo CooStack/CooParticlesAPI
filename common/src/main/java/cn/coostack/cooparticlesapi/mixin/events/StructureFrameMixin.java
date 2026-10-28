@@ -12,7 +12,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(GameRenderer.class)
 public abstract class StructureFrameMixin {
     /** 每帧事件不修改原版相机、矩阵或渲染状态。 */
-    @Inject(method = "renderLevel", at = @At("HEAD"))
+    @Inject(method = "render", at = @At("HEAD"))
     private void beginFrame(CallbackInfo callback) {
         CooEventBus.call(new ClientFrameStartEvent());
     }

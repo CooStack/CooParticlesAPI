@@ -1,10 +1,10 @@
 package cn.coostack.cooparticlesapi.renderer.shader
 
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 data class ShaderCompileUpdate(
-    val updatedProgramIds: Set<ResourceLocation> = emptySet(),
-    val updatedShaderSources: Set<ResourceLocation> = emptySet()
+    val updatedProgramIds: Set<Identifier> = emptySet(),
+    val updatedShaderSources: Set<Identifier> = emptySet()
 ) {
     /**
      * 执行 `ShaderCompileUpdate` 定义的 `isEmpty` 操作；输入和返回值用于该组件当前的渲染职责。
@@ -58,7 +58,7 @@ object ShaderCompileUpdateCoordinator {
      *
      * @return 当前操作计算、更新或查询得到的结果
      */
-    fun handleUpdatedProgramIds(ids: Set<ResourceLocation>): ShaderRefreshResult {
+    fun handleUpdatedProgramIds(ids: Set<Identifier>): ShaderRefreshResult {
         return handleUpdate(ShaderCompileUpdate(updatedProgramIds = ids))
     }
 
@@ -72,7 +72,7 @@ object ShaderCompileUpdateCoordinator {
      *
      * @return 当前操作计算、更新或查询得到的结果
      */
-    fun handleUpdatedShaderSources(sources: Set<ResourceLocation>): ShaderRefreshResult {
+    fun handleUpdatedShaderSources(sources: Set<Identifier>): ShaderRefreshResult {
         return handleUpdate(ShaderCompileUpdate(updatedShaderSources = sources))
     }
 }

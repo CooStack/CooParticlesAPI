@@ -9,7 +9,7 @@ import net.neoforged.fml.common.EventBusSubscriber
 import net.neoforged.neoforge.client.event.EntityRenderersEvent
 
 /** 结构渲染器只在客户端模组注册总线上加载，不依赖游戏事件总线。 */
-@EventBusSubscriber(modid = CooParticlesConstants.MOD_ID, value = [Dist.CLIENT], bus = EventBusSubscriber.Bus.MOD)
+@EventBusSubscriber(modid = CooParticlesConstants.MOD_ID, value = [Dist.CLIENT])
 object StructureModelClientRegistration {
     /** 注册公共结构渲染器，使用加载器提供的上下文工厂。 */
     @SubscribeEvent

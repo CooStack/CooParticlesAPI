@@ -1,7 +1,7 @@
 package cn.coostack.cooparticlesapi.network.buffer
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 
 class EmptyControlerBuffer() : ParticleControlerDataBuffer<Unit> {
@@ -9,7 +9,7 @@ class EmptyControlerBuffer() : ParticleControlerDataBuffer<Unit> {
     companion object {
         @JvmStatic
         val id = ParticleControlerDataBuffer.Id(
-            ResourceLocation.fromNamespaceAndPath(
+            Identifier.fromNamespaceAndPath(
                 CooParticlesConstants.MOD_ID, "empty"
             )
         )

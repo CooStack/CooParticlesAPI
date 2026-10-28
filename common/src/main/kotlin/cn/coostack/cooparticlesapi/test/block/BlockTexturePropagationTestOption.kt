@@ -8,7 +8,7 @@ import cn.coostack.cooparticlesapi.test.api.TestOption
 import cn.coostack.cooparticlesapi.test.api.TestReviewMode
 import cn.coostack.cooparticlesapi.utils.BlockUtil
 import net.minecraft.core.BlockPos
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.player.Player
 
@@ -27,7 +27,7 @@ class BlockTexturePropagationTestOption(
     private val center: BlockPos = player.blockPosition().immutable()
 
     /** 通用地形效果组 ID，同一测试宿主只维护一组批量位置。 */
-    private val effectGroupId: ResourceLocation = ResourceLocation.fromNamespaceAndPath(
+    private val effectGroupId: Identifier = Identifier.fromNamespaceAndPath(
         CooParticlesConstants.MOD_ID,
         "test/terrain_propagation/${center.asLong()}"
     )

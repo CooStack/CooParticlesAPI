@@ -33,7 +33,7 @@ internal object ModelDisplayParticles {
     private fun tick(client: Minecraft) {
         val world = client.level ?: return
         if (client.isPaused) return
-        val camera = client.gameRenderer.mainCamera.position
+        val camera = client.gameRenderer.mainCamera().position()
         val maxDistanceSquared = 32.0 * 32.0
         var budget = 128
         val models = world.entitiesForRendering().filterIsInstance<StructureModelEntity>().filter {

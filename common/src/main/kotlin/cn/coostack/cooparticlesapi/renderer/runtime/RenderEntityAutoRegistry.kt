@@ -9,7 +9,7 @@ import cn.coostack.cooparticlesapi.reflect.SimpleClassInfo
 import cn.coostack.cooparticlesapi.renderer.RenderEntity
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
 import java.lang.reflect.Constructor
@@ -105,7 +105,7 @@ object RenderEntityAutoRegistry {
         throwIfInvalid(errors, failures)
 
         val renderersByEntity = renderers.associateBy { descriptor -> descriptor.entityClass }
-        val registrations = LinkedHashMap<ResourceLocation, AutomaticClientRenderEntityType>()
+        val registrations = LinkedHashMap<Identifier, AutomaticClientRenderEntityType>()
         entities.sortedBy { descriptor -> descriptor.id.toString() }.forEach { entity ->
             val rendererFactory = renderersByEntity[entity.entityClass]?.toFactory(entity.id)
             val existing = ClientRenderEntityRegistry.get(entity.id)
@@ -301,7 +301,7 @@ object RenderEntityAutoRegistry {
 
     private data class EntityDescriptor(
         val entityClass: Class<out RenderEntity>,
-        val id: ResourceLocation,
+        val id: Identifier,
         val codec: StreamCodec<FriendlyByteBuf, RenderEntity>
     )
 
@@ -317,7 +317,7 @@ object RenderEntityAutoRegistry {
          *
          * @param id 用于定位目标资源、实体或运行时实例的唯一标识
          */
-        fun toFactory(id: ResourceLocation): () -> RenderEntityRenderer<out RenderEntity> = {
+        fun toFactory(id: Identifier): () -> RenderEntityRenderer<out RenderEntity> = {
             try {
                 @Suppress("UNCHECKED_CAST")
                 constructor.newInstance() as RenderEntityRenderer<out RenderEntity>

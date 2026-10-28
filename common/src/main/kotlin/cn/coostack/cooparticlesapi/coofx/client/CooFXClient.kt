@@ -13,7 +13,7 @@ import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameContext
 import cn.coostack.cooparticlesapi.renderer.client.ClientRenderPipelineManager
 import com.mojang.blaze3d.systems.RenderSystem
 import net.minecraft.client.Minecraft
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.server.packs.resources.ResourceManager
 import org.joml.Matrix4fc
 
@@ -85,7 +85,7 @@ object CooFXClient {
 
     /** 客户端 scene registry 用于采样选定 asset camera 的 node world pose。 */
     internal fun sampleCamera(
-        resourceId: ResourceLocation,
+        resourceId: Identifier,
         cameraSelector: String?,
         clipId: String?,
         rawTimeSeconds: Float,
@@ -159,7 +159,7 @@ object CooFXClient {
             .sorted()
             .joinToString(",")
         val backendSignature = "${context.backend.javaClass.name}:$capabilities"
-        val cameraPosition = Minecraft.getInstance().gameRenderer.mainCamera.position
+        val cameraPosition = Minecraft.getInstance().gameRenderer.mainCamera().position()
         runCatching {
             requireNotNull(runtime).renderWorldFrame(
                 CooFxFrameRequest(

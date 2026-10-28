@@ -10,7 +10,7 @@ import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.entity.Entity
 
 class PacketDataHolderS2C(
@@ -26,7 +26,7 @@ class PacketDataHolderS2C(
     )
 
     companion object {
-        private val id = ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "data_holder")
+        private val id = Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "data_holder")
         val payloadID = CustomPacketPayload.Type<PacketDataHolderS2C>(id)
         val CODEC: StreamCodec<FriendlyByteBuf, PacketDataHolderS2C> =
             StreamCodec.of({ buf, packet ->
@@ -90,7 +90,7 @@ class PacketDataHolderS2C(
             val keyType = runCatching {
                 Class.forName(entry.type)
             }.getOrDefault(Any::class.java)
-            val key = DataHolderKey.ofRaw(keyType, ResourceLocation.parse(entry.key))
+            val key = DataHolderKey.ofRaw(keyType, Identifier.parse(entry.key))
             key to decodeValue(entry.type, entry.data, entity)
         }
     }

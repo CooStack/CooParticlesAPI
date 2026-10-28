@@ -53,7 +53,7 @@ object ServerParticleUtil {
     ) {
         world.players().forEach {
             world.sendParticles(
-                it, type, force, pos.x, pos.y, pos.z, count, delta.x, delta.y, delta.z, speed
+                it, type, force, false, pos.x, pos.y, pos.z, count, delta.x, delta.y, delta.z, speed
             )
         }
     }
@@ -71,7 +71,7 @@ object ServerParticleUtil {
                 return@forEach
             }
             world.sendParticles(
-                it, type, force, pos.x, pos.y, pos.z, count, delta.x, delta.y, delta.z, speed
+                it, type, force, false, pos.x, pos.y, pos.z, count, delta.x, delta.y, delta.z, speed
             )
         }
     }

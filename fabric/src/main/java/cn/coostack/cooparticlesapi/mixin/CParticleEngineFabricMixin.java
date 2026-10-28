@@ -1,28 +1,21 @@
 package cn.coostack.cooparticlesapi.mixin;
 
 import cn.coostack.cooparticlesapi.cparticle.CParticleSystemManager;
-import net.minecraft.client.Camera;
-import net.minecraft.client.particle.ParticleEngine;
-import net.minecraft.client.renderer.LightTexture;
+import net.minecraft.client.renderer.LevelRenderer;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-@Mixin(ParticleEngine.class)
+/** 在 26.3 主帧图回调完成原版绘制后提交 Fabric GPU 粒子。 */
+@Mixin(LevelRenderer.class)
 public abstract class CParticleEngineFabricMixin {
+    /** 原版 RenderPass 均已关闭，允许受保护的 OpenGL 提交。 */
     @Inject(
-            method = "render(Lnet/minecraft/client/renderer/LightTexture;Lnet/minecraft/client/Camera;F)V",
-            at = @At(
-                    value = "INVOKE",
-                    target = "Lnet/minecraft/client/renderer/LightTexture;turnOffLightLayer()V",
-                    shift = At.Shift.BEFORE
-            )
+            method = "lambda$addMainPass$0(Lcom/mojang/renderpearl/api/buffers/GpuBufferSlice;ZLnet/minecraft/client/renderer/chunk/ChunkSectionsToRender;Lnet/minecraft/client/renderer/feature/FeatureRenderDispatcher$PreparedFrame;ZZ)V",
+            at = @At("TAIL")
     )
-    private void cooParticlesAPI$renderGpuParticles(LightTexture lightTexture,
-                                                    Camera camera,
-                                                    float partialTick,
-                                                    CallbackInfo info) {
-        CParticleSystemManager.renderFabricParticlePass(camera, partialTick);
+    private void renderGpuParticles(CallbackInfo info) {
+        CParticleSystemManager.renderSubmittedParticlePass();
     }
 }

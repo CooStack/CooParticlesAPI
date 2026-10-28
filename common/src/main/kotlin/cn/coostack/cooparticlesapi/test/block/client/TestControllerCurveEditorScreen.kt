@@ -7,14 +7,17 @@ import cn.coostack.cooparticlesapi.test.block.BlockTestCurveType
 import cn.coostack.cooparticlesapi.test.block.BlockTestPlaybackMode
 import cn.coostack.cooparticlesapi.network.packet.testblock.PacketOpenTestControllerScreenS2C
 import cn.coostack.cooparticlesapi.network.packet.testblock.PacketUpdateTestControllerC2S
-import net.minecraft.Util
-import net.minecraft.client.gui.GuiGraphics
+import com.mojang.blaze3d.platform.InputConstants
+import cn.coostack.cooparticlesapi.gui.FilteredEditBox
+import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.minecraft.client.gui.components.Button
 import net.minecraft.client.gui.components.EditBox
+import net.minecraft.client.input.CharacterEvent
+import net.minecraft.client.input.KeyEvent
+import net.minecraft.client.input.MouseButtonEvent
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
 import net.minecraft.world.phys.Vec3
-import org.lwjgl.glfw.GLFW
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -74,7 +77,7 @@ class TestControllerCurveEditorScreen internal constructor(
         draggingHandle = 0
         durationWasFocused = false
         val left = contentLeft()
-        durationBox = EditBox(font, left + 64, 32, 56, 20, Component.empty()).also {
+        durationBox = FilteredEditBox(font, left + 64, 32, 56, 20, Component.empty()).also {
             it.value = track.durationTicks.toString()
             it.setFilter { value -> value.isEmpty() || value.all { character -> character in '0'..'9' } }
         }
@@ -134,31 +137,30 @@ class TestControllerCurveEditorScreen internal constructor(
      * 示例：输入 `100` 后按 Enter，只会以完整文本修改一次轨道。
      * 禁止在数字仍处于逐字符输入阶段时提前归一化关键帧。
      *
-     * @param keyCode GLFW 键码
-     * @param scanCode 平台扫描码
-     * @param modifiers 修饰键掩码
+     * @param event 当前键盘事件
      * @return 当前界面是否消费按键
      */
-    override fun keyPressed(keyCode: Int, scanCode: Int, modifiers: Int): Boolean {
-        if (Screen.hasControlDown()) {
-            if (keyCode == GLFW.GLFW_KEY_Z && Screen.hasShiftDown()) {
+    override fun keyPressed(event: KeyEvent): Boolean {
+        val keyCode = event.key()
+        if (event.hasControlDown()) {
+            if (keyCode == InputConstants.KEY_Z && event.hasShiftDown()) {
                 commitHistory()
                 restoreHistory(history.redo())
                 return true
             }
-            if (keyCode == GLFW.GLFW_KEY_Z) {
+            if (keyCode == InputConstants.KEY_Z) {
                 commitHistory()
                 restoreHistory(history.undo())
                 return true
             }
-            if (keyCode == GLFW.GLFW_KEY_Y) {
+            if (keyCode == InputConstants.KEY_Y) {
                 commitHistory()
                 restoreHistory(history.redo())
                 return true
             }
         }
         if (durationBox.isFocused &&
-            (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER)
+            (keyCode == InputConstants.KEY_RETURN || keyCode == InputConstants.KEY_NUMPADENTER)
         ) {
             syncDuration()
             commitHistory()
@@ -166,11 +168,11 @@ class TestControllerCurveEditorScreen internal constructor(
             durationWasFocused = false
             return true
         }
-        return super.keyPressed(keyCode, scanCode, modifiers)
+        return super.keyPressed(event)
     }
 
-    override fun charTyped(codePoint: Char, modifiers: Int): Boolean {
-        val handled = super.charTyped(codePoint, modifiers)
+    override fun charTyped(event: CharacterEvent): Boolean {
+        val handled = super.charTyped(event)
         if (handled) commitHistory()
         return handled
     }
@@ -181,9 +183,12 @@ class TestControllerCurveEditorScreen internal constructor(
      * 示例：Alt+左键锁定帧不会删除，Ctrl+左键会以当前曲线值创建新帧。
      * 禁止在曲线图区域用 Ctrl 添加关键帧。
      */
-    override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
-        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) {
-            return super.mouseClicked(mouseX, mouseY, button)
+    override fun mouseClicked(event: MouseButtonEvent, doubleClick: Boolean): Boolean {
+        val mouseX = event.x()
+        val mouseY = event.y()
+        val button = event.button()
+        if (button != InputConstants.MOUSE_BUTTON_LEFT) {
+            return super.mouseClicked(event, doubleClick)
         }
         if (!durationBox.isMouseOver(mouseX, mouseY)) {
             syncDuration()
@@ -199,7 +204,7 @@ class TestControllerCurveEditorScreen internal constructor(
         }
         val keyframe = keyframeAt(mouseX, mouseY)
         if (keyframe >= 0) {
-            if (Screen.hasAltDown()) {
+            if (event.hasAltDown()) {
                 if (!track.keyframes[keyframe].locked) {
                     track.keyframes.removeAt(keyframe)
                     selectedIndices.clear()
@@ -209,9 +214,9 @@ class TestControllerCurveEditorScreen internal constructor(
                 }
                 return true
             }
-            val now = Util.getMillis()
-            if (lastClickedKeyframe == keyframe && now - lastClickTime <= DOUBLE_CLICK_MILLIS) {
-                minecraft?.setScreen(
+            val now = System.nanoTime() / 1_000_000L
+            if (lastClickedKeyframe == keyframe && now - lastClickTime <= 250L) {
+                minecraft.setScreenAndShow(
                     TestControllerKeyframeScreen(
                         this,
                         track,
@@ -231,12 +236,12 @@ class TestControllerCurveEditorScreen internal constructor(
             draggingKeyframe = keyframe
             return true
         }
-        if (Screen.hasControlDown() && inTimeline(mouseX, mouseY)) {
+        if (event.hasControlDown() && inTimeline(mouseX, mouseY)) {
             val tick = tickAt(mouseX)
             addKeyframe(tick)
             return true
         }
-        return super.mouseClicked(mouseX, mouseY, button)
+        return super.mouseClicked(event, doubleClick)
     }
 
     /**
@@ -245,14 +250,10 @@ class TestControllerCurveEditorScreen internal constructor(
      * 示例：拖动首帧向后会延长起点静止区间。
      * 禁止拖动关键帧越过相邻帧。
      */
-    override fun mouseDragged(
-        mouseX: Double,
-        mouseY: Double,
-        button: Int,
-        dragX: Double,
-        dragY: Double,
-    ): Boolean {
-        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return false
+    override fun mouseDragged(event: MouseButtonEvent, dragX: Double, dragY: Double): Boolean {
+        val mouseX = event.x()
+        val mouseY = event.y()
+        if (event.button() != InputConstants.MOUSE_BUTTON_LEFT) return false
         if (draggingHandle != 0) {
             moveHandle(mouseX, mouseY, draggingHandle)
             return true
@@ -261,7 +262,7 @@ class TestControllerCurveEditorScreen internal constructor(
             moveKeyframe(mouseX)
             return true
         }
-        return super.mouseDragged(mouseX, mouseY, button, dragX, dragY)
+        return super.mouseDragged(event, dragX, dragY)
     }
 
     /**
@@ -270,15 +271,15 @@ class TestControllerCurveEditorScreen internal constructor(
      * 示例：释放鼠标后轨道会立即写回动态窗口草稿。
      * 禁止在这里重新排序已完成归一化的关键帧。
      */
-    override fun mouseReleased(mouseX: Double, mouseY: Double, button: Int): Boolean {
-        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && (draggingKeyframe >= 0 || draggingHandle != 0)) {
+    override fun mouseReleased(event: MouseButtonEvent): Boolean {
+        if (event.button() == InputConstants.MOUSE_BUTTON_LEFT && (draggingKeyframe >= 0 || draggingHandle != 0)) {
             draggingKeyframe = -1
             draggingHandle = 0
             writeDraft()
             commitHistory()
             return true
         }
-        return super.mouseReleased(mouseX, mouseY, button)
+        return super.mouseReleased(event)
     }
 
     /**
@@ -287,23 +288,23 @@ class TestControllerCurveEditorScreen internal constructor(
      * 示例：先由 [Screen.render] 完成一次背景模糊，再绘制保持清晰的时间线和曲线。
      * 禁止额外调用 `renderBackground`；父类已经执行该步骤，重复调用会把自绘面板一起模糊。
      */
-    override fun render(graphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
+    override fun extractRenderState(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {
         if (durationWasFocused && !durationBox.isFocused) {
             syncDuration()
         }
         durationWasFocused = durationBox.isFocused
         hoveredKeyframe = keyframeAt(mouseX.toDouble(), mouseY.toDouble())
-        super.render(graphics, mouseX, mouseY, partialTick)
+        super.extractRenderState(graphics, mouseX, mouseY, partialTick)
         if (draggingKeyframe < 0 && draggingHandle == 0) commitHistory()
         updateHistoryButtons()
         drawTimeline(graphics)
         drawCurve(graphics)
         val left = contentLeft()
-        graphics.drawString(font, title, left, 14, 0xFFFFFF, true)
-        graphics.drawString(font, "总 tick 数", left, 38, 0xE0E0E0, true)
-        graphics.drawString(font, "关键帧：Ctrl+左键添加，Alt+左键删除，双击设置", left, 62, 0xC0C0C0, true)
-        graphics.drawString(font, "时间线", left, TIMELINE_TOP - 10, 0xE0E0E0, true)
-        graphics.drawString(font, "进度", graphLeft() + 4, GRAPH_TOP + 4, 0xE0E0E0, true)
+        graphics.text(font, title, left, 14, 0xFFFFFF, true)
+        graphics.text(font, "总 tick 数", left, 38, 0xE0E0E0, true)
+        graphics.text(font, "关键帧：Ctrl+左键添加，Alt+左键删除，双击设置", left, 62, 0xC0C0C0, true)
+        graphics.text(font, "时间线", left, TIMELINE_TOP - 10, 0xE0E0E0, true)
+        graphics.text(font, "进度", graphLeft() + 4, GRAPH_TOP + 4, 0xE0E0E0, true)
     }
 
     /**
@@ -314,7 +315,7 @@ class TestControllerCurveEditorScreen internal constructor(
      *
      * @param graphics 当前 GUI 绘图上下文
      */
-    private fun drawTimeline(graphics: GuiGraphics) {
+    private fun drawTimeline(graphics: GuiGraphicsExtractor) {
         val left = timelineLeft()
         val right = timelineRight()
         val bottom = timelineBottom()
@@ -327,12 +328,13 @@ class TestControllerCurveEditorScreen internal constructor(
         for (tick in 0..track.durationTicks step tickStep()) {
             val x = timelineX(tick.toDouble())
             graphics.fill(x, TIMELINE_TOP + 8, x + 2, TIMELINE_TOP + 22, 0xFFB8B8B8.toInt())
-            graphics.drawString(font, tick.toString(), x + 2, TIMELINE_TOP + 2, 0xFFE0E0E0.toInt(), false)
+            graphics.text(font, tick.toString(), x + 2, TIMELINE_TOP + 2, 0xFFE0E0E0.toInt(), false)
         }
         track.keyframes.forEachIndexed { index, frame ->
             val x = timelineX(frame.tick.toDouble())
             val selected = index in selectedIndices
-            val hovered = index == hoveredKeyframe && Screen.hasAltDown()
+            val hovered = index == hoveredKeyframe &&
+                (InputConstants.isKeyDown(InputConstants.KEY_LALT) || InputConstants.isKeyDown(InputConstants.KEY_RALT))
             val color = when {
                 hovered -> 0xFFFF3333.toInt()
                 selected -> 0xFFFFD45C.toInt()
@@ -341,7 +343,7 @@ class TestControllerCurveEditorScreen internal constructor(
             }
             graphics.fill(x - 7, TIMELINE_TOP + 5, x + 8, TIMELINE_TOP + 26, 0xFF202020.toInt())
             graphics.fill(x - 5, TIMELINE_TOP + 7, x + 6, TIMELINE_TOP + 24, color)
-            graphics.drawString(font, "${index + 1}", x - 3, bottom + 3, color, false)
+            graphics.text(font, "${index + 1}", x - 3, bottom + 3, color, false)
         }
     }
 
@@ -353,7 +355,7 @@ class TestControllerCurveEditorScreen internal constructor(
      *
      * @param graphics 当前 GUI 绘图上下文
      */
-    private fun drawCurve(graphics: GuiGraphics) {
+    private fun drawCurve(graphics: GuiGraphicsExtractor) {
         val left = graphLeft()
         val top = GRAPH_TOP
         val right = graphRight()
@@ -374,8 +376,9 @@ class TestControllerCurveEditorScreen internal constructor(
         val second = track.keyframes[segment + 1]
         var previousX = 0.0
         var previousY = 0.0
-        for (step in 1..CURVE_SAMPLES) {
-            val raw = step.toDouble() / CURVE_SAMPLES.toDouble()
+        val curveSamples = 64
+        for (step in 1..curveSamples) {
+            val raw = step.toDouble() / curveSamples.toDouble()
             val progress = track.segmentProgress(segment, raw)
             val x = raw
             drawLine(
@@ -395,7 +398,7 @@ class TestControllerCurveEditorScreen internal constructor(
         }
     }
 
-    private fun drawHandle(graphics: GuiGraphics, x: Int, y: Int, color: Int) {
+    private fun drawHandle(graphics: GuiGraphicsExtractor, x: Int, y: Int, color: Int) {
         graphics.fill(x - 5, y - 5, x + 6, y + 6, 0xFF151515.toInt())
         graphics.fill(x - 3, y - 3, x + 4, y + 4, color)
     }
@@ -406,7 +409,7 @@ class TestControllerCurveEditorScreen internal constructor(
      * 示例：相邻采样点之间使用 4x4 方块连接。
      * 禁止改回单像素填充，否则曲线会在缩放后再次发虚。
      */
-    private fun drawLine(graphics: GuiGraphics, x1: Int, y1: Int, x2: Int, y2: Int, color: Int) {
+    private fun drawLine(graphics: GuiGraphicsExtractor, x1: Int, y1: Int, x2: Int, y2: Int, color: Int) {
         val steps = max(abs(x2 - x1), abs(y2 - y1)).coerceAtLeast(1)
         for (step in 0..steps) {
             val progress = step.toDouble() / steps.toDouble()
@@ -478,7 +481,7 @@ class TestControllerCurveEditorScreen internal constructor(
         val outgoingDistance = distance(mouseX, mouseY, graphX(first.outgoingTime), graphY(first.outgoingProgress))
         if (outgoingDistance <= HANDLE_RADIUS) return OUTGOING_HANDLE
         val incomingDistance = distance(mouseX, mouseY, graphX(second.incomingTime), graphY(second.incomingProgress))
-        return if (incomingDistance <= HANDLE_RADIUS) INCOMING_HANDLE else 0
+        return if (incomingDistance <= HANDLE_RADIUS) 2 else 0
     }
 
     /**
@@ -671,7 +674,7 @@ class TestControllerCurveEditorScreen internal constructor(
      */
     private fun timelinePlotWidth(): Int = timelineWidth() - TIMELINE_HORIZONTAL_PADDING * 2
 
-    private fun contentWidth(): Int = (width - 24).coerceAtMost(CONTENT_MAX_WIDTH).coerceAtLeast(240)
+    private fun contentWidth(): Int = (width - 24).coerceAtMost(520).coerceAtLeast(240)
 
     private fun contentLeft(): Int = (width - contentWidth()) / 2
 
@@ -720,11 +723,9 @@ class TestControllerCurveEditorScreen internal constructor(
      * 禁止在这里保存当前轨道或选中关键帧。
      */
     companion object {
-        private const val CONTENT_MAX_WIDTH = 520
         private const val TIMELINE_TOP = 88
         private const val TIMELINE_HEIGHT = 32
         private const val GRAPH_TOP = 150
-        private const val CURVE_SAMPLES = 64
         /**
          * 时间轴首尾为关键帧标记保留的水平边距。
          *
@@ -741,8 +742,6 @@ class TestControllerCurveEditorScreen internal constructor(
          */
         private const val MARKER_RADIUS = 10.0
         private const val HANDLE_RADIUS = 9.0
-        private const val DOUBLE_CLICK_MILLIS = 250L
         private const val OUTGOING_HANDLE = 1
-        private const val INCOMING_HANDLE = 2
     }
 }

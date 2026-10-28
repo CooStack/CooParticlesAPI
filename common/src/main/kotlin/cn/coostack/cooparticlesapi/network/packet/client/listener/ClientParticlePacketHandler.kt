@@ -11,6 +11,7 @@ object ClientParticlePacketHandler {
             world.addParticle(
                 packet.type,
                 true,
+                false,
                 position.x,
                 position.y,
                 position.z,
@@ -25,7 +26,7 @@ object ClientParticlePacketHandler {
         val player = context.player()
         val world = player.level()
         world.addParticle(
-            packet.type, true, packet.pos.x, packet.pos.y, packet.pos.z,
+            packet.type, true, false, packet.pos.x, packet.pos.y, packet.pos.z,
             packet.velocity.x, packet.velocity.y, packet.velocity.z,
         )
     }

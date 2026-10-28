@@ -21,17 +21,20 @@ import java.util.Map;
  */
 @Mixin(SoundEngine.class)
 public abstract class SoundEngineMixin {
+    /** 原版活动声音到实际声道的映射，沿用原版线程所有权。 */
     @Shadow
     @Final
     private Map<SoundInstance, ChannelAccess.ChannelHandle> instanceToChannel;
 
+    /** 复用原版类别音量、声音音量与 Coo ducking 的统一计算入口。 */
     @Shadow
     private float calculateVolume(SoundInstance soundInstance) {
         throw new AssertionError();
     }
 
+    /** 首次播放使用原版原始音量入口，额外应用与持续 tick 相同的 ducking。 */
     @ModifyExpressionValue(
-            method = "play",
+            method = "play(Lnet/minecraft/client/resources/sounds/SoundInstance;)Lnet/minecraft/client/sounds/SoundEngine$PlayResult;",
             at = @At(
                     value = "INVOKE",
                     target = "Lnet/minecraft/client/sounds/SoundEngine;calculateVolume(FLnet/minecraft/sounds/SoundSource;)F"
@@ -44,7 +47,8 @@ public abstract class SoundEngineMixin {
         return original * ClientSoundManager.duckVolumeMultiplier(soundInstance);
     }
 
-    @Inject(method = "calculateVolume", at = @At("RETURN"), cancellable = true)
+    /** 只修改按实例计算的重载，避免类别重载重复相乘。 */
+    @Inject(method = "calculateVolume(Lnet/minecraft/client/resources/sounds/SoundInstance;)F", at = @At("RETURN"), cancellable = true)
     private void cooparticlesapi$applyDuckingToCalculatedVolume(
             SoundInstance soundInstance,
             CallbackInfoReturnable<Float> cir
@@ -55,7 +59,7 @@ public abstract class SoundEngineMixin {
     /**
      * 在声音 tick 末尾发布活动声道数，并在需要时刷新 ducking 后的声道音量。
      */
-    @Inject(method = "tickNonPaused", at = @At("TAIL"))
+    @Inject(method = "tickInGameSound()V", at = @At("TAIL"))
     private void cooparticlesapi$refreshDuckedVolumes(CallbackInfo ci) {
         ClientSoundManager.updateVanillaSoundInstanceCount(this.instanceToChannel.size());
         if (!ClientSoundManager.shouldRefreshSoundVolumes()) {

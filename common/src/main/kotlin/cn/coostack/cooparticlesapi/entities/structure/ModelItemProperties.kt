@@ -11,7 +11,9 @@ import net.minecraft.nbt.NbtOps
 import net.minecraft.nbt.TagParser
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.core.HolderLookup
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
+import net.minecraft.world.item.component.Consumable
+import net.minecraft.world.item.component.Consumables
 
 /**
  * 模型物品的组件设置；旧绑定保留组件继承，新模拟栈保留真实物品类型及其行为。
@@ -38,7 +40,7 @@ data class ModelItemProperties(
 ) {
     /** 轻量校验不访问注册表，供设置和网络边界使用。 */
     fun valid(): Boolean = listOf(eventId, boundItem).all {
-        it.length <= 256 && (it.isEmpty() || ResourceLocation.tryParse(it) != null)
+        it.length <= 256 && (it.isEmpty() || Identifier.tryParse(it) != null)
     } && nutrition in 0..1000 && saturation.isFinite() && saturation in 0F..1000F &&
         eatSeconds.isFinite() && eatSeconds in 0.05F..120F &&
         components.length <= 8192 && attachment.length <= 8192 && simulatedStack.length <= 65536
@@ -46,17 +48,18 @@ data class ModelItemProperties(
     /** 解码复制槽的独立单件物品；禁止将模型再次嵌入模型，避免递归载荷。 */
     fun simulation(registries: HolderLookup.Provider): ItemStack {
         if (simulatedStack.isEmpty()) return ItemStack.EMPTY
-        val tag = TagParser.parseTag(simulatedStack)
+        val tag = TagParser.parseCompoundFully(simulatedStack)
         require(tag.sizeInBytes() <= 65536L) { "模拟物品数据超过 64 KiB" }
-        val stack = ItemStack.parse(registries, tag).orElseThrow { IllegalArgumentException("模拟物品无效") }
+        val stack = ItemStack.CODEC.parse(registries.createSerializationContext(NbtOps.INSTANCE), tag)
+            .getOrThrow { IllegalArgumentException("模拟物品无效：$it") }
         require(!stack.isEmpty && stack.count == 1 && !stack.`is`(StructureModels.HELD_MODEL)) { "请选择一个非模型物品" }
         require(stack.get(DataComponents.CUSTOM_DATA)?.copyTag()?.contains("ModelData") != true) { "不能模拟另一个模型" }
-        ItemStack.validateComponents(stack.components).getOrThrow { IllegalArgumentException(it) }
+        ItemStack.validateStrict(stack).getOrThrow { IllegalArgumentException(it) }
         return stack
     }
 
     /** 附加数据每次返回独立副本，监听器修改不会污染模型设置。 */
-    fun attachmentData(): CompoundTag = TagParser.parseTag(attachment)
+    fun attachmentData(): CompoundTag = TagParser.parseCompoundFully(attachment)
 
     /** 构建并校验组件；名称、结构载荷和单件堆叠由模型自身管理，食用能力由开关控制。 */
     fun createStack(registries: HolderLookup.Provider, edible: Boolean): ItemStack {
@@ -64,17 +67,20 @@ data class ModelItemProperties(
         val simulated = simulation(registries)
         val stack = if (simulated.isEmpty) ItemStack(StructureModels.HELD_MODEL) else simulated
         if (simulated.isEmpty && boundItem.isNotEmpty()) {
-            val id = ResourceLocation.parse(boundItem)
+            val id = Identifier.parse(boundItem)
             require(BuiltInRegistries.ITEM.containsKey(id)) { "找不到绑定物品：$boundItem" }
-            val item = BuiltInRegistries.ITEM.get(id)
+            val item = BuiltInRegistries.ITEM.getValue(id)
             require(item !== Items.AIR && item !== StructureModels.HELD_MODEL) { "不能绑定空气或模型物品本身" }
             stack.applyComponents(item.components())
         }
         val changes = DataComponentPatch.CODEC.parse(registries.createSerializationContext(NbtOps.INSTANCE),
-            TagParser.parseTag(components)).getOrThrow { IllegalArgumentException("组件无效：$it") }
+            TagParser.parseCompoundFully(components)).getOrThrow { IllegalArgumentException("组件无效：$it") }
         val reserved = setOf(DataComponents.CUSTOM_NAME, DataComponents.ITEM_NAME,
             DataComponents.MAX_STACK_SIZE, DataComponents.CUSTOM_MODEL_DATA)
-        require(changes.entrySet().none { it.key in reserved }) { "名称、堆叠数量和外观由模型管理" }
+        val split = changes.split()
+        require(split.added().keySet().none { it in reserved } && split.removed().none { it in reserved }) {
+            "名称、堆叠数量和外观由模型管理"
+        }
         stack.applyComponents(changes)
         stack.set(DataComponents.MAX_STACK_SIZE, 1)
         stack.remove(DataComponents.CUSTOM_MODEL_DATA)
@@ -93,12 +99,22 @@ data class ModelItemProperties(
                 if (manual) nutrition else inherited.nutrition(),
                 if (manual) saturation else inherited.saturation(),
                 true,
-                if (manual) eatSeconds else inherited.eatSeconds(),
-                inherited.usingConvertsTo(), inherited.effects()
             ))
-        } else if (simulated.isEmpty) stack.remove(DataComponents.FOOD)
-        ItemStack.validateComponents(stack.components).getOrThrow { IllegalArgumentException(it) }
-        require(stack.save(registries).sizeInBytes() <= 65536L) { "物品组件数据超过 64 KiB" }
+            val consumable = stack.get(DataComponents.CONSUMABLE) ?: Consumables.DEFAULT_FOOD
+            stack.set(DataComponents.CONSUMABLE, if (manual) Consumable(
+                eatSeconds, consumable.animation(), consumable.sound(),
+                consumable.hasConsumeParticles(), consumable.onConsumeEffects(),
+            ) else consumable)
+        } else if (simulated.isEmpty) {
+            stack.remove(DataComponents.FOOD)
+            stack.remove(DataComponents.CONSUMABLE)
+        }
+        ItemStack.validateStrict(stack).getOrThrow { IllegalArgumentException(it) }
+        val encodedStack = ItemStack.CODEC.encodeStart(
+            registries.createSerializationContext(NbtOps.INSTANCE),
+            stack,
+        ).getOrThrow { IllegalArgumentException("物品组件数据无法编码：$it") }
+        require(encodedStack.sizeInBytes() <= 65536L) { "物品组件数据超过 64 KiB" }
         return stack
     }
 
@@ -118,12 +134,15 @@ data class ModelItemProperties(
     companion object {
         /** 旧数据缺少物品属性时保持零营养、默认进食时长及无绑定。 */
         fun fromNbt(tag: CompoundTag): ModelItemProperties = ModelItemProperties(
-            tag.getString("EventId"), tag.getString("BoundItem"), tag.getBoolean("OverrideFood"),
-            tag.getInt("Nutrition"), tag.getFloat("Saturation"),
-            if (tag.contains("EatSeconds")) tag.getFloat("EatSeconds") else 1.6F,
-            if (tag.contains("Components")) tag.getString("Components") else "{}",
-            if (tag.contains("Attachment")) tag.getString("Attachment") else "{}",
-            tag.getString("SimulatedStack")
+            tag.getStringOr("EventId", ""),
+            tag.getStringOr("BoundItem", ""),
+            tag.getBooleanOr("OverrideFood", false),
+            tag.getIntOr("Nutrition", 0),
+            tag.getFloatOr("Saturation", 0F),
+            tag.getFloatOr("EatSeconds", 1.6F),
+            tag.getStringOr("Components", "{}"),
+            tag.getStringOr("Attachment", "{}"),
+            tag.getStringOr("SimulatedStack", ""),
         )
     }
 }

@@ -6,18 +6,18 @@ import cn.coostack.cooparticlesapi.test.api.TestOptionParamSpec
 import cn.coostack.cooparticlesapi.test.block.BlockTestGroup
 import cn.coostack.cooparticlesapi.test.block.ProceduralTerrainMappingTerrain
 import cn.coostack.cooparticlesapi.test.block.builtin.BlockAPITestGroupBuilder
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.entity.player.Player
 
 /**
  * 注册并运行测试组。
  *
- * 注册 ID 使用完整的 [ResourceLocation]，不同 MOD 可以安全地复用相同 path。
+ * 注册 ID 使用完整的 [Identifier]，不同 MOD 可以安全地复用相同 path。
  */
 object TestManager {
 
     /** 按资源 ID 保存测试组构建器，迭代顺序与注册顺序一致。 */
-    val builders = linkedMapOf<ResourceLocation, (Player) -> TestGroupBuilder>()
+    val builders = linkedMapOf<Identifier, (Player) -> TestGroupBuilder>()
 
     val validGroupsServer = HashSet<TestGroup>()
     val validGroupsClient = HashSet<TestGroup>()
@@ -29,7 +29,7 @@ object TestManager {
      * @param id 包含 MOD 命名空间和 path 的测试组 ID
      * @param group 根据玩家创建测试组构建器的工厂
      */
-    fun register(id: ResourceLocation, group: (Player) -> TestGroupBuilder) {
+    fun register(id: Identifier, group: (Player) -> TestGroupBuilder) {
         builders[id] = group
     }
 
@@ -49,7 +49,7 @@ object TestManager {
     }
 
     /** @return 按注册顺序排列的全部测试组资源 ID */
-    fun registeredIds(): List<ResourceLocation> {
+    fun registeredIds(): List<Identifier> {
         return builders.keys.toList()
     }
 
@@ -57,7 +57,7 @@ object TestManager {
      * @param user 用于验证构建结果的玩家
      * @return 可为该玩家构建的方块测试组资源 ID
      */
-    fun registeredBlockIds(user: Player): List<ResourceLocation> {
+    fun registeredBlockIds(user: Player): List<Identifier> {
         return builders.keys.filter { id -> buildBlock(id, user) != null }
     }
 
@@ -65,7 +65,7 @@ object TestManager {
      * @param id 待检查的测试组资源 ID
      * @return 指定资源 ID 是否已经注册
      */
-    fun contains(id: ResourceLocation): Boolean {
+    fun contains(id: Identifier): Boolean {
         return builders.containsKey(id)
     }
 
@@ -74,7 +74,7 @@ object TestManager {
      * @param user 用于构建的玩家
      * @return 该 ID 是否能构建方块测试组
      */
-    fun containsBlock(id: ResourceLocation, user: Player): Boolean {
+    fun containsBlock(id: Identifier, user: Player): Boolean {
         return buildBlock(id, user) != null
     }
 
@@ -83,7 +83,7 @@ object TestManager {
      * @param user 测试组使用的玩家
      * @return 已构建的测试组；ID 未注册时返回 `null`
      */
-    fun build(id: ResourceLocation, user: Player): TestGroup? {
+    fun build(id: Identifier, user: Player): TestGroup? {
         return builders[id]?.invoke(user)?.build()
     }
 
@@ -92,7 +92,7 @@ object TestManager {
      * @param user 测试组使用的玩家
      * @return 已构建的方块测试组；目标不是方块测试组时返回 `null`
      */
-    fun buildBlock(id: ResourceLocation, user: Player): BlockTestGroup? {
+    fun buildBlock(id: Identifier, user: Player): BlockTestGroup? {
         return build(id, user) as? BlockTestGroup
     }
 
@@ -101,7 +101,7 @@ object TestManager {
      * @param user 测试组使用的玩家
      * @return 测试项数量，无法构建时返回 `0`
      */
-    fun optionCount(id: ResourceLocation, user: Player): Int {
+    fun optionCount(id: Identifier, user: Player): Int {
         return buildBlock(id, user)?.optionCount() ?: 0
     }
 
@@ -110,7 +110,7 @@ object TestManager {
      * @param user 测试组使用的玩家
      * @return 测试项 ID，无法构建时返回空列表
      */
-    fun optionIds(id: ResourceLocation, user: Player): List<String> {
+    fun optionIds(id: Identifier, user: Player): List<String> {
         return buildBlock(id, user)?.optionIds() ?: emptyList()
     }
 
@@ -119,7 +119,7 @@ object TestManager {
      * @param user 测试组使用的玩家
      * @return 参数定义，无法构建时返回空列表
      */
-    fun optionParamSpecs(id: ResourceLocation, user: Player): List<List<TestOptionParamSpec<*>>> {
+    fun optionParamSpecs(id: Identifier, user: Player): List<List<TestOptionParamSpec<*>>> {
         return buildBlock(id, user)?.optionParamSpecs() ?: emptyList()
     }
 
@@ -143,7 +143,7 @@ object TestManager {
      * @param user 运行测试的玩家
      * @return 已启动的测试组；ID 未注册或构建失败时返回 `null`
      */
-    fun startTest(id: ResourceLocation, user: Player): TestGroup? {
+    fun startTest(id: Identifier, user: Player): TestGroup? {
         if (!builders.containsKey(id)) {
             return null
         }

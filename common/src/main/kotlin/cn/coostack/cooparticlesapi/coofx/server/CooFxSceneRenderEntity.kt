@@ -6,7 +6,7 @@ import cn.coostack.cooparticlesapi.annotations.CooAutoRegister
 import cn.coostack.cooparticlesapi.coofx.adapter.CooFxWorldTransform
 import cn.coostack.cooparticlesapi.renderer.AutoRenderEntity
 import cn.coostack.cooparticlesapi.renderer.server.ServerRenderEntityManager
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.phys.Vec3
 import java.util.UUID
@@ -19,7 +19,7 @@ import java.util.UUID
  */
 @CooAutoRegister
 class CooFxSceneRenderEntity() : AutoRenderEntity(null, Vec3.ZERO) {
-    /** 资源 ID 的字符串编码，避免依赖自动 codec 对 ResourceLocation 的隐式支持。 */
+    /** 资源 ID 的字符串编码，避免依赖自动 codec 对 Identifier 的隐式支持。 */
     @CodecField
     var resourceIdText: String = ""
         private set
@@ -136,7 +136,7 @@ class CooFxSceneRenderEntity() : AutoRenderEntity(null, Vec3.ZERO) {
     }
 
     /** @return 该实体在 RenderEntity registry 中的稳定类型 ID。 */
-    override fun getRenderID(): ResourceLocation = ID
+    override fun getRenderID(): Identifier = ID
 
     /** 服务端 TTL 到期后移除场景；客户端 tick 不推进服务端生命周期。 */
     override fun serverTick() {
@@ -214,7 +214,7 @@ class CooFxSceneRenderEntity() : AutoRenderEntity(null, Vec3.ZERO) {
     }
 
     /** @return 当前实体可转换为客户端请求的资源 ID；非法状态直接拒绝同步。 */
-    fun resourceId(): ResourceLocation = requireNotNull(ResourceLocation.tryParse(resourceIdText)) {
+    fun resourceId(): Identifier = requireNotNull(Identifier.tryParse(resourceIdText)) {
         "CooFX scene resource ID 非法：$resourceIdText"
     }
 
@@ -280,7 +280,7 @@ class CooFxSceneRenderEntity() : AutoRenderEntity(null, Vec3.ZERO) {
 
     companion object {
         /** RenderEntity registry 使用的稳定类型 ID。 */
-        val ID: ResourceLocation = ResourceLocation.fromNamespaceAndPath(
+        val ID: Identifier = Identifier.fromNamespaceAndPath(
             CooParticlesConstants.MOD_ID,
             "coofx_scene",
         )

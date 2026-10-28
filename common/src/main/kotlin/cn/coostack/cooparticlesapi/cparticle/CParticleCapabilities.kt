@@ -1,6 +1,7 @@
 package cn.coostack.cooparticlesapi.cparticle
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
+import cn.coostack.cooparticlesapi.renderer.backend.OpenGlRenderTargetBridge
 import com.mojang.blaze3d.systems.RenderSystem
 import org.lwjgl.opengl.ARBInstancedArrays
 import org.lwjgl.opengl.GL
@@ -11,9 +12,8 @@ import org.lwjgl.opengl.GL33
 /**
  * GL 能力探测 (渲染线程惰性执行一次).
  *
- * - GL 3.1 draw instancing + vertex attrib divisor: cparticle 渲染的硬性要求
- *   (MC 1.21 的 GL 3.2 上下文通常通过 ARB_instanced_arrays 提供 divisor)
- * - GL 4.3，或 ARB compute + SSBO 扩展：GPU 模拟的硬性要求；不满足时直接报错
+ * - 26.3 OpenGL 后端保证 GL 3.3；实例化与属性 divisor 是渲染的硬性要求
+ * - 当前 compute 源码声明 GLSL 4.30，因此 GPU 模拟要求 GL 4.3；较低版本使用同一 SoA 的 CPU 模拟
  * - capability 只负责确认 GL 调用入口可用，shader 是否兼容由真实编译和链接结果决定
  */
 object CParticleCapabilities {
@@ -42,7 +42,8 @@ object CParticleCapabilities {
     @JvmStatic
     fun detect() {
         if (detected) return
-        if (!RenderSystem.isOnRenderThreadOrInit()) return
+        if (!RenderSystem.isOnRenderThread()) return
+        OpenGlRenderTargetBridge.requireOpenGlBackend()
 
         val caps = runCatching { GL.getCapabilities() }.getOrNull()
         if (caps == null) {
@@ -78,6 +79,11 @@ object CParticleCapabilities {
             supportsArbCompute,
             supportsArbSsbo,
         )
+        if (!computeSupported) {
+            CooParticlesConstants.logger.info(
+                "[cparticle] GLSL 4.30 compute unavailable; using CPU SoA simulation with instanced rendering and prepared respawns"
+            )
+        }
     }
 
     internal fun supportsInstancing(hasGl31: Boolean, hasGl33: Boolean, hasArbInstancedArrays: Boolean): Boolean {
@@ -87,10 +93,11 @@ object CParticleCapabilities {
     /**
      * 判断当前上下文是否提供 compute shader 与 SSBO 所需的完整入口。
      *
-     * ARB 路径只在两个扩展同时存在时成立。shader 源码是否能编译由 program 初始化阶段继续校验。
+     * 当前程序使用 GLSL 4.30，只有 ARB 扩展而没有对应 GLSL 版本时也不能编译。
+     * 保留扩展参数以便诊断与旧调用方重编译，入口可用性仍由真实编译链接确认。
      */
     internal fun supportsCompute(hasGl43: Boolean, hasArbCompute: Boolean, hasArbSsbo: Boolean): Boolean {
-        return hasGl43 || (hasArbCompute && hasArbSsbo)
+        return hasGl43
     }
 
     /**
@@ -118,17 +125,16 @@ object CParticleCapabilities {
     /**
      * 返回当前是否要求 GPU 模拟。
      *
-     * 该结果只受显式 CPU 开关控制。能力探测结果仅用于诊断；真实 GPU 初始化或执行失败
-     * 会直接抛错，不能把请求静默改成 CPU 模拟。
+     * 无 compute 能力时自动选择 CPU SoA，保留实例化渲染和出生预展开生命。
+     * 已选择 GPU 后的真实编译或执行错误仍直接抛出，不隐藏资源错误。
      */
     @JvmStatic
-    fun useGpuSimulation(): Boolean = !forceCpuSimulation
+    fun useGpuSimulation(): Boolean = !forceCpuSimulation && computeSupported
 
     /**
      * 返回当前调用方是否要求尝试 GPU。
      *
-     * 能力字段只用于诊断，不能在 shader 初始化之前把 GPU 请求静默改成 CPU；
-     * 最终是否可执行必须由真实 program 编译、链接和 dispatch 结果决定。
+     * 与实际模拟路由一致；GL 3.3 下不得提前注册或编译 GLSL 4.30 程序。
      */
-    internal fun gpuSimulationRequested(): Boolean = !forceCpuSimulation
+    internal fun gpuSimulationRequested(): Boolean = useGpuSimulation()
 }

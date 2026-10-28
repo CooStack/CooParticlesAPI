@@ -5,10 +5,10 @@ import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlShader
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlShaderType
 import cn.coostack.cooparticlesapi.renderer.shader.utils.GlslUtil
 import net.minecraft.client.Minecraft
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import org.lwjgl.opengl.GL33.*
 
-class IdentifierShader(val id: ResourceLocation, override val type: GlShaderType) : GlShader {
+class IdentifierShader(val id: Identifier, override val type: GlShaderType) : GlShader {
     private var shaderID = 0
     /**
      * 执行 `IdentifierShader` 定义的 `shaderID` 操作；输入和返回值用于该组件当前的渲染职责。
@@ -60,7 +60,7 @@ class IdentifierShader(val id: ResourceLocation, override val type: GlShaderType
      *
      * @return 当前操作计算、更新或查询得到的结果
      */
-    override fun sourceLocation(): ResourceLocation = id
+    override fun sourceLocation(): Identifier = id
 
     private fun readFromJar(): String = readWithCooImports()
 
@@ -78,7 +78,7 @@ class IdentifierShader(val id: ResourceLocation, override val type: GlShaderType
         val resources = runCatching { Minecraft.getInstance().resourceManager }.getOrNull()
         if (resources != null) {
             // 资源管理器用的是真实资源路径，必须带上 shaders/ 前缀。
-            val located = ResourceLocation.fromNamespaceAndPath(id.namespace, "shaders/${id.path}")
+            val located = Identifier.fromNamespaceAndPath(id.namespace, "shaders/${id.path}")
             if (resources.getResource(located).isPresent) {
                 return CooShaderSourceLoader.load(resources, located)
             }

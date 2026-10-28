@@ -2,7 +2,7 @@ package cn.coostack.cooparticlesapi.renderer.post
 
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooUniformValue
 import net.minecraft.network.FriendlyByteBuf
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /**
  * post effect 参数值的网络可序列化封装。
@@ -14,7 +14,7 @@ import net.minecraft.resources.ResourceLocation
  * - `IntValue` / `LongValue` 也可表示已有 GL texture id
  * - `Vec3Value` 常用于方块绑定偏移或 `vec3` uniform
  *
- * 类型名统一带 `Value` 后缀，是为了避免和 Minecraft 的 `Vec3`、`ResourceLocation`、
+ * 类型名统一带 `Value` 后缀，是为了避免和 Minecraft 的 `Vec3`、`Identifier`、
  * JOML 的 vector 类型以及 Java/Kotlin 常见类型重名。
  *
  * 网络 type id 仍保持 `"vec3"`、`"color"` 这类短字符串，改类名不会改变协议格式。
@@ -155,7 +155,7 @@ internal sealed interface PostEffectParamValue {
      *
      * @property value 要加载或同步的资源位置
      */
-    data class ResourceValue(val value: ResourceLocation) : PostEffectParamValue {
+    data class ResourceValue(val value: Identifier) : PostEffectParamValue {
         /**
          * 按 `ResourceValue` 约定的字段顺序写入 `write` 数据；读取端必须使用相同协议。
          *
@@ -164,7 +164,7 @@ internal sealed interface PostEffectParamValue {
          * @param buf 承载本次读写数据的缓冲区，调用前必须位于约定字段起点
          */
         override fun write(buf: FriendlyByteBuf) {
-            buf.writeResourceLocation(value)
+            buf.writeIdentifier(value)
         }
     }
 
@@ -221,7 +221,7 @@ internal sealed interface PostEffectParamValue {
      * @property blue 蓝色分量
      * @property alpha 透明度分量，默认完全不透明
      */
-    data class ColorValue(val red: Float, val green: Float, val blue: Float, val alpha: Float = 1f) : PostEffectParamValue {
+    data class ColorValue(val red: Float, val green: Float, val blue: Float, val alpha: Float = 1F) : PostEffectParamValue {
         /**
          * 按 `ColorValue` 约定的字段顺序写入 `write` 数据；读取端必须使用相同协议。
          *
@@ -273,7 +273,7 @@ internal sealed interface PostEffectParamValue {
                 "float" -> FloatValue(buf.readFloat())
                 "double" -> DoubleValue(buf.readDouble())
                 "string" -> StringValue(buf.readUtf())
-                "resource" -> ResourceValue(buf.readResourceLocation())
+                "resource" -> ResourceValue(buf.readIdentifier())
                 "vec2" -> Vec2Value(buf.readFloat(), buf.readFloat())
                 "vec3" -> Vec3Value(buf.readDouble(), buf.readDouble(), buf.readDouble())
                 "color" -> ColorValue(buf.readFloat(), buf.readFloat(), buf.readFloat(), buf.readFloat())
@@ -415,7 +415,7 @@ internal class PostEffectParamsBuilder {
     /** 写入字符串参数；当前 OpenGL uniform 上传会忽略它，通常用于自定义 executor 或业务标记。 */
     fun string(name: String, value: String) = apply { values[name] = PostEffectParamValue.StringValue(value) }
     /** 写入资源位置，供 Pipeline 自定义纹理端口读取。 */
-    fun resource(name: String, value: ResourceLocation) = apply { values[name] = PostEffectParamValue.ResourceValue(value) }
+    fun resource(name: String, value: Identifier) = apply { values[name] = PostEffectParamValue.ResourceValue(value) }
     /** 写入二维向量，通常对应 GLSL `uniform vec2`。 */
     fun vec2(name: String, x: Float, y: Float) = apply { values[name] = PostEffectParamValue.Vec2Value(x, y) }
     /** 写入三维向量，通常对应 GLSL `uniform vec3` 或方块绑定偏移。 */

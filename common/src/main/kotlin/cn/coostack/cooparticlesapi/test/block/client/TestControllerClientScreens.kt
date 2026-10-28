@@ -22,7 +22,7 @@ object TestControllerClientScreens {
     fun openController(packet: PacketOpenTestControllerScreenS2C) {
         val client = Minecraft.getInstance()
         if (!shouldOpenTestControllerScreen(client.player?.gameProfile?.properties?.keySet())) return
-        client.setScreen(TestControllerScreen(packet, TestControllerPickClient.consumeOpenParamPage()))
+        client.setScreenAndShow(TestControllerScreen(packet, TestControllerPickClient.consumeOpenParamPage()))
     }
 
     /**
@@ -36,6 +36,6 @@ object TestControllerClientScreens {
     fun openBoundSelection(packet: PacketOpenBoundTestSelectionScreenS2C) {
         val client = Minecraft.getInstance()
         if (!shouldOpenTestControllerScreen(client.player?.gameProfile?.properties?.keySet())) return
-        client.setScreen(BoundTestControllerSelectionScreen(packet))
+        client.setScreenAndShow(BoundTestControllerSelectionScreen(packet))
     }
 }

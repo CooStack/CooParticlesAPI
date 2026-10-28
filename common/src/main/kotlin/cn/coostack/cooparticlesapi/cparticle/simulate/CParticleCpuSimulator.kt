@@ -46,19 +46,13 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
- * 显式 CPU 模拟器，仅在调用方设置 CPU 路由时使用。
+ * 共享 SoA 的 CPU 模拟器，供能力不足的自动路由和显式 CPU 模式使用。
  *
- * 与 GPU kernel (`cparticle_sim.comp`) 执行**完全相同的打包力场数据与数学**,
- * 并行分块跑在 ForkJoinPool.commonPool 上; 10 万粒子单 tick 约 1~3ms.
- * 结果直接写入 [CParticleStore.data] (交错布局), 之后整段 glBufferSubData 上传.
+ * 复用 GPU kernel (`cparticle_sim.comp`) 的打包力场数据与数学约定，
+ * 在 ForkJoinPool.commonPool 上按独立槽位并行分块。
+ * 结果直接写入 [CParticleStore.data]，随后由实例缓冲上传；实际耗时依赖硬件与命令。
  */
 object CParticleCpuSimulator {
-
-    private const val PARALLEL_THRESHOLD = 8192
-    private const val CHUNK = 16384
-
-    /** 路径提前结束收集器的初始容量；只有真正提前结束的粒子才会被记录。 */
-    private const val TERMINATION_INITIAL_CAPACITY = 64
 
     /**
      * 推进一个 tick.
@@ -191,7 +185,7 @@ object CParticleCpuSimulator {
         // 路径数据从 CPU 侧同版本图层求值，不从 GPU 回读路径纹理或粒子位置。
         val pathLayer = CParticlePathLibrary.currentLayerData()
         val terminations = ArrayList<PathTerminationCollector>()
-        if (store.aliveCount < PARALLEL_THRESHOLD) {
+        if (store.aliveCount < 8192) {
             val collector = PathTerminationCollector()
             terminations.add(collector)
             simulateRange(
@@ -205,7 +199,7 @@ object CParticleCpuSimulator {
             var start = first
             while (start < high) {
                 val s = start
-                val e = minOf(start + CHUNK, high)
+                val e = minOf(start + 16384, high)
                 val collector = PathTerminationCollector()
                 terminations.add(collector)
                 tasks.add(ForkJoinPool.commonPool().submit {
@@ -224,7 +218,17 @@ object CParticleCpuSimulator {
         for (collector in terminations) {
             for (index in 0 until collector.count) {
                 val slot = collector.slots[index]
-                if (store.isAlive(slot)) store.kill(slot, reason = RemoveReason.LIFECYCLE)
+                if (store.isAlive(slot)) {
+                    val base = slot * STRIDE
+                    if (store.data[base + CParticleStore.OFF_FLAGS].toInt() and
+                        CParticleInstanceFlags.RESPAWN_OWNED != 0
+                    ) {
+                        // compute 在路径终止的这一轮仍会推进年龄，随后统一捕获死亡快照。
+                        store.ages[slot]++
+                        store.data[base + OFF_AGE] = store.ages[slot].toFloat()
+                    }
+                    store.kill(slot, reason = RemoveReason.LIFECYCLE)
+                }
             }
         }
         store.markAllAliveDirty()
@@ -237,7 +241,7 @@ object CParticleCpuSimulator {
      * 因此不需要为百万粒子预留数组。
      */
     private class PathTerminationCollector {
-        var slots = IntArray(TERMINATION_INITIAL_CAPACITY)
+        var slots = IntArray(64)
         var count = 0
 
         fun add(slot: Int) {
@@ -277,6 +281,7 @@ object CParticleCpuSimulator {
             if ((bits[slot ushr 6] and (1L shl (slot and 63))) == 0L) continue
             val base = slot * STRIDE
             val flags = data[base + CParticleStore.OFF_FLAGS].toInt()
+            if (flags and CParticleStore.FLAG_ALIVE == 0) continue
             if (flags and CParticleStore.FLAG_NEWBORN != 0) {
                 data[base + CParticleStore.OFF_FLAGS] =
                     (flags and CParticleStore.FLAG_NEWBORN.inv()).toFloat()

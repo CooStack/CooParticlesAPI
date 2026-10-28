@@ -22,7 +22,7 @@ public class EntityMixinNeoForge {
         if (level == null) {
             return;
         }
-        if (level.isClientSide) {
+        if (level.isClientSide()) {
             CooEventBus.call(new ClientEntityLoadEvent(entity));
         } else {
             CooEventBus.call(new ServerEntityLoadEvent(entity));
@@ -42,7 +42,7 @@ public class EntityMixinNeoForge {
             case UNLOADED_WITH_PLAYER -> EntityUnloadType.QUIT;
             case CHANGED_DIMENSION -> EntityUnloadType.WORLD_CHANGE;
         };
-        if (entity.level().isClientSide) {
+        if (entity.level().isClientSide()) {
             CooEventBus.call(new ClientEntityUnloadEvent(entity, unloadType));
         } else {
             CooEventBus.call(new ServerEntityUnloadEvent(entity, unloadType));

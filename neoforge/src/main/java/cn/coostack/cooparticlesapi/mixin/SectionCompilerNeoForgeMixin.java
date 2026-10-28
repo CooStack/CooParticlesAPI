@@ -1,188 +1,87 @@
 package cn.coostack.cooparticlesapi.mixin;
 
-import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainPipelineManager;
+import cn.coostack.cooparticlesapi.renderer.terrain.VanillaTerrainOverlay;
+import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
-import com.llamalad7.mixinextras.sugar.Local;
-import com.mojang.blaze3d.vertex.BufferBuilder;
-import com.mojang.blaze3d.vertex.MeshData;
-import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.blaze3d.vertex.VertexSorting;
-import net.minecraft.client.renderer.ItemBlockRenderTypes;
-import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.SectionBufferBuilderPack;
-import net.minecraft.client.renderer.block.BlockRenderDispatcher;
-import net.minecraft.client.renderer.chunk.RenderChunkRegion;
+import net.minecraft.client.renderer.block.BlockAndTintGetter;
+import net.minecraft.client.renderer.block.BlockQuadOutput;
+import net.minecraft.client.renderer.block.FluidRenderer;
+import net.minecraft.client.renderer.block.ModelBlockRenderer;
+import net.minecraft.client.renderer.block.dispatch.BlockStateModel;
+import net.minecraft.client.renderer.chunk.RenderSectionRegion;
 import net.minecraft.client.renderer.chunk.SectionCompiler;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
-import net.minecraft.util.RandomSource;
-import net.minecraft.world.level.BlockAndTintGetter;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.material.FluidState;
-import net.neoforged.neoforge.client.model.data.ModelData;
+import net.neoforged.neoforge.client.event.AddSectionGeometryEvent;
+import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
-
+import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import java.util.List;
-import java.util.Map;
 
-/** NeoForge's SectionCompiler overload carries ModelData and RenderType. */
+/** 对接 NeoForge 26.3 的五参数区段编译入口，保留自定义流体与额外几何回调。 */
 @Mixin(SectionCompiler.class)
 public abstract class SectionCompilerNeoForgeMixin {
-    private static final String COMPILE_METHOD =
-            "compile(Lnet/minecraft/core/SectionPos;" +
-                    "Lnet/minecraft/client/renderer/chunk/RenderChunkRegion;" +
-                    "Lcom/mojang/blaze3d/vertex/VertexSorting;" +
-                    "Lnet/minecraft/client/renderer/SectionBufferBuilderPack;" +
-                    "Ljava/util/List;)" +
-                    "Lnet/minecraft/client/renderer/chunk/SectionCompiler$Results;";
+    /** 原版叶片不透明设置，与 NeoForge 模型输出选择一致。 */
+    @Shadow @Final private boolean cutoutLeaves;
 
-    @WrapOperation(
-            method = COMPILE_METHOD,
-            at = @At(
-                    value = "INVOKE",
-                    target = "Lnet/minecraft/client/renderer/block/BlockRenderDispatcher;renderLiquid(" +
-                            "Lnet/minecraft/core/BlockPos;" +
-                            "Lnet/minecraft/world/level/BlockAndTintGetter;" +
-                            "Lcom/mojang/blaze3d/vertex/VertexConsumer;" +
-                            "Lnet/minecraft/world/level/block/state/BlockState;" +
-                            "Lnet/minecraft/world/level/material/FluidState;)V"
-            )
-    )
-    private void cooParticlesAPI$writeTerrainFluidOverlayBatch(
-            BlockRenderDispatcher dispatcher,
-            BlockPos pos,
-            BlockAndTintGetter level,
-            VertexConsumer consumer,
-            BlockState state,
-            FluidState fluidState,
-            Operation<Void> original,
-            @Local Map<RenderType, BufferBuilder> renderedLayers,
-            @Local(argsOnly = true) SectionBufferBuilderPack sectionBufferBuilderPack
-    ) {
-        RenderType baseLayer = ItemBlockRenderTypes.getRenderLayer(fluidState);
-        List<RenderType> overlayLayers = CooTerrainPipelineManager.resolveOverlayRenderTypes(state, baseLayer, pos);
-        if (overlayLayers.isEmpty() || CooTerrainPipelineManager.shouldPreserveVanillaTerrainGeometry(overlayLayers)) {
-            original.call(dispatcher, pos, level, consumer, state, fluidState);
-        }
-        for (RenderType overlayLayer : overlayLayers) {
-            BufferBuilder overlayBuffer = renderedLayers.computeIfAbsent(
-                    overlayLayer,
-                    key -> new BufferBuilder(
-                            sectionBufferBuilderPack.buffer(key),
-                            key.mode(),
-                            CooTerrainPipelineManager.vertexFormat(key, key.format())
-                    )
-            );
-            VertexConsumer overlayConsumer = CooTerrainPipelineManager.decorateVertexConsumer(
-                    overlayLayer,
-                    pos,
-                    overlayBuffer
-            );
-            original.call(dispatcher, pos, level, overlayConsumer, state, fluidState);
+    /** 仅包装实际五参数重载，以 finally 回收异常退出的数据，避免桥接入口重复开始。 */
+    @WrapMethod(method = "compile(Lnet/minecraft/core/SectionPos;Lnet/minecraft/client/renderer/chunk/RenderSectionRegion;" +
+            "Lcom/mojang/blaze3d/vertex/VertexSorting;Lnet/minecraft/client/renderer/SectionBufferBuilderPack;Ljava/util/List;)" +
+            "Lnet/minecraft/client/renderer/chunk/SectionCompiler$Results;")
+    private SectionCompiler.Results compileOverlayBuild(SectionPos section, RenderSectionRegion region, VertexSorting sorting,
+                                                       SectionBufferBuilderPack buffers,
+                                                       List<AddSectionGeometryEvent.AdditionalSectionRenderer> renderers,
+                                                       Operation<SectionCompiler.Results> original) {
+        VanillaTerrainOverlay.beginBuild(buffers);
+        try {
+            SectionCompiler.Results result = original.call(section, region, sorting, buffers, renderers);
+            VanillaTerrainOverlay.finishBuild(result);
+            return result;
+        } finally {
+            VanillaTerrainOverlay.cancelBuild(buffers);
         }
     }
 
-    @WrapOperation(
-            method = COMPILE_METHOD,
-            at = @At(
-                    value = "INVOKE",
-                    target = "Lnet/minecraft/client/renderer/block/BlockRenderDispatcher;renderBatched(" +
-                            "Lnet/minecraft/world/level/block/state/BlockState;" +
-                            "Lnet/minecraft/core/BlockPos;" +
-                            "Lnet/minecraft/world/level/BlockAndTintGetter;" +
-                            "Lcom/mojang/blaze3d/vertex/PoseStack;" +
-                            "Lcom/mojang/blaze3d/vertex/VertexConsumer;" +
-                            "Z" +
-                            "Lnet/minecraft/util/RandomSource;" +
-                            "Lnet/neoforged/neoforge/client/model/data/ModelData;" +
-                            "Lnet/minecraft/client/renderer/RenderType;)V"
-            )
-    )
-    private void cooParticlesAPI$writeTerrainOverlayBatch(
-            BlockRenderDispatcher dispatcher,
-            BlockState state,
-            BlockPos pos,
-            BlockAndTintGetter level,
-            PoseStack poseStack,
-            VertexConsumer consumer,
-            boolean checkSides,
-            RandomSource random,
-            ModelData modelData,
-            RenderType renderType,
-            Operation<Void> original,
-            @Local Map<RenderType, BufferBuilder> renderedLayers,
-            @Local(argsOnly = true) SectionBufferBuilderPack sectionBufferBuilderPack
-    ) {
-        RenderType baseLayer = ItemBlockRenderTypes.getChunkRenderType(state);
-        List<RenderType> overlayLayers = CooTerrainPipelineManager.resolveOverlayRenderTypes(state, baseLayer, pos);
-        if (overlayLayers.isEmpty() || CooTerrainPipelineManager.shouldPreserveVanillaTerrainGeometry(overlayLayers)) {
-            poseStack.pushPose();
-            try {
-                original.call(
-                        dispatcher, state, pos, level, poseStack, consumer, checkSides, random, modelData, renderType
-                );
-            } finally {
-                poseStack.popPose();
-            }
-        }
-        for (RenderType overlayLayer : overlayLayers) {
-            BufferBuilder overlayBuffer = renderedLayers.computeIfAbsent(
-                    overlayLayer,
-                    key -> new BufferBuilder(
-                            sectionBufferBuilderPack.buffer(key),
-                            key.mode(),
-                            CooTerrainPipelineManager.vertexFormat(key, key.format())
-                    )
-            );
-            VertexConsumer overlayConsumer = CooTerrainPipelineManager.decorateVertexConsumer(
-                    overlayLayer,
-                    pos,
-                    overlayBuffer
-            );
-            random.setSeed(state.getSeed(pos));
-            poseStack.pushPose();
-            try {
-                original.call(
-                        dispatcher,
-                        state,
-                        pos,
-                        level,
-                        poseStack,
-                        overlayConsumer,
-                        checkSides,
-                        random,
-                        modelData,
-                        overlayLayer
-                );
-            } finally {
-                poseStack.popPose();
-            }
-        }
+    /** 只在实际取块的重载中更新流体上下文，额外几何仍由 NeoForge 原回调负责。 */
+    @WrapOperation(method = "compile(Lnet/minecraft/core/SectionPos;Lnet/minecraft/client/renderer/chunk/RenderSectionRegion;" +
+            "Lcom/mojang/blaze3d/vertex/VertexSorting;Lnet/minecraft/client/renderer/SectionBufferBuilderPack;Ljava/util/List;)" +
+            "Lnet/minecraft/client/renderer/chunk/SectionCompiler$Results;", at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/client/renderer/chunk/RenderSectionRegion;getBlockState(Lnet/minecraft/core/BlockPos;)Lnet/minecraft/world/level/block/state/BlockState;"))
+    private BlockState selectOverlayBlock(RenderSectionRegion region, BlockPos position, Operation<BlockState> original) {
+        BlockState state = original.call(region, position);
+        VanillaTerrainOverlay.currentBlock(position, state);
+        return state;
     }
 
-    @WrapOperation(
-            method = COMPILE_METHOD,
-            at = @At(
-                    value = "INVOKE",
-                    target = "Ljava/util/Map;put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;"
-            )
-    )
-    private Object cooParticlesAPI$sortTranslucentTerrainPipeline(
-            Map<RenderType, MeshData> renderedLayers,
-            Object renderTypeObject,
-            Object meshDataObject,
-            Operation<Object> original,
-            @Local(argsOnly = true) VertexSorting vertexSorting,
-            @Local(argsOnly = true) SectionBufferBuilderPack sectionBufferBuilderPack
-    ) {
-        RenderType renderType = (RenderType) renderTypeObject;
-        MeshData meshData = (MeshData) meshDataObject;
-        if (CooTerrainPipelineManager.requiresTerrainSorting(renderType)) {
-            meshData.sortQuads(sectionBufferBuilderPack.buffer(renderType), vertexSorting);
-        }
-        return original.call(renderedLayers, renderType, meshData);
+    /** NeoForge 自定义流体 renderFluid 与原版 tesselate 共用此输出，不能只包装默认分支。 */
+    @ModifyVariable(method = "compile(Lnet/minecraft/core/SectionPos;Lnet/minecraft/client/renderer/chunk/RenderSectionRegion;" +
+            "Lcom/mojang/blaze3d/vertex/VertexSorting;Lnet/minecraft/client/renderer/SectionBufferBuilderPack;Ljava/util/List;)" +
+            "Lnet/minecraft/client/renderer/chunk/SectionCompiler$Results;", at = @At("STORE"), ordinal = 0)
+    private FluidRenderer.Output decorateFluidOutput(FluidRenderer.Output output) {
+        return VanillaTerrainOverlay.fluidOutput(output);
     }
+
+    /** 使用 NeoForge 已选定模型的 quad 输出，不复刻 ModelData 或额外模型解析。 */
+    @WrapOperation(method = "compile(Lnet/minecraft/core/SectionPos;Lnet/minecraft/client/renderer/chunk/RenderSectionRegion;" +
+            "Lcom/mojang/blaze3d/vertex/VertexSorting;Lnet/minecraft/client/renderer/SectionBufferBuilderPack;Ljava/util/List;)" +
+            "Lnet/minecraft/client/renderer/chunk/SectionCompiler$Results;", at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/client/renderer/block/ModelBlockRenderer;tesselateBlock(" +
+                    "Lnet/minecraft/client/renderer/block/BlockQuadOutput;FFF" +
+                    "Lnet/minecraft/client/renderer/block/BlockAndTintGetter;Lnet/minecraft/core/BlockPos;" +
+                    "Lnet/minecraft/world/level/block/state/BlockState;" +
+                    "Lnet/minecraft/client/renderer/block/dispatch/BlockStateModel;J)V"))
+    private void decorateBlockOutput(ModelBlockRenderer renderer, BlockQuadOutput output, float x, float y, float z,
+                                     BlockAndTintGetter region, BlockPos position, BlockState state,
+                                     BlockStateModel model, long seed, Operation<Void> original) {
+        original.call(renderer, VanillaTerrainOverlay.quadOutput(
+                output, state, position, ModelBlockRenderer.forceOpaque(cutoutLeaves, state)
+        ), x, y, z, region, position, state, model, seed);
+    }
+
 }

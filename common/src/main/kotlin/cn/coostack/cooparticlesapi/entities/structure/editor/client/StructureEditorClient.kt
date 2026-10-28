@@ -9,19 +9,18 @@ import cn.coostack.cooparticlesapi.event.events.client.ClientPostTickEvent
 import cn.coostack.cooparticlesapi.event.events.client.ClientInteractionInputEvent
 import cn.coostack.cooparticlesapi.event.events.client.ClientBlockOutlineEvent
 import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldRenderEvent
+import cn.coostack.cooparticlesapi.utils.MinecraftRendererUtil
 import cn.coostack.cooparticlesapi.key.CooKeyBindingManager
 import cn.coostack.cooparticlesapi.key.CooKeyBindingTriggerScope
 import cn.coostack.cooparticlesapi.key.isPhysicallyDown
 import cn.coostack.cooparticlesapi.network.packet.api.CooClientPacketManager
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import cn.coostack.cooparticlesapi.entities.structure.editor.StructureEditor
 import cn.coostack.cooparticlesapi.entities.structure.editor.StructureSelection
 import cn.coostack.cooparticlesapi.entities.structure.editor.StructureSelectionPayload
 import net.minecraft.world.level.block.Blocks
 import net.minecraft.client.Minecraft
 import net.minecraft.client.KeyMapping
-import net.minecraft.client.renderer.RenderType
-import net.minecraft.client.renderer.LevelRenderer
 import com.mojang.blaze3d.platform.InputConstants
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.nbt.CompoundTag
@@ -31,7 +30,6 @@ import net.minecraft.world.phys.HitResult
 import net.minecraft.core.BlockPos
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
-import org.lwjgl.glfw.GLFW
 
 /** 客户端选点输入与世界线框入口；逻辑角点完全由服务器回执驱动，常驻框不依赖是否继续手持工具。 */
 @EventListener(dist = DistType.CLIENT)
@@ -68,8 +66,8 @@ object StructureEditorClient {
     fun registerKeys() {
         if (::openKey.isInitialized) return
         openKey = CooKeyBindingManager.register(
-            ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "structure_editor"),
-            InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_G, "key.categories.cooparticlesapi", CooKeyBindingTriggerScope.BOTH)
+            Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "structure_editor"),
+            InputConstants.Type.KEYBOARD, InputConstants.KEY_G, "key.categories.cooparticlesapi", CooKeyBindingTriggerScope.BOTH)
     }
     /** 仅对应当前连接世界的服务端状态。 */
     private var state = CompoundTag()
@@ -104,16 +102,16 @@ object StructureEditorClient {
             val client = Minecraft.getInstance()
             if (world !== client.level) reset(client.level)
             val data = packet.data
-            when (data.getString("Action")) {
+            when (data.getStringOr("Action", "")) {
                 "state", "open" -> {
-                    if (data.getString("Dimension") != client.level?.dimension()?.location().toString()) return
+                    if (data.getStringOr("Dimension", "") != client.level?.dimension()?.identifier().toString()) return
                     state = data.copy()
-                    if (data.getString("Action") == "open" && client.screen == null &&
+                    if (data.getStringOr("Action", "") == "open" && client.gui.screen() == null &&
                         client.player?.let(StructureEditor::isHolding) == true && selection() != null) {
-                        client.setScreen(StructureSaveScreen(data.copy()))
+                        client.setScreenAndShow(StructureSaveScreen(data.copy()))
                     }
                 }
-                "result" -> (client.screen as? StructureSaveScreen)?.result(data)
+                "result" -> (client.gui.screen() as? StructureSaveScreen)?.result(data)
             }
     }
 
@@ -127,7 +125,7 @@ object StructureEditorClient {
             openHeld = down
             while (openKey.consumeClick()) { /* 丢弃单值映射队列，支持同键的场景化绑定。 */ }
             if (!client.options.keyUse.isPhysicallyDown(client)) rightHeld = false
-            if (client.screen == null && client.isWindowActive &&
+            if (client.gui.screen() == null && client.isWindowActive &&
                 client.player?.let { it.isAlive && !it.isSpectator && StructureEditor.isHolding(it) } == true &&
                 pressed && selection() != null) send("open")
             refreshInvisible(client)
@@ -144,18 +142,20 @@ object StructureEditorClient {
         val client = Minecraft.getInstance()
         val player = client.player ?: return false
         if (!StructureEditor.isHolding(player)) return false
-        if (!player.isAlive || player.isSpectator || client.screen != null || !client.isWindowActive) return true
+        if (!player.isAlive || player.isSpectator || client.gui.screen() != null || !client.isWindowActive) return true
         if (!first && rightHeld) return true
         if (!first) rightHeld = true
         send(if (first) "first" else if (player.isShiftKeyDown) "clear" else "second")
-        player.swing(if (player.mainHandItem.`is`(StructureEditor.ITEM)) InteractionHand.MAIN_HAND else InteractionHand.OFF_HAND)
+        val hand = if (player.mainHandItem.`is`(StructureEditor.ITEM)) InteractionHand.MAIN_HAND else InteractionHand.OFF_HAND
+        val stack = player.getItemInHand(hand)
+        player.swing(hand, if (first) stack.attackAnimation else stack.interactAnimation, false)
         return true
     }
 
     /** 读取当前服务器确认的两点，缺少任意一点时不允许打开窗口。 */
     private fun selection(): StructureSelection? =
         if (state.contains("First") && state.contains("Second")) StructureSelection(
-            BlockPos.of(state.getLong("First")), BlockPos.of(state.getLong("Second"))
+            BlockPos.of(state.getLongOr("First", 0L)), BlockPos.of(state.getLongOr("Second", 0L))
         ) else null
 
     /** 只发送动作，不上传客户端射线坐标，防止远距离伪造选区。 */
@@ -174,7 +174,7 @@ object StructureEditorClient {
     /** 清空跨世界状态，不影响已经保存的结构模板。 */
     private fun reset(nextWorld: ClientLevel?) {
         val client = Minecraft.getInstance()
-        if (client.screen is StructureSaveScreen) client.setScreen(null)
+        if (client.gui.screen() is StructureSaveScreen) client.gui.setScreen(null)
         world = nextWorld
         state = CompoundTag()
         rightHeld = false
@@ -186,26 +186,27 @@ object StructureEditorClient {
 
     /** 从窗口临时输入或服务器草稿取得准确范围；非法输入不传入渲染数学。 */
     private fun visibleSelection(client: Minecraft): StructureSelection? {
-        val screen = client.screen as? StructureSaveScreen
+        val screen = client.gui.screen() as? StructureSaveScreen
         if (screen != null) return screen.previewSelection()
         val selected = selection() ?: return null
-        val draft = state.getCompound("Draft")
+        val draft = state.getCompoundOrEmpty("Draft")
         if (!draft.contains("SizeX")) return selected
         return runCatching { selected.adjusted(
-            BlockPos(draft.getInt("OffsetX"), draft.getInt("OffsetY"), draft.getInt("OffsetZ")),
-            BlockPos(draft.getInt("SizeX"), draft.getInt("SizeY"), draft.getInt("SizeZ"))
+            BlockPos(draft.getIntOr("OffsetX", 0), draft.getIntOr("OffsetY", 0), draft.getIntOr("OffsetZ", 0)),
+            BlockPos(draft.getIntOr("SizeX", 0), draft.getIntOr("SizeY", 0), draft.getIntOr("SizeZ", 0))
         ) }.getOrNull()
     }
 
     /** 读取当前窗口或持久草稿中的可见性选项。 */
     private fun showBox(client: Minecraft): Boolean =
-        (client.screen as? StructureSaveScreen)?.showBox
-            ?: state.getCompound("Draft").let { !it.contains("ShowBox") || it.getBoolean("ShowBox") }
+        (client.gui.screen() as? StructureSaveScreen)?.showBox
+            ?: state.getCompoundOrEmpty("Draft").getBooleanOr("ShowBox", true)
 
     /** 按需缓存不可见标记；单次最多 4096 个，防止大型空气选区制造几十万条线。 */
     private fun refreshInvisible(client: Minecraft) {
         val level = client.level ?: return
-        val enabled = (client.screen as? StructureSaveScreen)?.showAir ?: state.getCompound("Draft").getBoolean("ShowAir")
+        val enabled = (client.gui.screen() as? StructureSaveScreen)?.showAir
+            ?: state.getCompoundOrEmpty("Draft").getBooleanOr("ShowAir", false)
         val selected = if (enabled && showBox(client)) visibleSelection(client)?.takeIf { it.valid() } else null
         if (selected == null) { invisible = emptyMap(); invisibleSelection = null; return }
         if (selected == invisibleSelection && ++invisibleTicks < 10) return
@@ -223,48 +224,56 @@ object StructureEditorClient {
         invisible = markers
     }
 
-    /** 使用原版批次的相机相对坐标绘制；插值只影响显示，窗口和保存始终读取整数角点。 */
+    /** 使用当前帧提交队列绘制动画线框；窗口和保存仍读取整数角点。 */
     @EventHandler
     fun render(context: ClientWorldRenderEvent) {
-        if (context.stage != ClientWorldRenderEvent.RenderStage.AFTER_ENTITY) return
         val client = Minecraft.getInstance()
         if (world !== client.level) reset(client.level)
         val player = client.player ?: return
         val matrices = context.poseStack
-        val vertices = context.buffer.getBuffer(RenderType.lines())
         val now = System.nanoTime()
         val seconds = if (lastFrame == 0L) 0.0 else ((now - lastFrame) / 1.0e9).coerceIn(0.0, 0.1)
         lastFrame = now
-        val camera = context.camera.position
-        val held = StructureEditor.isHolding(player) && client.screen == null
+        val camera = context.camera.pos
+        val held = StructureEditor.isHolding(player) && client.gui.screen() == null
         val target = if (held) {
-            val tickDelta = context.delta.getGameTimeDeltaPartialTick(false)
+            val tickDelta = context.delta
             val hit = player.pick(StructureEditor.SELECTION_REACH, tickDelta, false)
             if (hit.type == HitResult.Type.BLOCK) (hit as BlockHitResult).blockPos
             else BlockPos.containing(player.getEyePosition(tickDelta).add(
                 player.getViewVector(tickDelta).scale(StructureEditor.SELECTION_REACH)))
         } else null
-        val first = if (state.contains("First")) BlockPos.of(state.getLong("First")) else null
-        val second = if (state.contains("Second")) BlockPos.of(state.getLong("Second")) else null
+        val first = if (state.contains("First")) BlockPos.of(state.getLongOr("First", 0L)) else null
+        val second = if (state.contains("Second")) BlockPos.of(state.getLongOr("Second", 0L)) else null
         val visible = showBox(client)
         val bounds = if (visible) visibleSelection(client)?.box
             ?: if (first != null && target != null) StructureSelection(first, target).box else null else null
-        matrices.pushPose()
-        matrices.translate(-camera.x, -camera.y, -camera.z)
-        rangeAnimation.advance(bounds, seconds)?.let { LevelRenderer.renderLineBox(matrices, vertices, it.inflate(0.004), 0.2F, 0.95F, 0.8F, 1F) }
+        rangeAnimation.advance(bounds, seconds)?.let {
+            MinecraftRendererUtil.submitLineBox(
+                context.collector, matrices, it.inflate(0.004), camera, 0.2F, 0.95F, 0.8F, 1F
+            )
+        }
         firstAnimation.advance(first?.takeIf { visible }?.let(::AABB), seconds)?.let {
-            LevelRenderer.renderLineBox(matrices, vertices, it.inflate(0.007), 0.25F, 0.65F, 1F, 1F)
+            MinecraftRendererUtil.submitLineBox(
+                context.collector, matrices, it.inflate(0.007), camera, 0.25F, 0.65F, 1F, 1F
+            )
         }
         secondAnimation.advance(second?.takeIf { visible }?.let(::AABB), seconds)?.let {
-            LevelRenderer.renderLineBox(matrices, vertices, it.inflate(0.009), 1F, 0.65F, 0.2F, 1F)
+            MinecraftRendererUtil.submitLineBox(
+                context.collector, matrices, it.inflate(0.009), camera, 1F, 0.65F, 0.2F, 1F
+            )
         }
         hoverAnimation.advance(target?.let(::AABB), seconds)?.let {
-            LevelRenderer.renderLineBox(matrices, vertices, it.inflate(0.002), 1F, 1F, 1F, 0.7F)
+            MinecraftRendererUtil.submitLineBox(
+                context.collector, matrices, it.inflate(0.002), camera, 1F, 1F, 1F, 0.7F
+            )
         }
         if (visible) for ((pos, special) in invisible) {
             val box = AABB(Vec3.atCenterOf(pos).subtract(0.08, 0.08, 0.08), Vec3.atCenterOf(pos).add(0.08, 0.08, 0.08))
-            LevelRenderer.renderLineBox(matrices, vertices, box, 1F, if (special) 0.2F else 0.75F, if (special) 0.2F else 0.9F, 0.6F)
+            MinecraftRendererUtil.submitLineBox(
+                context.collector, matrices, box, camera,
+                1F, if (special) 0.2F else 0.75F, if (special) 0.2F else 0.9F, 0.6F,
+            )
         }
-        matrices.popPose()
     }
 }

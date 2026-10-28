@@ -7,7 +7,7 @@ import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlShaderType
 import cn.coostack.cooparticlesapi.renderer.shader.CooShaderSourceLoader
 import cn.coostack.cooparticlesapi.renderer.shader.AdvancedShaderProgramBuilder
 import cn.coostack.cooparticlesapi.renderer.shader.ShaderProgramRegistry
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.server.packs.resources.ResourceProvider
 import org.lwjgl.opengl.GL33.GL_COMPILE_STATUS
 import org.lwjgl.opengl.GL33.GL_FALSE
@@ -26,7 +26,7 @@ internal data class CooFxShaderSourceBundle(
 internal class CooFxSourceShader(
     private val source: String,
     override val type: GlShaderType,
-    private val location: ResourceLocation,
+    private val location: Identifier,
 ) : GlShader {
     private var id = 0
 
@@ -58,19 +58,19 @@ internal class CooFxSourceShader(
         }
     }
 
-    override fun sourceLocation(): ResourceLocation = location
+    override fun sourceLocation(): Identifier = location
 }
 
 internal object CooFxShaderProgramFactory {
-    private val vertexLocation = ResourceLocation.fromNamespaceAndPath(
+    private val vertexLocation = Identifier.fromNamespaceAndPath(
         CooParticlesConstants.MOD_ID,
         "shaders/coofx/mesh_particle.vsh",
     )
-    private val fragmentLocation = ResourceLocation.fromNamespaceAndPath(
+    private val fragmentLocation = Identifier.fromNamespaceAndPath(
         CooParticlesConstants.MOD_ID,
         "shaders/coofx/mesh_particle.fsh",
     )
-    private val programId = ResourceLocation.fromNamespaceAndPath(
+    private val programId = Identifier.fromNamespaceAndPath(
         CooParticlesConstants.MOD_ID,
         "coofx/mesh_particle",
     )

@@ -62,22 +62,23 @@ import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
 import net.fabricmc.api.ClientModInitializer
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
-import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientWorldEvents
-import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLevelEvents
+import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
-import net.fabricmc.fabric.api.client.particle.v1.ParticleFactoryRegistry
+import net.fabricmc.fabric.api.client.particle.v1.ParticleProviderRegistry
 import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry
-import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents
+import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents
+import net.minecraft.client.Minecraft
 import net.minecraft.core.particles.ParticleType
 
 
 object CooParticlesAPIFabricClient : ClientModInitializer {
     override fun onInitializeClient() {
-        CooKeyBindingManager.setRegistrar { KeyBindingHelper.registerKeyBinding(it) }
+        CooKeyBindingManager.setRegistrar { KeyMappingHelper.registerKeyMapping(it) }
         StructureEditorClient.registerKeys()
         PerformanceStatusKeyBindings.mappings().forEach { mapping ->
-            KeyBindingHelper.registerKeyBinding(mapping)
+            KeyMappingHelper.registerKeyMapping(mapping)
         }
         CooShaderReloadListenerFabric.register()
         registerParticleFabric()
@@ -91,12 +92,12 @@ object CooParticlesAPIFabricClient : ClientModInitializer {
         ClientPlayConnectionEvents.DISCONNECT.register { _, _ ->
             CooParticlesAPIClient.onDisconnect()
         }
-        ClientTickEvents.START_WORLD_TICK.register {
+        ClientTickEvents.START_LEVEL_TICK.register {
             CooParticlesAPIClient.tickClient(it)
             val event = ClientWorldPreTickEvent(it)
             CooEventBus.call(event)
         }
-        ClientTickEvents.END_WORLD_TICK.register {
+        ClientTickEvents.END_LEVEL_TICK.register {
             val event = ClientWorldPostTickEvent(it)
             CooEventBus.call(event)
         }
@@ -110,32 +111,16 @@ object CooParticlesAPIFabricClient : ClientModInitializer {
         /**
          * 兼容 sodium
          */
-        WorldRenderEvents.AFTER_ENTITIES.register {
+        LevelRenderEvents.AFTER_SOLID_FEATURES.register { context ->
+            val cameraState = context.levelState().cameraRenderState
             CooEventBus.call(
                 ClientWorldRenderEvent(
-                    it.world(), ClientWorldRenderEvent.RenderStage.AFTER_ENTITY,
-                    it.positionMatrix(),
-                    it.projectionMatrix(),
-                    it.matrixStack() ?: return@register,
-                    it.consumers() ?: return@register,
-                    it.worldRenderer(),
-                    it.camera(),
-                    it.tickCounter()
-                )
-            )
-        }
-
-        WorldRenderEvents.AFTER_TRANSLUCENT.register {
-            CooEventBus.call(
-                ClientWorldRenderEvent(
-                    it.world(), ClientWorldRenderEvent.RenderStage.AFTER_TRANSLUCENT,
-                    it.positionMatrix(),
-                    it.projectionMatrix(),
-                    it.matrixStack() ?: return@register,
-                    it.consumers() ?: return@register,
-                    it.worldRenderer(),
-                    it.camera(),
-                    it.tickCounter()
+                    Minecraft.getInstance().level ?: return@register,
+                    context.poseStack(),
+                    context.submitNodeCollector(),
+                    context.levelRenderer(),
+                    cameraState,
+                    context.levelState().worldPartialTicks
                 )
             )
         }
@@ -147,7 +132,7 @@ object CooParticlesAPIFabricClient : ClientModInitializer {
             PerformanceStatusClientController.onClientTick(it)
         }
 
-        ClientWorldEvents.AFTER_CLIENT_WORLD_CHANGE.register { _, world ->
+        ClientLevelEvents.AFTER_CLIENT_LEVEL_CHANGE.register { _, world ->
             CooParticlesAPIClient.afterClientWorldChange()
             CooEventBus.call(ClientWorldChangeEvent(world))
         }
@@ -170,34 +155,20 @@ object CooParticlesAPIFabricClient : ClientModInitializer {
     }
 
     private fun registerParticleFabric() {
-        ParticleFactoryRegistry.getInstance()
-            .register(CooModParticles.controlableEndRod.get(), ParticleFactoryRegistry.PendingParticleFactory {
-                return@PendingParticleFactory ControlableEndRodParticle.Factory(it)
-            })
-        ParticleFactoryRegistry.getInstance()
-            .register(CooModParticles.controlableEnchantment.get(), ParticleFactoryRegistry.PendingParticleFactory {
-                return@PendingParticleFactory ControlableEnchantmentParticle.Factory(it)
-            })
-        ParticleFactoryRegistry.getInstance()
-            .register(CooModParticles.controlableCloud.get(), ParticleFactoryRegistry.PendingParticleFactory {
-                return@PendingParticleFactory ControlableCloudParticle.Factory(it)
-            })
-        ParticleFactoryRegistry.getInstance()
-            .register(CooModParticles.controlableFlash.get(), ParticleFactoryRegistry.PendingParticleFactory {
-                return@PendingParticleFactory ControlableFlashParticle.Factory(it)
-            })
-        ParticleFactoryRegistry.getInstance()
-            .register(CooModParticles.controlableFirework.get(), ParticleFactoryRegistry.PendingParticleFactory {
-                return@PendingParticleFactory ControlableFireworkParticle.Factory(it)
-            })
-        ParticleFactoryRegistry.getInstance()
-            .register(CooModParticles.controlableFallingDust.get(), ParticleFactoryRegistry.PendingParticleFactory {
-                return@PendingParticleFactory ControlableFallingDustParticle.Factory()
-            })
-        ParticleFactoryRegistry.getInstance()
-            .register(CooModParticles.controlableSplash.get(), ParticleFactoryRegistry.PendingParticleFactory {
-                return@PendingParticleFactory ControlableSplashParticle.Factory(it)
-            })
+        ParticleProviderRegistry.getInstance()
+            .register(CooModParticles.controlableEndRod.get()) { sprites -> ControlableEndRodParticle.Factory(sprites) }
+        ParticleProviderRegistry.getInstance()
+            .register(CooModParticles.controlableEnchantment.get()) { sprites -> ControlableEnchantmentParticle.Factory(sprites) }
+        ParticleProviderRegistry.getInstance()
+            .register(CooModParticles.controlableCloud.get()) { sprites -> ControlableCloudParticle.Factory(sprites) }
+        ParticleProviderRegistry.getInstance()
+            .register(CooModParticles.controlableFlash.get()) { sprites -> ControlableFlashParticle.Factory(sprites) }
+        ParticleProviderRegistry.getInstance()
+            .register(CooModParticles.controlableFirework.get()) { sprites -> ControlableFireworkParticle.Factory(sprites) }
+        ParticleProviderRegistry.getInstance()
+            .register(CooModParticles.controlableFallingDust.get()) { _ -> ControlableFallingDustParticle.Factory() }
+        ParticleProviderRegistry.getInstance()
+            .register(CooModParticles.controlableSplash.get()) { sprites -> ControlableSplashParticle.Factory(sprites) }
         registerSimpleParticle(CooModParticles.controlableAngryVillager)
         registerSimpleParticle(CooModParticles.controlableBubble)
         registerSimpleParticle(CooModParticles.controlableBubbleColumnUp)
@@ -286,10 +257,8 @@ object CooParticlesAPIFabricClient : ClientModInitializer {
     }
 
     private fun <T : ControlableParticleEffect> registerSimpleParticle(type: CommonDeferredRegistry<ParticleType<T>>) {
-        ParticleFactoryRegistry.getInstance()
-            .register(type.get(), ParticleFactoryRegistry.PendingParticleFactory {
-                return@PendingParticleFactory SimpleControlableSpriteParticle.Factory<T>(it)
-            })
+        ParticleProviderRegistry.getInstance()
+            .register(type.get()) { sprites -> SimpleControlableSpriteParticle.Factory<T>(sprites) }
     }
 
     private fun registerNetworkFabric() {

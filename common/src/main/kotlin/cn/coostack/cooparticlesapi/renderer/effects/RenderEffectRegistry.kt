@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi.renderer.effects
 
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /**
  * effectType 到 executor 的注册表。
@@ -8,13 +8,13 @@ import net.minecraft.resources.ResourceLocation
  */
 internal object RenderEffectRegistry {
     /** 键为效果类型，值为对应执行器；所有访问都必须持有当前对象的锁。 */
-    private val executors = LinkedHashMap<ResourceLocation, RenderEffectExecutor>()
+    private val executors = LinkedHashMap<Identifier, RenderEffectExecutor>()
 
     /**
      * 为某个 effect type 注册执行器。
      */
     @Synchronized
-    fun register(effectType: ResourceLocation, executor: RenderEffectExecutor) {
+    fun register(effectType: Identifier, executor: RenderEffectExecutor) {
         executors[effectType] = executor
     }
 
@@ -22,7 +22,7 @@ internal object RenderEffectRegistry {
      * 读取某个 effect type 的执行器。
      */
     @Synchronized
-    fun get(effectType: ResourceLocation): RenderEffectExecutor? {
+    fun get(effectType: Identifier): RenderEffectExecutor? {
         return executors[effectType]
     }
 

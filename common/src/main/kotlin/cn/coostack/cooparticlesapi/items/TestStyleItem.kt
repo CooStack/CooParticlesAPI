@@ -5,14 +5,14 @@ import cn.coostack.cooparticlesapi.test.options.particle.style.PointStyle
 import cn.coostack.cooparticlesapi.test.options.particle.style.RomaMagicTestStyle
 import cn.coostack.cooparticlesapi.test.options.particle.style.TestShapeUtilStyle
 import net.minecraft.world.InteractionHand
-import net.minecraft.world.InteractionResultHolder
+import net.minecraft.world.InteractionResult
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.Item
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.level.Level
 
 class TestStyleItem : Item(Item.Properties().stacksTo(1).durability(120)) {
-    override fun use(world: Level, user: Player, hand: InteractionHand): InteractionResultHolder<ItemStack> {
+    override fun use(world: Level, user: Player, hand: InteractionHand): InteractionResult {
         val res = super.use(world, user, hand)
         if (world.isClientSide) {
             return res

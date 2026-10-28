@@ -1,5 +1,8 @@
 package cn.coostack.cooparticlesapi.gpudata
 
+import cn.coostack.cooparticlesapi.renderer.backend.OpenGlRenderTargetBridge
+import com.mojang.blaze3d.systems.RenderSystem
+import org.lwjgl.opengl.GL
 import org.lwjgl.opengl.GL15
 import org.lwjgl.opengl.GL43
 import org.lwjgl.system.MemoryUtil
@@ -10,8 +13,8 @@ import java.nio.FloatBuffer
  *
  * 使用**着色器存储缓冲（SSBO）**承载图层数据，理由如下：
  *
- * 1. 项目 GPU 模拟基线是 `#version 430 core` compute（`cparticle_sim.comp` 使用 `std430` SSBO 与
- *    `glDispatchCompute`），OpenGL 4.3 已保证 SSBO 可用，不需要额外能力探测。
+ * 1. 此可选 GPU 路径使用 SSBO，不能把 Minecraft 的 OpenGL 3.3 基线当作支持保证；
+ *    每个实际读写入口确认当前上下文存在核心或扩展入口，CPU 图层无需创建本对象。
  * 2. 图层元素是 float 数值数据，SSBO 不经过采样器、不参与颜色空间转换、不受 mipmap 与过滤影响，
  *    也不占用纹理单元；相比之下 buffer texture 会消耗 sampler 且需要 `texelFetch` 换算下标。
  * 3. 同一缓冲以 `GL_SHADER_STORAGE_BUFFER` 暴露给 compute 与普通 shader 程序，RenderEntity 的
@@ -32,7 +35,8 @@ class CooGpuDataGlBuffer {
     var glCapacity: Int = 0
         private set
 
-    private var scratch = MemoryUtil.memAllocFloat(INITIAL_SCRATCH_FLOATS)
+    /** 仅首次上传时分配的直接内存，不为纯 CPU 图层预留本机缓冲。 */
+    private var scratch: FloatBuffer? = null
 
     /** 缓冲内容是否已经失效，需要在下一次 [upload] 时整段重传。 */
     private var fullUploadRequired = true
@@ -50,6 +54,7 @@ class CooGpuDataGlBuffer {
      * @return 本次是否重建了缓冲；重建后下一次 [upload] 会整段重传
      */
     fun prepare(layer: CooGpuDataLayer): Boolean {
+        requireShaderStorage()
         if (!initialized) {
             buffer = GL15.glGenBuffers()
             allocate(layer)
@@ -71,6 +76,7 @@ class CooGpuDataGlBuffer {
     fun upload(layer: CooGpuDataLayer): Boolean {
         if (!initialized) return false
         if (!fullUploadRequired && residentVersion == layer.version) return false
+        requireShaderStorage()
         if (layer.elementCount <= 0) {
             residentVersion = layer.version
             fullUploadRequired = false
@@ -109,7 +115,10 @@ class CooGpuDataGlBuffer {
      * @param binding 着色器存储缓冲绑定点
      */
     fun bindShaderStorage(binding: Int) {
-        if (initialized) GL43.glBindBufferBase(GL43.GL_SHADER_STORAGE_BUFFER, binding, buffer)
+        if (initialized) {
+            requireShaderStorage()
+            GL43.glBindBufferBase(GL43.GL_SHADER_STORAGE_BUFFER, binding, buffer)
+        }
     }
 
     /** 释放 GL buffer；CPU 侧图层数据不受影响，下次使用时会重新创建并整段上传。 */
@@ -126,8 +135,8 @@ class CooGpuDataGlBuffer {
     /** 释放 GL buffer 与 CPU 侧上传暂存，用于彻底销毁。 */
     fun dispose() {
         release()
-        MemoryUtil.memFree(scratch)
-        scratch = MemoryUtil.memAllocFloat(0)
+        scratch?.let(MemoryUtil::memFree)
+        scratch = null
     }
 
     private fun allocate(layer: CooGpuDataLayer) {
@@ -149,21 +158,26 @@ class CooGpuDataGlBuffer {
     }
 
     private fun scratch(requiredFloats: Int): FloatBuffer {
-        if (requiredFloats > 0 && scratch.capacity() >= requiredFloats) return scratch
-        val next = if (scratch.capacity() <= 0) {
-            maxOf(requiredFloats, 1)
+        val current = scratch
+        if (requiredFloats > 0 && current != null && current.capacity() >= requiredFloats) return current
+        val next = if (current == null || current.capacity() <= 0) {
+            maxOf(requiredFloats, 256)
         } else {
-            maxOf(requiredFloats.toLong(), scratch.capacity().toLong() * 2L)
+            maxOf(requiredFloats.toLong(), current.capacity().toLong() * 2L)
                 .coerceAtMost(Int.MAX_VALUE.toLong())
                 .toInt()
         }
-        MemoryUtil.memFree(scratch)
-        scratch = MemoryUtil.memAllocFloat(next)
-        return scratch
+        current?.let(MemoryUtil::memFree)
+        return MemoryUtil.memAllocFloat(next).also { scratch = it }
     }
 
-    private companion object {
-        /** 初始上传暂存容量；实际需要更大时会立即增长。 */
-        const val INITIAL_SCRATCH_FLOATS = 256
+    /** SSBO 是可选能力；不能在不支持的后端执行目标枚举查询或绑定。 */
+    private fun requireShaderStorage() {
+        RenderSystem.assertOnRenderThread()
+        OpenGlRenderTargetBridge.requireOpenGlBackend()
+        val capabilities = GL.getCapabilities()
+        check(capabilities.OpenGL43 || capabilities.GL_ARB_shader_storage_buffer_object) {
+            "GPU 数据图层需要 OpenGL 4.3 或 ARB_shader_storage_buffer_object"
+        }
     }
 }

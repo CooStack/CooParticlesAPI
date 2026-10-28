@@ -1,14 +1,14 @@
 package cn.coostack.cooparticlesapi.network.buffer
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 class IntControlerBuffer : ParticleControlerDataBuffer<Int> {
 
     companion object {
         @JvmStatic
         val id = ParticleControlerDataBuffer.Id(
-            ResourceLocation.fromNamespaceAndPath(
+            Identifier.fromNamespaceAndPath(
                 CooParticlesConstants.MOD_ID, "int"
             )
         )

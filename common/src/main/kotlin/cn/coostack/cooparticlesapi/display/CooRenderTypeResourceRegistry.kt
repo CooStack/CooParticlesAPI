@@ -4,17 +4,16 @@ import cn.coostack.cooparticlesapi.CooParticlesConstants
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.mojang.blaze3d.vertex.DefaultVertexFormat
-import com.mojang.blaze3d.vertex.VertexFormat
-import net.minecraft.resources.ResourceLocation
+import com.mojang.renderpearl.api.vertex.VertexFormat
+import com.mojang.renderpearl.api.pipeline.PrimitiveTopology
+import net.minecraft.resources.Identifier
 import net.minecraft.server.packs.resources.ResourceManager
 import java.io.InputStream
 import java.io.InputStreamReader
 
 object CooRenderTypeResourceRegistry {
-    private const val INDEX_RESOURCE = "assets/cooparticlesapi/rendertypes/index.json"
-
-    private val renderTypes = LinkedHashMap<ResourceLocation, CooRenderTypeDescriptor>()
-    private val layeredRenderTypes = LinkedHashMap<ResourceLocation, CooLayeredRenderTypeDescriptor>()
+    private val renderTypes = LinkedHashMap<Identifier, CooRenderTypeDescriptor>()
+    private val layeredRenderTypes = LinkedHashMap<Identifier, CooLayeredRenderTypeDescriptor>()
     private var loaded = false
 
     fun ensureLoaded() {
@@ -55,7 +54,7 @@ object CooRenderTypeResourceRegistry {
         loaded = true
 
         val loader = this::class.java.classLoader
-        val indexStream = loader.getResourceAsStream(INDEX_RESOURCE) ?: return
+        val indexStream = loader.getResourceAsStream("assets/cooparticlesapi/rendertypes/index.json") ?: return
         indexStream.use { stream ->
             val root = JsonParser.parseReader(InputStreamReader(stream)).asJsonObject
             root.getAsJsonArray("render_types")?.forEach { element ->
@@ -67,12 +66,12 @@ object CooRenderTypeResourceRegistry {
         }
     }
 
-    fun get(id: ResourceLocation): CooRenderTypeDescriptor? {
+    fun get(id: Identifier): CooRenderTypeDescriptor? {
         ensureLoaded()
         return renderTypes[id]
     }
 
-    fun getLayered(id: ResourceLocation): CooLayeredRenderTypeDescriptor? {
+    fun getLayered(id: Identifier): CooLayeredRenderTypeDescriptor? {
         ensureLoaded()
         return layeredRenderTypes[id]
     }
@@ -127,10 +126,9 @@ object CooRenderTypeResourceRegistry {
         )
     }
 
-    private fun resourceLocation(text: String): ResourceLocation {
-        val split = text.split(':', limit = 2)
-        require(split.size == 2) { "Invalid resource location: $text" }
-        return ResourceLocation.fromNamespaceAndPath(split[0], split[1])
+    private fun resourceLocation(text: String): Identifier {
+        require(':' in text) { "Invalid resource location: $text" }
+        return Identifier.parse(text)
     }
 
     private fun vertexFormat(name: String): VertexFormat {
@@ -141,12 +139,12 @@ object CooRenderTypeResourceRegistry {
         }
     }
 
-    private fun drawMode(name: String): VertexFormat.Mode {
+    private fun drawMode(name: String): PrimitiveTopology {
         return when (name.lowercase()) {
-            "quads" -> VertexFormat.Mode.QUADS
-            "lines" -> VertexFormat.Mode.LINES
-            "line_strip" -> VertexFormat.Mode.LINE_STRIP
-            "triangles" -> VertexFormat.Mode.TRIANGLES
+            "quads" -> PrimitiveTopology.QUADS
+            "lines" -> PrimitiveTopology.LINES
+            "line_strip" -> PrimitiveTopology.DEBUG_LINE_STRIP
+            "triangles" -> PrimitiveTopology.TRIANGLES
             else -> error("Unsupported vertex mode: $name")
         }
     }

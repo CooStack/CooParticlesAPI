@@ -3,7 +3,7 @@ package cn.coostack.cooparticlesapi.supports.sound
 import cn.coostack.cooparticlesapi.network.packet.server.PacketSoundInstanceS2C
 import net.minecraft.client.Minecraft
 import net.minecraft.client.resources.sounds.SoundInstance
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.sounds.SoundSource
 import net.minecraft.world.phys.Vec3
 import kotlin.math.min
@@ -62,12 +62,12 @@ object ClientSoundManager {
     @JvmStatic
     fun play(
         key: String,
-        soundId: ResourceLocation,
+        soundId: Identifier,
         source: SoundSource,
         entityId: Int = -1,
         pos: Vec3 = Vec3.ZERO,
-        volume: Float = 1f,
-        pitch: Float = 1f,
+        volume: Float = 1F,
+        pitch: Float = 1F,
         looping: Boolean = false,
         relative: Boolean = false
     ): ManagedSoundInstance {
@@ -100,9 +100,9 @@ object ClientSoundManager {
         key: String,
         entityId: Int = -1,
         pos: Vec3 = Vec3.ZERO,
-        volumeMultiplier: Float = 0f,
+        volumeMultiplier: Float = 0F,
         range: Double = -1.0,
-        whitelistSounds: Set<ResourceLocation> = emptySet(),
+        whitelistSounds: Set<Identifier> = emptySet(),
         whitelistSources: Set<SoundSource> = emptySet(),
         whitelistKeys: Set<String> = emptySet()
     ): DuckingSoundEffect {
@@ -194,10 +194,10 @@ object ClientSoundManager {
     @JvmStatic
     fun duckVolumeMultiplier(sound: SoundInstance): Float {
         if (ducks.isEmpty()) {
-            return 1f
+            return 1F
         }
-        val playerPos = Minecraft.getInstance().player?.position() ?: return 1f
-        var multiplier = 1f
+        val playerPos = Minecraft.getInstance().player?.position() ?: return 1F
+        var multiplier = 1F
         ducks.values.forEach { duck ->
             if (!duck.isStopped && !duck.isWhitelisted(sound)) {
                 multiplier = min(multiplier, duck.multiplierFor(playerPos))

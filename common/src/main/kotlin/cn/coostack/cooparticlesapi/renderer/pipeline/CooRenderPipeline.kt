@@ -2,7 +2,7 @@ package cn.coostack.cooparticlesapi.renderer.pipeline
 
 import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameStage
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.CooTextureFormat
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /**
  * Pipeline 的使用域。
@@ -133,9 +133,9 @@ sealed interface CooPipelineShader {
      * Minecraft core shader id，主要用于 terrain/world 节点。
      *
      * @property id 通过资源管理器解析的 core shader 标识
-     * 示例：`CooPipelineShader.Core(ResourceLocation("minecraft", "rendertype_solid"))`。
+     * 示例：`CooPipelineShader.Core(Identifier("minecraft", "rendertype_solid"))`。
      */
-    data class Core(val id: ResourceLocation) : CooPipelineShader
+    data class Core(val id: Identifier) : CooPipelineShader
 
     /**
      * 独立 vertex/fragment 源，主要用于全屏节点。
@@ -144,8 +144,8 @@ sealed interface CooPipelineShader {
      * @property fragment 必填 fragment shader 资源
      */
     data class Stages(
-        val vertex: ResourceLocation?,
-        val fragment: ResourceLocation
+        val vertex: Identifier?,
+        val fragment: Identifier
     ) : CooPipelineShader
 }
 
@@ -172,7 +172,7 @@ sealed interface CooPipelineTextureSource {
      * 直接从资源管理器加载指定纹理。
      * @property texture 纹理资源位置
      */
-    data class Texture(val texture: ResourceLocation) : CooPipelineTextureSource
+    data class Texture(val texture: Identifier) : CooPipelineTextureSource
 
     /**
      * 通过参数名解析运行时纹理。
@@ -209,7 +209,7 @@ sealed interface CooPipelineTextureSource {
      * @property target framebuffer 的资源标识
      * @property attachment 颜色 attachment 索引，默认读取 0
      */
-    data class FramebufferColor(val target: ResourceLocation, val attachment: Int = 0) : CooPipelineTextureSource
+    data class FramebufferColor(val target: Identifier, val attachment: Int = 0) : CooPipelineTextureSource
 
     /** 当前图生成的 mask 纹理。 */
     data object Mask : CooPipelineTextureSource
@@ -291,7 +291,7 @@ sealed interface CooPipelineTarget : CooPipelineLineInput {
      * @property target framebuffer 的资源标识
      * @property attachment 要写入的颜色 attachment 索引
      */
-    data class FramebufferColor(val target: ResourceLocation, val attachment: Int = 0) : CooPipelineTarget
+    data class FramebufferColor(val target: Identifier, val attachment: Int = 0) : CooPipelineTarget
 }
 
 /**
@@ -471,7 +471,7 @@ internal data class CooPipelineParameterBinding(
  * @param parameterBindings fluent 参数到 uniform 的绑定表
  */
 class CooRenderPipeline<out T : Any> internal constructor(
-    val id: ResourceLocation,
+    val id: Identifier,
     val domain: CooPipelineDomain,
     val terrainLayer: CooTerrainLayer,
     val effectUvMode: CooEffectUvMode,
@@ -494,7 +494,7 @@ class CooRenderPipeline<out T : Any> internal constructor(
             }
         }
 
-    val terrainShader: ResourceLocation?
+    val terrainShader: Identifier?
         get() = nodes.asSequence()
             .filter { it.kind == CooPipelineNodeKind.WORLD }
             .mapNotNull { (it.shader as? CooPipelineShader.Core)?.id }

@@ -69,6 +69,7 @@ open class SimpleFrameBuffer(
     private var initialized = false
     private var newDepth = false
     private var textureFilterMod = GL_LINEAR
+    private var depthClearValue = 0F
     private var fixedWidth: Int? = null
     private var fixedHeight: Int? = null
 
@@ -133,6 +134,12 @@ open class SimpleFrameBuffer(
         depthTextureFormat = format
     }
 
+    /** 设置自有深度附件的清除值；26.3 原版通常使用反向深度的零。 */
+    internal fun setDepthClearValue(value: Float) {
+        require(value.isFinite() && value in 0F..1F) { "Depth clear value must be finite and within [0, 1]" }
+        depthClearValue = value
+    }
+
     /**
      * 初始化或准备 `当前组件` 的 `init` 阶段，使后续渲染调用可以使用相关资源。
      *
@@ -152,7 +159,7 @@ open class SimpleFrameBuffer(
             initDepthChannel()
             if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
                 val mc = Minecraft.getInstance()
-                val target = mc.mainRenderTarget
+                val target = mc.gameRenderer.mainRenderTarget()
                 // NeoForge 偶发创建出不完整 FBO；保留完整状态，供日志定位实际 attachment。
                 CooParticlesConstants.logger.error(
                     """
@@ -164,7 +171,7 @@ open class SimpleFrameBuffer(
                         status missing attachment: ${glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT}
                         height: ${height()} width: ${width()}
                         mc_height:${target.height} mc_width: ${target.width}
-                        vew mc_height:${target.viewHeight} mc_width: ${target.viewWidth}
+                        vew mc_height:${target.height} mc_width: ${target.width}
                         window h: ${mc.window.screenHeight} w ${mc.window.screenWidth}
                     """
                 )
@@ -207,7 +214,17 @@ open class SimpleFrameBuffer(
      * @param bit 当前操作需要的输入值；其语义由方法名和所属组件共同限定
      */
     override fun clear(bit: Int) {
-        glClear(bit)
+        if (bit and GL_DEPTH_BUFFER_BIT == 0) {
+            glClear(bit)
+            return
+        }
+        val previousDepth = glGetDouble(GL_DEPTH_CLEAR_VALUE)
+        try {
+            glClearDepth(depthClearValue.toDouble())
+            glClear(bit)
+        } finally {
+            glClearDepth(previousDepth)
+        }
     }
 
     /**

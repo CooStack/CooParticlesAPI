@@ -12,16 +12,15 @@ import cn.coostack.cooparticlesapi.event.events.world.client.ClientWorldRenderEv
 object DisplayRenderListener {
     @EventHandler
     fun onRender(event: ClientWorldRenderEvent) {
-        if (event.stage != ClientWorldRenderEvent.RenderStage.AFTER_ENTITY) {
-            return
-        }
         val camera = event.camera
-        val view = event.viewMatrix
-        val proj = event.projectMatrix
-        val pose = event.poseStack
-        val delta = event.delta
-        val buffer = event.buffer
-        DisplayEntityManager.render(view, proj, pose, buffer, delta, camera)
+        DisplayEntityManager.submit(
+            camera.viewRotationMatrix,
+            camera.projectionMatrix,
+            event.poseStack,
+            event.collector,
+            event.delta,
+            camera,
+        )
     }
 
 

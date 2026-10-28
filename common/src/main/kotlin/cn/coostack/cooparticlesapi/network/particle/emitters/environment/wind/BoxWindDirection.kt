@@ -1,5 +1,7 @@
 package cn.coostack.cooparticlesapi.network.particle.emitters.environment.wind
 
+import cn.coostack.cooparticlesapi.network.readVec3
+import cn.coostack.cooparticlesapi.network.writeVec3
 import cn.coostack.cooparticlesapi.barrages.HitBox
 import cn.coostack.cooparticlesapi.network.particle.emitters.ParticleEmitters
 import cn.coostack.cooparticlesapi.utils.RelativeLocation

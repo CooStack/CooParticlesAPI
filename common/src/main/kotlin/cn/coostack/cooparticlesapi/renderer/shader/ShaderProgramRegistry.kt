@@ -4,7 +4,7 @@ import cn.coostack.cooparticlesapi.renderer.shader.api.CooComputeShaderProgram
 import cn.coostack.cooparticlesapi.renderer.shader.api.CooShaderProgram
 import cn.coostack.cooparticlesapi.renderer.shader.buffer.ShaderBufferCache
 import cn.coostack.cooparticlesapi.renderer.shader.buffer.ShaderBufferLayout
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 data class ShaderRefreshResult(
     val refreshedPrograms: Int,
@@ -98,7 +98,7 @@ object ShaderProgramRegistry {
      *
      * @return 当前操作计算、更新或查询得到的结果
      */
-    fun invalidateProgramsById(ids: Set<ResourceLocation>): Int {
+    fun invalidateProgramsById(ids: Set<Identifier>): Int {
         var invalidated = 0
         graphicsPrograms.filter { it.managedProgramId() in ids }.forEach {
             it.release()
@@ -120,7 +120,7 @@ object ShaderProgramRegistry {
      *
      * @return 当前操作计算、更新或查询得到的结果
      */
-    fun invalidateProgramsBySource(sources: Set<ResourceLocation>): Int {
+    fun invalidateProgramsBySource(sources: Set<Identifier>): Int {
         var invalidated = 0
         graphicsPrograms.filter { it.shaderSources().any(sources::contains) }.forEach {
             it.release()
@@ -142,7 +142,7 @@ object ShaderProgramRegistry {
      *
      * @return 当前操作计算、更新或查询得到的结果
      */
-    fun reinitializeProgramsById(ids: Set<ResourceLocation>): Int {
+    fun reinitializeProgramsById(ids: Set<Identifier>): Int {
         var reinitialized = 0
         graphicsPrograms.filter { it.managedProgramId() in ids }.forEach { program ->
             if (program.program == 0) {
@@ -168,7 +168,7 @@ object ShaderProgramRegistry {
      *
      * @return 当前操作计算、更新或查询得到的结果
      */
-    fun reinitializeProgramsBySource(sources: Set<ResourceLocation>): Int {
+    fun reinitializeProgramsBySource(sources: Set<Identifier>): Int {
         var reinitialized = 0
         graphicsPrograms.filter { it.shaderSources().any(sources::contains) }.forEach { program ->
             if (program.program == 0) {
@@ -194,7 +194,7 @@ object ShaderProgramRegistry {
      *
      * @return 当前操作计算、更新或查询得到的结果
      */
-    fun refreshProgramsById(ids: Set<ResourceLocation>): Int {
+    fun refreshProgramsById(ids: Set<Identifier>): Int {
         invalidateProgramsById(ids)
         return reinitializeProgramsById(ids)
     }
@@ -208,7 +208,7 @@ object ShaderProgramRegistry {
      *
      * @return 当前操作计算、更新或查询得到的结果
      */
-    fun refreshProgramsBySource(sources: Set<ResourceLocation>): Int {
+    fun refreshProgramsBySource(sources: Set<Identifier>): Int {
         invalidateProgramsBySource(sources)
         return reinitializeProgramsBySource(sources)
     }
@@ -222,7 +222,7 @@ object ShaderProgramRegistry {
      *
      * @return 当前操作计算、更新或查询得到的结果
      */
-    fun refreshProgramsAndBuffersById(ids: Set<ResourceLocation>): ShaderRefreshResult {
+    fun refreshProgramsAndBuffersById(ids: Set<Identifier>): ShaderRefreshResult {
         if (ids.isEmpty()) {
             return ShaderRefreshResult(refreshedPrograms = 0, releasedBuffers = 0)
         }
@@ -243,7 +243,7 @@ object ShaderProgramRegistry {
      *
      * @return 当前操作计算、更新或查询得到的结果
      */
-    fun refreshProgramsAndBuffersBySource(sources: Set<ResourceLocation>): ShaderRefreshResult {
+    fun refreshProgramsAndBuffersBySource(sources: Set<Identifier>): ShaderRefreshResult {
         if (sources.isEmpty()) {
             return ShaderRefreshResult(refreshedPrograms = 0, releasedBuffers = 0)
         }
@@ -294,7 +294,7 @@ object ShaderProgramRegistry {
         computePrograms.clear()
     }
 
-    private fun collectBufferLayoutsById(ids: Set<ResourceLocation>): List<ShaderBufferLayout<*>> {
+    private fun collectBufferLayoutsById(ids: Set<Identifier>): List<ShaderBufferLayout<*>> {
         return buildList {
             graphicsPrograms
                 .filter { it.managedProgramId() in ids }
@@ -305,7 +305,7 @@ object ShaderProgramRegistry {
         }
     }
 
-    private fun collectBufferLayoutsBySource(sources: Set<ResourceLocation>): List<ShaderBufferLayout<*>> {
+    private fun collectBufferLayoutsBySource(sources: Set<Identifier>): List<ShaderBufferLayout<*>> {
         return buildList {
             graphicsPrograms
                 .filter { it.shaderSources().any(sources::contains) }

@@ -50,17 +50,17 @@ import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.fml.common.EventBusSubscriber
 import net.neoforged.neoforge.data.event.GatherDataEvent
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent
+import net.minecraft.server.level.ServerPlayer
 
 @EventBusSubscriber(
     modid = CooParticlesConstants.MOD_ID,
 )
 object CooParticlesAPINeoModInitListener {
     @SubscribeEvent
-    fun onDataProvider(event: GatherDataEvent) {
+    fun onDataProvider(event: GatherDataEvent.Client) {
         val generator = event.generator
-        val helper = event.existingFileHelper
         generator.addProvider(true) {
-            CooItemModelProvider(it, helper)
+            CooItemModelProvider(it)
         }
         generator.addProvider(true) {
             LangProvider(it)
@@ -202,7 +202,7 @@ object CooParticlesAPINeoModInitListener {
             CooPacketEnvelopeC2S.CODEC
         ) { payload, context ->
             val player = context.player()
-            if (player is net.minecraft.server.level.ServerPlayer) {
+            if (player is ServerPlayer) {
                 CooServerPacketManager.handleC2S(payload, player)
             }
         }

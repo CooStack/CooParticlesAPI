@@ -11,7 +11,7 @@ import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainMappingRegion
 import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainMappingRegistry
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /**
  * 程序化 terrain mapping 的服务端到客户端同步包。
@@ -21,10 +21,10 @@ import net.minecraft.resources.ResourceLocation
 @CooAutoRegister
 class PacketTerrainMappingS2C() : CooPacket() {
     var operation: Int = REPLACE
-    var dimension: ResourceLocation = ResourceLocation.withDefaultNamespace("overworld")
-    var instanceId: ResourceLocation = ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "empty")
-    var mappingId: ResourceLocation = ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "empty")
-    var pipelineId: ResourceLocation = ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "empty")
+    var dimension: Identifier = Identifier.withDefaultNamespace("overworld")
+    var instanceId: Identifier = Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "empty")
+    var mappingId: Identifier = Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "empty")
+    var pipelineId: Identifier = Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "empty")
     var region: CooTerrainMappingRegion? = null
     var startedAt: Long = 0L
     var expiresAt: Long? = null
@@ -35,7 +35,7 @@ class PacketTerrainMappingS2C() : CooPacket() {
     var composition: CooTerrainEffectComposition = CooTerrainEffectComposition.REPLACE
     var uniforms: Map<String, CooUniformValue> = emptyMap()
 
-    override fun id(): ResourceLocation = ResourceLocation.fromNamespaceAndPath(
+    override fun id(): Identifier = Identifier.fromNamespaceAndPath(
         CooParticlesConstants.MOD_ID,
         PACKET_ID
     )
@@ -80,7 +80,7 @@ class PacketTerrainMappingS2C() : CooPacket() {
         private val CODEC: StreamCodec<FriendlyByteBuf, PacketTerrainMappingS2C> =
             StreamCodec.of(::encode, ::decode)
 
-        internal fun replace(instance: CooTerrainMappingInstance, pipelineId: ResourceLocation): PacketTerrainMappingS2C =
+        internal fun replace(instance: CooTerrainMappingInstance, pipelineId: Identifier): PacketTerrainMappingS2C =
             PacketTerrainMappingS2C().also {
                 it.operation = REPLACE
                 it.dimension = instance.dimension
@@ -108,8 +108,8 @@ class PacketTerrainMappingS2C() : CooPacket() {
             }
 
         internal fun remove(
-            dimension: ResourceLocation,
-            instanceId: ResourceLocation,
+            dimension: Identifier,
+            instanceId: Identifier,
             revision: Long
         ): PacketTerrainMappingS2C = PacketTerrainMappingS2C().also {
             it.operation = REMOVE
@@ -120,13 +120,13 @@ class PacketTerrainMappingS2C() : CooPacket() {
 
         private fun encode(buffer: FriendlyByteBuf, packet: PacketTerrainMappingS2C) {
             buffer.writeByte(packet.operation)
-            buffer.writeResourceLocation(packet.dimension)
-            buffer.writeResourceLocation(packet.instanceId)
+            buffer.writeIdentifier(packet.dimension)
+            buffer.writeIdentifier(packet.instanceId)
             buffer.writeVarLong(packet.revision)
             when (packet.operation) {
                 REPLACE -> {
-                    buffer.writeResourceLocation(packet.mappingId)
-                    buffer.writeResourceLocation(packet.pipelineId)
+                    buffer.writeIdentifier(packet.mappingId)
+                    buffer.writeIdentifier(packet.pipelineId)
                     buffer.writeVarLong(packet.startedAt)
                     buffer.writeVarLong(packet.sequence)
                     buffer.writeVarInt(packet.priority)
@@ -145,13 +145,13 @@ class PacketTerrainMappingS2C() : CooPacket() {
         private fun decode(buffer: FriendlyByteBuf): PacketTerrainMappingS2C {
             val packet = PacketTerrainMappingS2C()
             packet.operation = buffer.readUnsignedByte().toInt()
-            packet.dimension = buffer.readResourceLocation()
-            packet.instanceId = buffer.readResourceLocation()
+            packet.dimension = buffer.readIdentifier()
+            packet.instanceId = buffer.readIdentifier()
             packet.revision = buffer.readVarLong()
             when (packet.operation) {
                 REPLACE -> {
-                    packet.mappingId = buffer.readResourceLocation()
-                    packet.pipelineId = buffer.readResourceLocation()
+                    packet.mappingId = buffer.readIdentifier()
+                    packet.pipelineId = buffer.readIdentifier()
                     packet.startedAt = buffer.readVarLong()
                     packet.sequence = buffer.readVarLong()
                     packet.priority = buffer.readVarInt()

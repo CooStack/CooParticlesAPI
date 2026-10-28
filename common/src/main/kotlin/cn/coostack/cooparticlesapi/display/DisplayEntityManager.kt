@@ -11,9 +11,8 @@ import cn.coostack.cooparticlesapi.reflect.CooAPIScanner
 import cn.coostack.cooparticlesapi.utils.MinecraftRendererUtil
 import com.mojang.blaze3d.vertex.PoseStack
 import io.netty.buffer.Unpooled
-import net.minecraft.client.Camera
-import net.minecraft.client.DeltaTracker
-import net.minecraft.client.renderer.MultiBufferSource
+import net.minecraft.client.renderer.SubmitNodeCollector
+import net.minecraft.client.renderer.state.level.CameraRenderState
 import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.server.level.ServerPlayer
@@ -96,15 +95,14 @@ object DisplayEntityManager {
      * @param delta
      * @param camera
      */
-    fun render(
+    fun submit(
         view: Matrix4f,
         proj: Matrix4f,
         modelMatrixStack: PoseStack,
-        buffer: MultiBufferSource,
-        delta: DeltaTracker,
-        camera: Camera
+        collector: SubmitNodeCollector,
+        delta: Float,
+        camera: CameraRenderState,
     ) {
-        val lerp = delta.getGameTimeDeltaPartialTick(true)
         val iterator = clientView.entries.iterator()
         while (iterator.hasNext()) {
             val entry = iterator.next()
@@ -114,30 +112,31 @@ object DisplayEntityManager {
                 continue
             }
             modelMatrixStack.pushPose()
-            MinecraftRendererUtil.transformTo(
-                camera,
-                entity.position(lerp) + entity.transformOffset(),
-                modelMatrixStack
-            ) {
-                val offset = entity.renderCenterOffset()
-                if (entity.manageRotation) {
-                    MinecraftRendererUtil.applyAtPoint(
-                        offset, this
-                    ) {
-                        MinecraftRendererUtil.applyRotation(
-                            this, entity.yaw(lerp), entity.pitch(lerp), entity.roll(lerp)
-                        )
+            try {
+                MinecraftRendererUtil.transformTo(
+                    camera.pos,
+                    entity.position(delta) + entity.transformOffset(),
+                    modelMatrixStack,
+                ) {
+                    val offset = entity.renderCenterOffset()
+                    if (entity.manageRotation) {
+                        MinecraftRendererUtil.applyAtPoint(offset, this) {
+                            MinecraftRendererUtil.applyRotation(
+                                this, entity.yaw(delta), entity.pitch(delta), entity.roll(delta)
+                            )
+                        }
+                    }
+                    if (entity.canRender(view, proj, modelMatrixStack, delta, camera)) {
+                        runCatching {
+                            entity.submit(view, proj, modelMatrixStack, collector, delta, camera)
+                        }.onFailure {
+                            it.printStackTrace()
+                        }
                     }
                 }
-                if (entity.canRender(view, proj, modelMatrixStack, lerp, camera)) {
-                    runCatching {
-                        entity.render(view, proj, modelMatrixStack, buffer, lerp, camera)
-                    }.onFailure {
-                        it.printStackTrace()
-                    }
-                }
+            } finally {
+                modelMatrixStack.popPose()
             }
-            modelMatrixStack.popPose()
         }
     }
 

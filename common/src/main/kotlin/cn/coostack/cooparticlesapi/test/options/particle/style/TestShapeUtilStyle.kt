@@ -8,7 +8,7 @@ import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
 import cn.coostack.cooparticlesapi.particles.impl.ControlableEndRodEffect
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import cn.coostack.cooparticlesapi.utils.builder.RGBImagePointBuilder
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import java.util.UUID
 import kotlin.math.PI
 
@@ -29,14 +29,14 @@ class TestShapeUtilStyle(uuid: UUID = UUID.randomUUID()) :
         val res = HashMap<StyleData, RelativeLocation>()
 
         RGBImagePointBuilder(
-            ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "test/magic_axe.png")
+            Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "test/magic_axe.png")
         ).step(0.08).scale(1.0).build().forEach {
             val rgba = it.value
             res[StyleData { it ->
                 ParticleDisplayer.withSingle(ControlableEndRodEffect(it))
             }.withParticleHandler {
                 colorOfRGBA(rgba)
-                size = 0.1f
+                size = 0.1F
             }] = it.key
         }
 

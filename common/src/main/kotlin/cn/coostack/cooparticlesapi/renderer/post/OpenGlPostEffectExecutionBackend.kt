@@ -2,13 +2,17 @@ package cn.coostack.cooparticlesapi.renderer.post
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.compat.IrisCompat
-import cn.coostack.cooparticlesapi.cparticle.CParticleIndexedBlendState
 import cn.coostack.cooparticlesapi.compat.IrisTerrainDepthTexture
 import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameContext
 import cn.coostack.cooparticlesapi.renderer.backend.RenderSceneResource
 import cn.coostack.cooparticlesapi.renderer.backend.RenderSceneResources
 import cn.coostack.cooparticlesapi.renderer.backend.RenderSceneTargets
+import cn.coostack.cooparticlesapi.renderer.backend.OpenGlRenderTargetBridge
+import cn.coostack.cooparticlesapi.renderer.backend.OpenGlRenderTargetBridge.bindFramebuffer as glBindFramebuffer
+import cn.coostack.cooparticlesapi.renderer.backend.colorTextureId
+import cn.coostack.cooparticlesapi.renderer.backend.frameBufferId
 import cn.coostack.cooparticlesapi.renderer.client.ClientRenderPipelineManager
+import cn.coostack.cooparticlesapi.renderer.state.CooGLSLStateManager
 import cn.coostack.cooparticlesapi.renderer.pipeline.setUniform
 import cn.coostack.cooparticlesapi.renderer.shader.AdvancedShaderProgramBuilder
 import cn.coostack.cooparticlesapi.renderer.shader.api.CooShaderProgram
@@ -21,24 +25,23 @@ import cn.coostack.cooparticlesapi.renderer.shader.texture.IdentifierTexture
 import cn.coostack.cooparticlesapi.renderer.shader.vertex.SimpleVertexBuffer
 import cn.coostack.cooparticlesapi.renderer.shader.vertex.VertexBuffers
 import cn.coostack.cooparticlesapi.renderer.terrain.CooTerrainMappingShaderAbi
-import com.mojang.blaze3d.pipeline.RenderTarget
 import com.mojang.blaze3d.systems.RenderSystem
+import com.mojang.renderpearl.api.pipeline.ColorTargetState
+import com.mojang.renderpearl.backend.opengl.GlStateManager
+import com.mojang.renderpearl.backend.opengl.GlStateManager._glDeleteFramebuffers as glDeleteFramebuffers
+import com.mojang.renderpearl.backend.opengl.GlStateManager._deleteTexture as glDeleteTextures
+import com.mojang.renderpearl.backend.opengl.GlStateManager._genTexture as glGenTextures
 import net.minecraft.client.Minecraft
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import org.joml.Matrix4f
 import org.joml.Vector2f
 import org.joml.Vector3f
 import org.joml.Vector4f
-import org.lwjgl.BufferUtils
 import java.nio.ByteBuffer
 import org.lwjgl.opengl.GL33.GL_ACTIVE_TEXTURE
+import org.lwjgl.opengl.GL33.GL_ARRAY_BUFFER
+import org.lwjgl.opengl.GL33.GL_ARRAY_BUFFER_BINDING
 import org.lwjgl.opengl.GL33.GL_BLEND
-import org.lwjgl.opengl.GL33.GL_BLEND_DST_ALPHA
-import org.lwjgl.opengl.GL33.GL_BLEND_DST_RGB
-import org.lwjgl.opengl.GL33.GL_BLEND_EQUATION_ALPHA
-import org.lwjgl.opengl.GL33.GL_BLEND_EQUATION_RGB
-import org.lwjgl.opengl.GL33.GL_BLEND_SRC_ALPHA
-import org.lwjgl.opengl.GL33.GL_BLEND_SRC_RGB
 import org.lwjgl.opengl.GL33.GL_COLOR
 import org.lwjgl.opengl.GL33.GL_COLOR_BUFFER_BIT
 import org.lwjgl.opengl.GL33.GL_COLOR_WRITEMASK
@@ -46,7 +49,6 @@ import org.lwjgl.opengl.GL33.GL_COLOR_ATTACHMENT0
 import org.lwjgl.opengl.GL33.GL_CULL_FACE
 import org.lwjgl.opengl.GL33.GL_CURRENT_PROGRAM
 import org.lwjgl.opengl.GL33.GL_DEPTH_BUFFER_BIT
-import org.lwjgl.opengl.GL33.GL_DEPTH_FUNC
 import org.lwjgl.opengl.GL33.GL_DEPTH_ATTACHMENT
 import org.lwjgl.opengl.GL33.GL_DEPTH_COMPONENT
 import org.lwjgl.opengl.GL33.GL_DEPTH_COMPONENT16
@@ -89,6 +91,7 @@ import org.lwjgl.opengl.GL33.GL_RENDERBUFFER_DEPTH_SIZE
 import org.lwjgl.opengl.GL33.GL_RENDERBUFFER_STENCIL_SIZE
 import org.lwjgl.opengl.GL33.GL_RENDERBUFFER_WIDTH
 import org.lwjgl.opengl.GL33.GL_RENDERBUFFER_HEIGHT
+import org.lwjgl.opengl.GL33.GL_SAMPLER_BINDING
 import org.lwjgl.opengl.GL33.GL_R11F_G11F_B10F
 import org.lwjgl.opengl.GL33.GL_R16F
 import org.lwjgl.opengl.GL33.GL_R32F
@@ -108,7 +111,6 @@ import org.lwjgl.opengl.GL33.GL_TEXTURE0
 import org.lwjgl.opengl.GL33.GL_TEXTURE
 import org.lwjgl.opengl.GL33.GL_TEXTURE_2D
 import org.lwjgl.opengl.GL33.GL_TEXTURE_BASE_LEVEL
-import org.lwjgl.opengl.GL33.GL_UNSIGNED_BYTE
 import org.lwjgl.opengl.GL33.GL_UNSIGNED_INT
 import org.lwjgl.opengl.GL33.GL_UNSIGNED_INT_24_8
 import org.lwjgl.opengl.GL33.GL_UNSIGNED_SHORT
@@ -121,9 +123,6 @@ import org.lwjgl.opengl.GL33.GL_TEXTURE_WIDTH
 import org.lwjgl.opengl.GL33.GL_TEXTURE_HEIGHT
 import org.lwjgl.opengl.GL33.GL_VIEWPORT
 import org.lwjgl.opengl.GL33.GL_VERTEX_ARRAY_BINDING
-import org.lwjgl.opengl.GL11.GL_POLYGON_OFFSET_FACTOR
-import org.lwjgl.opengl.GL11.GL_POLYGON_OFFSET_FILL
-import org.lwjgl.opengl.GL11.GL_POLYGON_OFFSET_UNITS
 import org.lwjgl.opengl.GL11.GL_RGB10
 import org.lwjgl.opengl.GL11.GL_RGB10_A2
 import org.lwjgl.opengl.GL11.GL_RGB12
@@ -141,23 +140,17 @@ import org.lwjgl.opengl.GL31.GL_RGB16_SNORM
 import org.lwjgl.opengl.GL31.GL_RGBA8_SNORM
 import org.lwjgl.opengl.GL31.GL_RGBA16_SNORM
 import org.lwjgl.opengl.GL33.glActiveTexture
-import org.lwjgl.opengl.GL33.glBindFramebuffer
 import org.lwjgl.opengl.GL33.glBindRenderbuffer
+import org.lwjgl.opengl.GL33.glBindBuffer
+import org.lwjgl.opengl.GL33.glBindSampler
 import org.lwjgl.opengl.GL33.glBindTexture
 import org.lwjgl.opengl.GL33.glBindVertexArray
-import org.lwjgl.opengl.GL33.glBlendEquationSeparate
-import org.lwjgl.opengl.GL33.glBlendFuncSeparate
 import org.lwjgl.opengl.GL33.glBlitFramebuffer
 import org.lwjgl.opengl.GL33.glCheckFramebufferStatus
 import org.lwjgl.opengl.GL33.glClearBufferfv
 import org.lwjgl.opengl.GL30.glColorMaski
 import org.lwjgl.opengl.GL30.glDisablei
-import org.lwjgl.opengl.GL30.glEnablei
-import org.lwjgl.opengl.GL30.glIsEnabledi
 import org.lwjgl.opengl.GL33.glDepthMask
-import org.lwjgl.opengl.GL33.glDeleteFramebuffers
-import org.lwjgl.opengl.GL33.glDeleteTextures
-import org.lwjgl.opengl.GL33.glDepthFunc
 import org.lwjgl.opengl.GL33.glDisable
 import org.lwjgl.opengl.GL33.glEnable
 import org.lwjgl.opengl.GL33.glDrawBuffer
@@ -167,12 +160,11 @@ import org.lwjgl.opengl.GL33.glFramebufferRenderbuffer
 import org.lwjgl.opengl.GL33.glTexImage2D
 import org.lwjgl.opengl.GL33.glTexParameteri
 import org.lwjgl.opengl.GL33.glGenFramebuffers
-import org.lwjgl.opengl.GL33.glGenTextures
 import org.lwjgl.opengl.GL33.glGetBoolean
-import org.lwjgl.opengl.GL11.glGetFloat
 import org.lwjgl.opengl.GL33.glGetError
 import org.lwjgl.opengl.GL33.glGetFramebufferAttachmentParameteri
 import org.lwjgl.opengl.GL33.glGetInteger
+import org.lwjgl.opengl.GL33.glGetIntegeri
 import org.lwjgl.opengl.GL33.glGetIntegeri_v
 import org.lwjgl.opengl.GL33.glGetIntegerv
 import org.lwjgl.opengl.GL33.glGetRenderbufferParameteri
@@ -181,14 +173,11 @@ import org.lwjgl.opengl.GL33.glGetTexParameteri
 import org.lwjgl.opengl.GL33.glGetUniformLocation
 import org.lwjgl.opengl.GL33.glIsEnabled
 import org.lwjgl.opengl.GL33.glIsVertexArray
-import org.lwjgl.opengl.GL11.glPolygonOffset
 import org.lwjgl.opengl.GL33.glReadBuffer
-import org.lwjgl.opengl.GL33.glReadPixels
 import org.lwjgl.opengl.GL33.glScissor
 import org.lwjgl.opengl.GL33.glUseProgram
 import org.lwjgl.opengl.GL33.glViewport
 import kotlin.math.max
-import kotlin.math.abs
 
 /**
  * Minecraft 客户端 OpenGL 后处理执行后端。
@@ -212,13 +201,8 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
     PostEffectForegroundReplayBackend,
     PostEffectResourceBackend,
     PostEffectAttachmentPreparationBackend {
-    private val screenVertexId: ResourceLocation =
-        ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "pipeline/vertexes/screen.vsh")
-    private val bindingMaskFragmentId: ResourceLocation =
-        ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "post/binding_mask.fsh")
-
     private val programs = LinkedHashMap<PostProgramKey, CooShaderProgram>()
-    private val customTextures = LinkedHashMap<ResourceLocation, IdentifierTexture>()
+    private val customTextures = LinkedHashMap<Identifier, IdentifierTexture>()
     private val targets = LinkedHashMap<String, ManagedTarget>()
     private val namedTargetTextures = LinkedHashMap<NamedAttachment, Int>()
     private val instanceStates = LinkedHashMap<String, InstanceFrameState>()
@@ -345,7 +329,7 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
     /** 把延迟前景绘制到 Mapping 已写入的最终目标，并继续维护 SceneColor 合成链。 */
     override fun replayForeground(context: RenderFrameContext, render: () -> Unit): Boolean {
         RenderSystem.assertOnRenderThread()
-        val target = context.finalCompositeTarget ?: Minecraft.getInstance().mainRenderTarget
+        val target = context.finalCompositeTarget ?: Minecraft.getInstance().gameRenderer.mainRenderTarget()
         val framebuffer = context.finalCompositeFramebufferId?.takeIf { it > 0 } ?: target.frameBufferId
         if (framebuffer <= 0) return false
         val width = max(1, context.targetWidth ?: target.width)
@@ -759,7 +743,7 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
 
     private fun currentDepthSourceFramebuffer(): Int {
         return glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING).takeIf { it > 0 }
-            ?: Minecraft.getInstance().mainRenderTarget.frameBufferId
+            ?: Minecraft.getInstance().gameRenderer.mainRenderTarget().frameBufferId
     }
 
     private fun captureCurrentDepth(
@@ -797,9 +781,9 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
                 irisTextureId = irisDepth?.textureId ?: 0,
                 framebufferId = if (irisDepth == null) fallbackSourceFramebuffer else 0,
                 width = (irisDepth?.width ?: fallbackSourceSize?.first
-                    ?: Minecraft.getInstance().mainRenderTarget.width).coerceAtLeast(1),
+                    ?: Minecraft.getInstance().gameRenderer.mainRenderTarget().width).coerceAtLeast(1),
                 height = (irisDepth?.height ?: fallbackSourceSize?.second
-                    ?: Minecraft.getInstance().mainRenderTarget.height).coerceAtLeast(1),
+                    ?: Minecraft.getInstance().gameRenderer.mainRenderTarget().height).coerceAtLeast(1),
                 format = sourceFormat,
             )
         }.also { terrainDepthSourceCache = it }
@@ -1198,7 +1182,7 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
     override fun captureInlineAttachments(
         context: RenderFrameContext,
         owner: String,
-        target: ResourceLocation,
+        target: Identifier,
         attachments: List<PostEffectAttachmentSpec>,
         render: () -> Unit
     ): Boolean {
@@ -1363,7 +1347,7 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
     override fun captureAttachment(
         context: RenderFrameContext,
         owner: String,
-        target: ResourceLocation,
+        target: Identifier,
         attachment: Int,
         render: () -> Unit
     ): Boolean {
@@ -1390,7 +1374,7 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
     override fun captureAttachments(
         context: RenderFrameContext,
         owner: String,
-        target: ResourceLocation,
+        target: Identifier,
         attachmentCount: Int,
         render: () -> Unit
     ): Boolean {
@@ -1406,7 +1390,7 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
     override fun captureAttachments(
         context: RenderFrameContext,
         owner: String,
-        target: ResourceLocation,
+        target: Identifier,
         attachments: List<PostEffectAttachmentSpec>,
         render: () -> Unit
     ): Boolean {
@@ -1452,7 +1436,7 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
      *
      * @return 当前操作计算、更新或查询得到的结果
      */
-    override fun hasAttachment(target: ResourceLocation, attachment: Int): Boolean {
+    override fun hasAttachment(target: Identifier, attachment: Int): Boolean {
         return namedTargetTextures[NamedAttachment(target, attachment)]?.let { it > 0 } == true
     }
 
@@ -1681,7 +1665,7 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
      * @param attachment 颜色 attachment 索引
      * @return 有效 OpenGL 纹理对象名；尚未捕获或对象名无效时返回 `null`
      */
-    internal fun resolveNamedColorTexture(target: ResourceLocation, attachment: Int): Int? {
+    internal fun resolveNamedColorTexture(target: Identifier, attachment: Int): Int? {
         return namedTargetTextures[NamedAttachment(target, attachment)]?.takeIf { it > 0 }
     }
 
@@ -1723,7 +1707,7 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
 
         val source = context.sceneResources[RenderSceneTargets.SCENE_COLOR]?.target
             ?: context.finalCompositeTarget
-            ?: Minecraft.getInstance().mainRenderTarget
+            ?: Minecraft.getInstance().gameRenderer.mainRenderTarget()
         val sourceFramebufferId = chainedSceneFramebufferId ?: context.sceneColorFramebufferId ?: source.frameBufferId
         if (sourceFramebufferId <= 0) {
             warnSceneCopyFailure("invalid source framebuffer=$sourceFramebufferId")
@@ -1755,7 +1739,7 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
     }
 
     private fun drawToFinal(step: PostEffectExecutionStep, state: InstanceFrameState): Boolean {
-        val target = step.context.finalCompositeTarget ?: Minecraft.getInstance().mainRenderTarget
+        val target = step.context.finalCompositeTarget ?: Minecraft.getInstance().gameRenderer.mainRenderTarget()
         val framebuffer = step.context.finalCompositeFramebufferId?.takeIf { it > 0 } ?: target.frameBufferId
         val width = max(1, step.context.targetWidth ?: target.width)
         val height = max(1, step.context.targetHeight ?: target.height)
@@ -2048,7 +2032,10 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
 
     private fun ensureBindingMask(step: PostEffectExecutionStep, state: InstanceFrameState): Int? {
         val target = targetFor(step.context, "${step.instance.instanceId}:binding_mask")
-        val program = programFor(null, bindingMaskFragmentId)
+        val program = programFor(
+            null,
+            Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "post/binding_mask.fsh"),
+        )
         val buffer = screenBuffer()
         target.buffer.writeFrameBufferWith {
             withFlatPostState {
@@ -2072,9 +2059,12 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
     private fun uploadBuiltInUniforms(program: CooShaderProgram, step: PostEffectExecutionStep) {
         val width = max(1, step.context.targetWidth ?: ClientRenderPipelineManager.currentRenderWidth())
         val height = max(1, step.context.targetHeight ?: ClientRenderPipelineManager.currentRenderHeight())
+        val depthProjection = step.context.depthProjection
         val center = resolveBindingCenter(step.context, step.instance.binding) ?: Vector2f(0.5F, 0.5F)
-        val sourceDepth = resolveBindingDepth(step.context, step.instance.binding) ?: 1F
-        val hasDepth = step.inputs.any { input ->
+        val sourceDepth = resolveBindingDepth(step.context, step.instance.binding)
+            ?: depthProjection?.backgroundDepth
+            ?: 0F
+        val hasDepth = depthProjection != null && step.inputs.any { input ->
             when {
                 input.source == PostEffectInputSource.SCENE_DEPTH -> resolveSceneDepthTexture(input) != null
                 input.source == PostEffectInputSource.SCENE_DEPTH_NO_HAND -> input.textureId != null
@@ -2087,12 +2077,25 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
             }
         }
         val viewProjection = Matrix4f(step.context.projMatrix).mul(step.context.viewMatrix)
-        val inverseViewProjection = Matrix4f(viewProjection).invert()
-        val camera = Minecraft.getInstance().gameRenderer.mainCamera.position
+        val depthViewProjection = depthProjection?.let {
+            Matrix4f(it.projectionMatrix).mul(it.viewMatrix)
+        }
+        val inverseViewProjection = Matrix4f(depthViewProjection ?: viewProjection).invert()
+        val camera = Minecraft.getInstance().gameRenderer.mainCamera().position()
         program.setFloat("progress", step.instance.progress)
         program.setFloat2("center", center)
         program.setFloat("sourceDepth", sourceDepth)
         program.setBoolean("hasDepth", hasDepth)
+        program.setBoolean("cooDepthContextValid", depthProjection != null)
+        program.setFloat2(
+            "cooDepthToNdc",
+            Vector2f(
+                depthProjection?.depthToNdcScale ?: 1F,
+                depthProjection?.depthToNdcBias ?: 0F
+            )
+        )
+        program.setBoolean("cooDepthReversed", depthProjection?.closerIsGreater == true)
+        program.setFloat("cooDepthClearValue", depthProjection?.backgroundDepth ?: 0F)
         val hasTerrainDepth = step.inputs.any { input ->
             input.source == PostEffectInputSource.TERRAIN_DEPTH ||
                 input.source == PostEffectInputSource.TERRAIN_OPAQUE_DEPTH ||
@@ -2197,9 +2200,10 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
     }
 
     private fun resolveBindingDepth(context: RenderFrameContext, binding: PostEffectBinding): Float? {
+        val fallback = context.depthProjection?.backgroundDepth
         return when (binding) {
-            PostEffectBinding.Screen -> 1F
-            is PostEffectBinding.ScreenPoint -> 1F
+            PostEffectBinding.Screen -> fallback
+            is PostEffectBinding.ScreenPoint -> fallback
             is PostEffectBinding.WorldPos -> projectWorldClip(context, binding.x, binding.y, binding.z)?.z
             is PostEffectBinding.Block -> {
                 val offset = binding.offset ?: PostEffectParamValue.Vec3Value(0.5, 0.5, 0.5)
@@ -2218,21 +2222,22 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
                 val player = Minecraft.getInstance().level?.getPlayerByUUID(binding.playerId) ?: return null
                 projectWorldClip(context, player.x, player.y + player.bbHeight * 0.5, player.z)?.z
             }
-            is PostEffectBinding.Item -> 1F
+            is PostEffectBinding.Item -> fallback
             is PostEffectBinding.Custom -> null
         }
     }
 
     private fun projectWorldClip(context: RenderFrameContext, x: Double, y: Double, z: Double): Vector3f? {
-        val camera = Minecraft.getInstance().gameRenderer.mainCamera.position
+        val camera = Minecraft.getInstance().gameRenderer.mainCamera().position()
         val clip = Vector4f(
             (x - camera.x).toFloat(),
             (y - camera.y).toFloat(),
             (z - camera.z).toFloat(),
             1F
         )
-        context.viewMatrix.transform(clip)
-        context.projMatrix.transform(clip)
+        val depthProjection = context.depthProjection
+        (depthProjection?.viewMatrix ?: context.viewMatrix).transform(clip)
+        (depthProjection?.projectionMatrix ?: context.projMatrix).transform(clip)
         if (clip.w <= 0.0001F) {
             return null
         }
@@ -2243,10 +2248,11 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
             return null
         }
         val ndcZ = clip.z * invW
+        val depth = depthProjection?.ndcToDepth(ndcZ) ?: (ndcZ * 0.5F + 0.5F)
         return Vector3f(
             (ndcX * 0.5F + 0.5F).coerceIn(0F, 1F),
             (ndcY * 0.5F + 0.5F).coerceIn(0F, 1F),
-            (ndcZ * 0.5F + 0.5F).coerceIn(0F, 1F)
+            depth.coerceIn(0F, 1F)
         )
     }
 
@@ -2340,6 +2346,7 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
                 width,
                 height
             ).also {
+                it.setDepthClearValue(context.depthProjection?.backgroundDepth ?: 0F)
                 it.setDepthTextureFormat(depthFormat?.toGlDepthTextureFormat())
                 it.setTextureFilterMod(if (requestedMipLevels > 1) GL_LINEAR_MIPMAP_LINEAR else GL_LINEAR)
                 it.init()
@@ -2360,11 +2367,15 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
             current.width = width
             current.height = height
         }
+        current.buffer.setDepthClearValue(context.depthProjection?.backgroundDepth ?: 0F)
         return current
     }
 
-    private fun programFor(vertex: ResourceLocation?, fragment: ResourceLocation): CooShaderProgram {
-        val key = PostProgramKey(vertex ?: screenVertexId, fragment)
+    private fun programFor(vertex: Identifier?, fragment: Identifier): CooShaderProgram {
+        val key = PostProgramKey(
+            vertex ?: Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "pipeline/vertexes/screen.vsh"),
+            fragment,
+        )
         val program = programs.getOrPut(key) {
             AdvancedShaderProgramBuilder()
                 .vertex(IdentifierShader(key.vertex, GlShaderType.VERTEX))
@@ -2526,9 +2537,9 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
     }
 
     /**
-     * 执行自定义绘制，并在离开作用域时恢复调用方的 RenderSystem 与底层 OpenGL 状态。
+     * 执行自定义绘制，复用光栅状态栈并恢复 RenderPearl 缓存与实际 OpenGL 绑定。
      *
-     * 保存范围包括混合、深度、裁剪、颜色写入、polygon offset、shader、VAO、前 12 个纹理单元、
+     * 保存范围包括混合、深度、裁剪、颜色写入、polygon offset、shader、VAO、顶点缓冲、前 12 个纹理与采样器单元、
      * framebuffer 和 viewport。即使 [block] 抛出异常也会执行恢复。
      *
      * 示例：`withPreservedGlState { drawTerrainOverlay() }`。
@@ -2536,205 +2547,72 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
      * @param block 允许临时修改上述状态的绘制代码
      */
     internal fun withPreservedGlState(block: () -> Unit) {
-        // 自定义绘制会改动 program、混合、深度、viewport、FBO 和活动纹理，进入前必须保存这些状态。
-        val depthEnabled = glIsEnabled(GL_DEPTH_TEST)
-        val cullEnabled = glIsEnabled(GL_CULL_FACE)
-        val scissorEnabled = glIsEnabled(GL_SCISSOR_TEST)
-        val blendEnabled = glIsEnabled(GL_BLEND)
-        val indexedBlendStates = captureIndexedBlendStates()
-        val indexedColorMasks = captureIndexedColorMasks()
-        val depthMask = glGetBoolean(GL_DEPTH_WRITEMASK)
-        val depthFunc = glGetInteger(GL_DEPTH_FUNC)
-        val polygonOffsetEnabled = glIsEnabled(GL_POLYGON_OFFSET_FILL)
-        val previousPolygonOffsetFactor = glGetFloat(GL_POLYGON_OFFSET_FACTOR)
-        val previousPolygonOffsetUnits = glGetFloat(GL_POLYGON_OFFSET_UNITS)
-        val blendSrcRgb = glGetInteger(GL_BLEND_SRC_RGB)
-        val blendDstRgb = glGetInteger(GL_BLEND_DST_RGB)
-        val blendSrcAlpha = glGetInteger(GL_BLEND_SRC_ALPHA)
-        val blendDstAlpha = glGetInteger(GL_BLEND_DST_ALPHA)
-        val blendEqRgb = glGetInteger(GL_BLEND_EQUATION_RGB)
-        val blendEqAlpha = glGetInteger(GL_BLEND_EQUATION_ALPHA)
-        val previousShader = RenderSystem.getShader()
-        val previousProgram = glGetInteger(GL_CURRENT_PROGRAM)
-        val previousActive = glGetInteger(GL_ACTIVE_TEXTURE)
-        val previousVertexArray = glGetInteger(GL_VERTEX_ARRAY_BINDING)
-        val previousShaderTextures = IntArray(12) { RenderSystem.getShaderTexture(it) }
-        val previousTextureBindings = IntArray(previousShaderTextures.size) { index ->
-            glActiveTexture(GL_TEXTURE0 + index)
-            glGetInteger(GL_TEXTURE_BINDING_2D)
-        }
-        glActiveTexture(previousActive)
-        val previousColorMask = IntArray(4)
-        glGetIntegerv(GL_COLOR_WRITEMASK, previousColorMask)
-        val previousScissorBox = IntArray(4)
-        glGetIntegerv(GL_SCISSOR_BOX, previousScissorBox)
-        val previousReadFbo = glGetInteger(GL_READ_FRAMEBUFFER_BINDING)
-        val previousDrawFbo = glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING)
-        val previousViewport = IntArray(4)
-        glGetIntegerv(GL_VIEWPORT, previousViewport)
-        try {
-            block()
-        } finally {
-            // 同时恢复 RenderSystem 缓存和真实 GL 状态，避免 Iris 绕过缓存后留下错误绑定。
-            RenderSystem.blendFuncSeparate(blendSrcRgb, blendDstRgb, blendSrcAlpha, blendDstAlpha)
-            glBlendFuncSeparate(blendSrcRgb, blendDstRgb, blendSrcAlpha, blendDstAlpha)
-            glBlendEquationSeparate(blendEqRgb, blendEqAlpha)
-            RenderSystem.depthMask(depthMask)
-            glDepthMask(depthMask)
-            RenderSystem.depthFunc(depthFunc)
-            glDepthFunc(depthFunc)
-            RenderSystem.polygonOffset(previousPolygonOffsetFactor, previousPolygonOffsetUnits)
-            glPolygonOffset(previousPolygonOffsetFactor, previousPolygonOffsetUnits)
-            if (polygonOffsetEnabled) {
-                RenderSystem.enablePolygonOffset()
-                glEnable(GL_POLYGON_OFFSET_FILL)
-            } else {
-                RenderSystem.disablePolygonOffset()
-                glDisable(GL_POLYGON_OFFSET_FILL)
-            }
-            glUseProgram(previousProgram)
-            RenderSystem.setShader { previousShader }
-            val safePreviousVertexArray = if (previousVertexArray == 0 || glIsVertexArray(previousVertexArray)) {
-                 previousVertexArray
-             } else {
-                 0
-             }
-             glBindVertexArray(safePreviousVertexArray)
-            previousShaderTextures.forEachIndexed { index, texture ->
-                RenderSystem.setShaderTexture(index, texture)
-                RenderSystem.activeTexture(GL_TEXTURE0 + index)
+        OpenGlRenderTargetBridge.requireOpenGlBackend()
+        CooGLSLStateManager.useState {
+            val previousProgram = glGetInteger(GL_CURRENT_PROGRAM)
+            val previousActive = glGetInteger(GL_ACTIVE_TEXTURE)
+            val previousVertexArray = glGetInteger(GL_VERTEX_ARRAY_BINDING)
+            val previousArrayBuffer = glGetInteger(GL_ARRAY_BUFFER_BINDING)
+            val previousTextureBindings = IntArray(12) { index ->
                 glActiveTexture(GL_TEXTURE0 + index)
-                RenderSystem.bindTexture(previousTextureBindings[index])
-                glBindTexture(GL_TEXTURE_2D, previousTextureBindings[index])
+                glGetInteger(GL_TEXTURE_BINDING_2D)
             }
-            RenderSystem.activeTexture(previousActive)
+            val previousSamplers = IntArray(12) { glGetIntegeri(GL_SAMPLER_BINDING, it) }
             glActiveTexture(previousActive)
-            glBindFramebuffer(GL_READ_FRAMEBUFFER, previousReadFbo)
-            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, previousDrawFbo)
-            RenderSystem.viewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3])
-            glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3])
-            RenderSystem.colorMask(
-                previousColorMask[0] != 0,
-                previousColorMask[1] != 0,
-                previousColorMask[2] != 0,
-                previousColorMask[3] != 0
-            )
-            restoreIndexedColorMasks(indexedColorMasks)
-            if (blendEnabled) {
-                RenderSystem.enableBlend()
-            } else {
-                RenderSystem.disableBlend()
-            }
-            restoreIndexedBlendStates(indexedBlendStates)
-            if (depthEnabled) {
-                RenderSystem.enableDepthTest()
-            } else {
-                RenderSystem.disableDepthTest()
-            }
-            if (cullEnabled) {
-                RenderSystem.enableCull()
-            } else {
-                RenderSystem.disableCull()
-            }
-            if (scissorEnabled) {
-                RenderSystem.enableScissor(
-                    previousScissorBox[0],
-                    previousScissorBox[1],
-                    previousScissorBox[2],
-                    previousScissorBox[3]
-                )
-            } else {
-                RenderSystem.disableScissor()
+            val previousReadFbo = glGetInteger(GL_READ_FRAMEBUFFER_BINDING)
+            val previousDrawFbo = glGetInteger(GL_DRAW_FRAMEBUFFER_BINDING)
+            val previousViewport = IntArray(4)
+            glGetIntegerv(GL_VIEWPORT, previousViewport)
+            try {
+                block()
+            } finally {
+                // 原版不再维护 ShaderInstance/纹理编号表，改为同步 RenderPearl 缓存与真实绑定。
+                GlStateManager._glUseProgram(previousProgram)
+                glUseProgram(previousProgram)
+                val safePreviousVertexArray = if (previousVertexArray == 0 || glIsVertexArray(previousVertexArray)) {
+                    previousVertexArray
+                } else {
+                    0
+                }
+                GlStateManager._glBindVertexArray(safePreviousVertexArray)
+                glBindVertexArray(safePreviousVertexArray)
+                GlStateManager._glBindBuffer(GL_ARRAY_BUFFER, previousArrayBuffer)
+                glBindBuffer(GL_ARRAY_BUFFER, previousArrayBuffer)
+                previousTextureBindings.forEachIndexed { index, texture ->
+                    GlStateManager._activeTexture(GL_TEXTURE0 + index)
+                    glActiveTexture(GL_TEXTURE0 + index)
+                    GlStateManager._bindTexture(texture)
+                    glBindTexture(GL_TEXTURE_2D, texture)
+                    glBindSampler(index, previousSamplers[index])
+                }
+                GlStateManager._activeTexture(previousActive)
+                glActiveTexture(previousActive)
+                glBindFramebuffer(GL_READ_FRAMEBUFFER, previousReadFbo)
+                glBindFramebuffer(GL_DRAW_FRAMEBUFFER, previousDrawFbo)
+                GlStateManager._viewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3])
+                glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3])
             }
         }
     }
-
-    /** 保存每个 draw buffer 的独立混合状态，避免全屏 pass 破坏 Iris 辅助附件。 */
-    private fun captureIndexedBlendStates(): List<IndexedBlendState> {
-        if (!CParticleIndexedBlendState.isAvailable()) return emptyList()
-        return List(glGetInteger(GL_MAX_DRAW_BUFFERS)) { drawBuffer ->
-            IndexedBlendState(
-                enabled = glIsEnabledi(GL_BLEND, drawBuffer),
-                sourceRgb = indexedInteger(GL_BLEND_SRC_RGB, drawBuffer),
-                destinationRgb = indexedInteger(GL_BLEND_DST_RGB, drawBuffer),
-                sourceAlpha = indexedInteger(GL_BLEND_SRC_ALPHA, drawBuffer),
-                destinationAlpha = indexedInteger(GL_BLEND_DST_ALPHA, drawBuffer),
-                equationRgb = indexedInteger(GL_BLEND_EQUATION_RGB, drawBuffer),
-                equationAlpha = indexedInteger(GL_BLEND_EQUATION_ALPHA, drawBuffer),
-            )
-        }
-    }
-
-    private fun restoreIndexedBlendStates(states: List<IndexedBlendState>) {
-        states.forEachIndexed { drawBuffer, state ->
-            CParticleIndexedBlendState.setFactors(
-                drawBuffer,
-                state.sourceRgb,
-                state.destinationRgb,
-                state.sourceAlpha,
-                state.destinationAlpha,
-            )
-            CParticleIndexedBlendState.setEquation(drawBuffer, state.equationRgb, state.equationAlpha)
-            if (state.enabled) {
-                glEnablei(GL_BLEND, drawBuffer)
-            } else {
-                glDisablei(GL_BLEND, drawBuffer)
-            }
-        }
-    }
-
-    /** 保存并恢复 Iris composite 可能为每个颜色 attachment 设置的独立写掩码。 */
-    private fun captureIndexedColorMasks(): List<IndexedColorMask> {
-        return List(glGetInteger(GL_MAX_DRAW_BUFFERS)) { drawBuffer ->
-            val mask = IntArray(4)
-            glGetIntegeri_v(GL_COLOR_WRITEMASK, drawBuffer, mask)
-            IndexedColorMask(
-                red = mask[0] != 0,
-                green = mask[1] != 0,
-                blue = mask[2] != 0,
-                alpha = mask[3] != 0,
-            )
-        }
-    }
-
-    private fun restoreIndexedColorMasks(states: List<IndexedColorMask>) {
-        states.forEachIndexed { drawBuffer, state ->
-            glColorMaski(drawBuffer, state.red, state.green, state.blue, state.alpha)
-        }
-    }
-
-    private fun indexedInteger(parameter: Int, drawBuffer: Int): Int {
-        val value = IntArray(1)
-        glGetIntegeri_v(parameter, drawBuffer, value)
-        return value[0]
-    }
-
-    private data class IndexedBlendState(
-        val enabled: Boolean,
-        val sourceRgb: Int,
-        val destinationRgb: Int,
-        val sourceAlpha: Int,
-        val destinationAlpha: Int,
-        val equationRgb: Int,
-        val equationAlpha: Int,
-    )
-
-    private data class IndexedColorMask(
-        val red: Boolean,
-        val green: Boolean,
-        val blue: Boolean,
-        val alpha: Boolean,
-    )
 
     /** 在完整状态保护内切换到全屏后处理使用的无混合、无深度、无裁剪状态。 */
     private fun withFlatPostState(block: () -> Unit) {
         withPreservedGlState {
-            RenderSystem.disableBlend()
-            RenderSystem.disableDepthTest()
-            RenderSystem.disableCull()
+            repeat(glGetInteger(GL_MAX_DRAW_BUFFERS)) { index ->
+                if (index < ColorTargetState.MAX_COLOR_TARGETS) {
+                    GlStateManager._disableBlend(index)
+                }
+                glDisablei(GL_BLEND, index)
+            }
+            GlStateManager._disableDepthTest()
+            glDisable(GL_DEPTH_TEST)
+            GlStateManager._disableCull()
+            glDisable(GL_CULL_FACE)
+            GlStateManager._colorMask(0, ColorTargetState.WRITE_ALL)
             glColorMaski(0, true, true, true, true)
             if (glIsEnabled(GL_SCISSOR_TEST)) {
-                RenderSystem.disableScissor()
+                GlStateManager._disableScissorTest()
+                glDisable(GL_SCISSOR_TEST)
             }
             block()
         }
@@ -2753,10 +2631,10 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
         )
     }
 
-    private fun managedProgramId(key: PostProgramKey): ResourceLocation {
+    private fun managedProgramId(key: PostProgramKey): Identifier {
         val vertexPath = key.vertex.path.replace('.', '_').replace('/', '_')
         val fragmentPath = key.fragment.path.replace('.', '_').replace('/', '_')
-        return ResourceLocation.fromNamespaceAndPath(
+        return Identifier.fromNamespaceAndPath(
             CooParticlesConstants.MOD_ID,
             "post/runtime/${key.vertex.namespace}_${vertexPath}/${key.fragment.namespace}_$fragmentPath"
         )
@@ -2875,11 +2753,11 @@ internal object OpenGlPostEffectExecutionBackend : PostEffectExecutionBackend,
     private data class PassAttachment(val pass: String, val attachment: Int)
 
     private data class PostProgramKey(
-        val vertex: ResourceLocation,
-        val fragment: ResourceLocation
+        val vertex: Identifier,
+        val fragment: Identifier
     )
 
-    private data class NamedAttachment(val target: ResourceLocation, val attachment: Int)
+    private data class NamedAttachment(val target: Identifier, val attachment: Int)
 
     private data class FrameKey(
         val width: Int,

@@ -1,7 +1,7 @@
 package cn.coostack.cooparticlesapi.renderer.terrain
 
 import net.minecraft.core.BlockPos
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /**
  * 位置到效果组反向索引的键。
@@ -10,6 +10,6 @@ import net.minecraft.resources.ResourceLocation
  * @property position 方块坐标
  */
 internal data class PositionKey(
-    val dimension: ResourceLocation,
+    val dimension: Identifier,
     val position: BlockPos
 )

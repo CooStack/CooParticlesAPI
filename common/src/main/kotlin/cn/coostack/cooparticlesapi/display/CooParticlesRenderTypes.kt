@@ -1,8 +1,8 @@
 package cn.coostack.cooparticlesapi.display
 
 import cn.coostack.cooparticlesapi.platform.CooClientServices
-import net.minecraft.client.renderer.RenderType
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.client.renderer.rendertype.RenderType
+import net.minecraft.resources.Identifier
 
 object CooParticlesRenderTypes {
     private val provider: CooRenderTypesProvider
@@ -14,12 +14,12 @@ object CooParticlesRenderTypes {
     }
 
     @JvmStatic
-    fun entityCutoutEmissive(texture: ResourceLocation): RenderType {
+    fun entityCutoutEmissive(texture: Identifier): RenderType {
         return provider.entityCutoutEmissive(texture)
     }
 
     @JvmStatic
-    fun entityCutoutEmissive(texture: ResourceLocation, brightness: Float): RenderType {
+    fun entityCutoutEmissive(texture: Identifier, brightness: Float): RenderType {
         return provider.entityCutoutEmissive(texture, brightness)
     }
 
@@ -29,7 +29,7 @@ object CooParticlesRenderTypes {
     }
 
     @JvmStatic
-    fun named(id: ResourceLocation): RenderType? {
+    fun named(id: Identifier): RenderType? {
         return provider.named(id)
     }
 
@@ -44,7 +44,7 @@ object CooParticlesRenderTypes {
     }
 
     @JvmStatic
-    fun layered(id: ResourceLocation): CooLayeredRenderType? {
+    fun layered(id: Identifier): CooLayeredRenderType? {
         return provider.layered(id)
     }
 }

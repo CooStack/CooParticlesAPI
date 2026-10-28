@@ -2,14 +2,14 @@ package cn.coostack.cooparticlesapi.network.buffer
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import io.netty.buffer.Unpooled
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 class LongArrayControlerBuffer : ParticleControlerDataBuffer<LongArray> {
 
     companion object {
         @JvmStatic
         val id = ParticleControlerDataBuffer.Id(
-            ResourceLocation.fromNamespaceAndPath(
+            Identifier.fromNamespaceAndPath(
                 CooParticlesConstants.MOD_ID, "long_array"
             )
         )

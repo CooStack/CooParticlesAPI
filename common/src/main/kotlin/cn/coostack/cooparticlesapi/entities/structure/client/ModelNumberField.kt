@@ -1,12 +1,14 @@
 package cn.coostack.cooparticlesapi.entities.structure.client
 
 import net.minecraft.client.gui.Font
-import net.minecraft.client.gui.GuiGraphics
-import net.minecraft.client.gui.screens.Screen
+import net.minecraft.client.gui.GuiGraphicsExtractor
+import com.mojang.blaze3d.platform.InputConstants
+import net.minecraft.client.Minecraft
+import net.minecraft.client.input.KeyEvent
+import net.minecraft.client.input.MouseButtonEvent
 import net.minecraft.client.gui.components.Tooltip
 import net.minecraft.client.gui.components.EditBox
 import net.minecraft.network.chat.Component
-import org.lwjgl.glfw.GLFW
 import kotlin.math.abs
 
 /**
@@ -45,7 +47,9 @@ class ModelNumberField(
     }
 
     /** 文字区仍由原版处理光标；箭头区延迟到释放时步进，以免拖动起手多跳一次。 */
-    override fun onClick(mouseX: Double, mouseY: Double) {
+    override fun onClick(event: MouseButtonEvent, doubleClick: Boolean) {
+        val mouseX = event.x()
+        val mouseY = event.y()
         pressedValue = null
         if (mouseX >= x + width - arrowWidth) {
             pressedValue = value.toDoubleOrNull()?.takeIf { it.isFinite() }
@@ -53,48 +57,50 @@ class ModelNumberField(
             pressedDirection = if (mouseY < y + height / 2) 1.0 else -1.0
             scrubbed = false
         } else {
-            super.onClick(mouseX, mouseY)
+            super.onClick(event, doubleClick)
         }
     }
 
     /** 越过三像素阈值后，每四像素对应一个步长；移出控件仍保持拖动捕获。 */
-    override fun onDrag(mouseX: Double, mouseY: Double, deltaX: Double, deltaY: Double) {
+    override fun onDrag(event: MouseButtonEvent, deltaX: Double, deltaY: Double) {
         val initial = pressedValue
         if (initial == null) {
-            super.onDrag(mouseX, mouseY, deltaX, deltaY)
+            super.onDrag(event, deltaX, deltaY)
             return
         }
-        val distance = pressedY - mouseY
+        val distance = pressedY - event.y()
         if (abs(distance) >= 3.0) scrubbed = true
         if (scrubbed) changeValue(initial, distance / 4.0)
     }
 
-    override fun onRelease(mouseX: Double, mouseY: Double) {
+    override fun onRelease(event: MouseButtonEvent) {
         pressedValue?.let { if (!scrubbed) changeValue(it, pressedDirection) }
         pressedValue = null
     }
 
-    override fun keyPressed(keyCode: Int, scanCode: Int, modifiers: Int): Boolean {
-        if (active && isFocused && (keyCode == GLFW.GLFW_KEY_UP || keyCode == GLFW.GLFW_KEY_DOWN)) {
+    override fun keyPressed(event: KeyEvent): Boolean {
+        val keyCode = event.key()
+        if (active && isFocused && (keyCode == InputConstants.KEY_UP || keyCode == InputConstants.KEY_DOWN)) {
             value.toDoubleOrNull()?.takeIf { it.isFinite() }?.let {
-                changeValue(it, if (keyCode == GLFW.GLFW_KEY_UP) 1.0 else -1.0)
+                changeValue(it, if (keyCode == InputConstants.KEY_UP) 1.0 else -1.0)
             }
             return true
         }
-        return super.keyPressed(keyCode, scanCode, modifiers)
+        return super.keyPressed(event)
     }
 
     /** 使用与键盘一致的修饰键，不把控件格式化应用到手动输入的原始文字。 */
     private fun changeValue(initial: Double, steps: Double) {
-        value = stepper.adjust(initial, steps, Screen.hasShiftDown(), Screen.hasControlDown()).toString()
+        val client = Minecraft.getInstance()
+        value = stepper.adjust(initial, steps, client.hasShiftDown(), client.hasControlDown()).toString()
         moveCursorToEnd(false)
     }
 
     /** 文字与箭头分区绘制，长数值不会盖住箭头，禁用状态仍显示控件边界。 */
-    override fun renderWidget(context: GuiGraphics, mouseX: Int, mouseY: Int, delta: Float) {
+    override fun extractWidgetRenderState(context: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, delta: Float) {
         val left = x + width - arrowWidth
         context.enableScissor(x, y, left, y + height)
-        super.renderWidget(context, mouseX, mouseY, delta)
+        super.extractWidgetRenderState(context, mouseX, mouseY, delta)
         context.disableScissor()
         val middle = y + height / 2
         val hovered = active && mouseX >= left && mouseX < x + width && mouseY >= y && mouseY < y + height
@@ -107,6 +113,6 @@ class ModelNumberField(
             context.fill(center - row, y + 3 + row, center + row + 1, y + 4 + row, color)
             context.fill(center - row, middle + 6 - row, center + row + 1, middle + 7 - row, color)
         }
-        tooltip = if (!hovered) null else if (mouseY < middle) increaseTooltip else decreaseTooltip
+        setTooltip(if (!hovered) null else if (mouseY < middle) increaseTooltip else decreaseTooltip)
     }
 }

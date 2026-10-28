@@ -3,7 +3,7 @@ package cn.coostack.cooparticlesapi.supports.sound
 import cn.coostack.cooparticlesapi.CooParticlesAPI
 import cn.coostack.cooparticlesapi.network.packet.server.PacketSoundInstanceS2C
 import cn.coostack.cooparticlesapi.scheduler.CooScheduler
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.sounds.SoundEvent
@@ -28,12 +28,12 @@ import kotlin.math.max
  */
 class ServerManagedSoundInstance(
     val key: String,
-    soundId: ResourceLocation,
+    soundId: Identifier,
     source: SoundSource,
     world: ServerLevel,
     initialPos: Vec3,
-    initialVolume: Float = 1f,
-    initialPitch: Float = 1f,
+    initialVolume: Float = 1F,
+    initialPitch: Float = 1F,
     looping: Boolean = false,
     relative: Boolean = false
 ) {
@@ -43,8 +43,8 @@ class ServerManagedSoundInstance(
         source: SoundSource,
         world: ServerLevel,
         initialPos: Vec3,
-        initialVolume: Float = 1f,
-        initialPitch: Float = 1f,
+        initialVolume: Float = 1F,
+        initialPitch: Float = 1F,
         looping: Boolean = false,
         relative: Boolean = false
     ) : this(key, sound.location, source, world, initialPos, initialVolume, initialPitch, looping, relative)
@@ -72,7 +72,7 @@ class ServerManagedSoundInstance(
         lifetime = spec.lifetime
     }
 
-    var soundId: ResourceLocation = soundId
+    var soundId: Identifier = soundId
         set(value) {
             if (field == value) {
                 return
@@ -170,14 +170,14 @@ class ServerManagedSoundInstance(
     /**
      * 初始音量百分比/倍率。0f 为静音，1f 为正常资源音量。
      */
-    val initialVolumeMultiplier: Float = initialVolume.coerceAtLeast(0f)
+    val initialVolumeMultiplier: Float = initialVolume.coerceAtLeast(0F)
 
     /**
      * 当前音量百分比/倍率。该值会同步到客户端 SoundInstance#getVolume。
      */
     var volumeMultiplier: Float = initialVolumeMultiplier
         set(value) {
-            val next = value.coerceAtLeast(0f)
+            val next = value.coerceAtLeast(0F)
             if (field == next) {
                 return
             }
@@ -290,7 +290,7 @@ class ServerManagedSoundInstance(
         interruptWhenStopped: Boolean = true
     ): CooScheduler.TickRunnable? {
         val fixedTicks = ticks.coerceAtLeast(0)
-        val fixedTarget = targetVolume.coerceAtLeast(0f)
+        val fixedTarget = targetVolume.coerceAtLeast(0F)
         if (fixedTicks == 0) {
             volumeMultiplier = fixedTarget
             if (stopWhenFinished) {
@@ -307,7 +307,7 @@ class ServerManagedSoundInstance(
                 return@runTaskTimerMaxTick
             }
             elapsed++
-            val progress = (elapsed.toFloat() / fixedTicks).coerceIn(0f, 1f)
+            val progress = (elapsed.toFloat() / fixedTicks).coerceIn(0F, 1F)
             volumeMultiplier = startVolume + (fixedTarget - startVolume) * progress
         }.setFinishCallback {
             volumeMultiplier = fixedTarget
@@ -323,14 +323,14 @@ class ServerManagedSoundInstance(
         stopWhenFinished: Boolean = true,
         interruptWhenStopped: Boolean = true
     ): CooScheduler.TickRunnable? {
-        return fadeTo(0f, ticks, stopWhenFinished, interruptWhenStopped)
+        return fadeTo(0F, ticks, stopWhenFinished, interruptWhenStopped)
     }
 
     @JvmOverloads
     fun fadeIn(
         ticks: Int,
         targetVolume: Float = initialVolumeMultiplier,
-        fromVolume: Float = 0f
+        fromVolume: Float = 0F
     ): CooScheduler.TickRunnable? {
         volumeMultiplier = fromVolume
         return fadeTo(targetVolume, ticks, false)

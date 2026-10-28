@@ -1,5 +1,7 @@
 package cn.coostack.cooparticlesapi.utils.interpolator.data
 
+import cn.coostack.cooparticlesapi.network.readVec3
+import cn.coostack.cooparticlesapi.network.writeVec3
 import cn.coostack.cooparticlesapi.extend.asRelative
 import cn.coostack.cooparticlesapi.utils.GraphMathHelper
 import cn.coostack.cooparticlesapi.utils.RelativeLocation

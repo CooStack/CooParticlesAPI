@@ -5,13 +5,13 @@ import cn.coostack.cooparticlesapi.network.particle.style.ParticleGroupStyle
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleShapeStyle
 import cn.coostack.cooparticlesapi.network.particle.style.ParticleStyleProvider
 import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
+import cn.coostack.cooparticlesapi.particles.CooParticleTextureSheet
 import cn.coostack.cooparticlesapi.particles.impl.ControlableEndRodEffect
 import cn.coostack.cooparticlesapi.utils.GraphMathHelper
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.NoiseMode
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import cn.coostack.cooparticlesapi.utils.builder.PointsBuilder
-import net.minecraft.client.particle.ParticleRenderType
 import net.minecraft.world.phys.Vec3
 import java.util.UUID
 import kotlin.math.PI
@@ -54,8 +54,8 @@ class RomaMagicTestStyle(uuid: UUID = UUID.randomUUID()) :
                         StyleData {
                             ParticleDisplayer.withSingle(ControlableEndRodEffect(it))
                         }.withParticleHandler {
-                            this.size = 0.1f
-                            this.textureSheet = ParticleRenderType.PARTICLE_SHEET_TRANSLUCENT
+                            this.size = 0.1F
+                            this.textureSheet = CooParticleTextureSheet.PARTICLE_SHEET_TRANSLUCENT
                         }
                     }.toggleOnDisplay {
                         this.addPreTickAction {
@@ -151,8 +151,8 @@ class RomaMagicTestStyle(uuid: UUID = UUID.randomUUID()) :
                                     Math3DUtil.colorOf(255, 236, 247)
                                 )
                             }
-                            this.textureSheet = ParticleRenderType.PARTICLE_SHEET_TRANSLUCENT
-                            size = GraphMathHelper.lerp((rel.length() - 3) / 6.0, 0.1f, 1.5f)
+                            this.textureSheet = CooParticleTextureSheet.PARTICLE_SHEET_TRANSLUCENT
+                            size = GraphMathHelper.lerp((rel.length() - 3) / 6.0, 0.1F, 1.5F)
                         }
                     }.toggleOnDisplay {
                         this.addPreTickAction {

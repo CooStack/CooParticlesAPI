@@ -44,5 +44,7 @@ data class RenderFrameContext(
     /** 当前目标宽度。 */
     val targetWidth: Int? = null,
     /** 当前目标高度。 */
-    val targetHeight: Int? = null
+    val targetHeight: Int? = null,
+    /** 与场景深度来源同时捕获的矩阵及原始深度约定；缺失时不得尝试深度重建。 */
+    val depthProjection: DepthProjectionContext? = null,
 )

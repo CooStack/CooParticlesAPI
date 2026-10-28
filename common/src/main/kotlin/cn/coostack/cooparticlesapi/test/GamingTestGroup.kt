@@ -4,11 +4,11 @@ import cn.coostack.cooparticlesapi.test.api.TestGroup
 import cn.coostack.cooparticlesapi.test.api.TestOption
 import cn.coostack.cooparticlesapi.test.api.TestReviewMode
 import net.minecraft.network.chat.Component
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.entity.player.Player
 import java.util.function.Supplier
 
-class GamingTestGroup(val testPlayer: Player, val id: ResourceLocation) : TestGroup {
+class GamingTestGroup(val testPlayer: Player, val id: Identifier) : TestGroup {
     enum class OptionResult(val displayName: String) {
         PASSED("通过"),
         FAILED("失败"),
@@ -118,7 +118,7 @@ class GamingTestGroup(val testPlayer: Player, val id: ResourceLocation) : TestGr
     }
 
 
-    override fun groupID(): ResourceLocation {
+    override fun groupID(): Identifier {
         return id
     }
 
@@ -275,7 +275,7 @@ class GamingTestGroup(val testPlayer: Player, val id: ResourceLocation) : TestGr
 
     private fun pushStatusHint(force: Boolean) {
         val message = buildCurrentStatusLine() ?: return
-        testPlayer.displayClientMessage(Component.literal(message), true)
+        testPlayer.sendOverlayMessage(Component.literal(message))
         actionBarCooldown = if (force) 10 else 20
     }
 

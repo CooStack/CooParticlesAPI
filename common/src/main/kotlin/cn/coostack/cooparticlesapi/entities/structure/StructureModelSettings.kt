@@ -124,26 +124,32 @@ data class StructureModelSettings(
          */
         fun fromNbt(tag: CompoundTag, defaultPivot: Vec3): StructureModelSettings {
             val settings = fromNbt(tag)
-            val transform = if (tag.contains("Transform")) tag.getCompound("Transform") else tag
+            val transform = tag.getCompound("Transform").orElse(tag)
             if ((0..2).any { transform.contains("Pivot$it") }) return settings
             return settings.withPivotKeepingPosition(listOf(defaultPivot.x, defaultPivot.y, defaultPivot.z))
         }
 
         /** 从完整设置标签读取；返回值仍须通过 valid 校验后才能应用。 */
         fun fromNbt(tag: CompoundTag): StructureModelSettings {
-            if (tag.contains("Transform")) return StructureModelSettings(
-                EntityTransform.fromNbt(tag.getCompound("Transform")),
-                if (tag.contains("Health")) tag.getFloat("Health") else 20F,
-                !tag.contains("DeathAnimation") || tag.getBoolean("DeathAnimation"))
+            val transform = tag.getCompound("Transform")
+            if (transform.isPresent) return StructureModelSettings(
+                EntityTransform.fromNbt(transform.orElseThrow()),
+                tag.getFloatOr("Health", 20F),
+                tag.getBooleanOr("DeathAnimation", true),
+            )
             return StructureModelSettings(
-            tag.getFloat("Health"), (0..2).map { tag.getDouble("Rotation$it") },
-            (0..2).map { tag.getDouble("Offset$it") }, (0..2).map { tag.getDouble("Scale$it") },
-            tag.getBoolean("DeathAnimation"),
-            (0..2).map { tag.getDouble("Pivot$it") },
-            (0..2).map { tag.getDouble("PivotCompensation$it") },
-            tag.getBoolean("Pickable"), tag.getString("ItemName").trim(),
-            tag.getBoolean("Edible"), tag.getBoolean("Placeable"),
-            ModelItemProperties.fromNbt(tag.getCompound("ItemProperties"))
+                tag.getFloatOr("Health", 20F),
+                (0..2).map { tag.getDoubleOr("Rotation$it", 0.0) },
+                (0..2).map { tag.getDoubleOr("Offset$it", 0.0) },
+                (0..2).map { tag.getDoubleOr("Scale$it", 0.0) },
+                tag.getBooleanOr("DeathAnimation", false),
+                (0..2).map { tag.getDoubleOr("Pivot$it", 0.0) },
+                (0..2).map { tag.getDoubleOr("PivotCompensation$it", 0.0) },
+                tag.getBooleanOr("Pickable", false),
+                tag.getStringOr("ItemName", "").trim(),
+                tag.getBooleanOr("Edible", false),
+                tag.getBooleanOr("Placeable", false),
+                ModelItemProperties.fromNbt(tag.getCompoundOrEmpty("ItemProperties")),
             )
         }
     }

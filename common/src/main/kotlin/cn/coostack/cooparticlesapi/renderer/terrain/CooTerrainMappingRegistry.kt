@@ -2,7 +2,7 @@ package cn.coostack.cooparticlesapi.renderer.terrain
 
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelineNodeKind
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooUniformValue
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
@@ -41,8 +41,8 @@ internal object CooTerrainMappingRegistry {
     /** 替换一个实例的完整 uniform 集合。 */
     @Synchronized
     fun updateUniforms(
-        dimension: ResourceLocation,
-        instanceId: ResourceLocation,
+        dimension: Identifier,
+        instanceId: Identifier,
         revision: Long,
         uniforms: Map<String, CooUniformValue>
     ) {
@@ -55,7 +55,7 @@ internal object CooTerrainMappingRegistry {
 
     /** 删除 Mapping 实例并保留 revision tombstone。 */
     @Synchronized
-    fun remove(dimension: ResourceLocation, instanceId: ResourceLocation, revision: Long) {
+    fun remove(dimension: Identifier, instanceId: Identifier, revision: Long) {
         val key = MappingKey(dimension, instanceId)
         if (!acceptRevision(key, revision)) return
         val removed = mappings.remove(key)
@@ -69,7 +69,7 @@ internal object CooTerrainMappingRegistry {
     }
 
     /** 返回当前维度按优先级和序号排序的原始 Mapping 快照。 */
-    fun active(dimension: ResourceLocation, gameTime: Long): List<CooTerrainMappingInstance> = mappings.values
+    fun active(dimension: Identifier, gameTime: Long): List<CooTerrainMappingInstance> = mappings.values
         .asSequence()
         .filter { it.dimension == dimension }
         .filter { !it.isPaused() }
@@ -82,7 +82,7 @@ internal object CooTerrainMappingRegistry {
      *
      * 第一层 REPLACE 成为基底；后续 REPLACE 被抑制，透明和加色层保持原顺序。
      */
-    fun activeRenderPlan(dimension: ResourceLocation, gameTime: Long): List<CooTerrainMappingInstance> {
+    fun activeRenderPlan(dimension: Identifier, gameTime: Long): List<CooTerrainMappingInstance> {
         var replaceSelected = false
         return active(dimension, gameTime).filter { mapping ->
             if (mapping.composition != CooTerrainEffectComposition.REPLACE) return@filter true
@@ -113,7 +113,7 @@ internal object CooTerrainMappingRegistry {
      * @param dimension 查询维度 ID
      * @return 按优先级和序号排序的 mapping 实例
      */
-    fun debugMappings(dimension: ResourceLocation): List<CooTerrainMappingInstance> = mappings.values
+    fun debugMappings(dimension: Identifier): List<CooTerrainMappingInstance> = mappings.values
         .asSequence()
         .filter { it.dimension == dimension }
         .sortedWith(mappingComparator())
@@ -127,7 +127,7 @@ internal object CooTerrainMappingRegistry {
 
     /** 取出最近 topology 变化涉及的 region，用于定向标记 terrain section。 */
     @Synchronized
-    fun drainTopologyRegions(dimension: ResourceLocation): List<CooTerrainMappingRegion> {
+    fun drainTopologyRegions(dimension: Identifier): List<CooTerrainMappingRegion> {
         val selected = topologyRegions.filter { it.dimension == dimension }.map(TopologyRegion::region)
         topologyRegions.removeIf { it.dimension == dimension }
         return selected
@@ -158,7 +158,7 @@ internal object CooTerrainMappingRegistry {
     }
 
     private data class TopologySignature(
-        val mappingId: ResourceLocation,
+        val mappingId: Identifier,
         val priority: Int,
         val composition: CooTerrainEffectComposition,
         val sequence: Long,
@@ -174,9 +174,9 @@ internal object CooTerrainMappingRegistry {
     }
 
     private data class TopologyRegion(
-        val dimension: ResourceLocation,
+        val dimension: Identifier,
         val region: CooTerrainMappingRegion
     )
 
-    private data class MappingKey(val dimension: ResourceLocation, val id: ResourceLocation)
+    private data class MappingKey(val dimension: Identifier, val id: Identifier)
 }

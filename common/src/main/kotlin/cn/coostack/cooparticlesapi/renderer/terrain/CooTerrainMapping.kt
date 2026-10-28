@@ -1,7 +1,7 @@
 package cn.coostack.cooparticlesapi.renderer.terrain
 
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooRenderPipeline
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.level.block.state.BlockState
 
 /**
@@ -10,7 +10,7 @@ import net.minecraft.world.level.block.state.BlockState
  * 模板不持有运行时位置集合；位置快照和生命周期均属于 [CooTerrainMappingInstance]。
  */
 data class CooTerrainMapping(
-    val id: ResourceLocation,
+    val id: Identifier,
     val pipeline: CooRenderPipeline<BlockState>,
     val regionType: CooTerrainMappingRegionType,
     val defaults: CooTerrainMappingDefaults = CooTerrainMappingDefaults()

@@ -84,7 +84,7 @@ interface ParticleDisplayer {
          * 始终返回null 因为此时粒子一定还未设置成功
          */
         override fun display(loc: Vec3, world: ClientLevel): Controlable<ControlableParticle>? {
-            world.addParticle(effect, true, loc.x, loc.y, loc.z, 0.0, 0.0, 0.0)
+            world.addParticle(effect, true, false, loc.x, loc.y, loc.z, 0.0, 0.0, 0.0)
             return ControlParticleManager.getControl(effect.controlUUID)
         }
     }

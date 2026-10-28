@@ -10,22 +10,22 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 
+/**
+ * 保持 Coo 低透明度粒子在 Iris 粒子通道中的裁剪阈值。
+ *
+ * <p>反射只在可选 Iris Mixin 中发生，缺少对应公开构造器时保留 Iris 原始配置。
+ */
 @Pseudo
 @Mixin(targets = "net.irisshaders.iris.pipeline.programs.ShaderKey", remap = false)
 public abstract class ShaderKeyIrisCompatMixin {
-    /**
-     * Iris 的 {@code GREATER} Alpha Test 使用的参考值。
-     *
-     * <p>示例：{@code alpha == 0.001F} 时比较成立并保留片元。
-     * 禁止直接改成 {@code 0.001F}，否则等于阈值的片元也会被丢弃。
-     */
-    @Unique
-    private static final float cooparticlesapi$PARTICLE_ALPHA_THRESHOLD = Math.nextDown(0.001F);
+    /** 公开透明度配置的反射解析是否已经完成；失败也只尝试一次。 */
     @Unique
     private static volatile boolean cooparticlesapi$particleAlphaTestResolved;
+    /** 与 Iris 粒子通道共享的不可变透明度配置；接口不匹配时为空。 */
     @Unique
     private static Object cooparticlesapi$particleAlphaTest;
 
+    /** 只调整两种粒子通道，实体和地形沿用各自的 Iris 裁剪配置。 */
     @Inject(method = "getAlphaTest", at = @At("RETURN"), cancellable = true, require = 0, remap = false)
     private void cooparticlesapi$lowerParticleAlphaThreshold(CallbackInfoReturnable<Object> cir) {
         String shaderKey = ((Enum<?>) (Object) this).name();
@@ -38,6 +38,7 @@ public abstract class ShaderKeyIrisCompatMixin {
         }
     }
 
+    /** 以同步惰性初始化方式复用解析结果，避免每次 ShaderKey 查询都进行反射。 */
     @Unique
     private static Object cooparticlesapi$getParticleAlphaTest(Object original) {
         if (cooparticlesapi$particleAlphaTestResolved) {
@@ -53,6 +54,12 @@ public abstract class ShaderKeyIrisCompatMixin {
         }
     }
 
+    /**
+     * 根据原配置的比较函数构造低透明度阈值，不加载公共路径中的可选 Iris 类型。
+     *
+     * @param original Iris 返回的原始配置
+     * @return 同一函数的新配置；缺失或不兼容时为空
+     */
     @Unique
     private static Object cooparticlesapi$createParticleAlphaTest(Object original) {
         if (original == null) {
@@ -63,7 +70,8 @@ public abstract class ShaderKeyIrisCompatMixin {
             Method functionAccessor = alphaTestClass.getMethod("function");
             Object function = functionAccessor.invoke(original);
             Constructor<?> constructor = alphaTestClass.getConstructor(function.getClass(), float.class);
-            return constructor.newInstance(function, cooparticlesapi$PARTICLE_ALPHA_THRESHOLD);
+            // GREATER 比较使用前一个浮点数，保留恰好等于阈值的片元。
+            return constructor.newInstance(function, Math.nextDown(0.001F));
         } catch (ReflectiveOperationException ignored) {
             return null;
         }

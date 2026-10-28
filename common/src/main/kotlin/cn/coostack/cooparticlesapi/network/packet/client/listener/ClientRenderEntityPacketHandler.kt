@@ -12,7 +12,7 @@ import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityRenderer
 import cn.coostack.cooparticlesapi.renderer.RenderEntity
 import io.netty.buffer.Unpooled
 import net.minecraft.network.FriendlyByteBuf
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /** 把服务端 RenderEntity 同步包应用到客户端实体运行时。 */
 object ClientRenderEntityPacketHandler {
@@ -77,7 +77,7 @@ object ClientRenderEntityPacketHandler {
     @Suppress("UNCHECKED_CAST")
     private fun resolveRenderer(
         entity: RenderEntity,
-        id: ResourceLocation
+        id: Identifier
     ): RenderEntityRenderer<RenderEntity> {
         if (entity is RenderEntityRenderer<*>) {
             return entity as RenderEntityRenderer<RenderEntity>

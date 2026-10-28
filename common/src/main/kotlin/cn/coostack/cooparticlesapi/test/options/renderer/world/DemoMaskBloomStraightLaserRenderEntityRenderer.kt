@@ -18,9 +18,9 @@ import cn.coostack.cooparticlesapi.renderer.shader.glsl.IdentifierShader
 import cn.coostack.cooparticlesapi.renderer.shader.texture.IdentifierTexture
 import cn.coostack.cooparticlesapi.renderer.shader.texture.SimpleTextures
 import cn.coostack.cooparticlesapi.renderer.shader.vertex.SimpleVertexBuffer
-import com.mojang.blaze3d.systems.RenderSystem
+import cn.coostack.cooparticlesapi.renderer.state.CooGLSLStateManager
 import net.minecraft.client.Minecraft
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.phys.Vec3
 import org.joml.Matrix4f
 import org.joml.Quaternionf
@@ -95,17 +95,18 @@ class DemoMaskBloomStraightLaserRenderEntityRenderer :
         phaseProgress: Float,
         collapse: Float,
         time: Float
-    ) {
+    ) = CooGLSLStateManager.useState {
         if (passAlpha <= MIN_VISIBLE_ALPHA) {
-            return
+            return@useState
         }
-        RenderSystem.disableCull()
-        RenderSystem.enableDepthTest()
-        RenderSystem.enableBlend()
-        RenderSystem.depthMask(false)
+        GL33.glDisable(GL33.GL_CULL_FACE)
+        GL33.glEnable(GL33.GL_DEPTH_TEST)
+        GL33.glDepthFunc(GL33.GL_GEQUAL)
+        GL33.glEnable(GL33.GL_BLEND)
+        GL33.glDepthMask(false)
         beamShader.useOnContext {
             beamTextures.drawWith {
-                RenderSystem.blendFunc(GL33.GL_SRC_ALPHA, GL33.GL_ONE_MINUS_SRC_ALPHA)
+                GL33.glBlendFunc(GL33.GL_SRC_ALPHA, GL33.GL_ONE_MINUS_SRC_ALPHA)
                 drawPass(
                     entity,
                     modelMatrix,
@@ -136,7 +137,7 @@ class DemoMaskBloomStraightLaserRenderEntityRenderer :
                     time,
                     0
                 )
-                RenderSystem.blendFunc(GL33.GL_SRC_ALPHA, GL33.GL_ONE)
+                GL33.glBlendFunc(GL33.GL_SRC_ALPHA, GL33.GL_ONE)
                 drawPass(
                     entity,
                     modelMatrix,
@@ -236,12 +237,12 @@ class DemoMaskBloomStraightLaserRenderEntityRenderer :
     }
 
     private fun currentCameraWorldPos(): Vector3f {
-        val cameraPos = Minecraft.getInstance().gameRenderer.mainCamera.position
+        val cameraPos = Minecraft.getInstance().gameRenderer.mainCamera().position()
         return Vector3f(cameraPos.x.toFloat(), cameraPos.y.toFloat(), cameraPos.z.toFloat())
     }
 
     private fun currentScreenSize(): Vector2f {
-        val renderTarget = Minecraft.getInstance().mainRenderTarget
+        val renderTarget = Minecraft.getInstance().gameRenderer.mainRenderTarget()
         val width = ClientRenderPipelineManager.currentRenderWidth().takeIf { it > 0 }
             ?: renderTarget.width.takeIf { it > 0 }
             ?: 0
@@ -277,7 +278,7 @@ class DemoMaskBloomStraightLaserRenderEntityRenderer :
                 beamShader = ShaderProgramBuilder()
                     .vertex(
                         IdentifierShader(
-                            ResourceLocation.fromNamespaceAndPath(
+                            Identifier.fromNamespaceAndPath(
                                 CooParticlesConstants.MOD_ID,
                                 "core/vertex/mask_bloom_straight_laser.vsh"
                             ),
@@ -286,7 +287,7 @@ class DemoMaskBloomStraightLaserRenderEntityRenderer :
                     )
                     .fragment(
                         IdentifierShader(
-                            ResourceLocation.fromNamespaceAndPath(
+                            Identifier.fromNamespaceAndPath(
                                 CooParticlesConstants.MOD_ID,
                                 "core/fragment/mask_bloom_straight_laser.fsh"
                             ),
@@ -297,7 +298,7 @@ class DemoMaskBloomStraightLaserRenderEntityRenderer :
                 beamTextures = SimpleTextures().apply {
                     addTexture(
                         IdentifierTexture(
-                            ResourceLocation.fromNamespaceAndPath(
+                            Identifier.fromNamespaceAndPath(
                                 CooParticlesConstants.MOD_ID,
                                 "effect/straight_laser_impact_noise.png"
                             )

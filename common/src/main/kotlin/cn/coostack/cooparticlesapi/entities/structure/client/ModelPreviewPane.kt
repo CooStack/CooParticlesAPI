@@ -1,20 +1,22 @@
 package cn.coostack.cooparticlesapi.entities.structure.client
 
 import cn.coostack.cooparticlesapi.entities.structure.StructureModelSettings
-import cn.coostack.cooparticlesapi.entities.collision.client.IrregularCollisionDebugRenderer
 import cn.coostack.cooparticlesapi.entities.structure.StructureSnapshot
 import cn.coostack.cooparticlesapi.entities.structure.StructureModelEntity
 import cn.coostack.cooparticlesapi.entities.structure.StructureModels
-import com.mojang.blaze3d.systems.RenderSystem
 import net.minecraft.client.Minecraft
-import net.minecraft.client.gui.GuiGraphics
-import com.mojang.blaze3d.platform.Lighting
-import net.minecraft.client.renderer.RenderType
-import com.mojang.math.Axis
+import net.minecraft.client.gui.GuiGraphicsExtractor
+import org.joml.Quaternionf
+import org.joml.Vector3f
 import net.minecraft.world.phys.Vec3
-import org.lwjgl.glfw.GLFW
+import com.mojang.blaze3d.platform.InputConstants
+import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.pow
+import kotlin.math.sin
+import kotlin.math.sqrt
+import kotlin.math.atan2
 
 /** 主编辑器内嵌的独立预览视口，空模型只绘制坐标网格，不加入世界或修改草稿。 */
 internal class ModelPreviewPane {
@@ -91,73 +93,136 @@ internal class ModelPreviewPane {
         panY = 0.0
     }
 
-    /** 复用现有实体渲染器和原版线段层；空预览不使用占位方块或错误模型。 */
-    fun render(context: GuiGraphics) {
+    /** 使用 GUI 画中画提交实体，并通过 GUI 图元绘制辅助线。 */
+    fun render(context: GuiGraphicsExtractor, partialTick: Float) {
         if (right <= left || bottom <= top) return
         context.fill(left, top, right, bottom, 0xFF16191D.toInt())
-        context.flush()
         context.enableScissor(left, top, right, bottom)
-        val matrices = context.pose()
-        matrices.pushPose()
         try {
-            val pixels = (min(right - left, bottom - top) * 0.8 / diagonal * zoom).toFloat()
-            matrices.translate((left + right) / 2.0 + panX, (top + bottom) / 2.0 + panY, 200.0)
-            matrices.scale(pixels, -pixels, pixels)
-            matrices.mulPose(Axis.XP.rotationDegrees(pitch))
-            matrices.mulPose(Axis.YP.rotationDegrees(yaw))
-            matrices.translate(-center.x, -center.y, -center.z)
-            Lighting.setupForEntityInInventory()
-            val consumers = context.bufferSource()
-            val lines = consumers.getBuffer(RenderType.lines())
             val extent = (diagonal / 2.0).coerceAtLeast(4.0)
             val spacing = extent / 8.0
-            matrices.pushPose()
             val gridOrigin = model?.let { it.settings.previewGridOrigin(it.modelOrigin) } ?: Vec3.ZERO
-            matrices.translate(gridOrigin.x, gridOrigin.y, gridOrigin.z)
-            val entry = matrices.last()
-            // 网格对齐未施加手动偏移的模型中心，偏移只移动模型，不移动网格。
             for (index in -8..8) {
-                val position = (index * spacing).toFloat()
-                val limit = extent.toFloat()
+                val position = index * spacing
                 val xColor = if (index == 0) 0xFFB75D5D.toInt() else 0xFF44494D.toInt()
                 val zColor = if (index == 0) 0xFF557FC0.toInt() else 0xFF44494D.toInt()
-                lines.addVertex(entry, -limit, 0F, position).setColor(xColor).setNormal(entry, 1F, 0F, 0F)
-                lines.addVertex(entry, limit, 0F, position).setColor(xColor).setNormal(entry, 1F, 0F, 0F)
-                lines.addVertex(entry, position, 0F, -limit).setColor(zColor).setNormal(entry, 0F, 0F, 1F)
-                lines.addVertex(entry, position, 0F, limit).setColor(zColor).setNormal(entry, 0F, 0F, 1F)
+                drawProjectedLine(context, -extent, 0.0, position, extent, 0.0, position, gridOrigin, xColor)
+                drawProjectedLine(context, position, 0.0, -extent, position, 0.0, extent, gridOrigin, zColor)
             }
-            matrices.popPose()
             model?.let { display ->
-                matrices.translate(display.x, display.y, display.z)
-                RenderSystem.runAsFancy {
-                    Minecraft.getInstance().entityRenderDispatcher.getRenderer(display)
-                        .render(display, 0F, 0F, matrices, consumers, 15728880)
+                val renderer = Minecraft.getInstance().entityRenderDispatcher.getRenderer(display) as? StructureModelRenderer
+                if (renderer != null) {
+                    val renderState = renderer.createRenderState()
+                    renderer.extractRenderState(display, renderState, partialTick)
+                    val viewportScale = min(right - left, bottom - top).toFloat() / (bottom - top)
+                    val scale = viewportScale * 0.8F / diagonal.toFloat() * zoom.toFloat()
+                    val panScale = (bottom - top) * scale
+                    context.entity(
+                        renderState,
+                        scale,
+                        Vector3f(
+                            (-center.x + panX / panScale.toDouble()).toFloat(),
+                            (-center.y - panY / panScale.toDouble()).toFloat(),
+                            -center.z.toFloat(),
+                        ),
+                        Quaternionf().rotationX((pitch * PI / 180.0).toFloat())
+                            .rotateY((yaw * PI / 180.0).toFloat()),
+                        null,
+                        left,
+                        top,
+                        right,
+                        bottom,
+                    )
                 }
-                if (collision) IrregularCollisionDebugRenderer.drawCollision(matrices,
-                    consumers.getBuffer(RenderType.lines()), display, 1F, 1F, 1F)
+                if (collision) {
+                    val bounds = display.boundingBoxForCulling
+                    val entityOffset = Vec3(display.x, display.y, display.z)
+                    for (corner in 0 until 8) {
+                        val x = if ((corner and 1) == 0) bounds.minX else bounds.maxX
+                        val y = if ((corner and 2) == 0) bounds.minY else bounds.maxY
+                        val z = if ((corner and 4) == 0) bounds.minZ else bounds.maxZ
+                        for (axis in intArrayOf(1, 2, 4)) {
+                            if ((corner and axis) != 0) continue
+                            val nextX = if (axis == 1) bounds.maxX else x
+                            val nextY = if (axis == 2) bounds.maxY else y
+                            val nextZ = if (axis == 4) bounds.maxZ else z
+                            drawProjectedLine(
+                                context,
+                                x - display.x, y - display.y, z - display.z,
+                                nextX - display.x, nextY - display.y, nextZ - display.z,
+                                entityOffset,
+                                0xFF65D6D0.toInt(),
+                            )
+                        }
+                    }
+                }
                 if (axes) {
-                    IrregularCollisionDebugRenderer.drawAxes(matrices, consumers.getBuffer(RenderType.lines()), display)
+                    val axisLength = (diagonal / 4.0).coerceAtLeast(1.0)
+                    val entityOffset = Vec3(display.x, display.y, display.z)
+                    drawProjectedLine(context, 0.0, 0.0, 0.0, axisLength, 0.0, 0.0, entityOffset, 0xFFFF5555.toInt())
+                    drawProjectedLine(context, 0.0, 0.0, 0.0, 0.0, axisLength, 0.0, entityOffset, 0xFF55FF55.toInt())
+                    drawProjectedLine(context, 0.0, 0.0, 0.0, 0.0, 0.0, axisLength, entityOffset, 0xFF5599FF.toInt())
                 }
             }
-            context.flush()
         } finally {
-            matrices.popPose()
-            Lighting.setupFor3DItems()
             context.disableScissor()
+        }
+    }
+
+    private fun drawProjectedLine(
+        context: GuiGraphicsExtractor,
+        x0: Double,
+        y0: Double,
+        z0: Double,
+        x1: Double,
+        y1: Double,
+        z1: Double,
+        offset: Vec3,
+        color: Int,
+    ) {
+        val yawRadians = yaw * PI / 180.0
+        val pitchRadians = pitch * PI / 180.0
+        val scale = min(right - left, bottom - top) * 0.8 / diagonal * zoom
+        val centerX = (left + right) / 2.0 + panX
+        val centerY = (top + bottom) / 2.0 + panY
+
+        fun project(x: Double, y: Double, z: Double): Pair<Double, Double> {
+            val localX = x + offset.x - center.x
+            val localY = y + offset.y - center.y
+            val localZ = z + offset.z - center.z
+            val rotatedX = localX * cos(yawRadians) + localZ * sin(yawRadians)
+            val rotatedZ = -localX * sin(yawRadians) + localZ * cos(yawRadians)
+            val rotatedY = localY * cos(pitchRadians) - rotatedZ * sin(pitchRadians)
+            return centerX + rotatedX * scale to centerY - rotatedY * scale
+        }
+
+        val start = project(x0, y0, z0)
+        val end = project(x1, y1, z1)
+        val deltaX = end.first - start.first
+        val deltaY = end.second - start.second
+        val length = sqrt(deltaX * deltaX + deltaY * deltaY)
+        if (length < 1.0) return
+        context.pose().pushMatrix()
+        try {
+            context.pose().translate(start.first.toFloat(), start.second.toFloat())
+            context.pose().rotate(atan2(deltaY, deltaX).toFloat())
+            context.horizontalLine(0, 0, length.toInt(), color)
+        } finally {
+            context.pose().popMatrix()
         }
     }
 
     fun contains(x: Double, y: Double): Boolean = x >= left && x < right && y >= top && y < bottom
 
     fun click(x: Double, y: Double, button: Int): Boolean {
-        if (!contains(x, y) || button !in listOf(GLFW.GLFW_MOUSE_BUTTON_LEFT, GLFW.GLFW_MOUSE_BUTTON_RIGHT)) return false
+        if (!contains(x, y) || button !in listOf(InputConstants.MOUSE_BUTTON_LEFT, InputConstants.MOUSE_BUTTON_RIGHT)) return false
         cameraButton = button
         return true
     }
 
     fun drag(button: Int, dx: Double, dy: Double): Boolean {
         if (cameraButton != button) return false
-        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+        if (button == InputConstants.MOUSE_BUTTON_LEFT) {
             yaw = (yaw + dx.toFloat() * 0.5F) % 360F
             pitch = (pitch + dy.toFloat() * 0.5F).coerceIn(-89F, 89F)
         } else {

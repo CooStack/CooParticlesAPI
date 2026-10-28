@@ -5,8 +5,10 @@ import cn.coostack.cooparticlesapi.network.packet.testblock.PacketOpenTestContro
 import cn.coostack.cooparticlesapi.network.packet.testblock.PacketUpdateTestControllerC2S
 import cn.coostack.cooparticlesapi.test.block.BlockTestAnimationTrackCodec
 import cn.coostack.cooparticlesapi.test.block.BlockTestPlaybackMode
-import net.minecraft.client.gui.GuiGraphics
+import com.mojang.blaze3d.platform.InputConstants
+import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.minecraft.client.gui.components.Button
+import net.minecraft.client.input.KeyEvent
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
 import net.minecraft.world.phys.Vec3
@@ -55,7 +57,7 @@ class TestControllerDynamicScreen internal constructor(
             updateButtons()
         }.bounds(left + 90, top + 32, 116, 20).build()
         positionEditButton = Button.builder(Component.literal("编辑位置曲线")) {
-            minecraft?.setScreen(
+            minecraft.setScreenAndShow(
                 TestControllerCurveEditorScreen(
                     packet,
                     draft,
@@ -65,7 +67,7 @@ class TestControllerDynamicScreen internal constructor(
             )
         }.bounds(left + 212, top, 98, 20).build()
         forwardEditButton = Button.builder(Component.literal("编辑 forward 曲线")) {
-            minecraft?.setScreen(
+            minecraft.setScreenAndShow(
                 TestControllerCurveEditorScreen(
                     packet,
                     draft,
@@ -79,7 +81,7 @@ class TestControllerDynamicScreen internal constructor(
         }.bounds(left + 76, height - 42, 76, 20).build()
         saveButton = Button.builder(Component.literal("保存")) {
             CooClientPacketManager.sendTo(draft)
-            minecraft?.setScreen(null)
+            minecraft.gui.setScreen(null)
         }.bounds(left + 166, height - 42, 76, 20).build()
         undoButton = Button.builder(Component.literal("撤回")) {
             recordHistory()
@@ -110,12 +112,13 @@ class TestControllerDynamicScreen internal constructor(
         returnToController()
     }
 
-    override fun keyPressed(keyCode: Int, scanCode: Int, modifiers: Int): Boolean {
-        if (Screen.hasControlDown()) {
+    override fun keyPressed(event: KeyEvent): Boolean {
+        val keyCode = event.key()
+        if (event.hasControlDown()) {
             val state = when {
-                keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_Z && Screen.hasShiftDown() -> history.redo()
-                keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_Z -> history.undo()
-                keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_Y -> history.redo()
+                keyCode == InputConstants.KEY_Z && event.hasShiftDown() -> history.redo()
+                keyCode == InputConstants.KEY_Z -> history.undo()
+                keyCode == InputConstants.KEY_Y -> history.redo()
                 else -> null
             }
             if (state != null) {
@@ -123,7 +126,7 @@ class TestControllerDynamicScreen internal constructor(
                 return true
             }
         }
-        return super.keyPressed(keyCode, scanCode, modifiers)
+        return super.keyPressed(event)
     }
 
     /**
@@ -132,19 +135,19 @@ class TestControllerDynamicScreen internal constructor(
      * 示例：动态轨道会显示时长、播放方式和关键帧数量。
      * 禁止在渲染阶段修改轨道内容。
      */
-    override fun render(graphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
+    override fun extractRenderState(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {
         recordHistory()
         updateHistoryButtons()
-        renderBackground(graphics, mouseX, mouseY, partialTick)
-        super.render(graphics, mouseX, mouseY, partialTick)
+        extractBackground(graphics, mouseX, mouseY, partialTick)
+        super.extractRenderState(graphics, mouseX, mouseY, partialTick)
         val left = width / 2 - 150
         val top = 54
-        graphics.drawString(font, title, left, 20, 0xFFFFFF, true)
-        graphics.drawString(font, "选择通道", left, top - 12, 0xE0E0E0, true)
-        graphics.drawString(font, "位置", left + 12, top + 6, 0xE0E0E0, true)
-        graphics.drawString(font, "forward", left + 12, top + 38, 0xE0E0E0, true)
-        graphics.drawString(font, trackSummary(TestControllerTrackKind.POSITION), left + 90, top + 22, 0xA8DDA8, true)
-        graphics.drawString(font, trackSummary(TestControllerTrackKind.FORWARD), left + 90, top + 54, 0xA8DDA8, true)
+        graphics.text(font, title, left, 20, 0xFFFFFF, true)
+        graphics.text(font, "选择通道", left, top - 12, 0xE0E0E0, true)
+        graphics.text(font, "位置", left + 12, top + 6, 0xE0E0E0, true)
+        graphics.text(font, "forward", left + 12, top + 38, 0xE0E0E0, true)
+        graphics.text(font, trackSummary(TestControllerTrackKind.POSITION), left + 90, top + 22, 0xA8DDA8, true)
+        graphics.text(font, trackSummary(TestControllerTrackKind.FORWARD), left + 90, top + 54, 0xA8DDA8, true)
     }
 
     private fun updateButtons() {
@@ -168,7 +171,7 @@ class TestControllerDynamicScreen internal constructor(
     private fun restoreHistory(snapshot: TestControllerPacketDrafts.TestControllerConfigSnapshot?) {
         if (snapshot == null) return
         val restoredPacket = snapshot.toPacket()
-        minecraft?.setScreen(
+        minecraft.setScreenAndShow(
             TestControllerDynamicScreen(restoredPacket, TestControllerPacketDrafts.draftFrom(restoredPacket), history)
         )
     }
@@ -199,7 +202,7 @@ class TestControllerDynamicScreen internal constructor(
      * 禁止在此提交网络包，草稿仍由动态页持有。
      */
     private fun reopenDynamicScreen() {
-        minecraft?.setScreen(TestControllerDynamicScreen(packet, draft, history))
+        minecraft.setScreenAndShow(TestControllerDynamicScreen(packet, draft, history))
     }
 
     /**
@@ -209,6 +212,6 @@ class TestControllerDynamicScreen internal constructor(
      * 禁止丢弃尚未保存的轨道字段。
      */
     private fun returnToController() {
-        minecraft?.setScreen(TestControllerScreen(TestControllerPacketDrafts.reopenPacket(packet, draft), false, history))
+        minecraft.setScreenAndShow(TestControllerScreen(TestControllerPacketDrafts.reopenPacket(packet, draft), false, history))
     }
 }

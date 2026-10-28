@@ -8,13 +8,13 @@ import cn.coostack.cooparticlesapi.performance.client.PerformanceStatusKeyBindin
 import net.neoforged.api.distmarker.Dist
 import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.fml.common.EventBusSubscriber
-import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent
+import net.minecraft.resources.Identifier
+import net.neoforged.neoforge.client.event.AddClientReloadListenersEvent
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent
 
 @EventBusSubscriber(
     modid = CooParticlesConstants.MOD_ID,
     value = [Dist.CLIENT],
-    bus = EventBusSubscriber.Bus.MOD,
 )
 object CooParticlesAPINeoClientRegistration {
     @SubscribeEvent
@@ -27,7 +27,10 @@ object CooParticlesAPINeoClientRegistration {
     }
 
     @SubscribeEvent
-    fun onRegisterClientReloadListeners(event: RegisterClientReloadListenersEvent) {
-        event.registerReloadListener(CooShaderReloadListenerNeo)
+    fun onRegisterClientReloadListeners(event: AddClientReloadListenersEvent) {
+        event.addListener(
+            Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "shader_reload"),
+            CooShaderReloadListenerNeo
+        )
     }
 }

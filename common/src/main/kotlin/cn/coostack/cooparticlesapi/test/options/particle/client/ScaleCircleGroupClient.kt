@@ -2,6 +2,7 @@ package cn.coostack.cooparticlesapi.test.options.particle.client
 
 import cn.coostack.cooparticlesapi.network.buffer.ParticleControlerDataBuffer
 import cn.coostack.cooparticlesapi.particles.ParticleDisplayer
+import cn.coostack.cooparticlesapi.particles.CooParticleTextureSheet
 import cn.coostack.cooparticlesapi.particles.control.group.ControlableParticleGroup
 import cn.coostack.cooparticlesapi.particles.control.group.ControlableParticleGroupProvider
 import cn.coostack.cooparticlesapi.particles.impl.ControlableCloudEffect
@@ -10,7 +11,6 @@ import cn.coostack.cooparticlesapi.particles.impl.ControlableEndRodEffect
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import cn.coostack.cooparticlesapi.utils.builder.PointsBuilder
-import net.minecraft.client.particle.ParticleRenderType
 import org.joml.Vector3f
 import java.util.*
 import kotlin.math.PI
@@ -90,7 +90,7 @@ class ScaleCircleGroupClient(uuid: UUID, val bindPlayer: UUID) : ControlablePart
                     }) {
                         color = Math3DUtil.colorOf(255, 0, 255)
                         lifetime = 100
-                        size = 0.2f
+                        size = 0.2F
                     }
                 }
         )
@@ -118,11 +118,11 @@ class ScaleCircleGroupClient(uuid: UUID, val bindPlayer: UUID) : ControlablePart
                 }
                 .createWithParticleEffects {
                     withEffect({ ParticleDisplayer.withSingle(ControlableEnchantmentEffect(it)) }) {
-                        color = Vector3f(100 / 255f, 100 / 255f, 255 / 255f)
+                        color = Vector3f(100 / 255F, 100 / 255F, 255 / 255F)
                         lifetime = 120
-                        size = 0.2f
-                        particleAlpha = 0.8f
-                        textureSheet = ParticleRenderType.PARTICLE_SHEET_LIT
+                        size = 0.2F
+                        particleAlpha = 0.8F
+                        textureSheet = CooParticleTextureSheet.PARTICLE_SHEET_LIT
                     }.withControler { c ->
                         c.controlAction {
                             currentAge = random.nextInt(lifetime)

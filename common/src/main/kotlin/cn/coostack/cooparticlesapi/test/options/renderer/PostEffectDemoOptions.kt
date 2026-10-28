@@ -5,7 +5,7 @@ import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelineIteration
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooShaderEffects
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooUniformValue
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.CooTextureFormat
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.phys.Vec3
 
@@ -262,15 +262,15 @@ object PostEffectDemoOptions {
         )
     }
 
-    private fun id(path: String): ResourceLocation {
-        return ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, path)
+    private fun id(path: String): Identifier {
+        return Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, path)
     }
 
-    private fun vertexShader(path: String): ResourceLocation {
-        return ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "post/$path.vsh")
+    private fun vertexShader(path: String): Identifier {
+        return Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "post/$path.vsh")
     }
 
-    private fun shader(path: String): ResourceLocation {
-        return ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "post/$path.fsh")
+    private fun shader(path: String): Identifier {
+        return Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "post/$path.fsh")
     }
 }

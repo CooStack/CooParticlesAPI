@@ -4,7 +4,7 @@ import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooEffectUvMode
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooPipelines
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooRenderPipeline
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.level.block.state.BlockState
 import cn.coostack.cooparticlesapi.extend.ofID
 

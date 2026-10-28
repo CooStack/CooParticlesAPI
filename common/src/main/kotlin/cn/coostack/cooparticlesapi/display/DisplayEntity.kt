@@ -1,5 +1,8 @@
 package cn.coostack.cooparticlesapi.display
 
+import cn.coostack.cooparticlesapi.network.readVec3
+import cn.coostack.cooparticlesapi.network.writeVec3
+
 import cn.coostack.cooparticlesapi.annotations.codec.CodecHelper
 import cn.coostack.cooparticlesapi.api.NetworkDirtyMarkable
 import cn.coostack.cooparticlesapi.api.controler.server.ServerControler
@@ -11,8 +14,8 @@ import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import cn.coostack.cooparticlesapi.utils.MinecraftRendererUtil
 import cn.coostack.cooparticlesapi.utils.RelativeLocation
 import com.mojang.blaze3d.vertex.PoseStack
-import net.minecraft.client.Camera
-import net.minecraft.client.renderer.MultiBufferSource
+import net.minecraft.client.renderer.SubmitNodeCollector
+import net.minecraft.client.renderer.state.level.CameraRenderState
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
@@ -73,20 +76,20 @@ abstract class DisplayEntity(
     var prevPos = pos
 
 
-    var prevYaw = 0f
+    var prevYaw = 0F
 
-    var yaw = 0f
+    var yaw = 0F
 
-    var prevPitch = 0f
+    var prevPitch = 0F
 
-    var pitch = 0f
+    var pitch = 0F
 
-    var prevRoll = 0f
+    var prevRoll = 0F
 
-    var roll = 0f
+    var roll = 0F
 
-    var prevScale = 1f
-    var scale = 1f
+    var prevScale = 1F
+    var scale = 1F
 
     private var valid = true
     private var networkStateDirty = true
@@ -178,19 +181,23 @@ abstract class DisplayEntity(
      * @param delta tick progress
      * @param camera 观察摄像机对象
      */
-    abstract fun render(
+    abstract fun submit(
         view: Matrix4f,
         proj: Matrix4f,
         modelMatrixStack: PoseStack,
-        buffer: MultiBufferSource,
+        collector: SubmitNodeCollector,
         delta: Float,
-        camera: Camera
+        camera: CameraRenderState
     )
 
     abstract fun getCodec(): StreamCodec<in RegistryFriendlyByteBuf, DisplayEntity>
 
     open fun canRender(
-        view: Matrix4f, proj: Matrix4f, modelMatrixStack: PoseStack, lerp: Float, camera: Camera
+        view: Matrix4f,
+        proj: Matrix4f,
+        modelMatrixStack: PoseStack,
+        lerp: Float,
+        camera: CameraRenderState,
     ): Boolean {
         return true
     }

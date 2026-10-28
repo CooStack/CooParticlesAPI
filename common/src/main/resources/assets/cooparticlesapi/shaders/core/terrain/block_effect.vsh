@@ -4,9 +4,9 @@
 
 in vec3 Position;
 in vec4 Color;
-in vec2 BaseUV;
-in ivec2 EffectUV;
-in ivec2 LightUV;
+in vec2 UV0;
+in ivec2 UV1;
+in ivec2 UV2;
 in vec3 Normal;
 
 uniform sampler2D Sampler2;
@@ -32,15 +32,15 @@ void main() {
 
     gl_Position = ProjMat * ModelViewMat * vec4(position, 1.0);
     vertexDistance = fog_distance(position, FogShape);
-    int packedLightX = LightUV.x & 65535;
-    int packedLightY = LightUV.y & 65535;
+    int packedLightX = UV2.x & 65535;
+    int packedLightY = UV2.y & 65535;
     ivec2 lightUv = ivec2(packedLightX & 255, packedLightY & 255);
     int activationTick = ((packedLightY >> 8) << 8) | (packedLightX >> 8);
     vertexColor = Color * minecraft_sample_lightmap(Sampler2, lightUv);
-    baseUv = BaseUV;
+    baseUv = UV0;
     worldPosition = position + CameraPosition;
     vec3 effectUvPosition = position + CooEffectUvCameraPosition;
-    vec2 packedEffectUv = (vec2(EffectUV) + 32768.0) / 65535.0;
+    vec2 packedEffectUv = (vec2(UV1) + 32768.0) / 65535.0;
     if (CooEffectUvMode == 2) {
         effectUv = mod(effectUvPosition.xz, 1024.0);
     } else if (CooEffectUvMode == 3) {

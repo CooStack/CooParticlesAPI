@@ -48,7 +48,6 @@ import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents
-import net.fabricmc.fabric.api.event.lifecycle.v1.ServerWorldEvents
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents
 import net.fabricmc.fabric.api.event.player.UseBlockCallback
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking
@@ -57,6 +56,7 @@ import net.minecraft.core.Registry
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.server.MinecraftServer
 import net.minecraft.world.InteractionResult
+import net.minecraft.network.syncher.EntityDataSerializers
 
 object CooParticlesAPIFabric : ModInitializer {
     lateinit var server: MinecraftServer
@@ -68,31 +68,31 @@ object CooParticlesAPIFabric : ModInitializer {
     }
 
     private fun initPacket() {
-        PayloadTypeRegistry.playS2C().register(PacketCameraShakeS2C.payloadID, PacketCameraShakeS2C.CODEC)
-        PayloadTypeRegistry.playS2C().register(PacketClearClientStateS2C.payloadID, PacketClearClientStateS2C.CODEC)
-        PayloadTypeRegistry.playS2C().register(PacketParticleS2C.payloadID, PacketParticleS2C.CODEC)
-        PayloadTypeRegistry.playS2C().register(PacketParticleBatchS2C.payloadID, PacketParticleBatchS2C.CODEC)
-        PayloadTypeRegistry.playS2C().register(PacketParticleEmittersS2C.payloadID, PacketParticleEmittersS2C.CODEC)
-        PayloadTypeRegistry.playS2C().register(PacketParticleGroupS2C.payloadID, PacketParticleGroupS2C.CODEC)
-        PayloadTypeRegistry.playS2C().register(PacketParticleStyleS2C.payloadID, PacketParticleStyleS2C.CODEC)
-        PayloadTypeRegistry.playS2C().register(PacketRenderEntityS2C.payloadID, PacketRenderEntityS2C.CODEC)
-        PayloadTypeRegistry.playS2C().register(PacketRendererPostEffectS2C.payloadID, PacketRendererPostEffectS2C.CODEC)
-        PayloadTypeRegistry.playS2C().register(PacketDisplayEntityS2C.payloadID, PacketDisplayEntityS2C.CODEC)
-        PayloadTypeRegistry.playS2C().register(PacketDisplayEntityStateS2C.payloadID, PacketDisplayEntityStateS2C.CODEC)
-        PayloadTypeRegistry.playS2C().register(PacketDataHolderS2C.payloadID, PacketDataHolderS2C.CODEC)
-        PayloadTypeRegistry.playS2C().register(PacketParticleCompositionS2C.payloadID, PacketParticleCompositionS2C.CODEC)
-        PayloadTypeRegistry.playS2C()
+        PayloadTypeRegistry.clientboundPlay().register(PacketCameraShakeS2C.payloadID, PacketCameraShakeS2C.CODEC)
+        PayloadTypeRegistry.clientboundPlay().register(PacketClearClientStateS2C.payloadID, PacketClearClientStateS2C.CODEC)
+        PayloadTypeRegistry.clientboundPlay().register(PacketParticleS2C.payloadID, PacketParticleS2C.CODEC)
+        PayloadTypeRegistry.clientboundPlay().register(PacketParticleBatchS2C.payloadID, PacketParticleBatchS2C.CODEC)
+        PayloadTypeRegistry.clientboundPlay().register(PacketParticleEmittersS2C.payloadID, PacketParticleEmittersS2C.CODEC)
+        PayloadTypeRegistry.clientboundPlay().register(PacketParticleGroupS2C.payloadID, PacketParticleGroupS2C.CODEC)
+        PayloadTypeRegistry.clientboundPlay().register(PacketParticleStyleS2C.payloadID, PacketParticleStyleS2C.CODEC)
+        PayloadTypeRegistry.clientboundPlay().register(PacketRenderEntityS2C.payloadID, PacketRenderEntityS2C.CODEC)
+        PayloadTypeRegistry.clientboundPlay().register(PacketRendererPostEffectS2C.payloadID, PacketRendererPostEffectS2C.CODEC)
+        PayloadTypeRegistry.clientboundPlay().register(PacketDisplayEntityS2C.payloadID, PacketDisplayEntityS2C.CODEC)
+        PayloadTypeRegistry.clientboundPlay().register(PacketDisplayEntityStateS2C.payloadID, PacketDisplayEntityStateS2C.CODEC)
+        PayloadTypeRegistry.clientboundPlay().register(PacketDataHolderS2C.payloadID, PacketDataHolderS2C.CODEC)
+        PayloadTypeRegistry.clientboundPlay().register(PacketParticleCompositionS2C.payloadID, PacketParticleCompositionS2C.CODEC)
+        PayloadTypeRegistry.clientboundPlay()
             .register(PacketParticleCompositionStateS2C.payloadID, PacketParticleCompositionStateS2C.CODEC)
-        PayloadTypeRegistry.playS2C()
+        PayloadTypeRegistry.clientboundPlay()
             .register(PacketParticleCompositionRotateS2C.payloadID, PacketParticleCompositionRotateS2C.CODEC)
-        PayloadTypeRegistry.playS2C()
+        PayloadTypeRegistry.clientboundPlay()
             .register(PacketKeyBindingCountdownS2C.payloadID, PacketKeyBindingCountdownS2C.CODEC)
-        PayloadTypeRegistry.playS2C().register(PacketSoundInstanceS2C.payloadID, PacketSoundInstanceS2C.CODEC)
-        PayloadTypeRegistry.playS2C().register(PacketSoundLoopS2C.payloadID, PacketSoundLoopS2C.CODEC)
-        PayloadTypeRegistry.playC2S().register(PacketKeyActionC2S.payloadID, PacketKeyActionC2S.CODEC)
+        PayloadTypeRegistry.clientboundPlay().register(PacketSoundInstanceS2C.payloadID, PacketSoundInstanceS2C.CODEC)
+        PayloadTypeRegistry.clientboundPlay().register(PacketSoundLoopS2C.payloadID, PacketSoundLoopS2C.CODEC)
+        PayloadTypeRegistry.serverboundPlay().register(PacketKeyActionC2S.payloadID, PacketKeyActionC2S.CODEC)
 
-        PayloadTypeRegistry.playS2C().register(CooPacketEnvelopeS2C.payloadID, CooPacketEnvelopeS2C.CODEC)
-        PayloadTypeRegistry.playC2S().register(CooPacketEnvelopeC2S.payloadID, CooPacketEnvelopeC2S.CODEC)
+        PayloadTypeRegistry.clientboundPlay().register(CooPacketEnvelopeS2C.payloadID, CooPacketEnvelopeS2C.CODEC)
+        PayloadTypeRegistry.serverboundPlay().register(CooPacketEnvelopeC2S.payloadID, CooPacketEnvelopeC2S.CODEC)
 
         ServerPlayNetworking.registerGlobalReceiver(PacketKeyActionC2S.payloadID) { payload, context ->
             ServerKeyActionHandler.receive(payload, FabricServerContext(context))
@@ -104,6 +104,7 @@ object CooParticlesAPIFabric : ModInitializer {
     }
 
     private fun initRegistries() {
+        EntityDataSerializers.registerSerializer(StructureModelEntity.MODEL_DATA_SERIALIZER)
         CooItemFabric.reg()
         CooItemGroup.reg()
         CooModParticles.reg()

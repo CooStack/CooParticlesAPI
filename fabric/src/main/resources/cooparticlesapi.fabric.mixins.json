@@ -2,19 +2,16 @@
   "required": true,
   "minVersion": "0.8",
   "package": "cn.coostack.cooparticlesapi.mixin",
-  "refmap": "${mod_id}.refmap.json",
-  "compatibilityLevel": "JAVA_21",
+  "compatibilityLevel": "JAVA_25",
   "mixins": [
     "event.world.server.ServerWorldMixin",
     "events.entity.EntityMixinFabric",
-    "events.entity.player.PlayerListMixinFabric"
+    "events.entity.player.PlayerListMixinFabric",
+    "event.entity.player.ItemStackMixinFabric"
   ],
   "client": [
     "CParticleEngineFabricMixin",
-    "DeathScreenOpenListenerMinecraftMixin",
-    "KeyMappingAccessor",
-    "KeyMappingMixin",
-    "event.entity.player.ItemStackMixinFabric"
+    "DeathScreenOpenListenerMinecraftMixin"
   ],
   "server": [],
   "injectors": {

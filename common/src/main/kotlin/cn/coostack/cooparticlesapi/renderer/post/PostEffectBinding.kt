@@ -2,7 +2,7 @@ package cn.coostack.cooparticlesapi.renderer.post
 
 import net.minecraft.core.BlockPos
 import net.minecraft.network.FriendlyByteBuf
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import java.util.UUID
 
 /**
@@ -67,7 +67,7 @@ internal sealed interface PostEffectBinding {
      * @property y 世界 Y 坐标
      * @property z 世界 Z 坐标
      */
-    data class WorldPos(val level: ResourceLocation?, val x: Double, val y: Double, val z: Double) : PostEffectBinding {
+    data class WorldPos(val level: Identifier?, val x: Double, val y: Double, val z: Double) : PostEffectBinding {
         /**
          * 按 `WorldPos` 约定的字段顺序写入 `write` 数据；读取端必须使用相同协议。
          *
@@ -77,7 +77,7 @@ internal sealed interface PostEffectBinding {
          */
         override fun write(buf: FriendlyByteBuf) {
             buf.writeBoolean(level != null)
-            level?.let(buf::writeResourceLocation)
+            level?.let(buf::writeIdentifier)
             buf.writeDouble(x)
             buf.writeDouble(y)
             buf.writeDouble(z)
@@ -131,7 +131,7 @@ internal sealed interface PostEffectBinding {
      * @property pos 方块的整数坐标
      * @property offset 方块内偏移；为空时由 backend 使用方块中心
      */
-    data class Block(val level: ResourceLocation?, val pos: BlockPos, val offset: PostEffectParamValue.Vec3Value? = null) :
+    data class Block(val level: Identifier?, val pos: BlockPos, val offset: PostEffectParamValue.Vec3Value? = null) :
         PostEffectBinding {
         /**
          * 按 `Block` 约定的字段顺序写入 `write` 数据；读取端必须使用相同协议。
@@ -142,7 +142,7 @@ internal sealed interface PostEffectBinding {
          */
         override fun write(buf: FriendlyByteBuf) {
             buf.writeBoolean(level != null)
-            level?.let(buf::writeResourceLocation)
+            level?.let(buf::writeIdentifier)
             buf.writeBlockPos(pos)
             buf.writeBoolean(offset != null)
             offset?.write(buf)
@@ -155,7 +155,7 @@ internal sealed interface PostEffectBinding {
      * @property itemId 物品资源位置；为空时只保留 context 语义
      * @property context 物品所在的渲染上下文，会影响未来 backend 的投影选择
      */
-    data class Item(val itemId: ResourceLocation?, val context: PostEffectItemContext) : PostEffectBinding {
+    data class Item(val itemId: Identifier?, val context: PostEffectItemContext) : PostEffectBinding {
         /**
          * 按 `Item` 约定的字段顺序写入 `write` 数据；读取端必须使用相同协议。
          *
@@ -165,7 +165,7 @@ internal sealed interface PostEffectBinding {
          */
         override fun write(buf: FriendlyByteBuf) {
             buf.writeBoolean(itemId != null)
-            itemId?.let(buf::writeResourceLocation)
+            itemId?.let(buf::writeIdentifier)
             buf.writeUtf(context.name)
         }
     }
@@ -179,7 +179,7 @@ internal sealed interface PostEffectBinding {
      * @property key 自定义绑定类型的资源位置，读写双方必须约定其含义
      * @property payload 类型专用的二进制数据，默认为空数组
      */
-    data class Custom(val key: ResourceLocation, val payload: ByteArray = ByteArray(0)) : PostEffectBinding {
+    data class Custom(val key: Identifier, val payload: ByteArray = ByteArray(0)) : PostEffectBinding {
         /**
          * 按 `Custom` 约定的字段顺序写入 `write` 数据；读取端必须使用相同协议。
          *
@@ -188,7 +188,7 @@ internal sealed interface PostEffectBinding {
          * @param buf 承载本次读写数据的缓冲区，调用前必须位于约定字段起点
          */
         override fun write(buf: FriendlyByteBuf) {
-            buf.writeResourceLocation(key)
+            buf.writeIdentifier(key)
             buf.writeByteArray(payload)
         }
 
@@ -255,13 +255,13 @@ internal sealed interface PostEffectBinding {
                 }
 
                 "item" -> Item(readNullableId(buf), PostEffectItemContext.valueOf(buf.readUtf()))
-                "custom" -> Custom(buf.readResourceLocation(), buf.readByteArray())
+                "custom" -> Custom(buf.readIdentifier(), buf.readByteArray())
                 else -> error("Unknown post effect binding type: $type")
             }
         }
 
-        private fun readNullableId(buf: FriendlyByteBuf): ResourceLocation? {
-            return if (buf.readBoolean()) buf.readResourceLocation() else null
+        private fun readNullableId(buf: FriendlyByteBuf): Identifier? {
+            return if (buf.readBoolean()) buf.readIdentifier() else null
         }
     }
 }

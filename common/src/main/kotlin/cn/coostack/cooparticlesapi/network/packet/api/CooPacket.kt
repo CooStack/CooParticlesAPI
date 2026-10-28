@@ -3,7 +3,7 @@ package cn.coostack.cooparticlesapi.network.packet.api
 import cn.coostack.cooparticlesapi.annotations.packet.CooPacketRegistryHelper
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /**
  * # 设计初衷
@@ -28,7 +28,7 @@ abstract class CooPacket {
     /**
      * 数据包ID 必须由子类提供，用于跨端定位包类型
      */
-    abstract fun id(): ResourceLocation
+    abstract fun id(): Identifier
 
     /**
      * 数据包编解码器，默认基于反射 + [cn.coostack.cooparticlesapi.annotations.CodecField] 自动生成

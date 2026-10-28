@@ -39,7 +39,7 @@ import cn.coostack.cooparticlesapi.test.options.particle.style.RomaMagicTestStyl
 import cn.coostack.cooparticlesapi.test.options.renderer.PostEffectDemoOptions
 import cn.coostack.cooparticlesapi.test.options.renderer.world.DemoWorldRenderEffectOptions
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
@@ -49,10 +49,10 @@ class APITestGroupBuilder(val player: Player) : TestGroupBuilder {
     companion object {
         /** 注册与构建结果共同使用的测试组 ID。 */
         @JvmField
-        val ID: ResourceLocation = ofID("api-test-group-builder")
+        val ID: Identifier = ofID("api-test-group-builder")
     }
 
-    override fun groupID(): ResourceLocation {
+    override fun groupID(): Identifier {
         return ID
     }
 

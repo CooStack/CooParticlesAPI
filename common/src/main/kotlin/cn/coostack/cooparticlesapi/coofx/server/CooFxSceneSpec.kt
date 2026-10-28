@@ -1,7 +1,7 @@
 package cn.coostack.cooparticlesapi.coofx.server
 
 import cn.coostack.cooparticlesapi.coofx.adapter.CooFxWorldTransform
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import java.util.UUID
 
 /**
@@ -50,7 +50,7 @@ enum class CooFxSceneMode(val id: Int) {
  * 客户端不会拥有一份可以绕过服务端的权威状态。
  */
 data class CooFxSceneSpec(
-    val resourceId: ResourceLocation,
+    val resourceId: Identifier,
     val transform: CooFxWorldTransform,
     val requestSeed: Long,
     val mode: CooFxSceneMode = CooFxSceneMode.MODEL,

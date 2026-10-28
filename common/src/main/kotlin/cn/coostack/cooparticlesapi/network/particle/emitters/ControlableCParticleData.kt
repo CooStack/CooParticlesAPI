@@ -209,7 +209,7 @@ open class ControlableCParticleData : ControlableParticleData() {
             return data
         }
 
-        private fun <T> writeNullable(
+        private fun <T : Any> writeNullable(
             buf: RegistryFriendlyByteBuf,
             value: T?,
             codec: StreamCodec<in RegistryFriendlyByteBuf, T>,
@@ -218,7 +218,7 @@ open class ControlableCParticleData : ControlableParticleData() {
             if (value != null) codec.encode(buf, value)
         }
 
-        private fun <T> readNullable(
+        private fun <T : Any> readNullable(
             buf: RegistryFriendlyByteBuf,
             codec: StreamCodec<in RegistryFriendlyByteBuf, T>,
         ): T? = if (buf.readBoolean()) codec.decode(buf) else null

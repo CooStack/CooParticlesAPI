@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi.test.api
 
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.entity.player.Player
 import java.util.function.Supplier
 
@@ -26,6 +26,6 @@ interface TestGroup {
     fun onGroupFinished()
 
     /** @return 测试组的资源 ID */
-    fun groupID(): ResourceLocation
+    fun groupID(): Identifier
 
 }

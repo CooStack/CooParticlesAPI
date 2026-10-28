@@ -17,7 +17,6 @@ import net.neoforged.neoforge.registries.RegisterEvent
 @EventBusSubscriber(
     modid = CooParticlesConstants.MOD_ID,
     value = [Dist.CLIENT],
-    bus = EventBusSubscriber.Bus.MOD,
 )
 object CooParticlesNeoClientInitialize {
     @SubscribeEvent

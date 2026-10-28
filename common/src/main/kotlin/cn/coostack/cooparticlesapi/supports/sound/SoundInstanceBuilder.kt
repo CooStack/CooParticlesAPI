@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi.supports.sound
 
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.sounds.SoundEvent
@@ -22,12 +22,12 @@ import net.minecraft.world.phys.Vec3
  * 同一个实体上同一个声音要重叠播放时，再调用 [layer] 或 [uniqueKey]。
  */
 class SoundInstanceBuilder @JvmOverloads constructor(
-    initialSoundId: ResourceLocation,
+    initialSoundId: Identifier,
     initialSource: SoundSource = SoundSource.MASTER
 ) {
     constructor(sound: SoundEvent, source: SoundSource = SoundSource.MASTER) : this(sound.location, source)
 
-    private var configuredSoundId: ResourceLocation = initialSoundId
+    private var configuredSoundId: Identifier = initialSoundId
     private var configuredSource: SoundSource = initialSource
     private var explicitKey: String? = null
     private var configuredKeyName: String? = null
@@ -36,8 +36,8 @@ class SoundInstanceBuilder @JvmOverloads constructor(
     private var configuredTargetPlayer: ServerPlayer? = null
     private var boundEntity: Entity? = null
     private var configuredPosition: Vec3 = Vec3.ZERO
-    private var configuredVolume: Float = 1f
-    private var configuredPitch: Float = 1f
+    private var configuredVolume: Float = 1F
+    private var configuredPitch: Float = 1F
     private var configuredLooping: Boolean = false
     private var configuredRelative: Boolean = false
     private var includeSelf: Boolean = true
@@ -59,7 +59,7 @@ class SoundInstanceBuilder @JvmOverloads constructor(
     /**
      * 设置要播放的声音资源 id。
      */
-    fun sound(soundId: ResourceLocation): SoundInstanceBuilder {
+    fun sound(soundId: Identifier): SoundInstanceBuilder {
         configuredSoundId = soundId
         clearAutoKey()
         return this

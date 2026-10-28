@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi.platform.registry
 
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.entity.BlockEntityType
 import java.util.function.Supplier
@@ -13,7 +13,7 @@ import java.util.function.Supplier
  * 所以 这个类的注册 实例创建 一定要在block注册之后!!!
  */
 class CommonDeferredBlockEntityType<T : BlockEntity>(
-    val id: ResourceLocation,
+    val id: Identifier,
     val supplier: Supplier<BlockEntityType<T>>
 ) {
 

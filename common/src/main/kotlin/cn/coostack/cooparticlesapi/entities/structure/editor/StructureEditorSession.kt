@@ -1,15 +1,16 @@
 package cn.coostack.cooparticlesapi.entities.structure.editor
 
 import net.minecraft.nbt.CompoundTag
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.core.BlockPos
+import net.minecraft.core.UUIDUtil
 import java.util.UUID
 
 /**
  * 仅由服务器线程持有的玩家选点，不保留玩家或世界对象。
  * @property dimension 选区所属维度，换维度后不可复用
  */
-internal class StructureEditorSession(val dimension: ResourceLocation) {
+internal class StructureEditorSession(val dimension: Identifier) {
     /** 第一角点，左键覆盖，不受第二点是否存在影响。 */
     var first: BlockPos? = null
     /** 第二角点，右键覆盖。 */
@@ -26,7 +27,7 @@ internal class StructureEditorSession(val dimension: ResourceLocation) {
     fun packet(action: String): CompoundTag = CompoundTag().apply {
         putString("Action", action)
         putString("Dimension", dimension.toString())
-        putUUID("Revision", revision)
+        store("Revision", UUIDUtil.CODEC, revision)
         first?.let { putLong("First", it.asLong()) }
         second?.let { putLong("Second", it.asLong()) }
         put("Draft", draft.copy())

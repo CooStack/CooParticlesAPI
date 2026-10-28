@@ -1,5 +1,8 @@
 package cn.coostack.cooparticlesapi.cparticle.path
 
+import cn.coostack.cooparticlesapi.network.readVec3
+import cn.coostack.cooparticlesapi.network.writeVec3
+
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.phys.Vec3

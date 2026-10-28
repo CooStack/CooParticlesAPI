@@ -1,10 +1,12 @@
 package cn.coostack.cooparticlesapi.network.packet.server
 
+import cn.coostack.cooparticlesapi.network.readVec3
+import cn.coostack.cooparticlesapi.network.writeVec3
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.phys.Vec3
 import java.util.UUID
 
@@ -18,7 +20,7 @@ class PacketDisplayEntityStateS2C(
 ) : CustomPacketPayload {
     companion object {
         private val identifierID =
-            ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "display_entity_state")
+            Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "display_entity_state")
         val payloadID = CustomPacketPayload.Type<PacketDisplayEntityStateS2C>(identifierID)
         val CODEC: StreamCodec<FriendlyByteBuf, PacketDisplayEntityStateS2C> =
             CustomPacketPayload.codec({ packet, buf ->

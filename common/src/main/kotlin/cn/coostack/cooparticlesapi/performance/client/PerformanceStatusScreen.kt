@@ -1,15 +1,15 @@
 package cn.coostack.cooparticlesapi.performance.client
 
-import com.mojang.blaze3d.vertex.VertexConsumer
-import net.minecraft.client.gui.GuiGraphics
+import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.minecraft.client.gui.components.Button
 import net.minecraft.client.gui.components.EditBox
 import net.minecraft.client.gui.screens.Screen
-import net.minecraft.client.renderer.RenderType
+import net.minecraft.client.input.KeyEvent
+import net.minecraft.client.input.MouseButtonEvent
+import com.mojang.blaze3d.platform.InputConstants
+import cn.coostack.cooparticlesapi.gui.FilteredEditBox
 import net.minecraft.network.chat.Component
-import org.lwjgl.glfw.GLFW
 import java.util.Locale
-import kotlin.math.hypot
 import kotlin.math.roundToInt
 
 /**
@@ -32,7 +32,7 @@ class PerformanceStatusScreen : Screen(Component.literal("CooParticles Status"))
     private lateinit var correlationTab: Button
 
     /** 底部用于修改趋势历史最大保留时长的输入框。 */
-    private lateinit var historyDurationBox: EditBox
+    private lateinit var historyDurationBox: FilteredEditBox
 
     /** 当前表格首行在完整指标列表中的偏移。 */
     private var rowOffset = 0
@@ -180,7 +180,7 @@ class PerformanceStatusScreen : Screen(Component.literal("CooParticles Status"))
         val ratioWidth = ((width - 44) / 3).coerceIn(72, 180)
         ratioPerformanceSelector = EditBox(font, 14, ratioY, ratioWidth, 20, Component.literal("性能项"))
         ratioPerformanceSelector.setMaxLength(64)
-        ratioPerformanceSelector.setValue(ratioPerformanceMetric?.label.orEmpty())
+        ratioPerformanceSelector.value = ratioPerformanceMetric?.label.orEmpty()
         ratioPerformanceSelector.setResponder { updateRatioSuggestions(ratioPerformanceSelector) }
         ratioImpactSelector = EditBox(
             font,
@@ -191,7 +191,7 @@ class PerformanceStatusScreen : Screen(Component.literal("CooParticles Status"))
             Component.literal("影响项"),
         )
         ratioImpactSelector.setMaxLength(64)
-        ratioImpactSelector.setValue(ratioImpactMetric?.label.orEmpty())
+        ratioImpactSelector.value = ratioImpactMetric?.label.orEmpty()
         ratioImpactSelector.setResponder { updateRatioSuggestions(ratioImpactSelector) }
         addRatioButton = Button.builder(Component.literal("添加比值")) {
             addRatioSelection()
@@ -202,9 +202,9 @@ class PerformanceStatusScreen : Screen(Component.literal("CooParticles Status"))
         updateRatioSuggestions(ratioPerformanceSelector)
         updateRatioSuggestions(ratioImpactSelector)
         val buttonY = (height - 28).coerceAtLeast(52)
-        historyDurationBox = EditBox(font, 48, buttonY, 64, 20, Component.literal("最大查看时间"))
+        historyDurationBox = FilteredEditBox(font, 48, buttonY, 64, 20, Component.literal("最大查看时间"))
         historyDurationBox.setMaxLength(19)
-        historyDurationBox.setValue(PerformanceStatusClientController.historyDurationSeconds().toString())
+        historyDurationBox.value = PerformanceStatusClientController.historyDurationSeconds().toString()
         historyDurationBox.setFilter { value ->
             value.isEmpty() || value.all { character -> character in '0'..'9' }
         }
@@ -229,15 +229,15 @@ class PerformanceStatusScreen : Screen(Component.literal("CooParticles Status"))
     override fun isPauseScreen(): Boolean = false
 
     /** 性能面板不执行菜单模糊或全屏后处理，避免测量工具污染被测场景。 */
-    override fun renderBackground(graphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) = Unit
+    override fun extractBackground(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) = Unit
 
     /** 绘制当前表格、趋势图和输出文件名。 */
-    override fun render(graphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
+    override fun extractRenderState(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {
         graphics.fill(8, 8, width - 8, height - 8, 0xD8101216.toInt())
         graphics.fill(8, 8, width - 8, 10, 0xFF4EA1D3.toInt())
-        graphics.drawCenteredString(font, title, width / 2, 14, 0xFFFFFF)
-        super.render(graphics, mouseX, mouseY, partialTick)
-        graphics.drawString(font, "历史秒", 14, height - 22, 0xFF9DA7B3.toInt(), false)
+        graphics.centeredText(font, title, width / 2, 14, 0xFFFFFF)
+        super.extractRenderState(graphics, mouseX, mouseY, partialTick)
+        graphics.text(font, "历史秒", 14, height - 22, 0xFF9DA7B3.toInt(), false)
         val sample = PerformanceStatusClientController.latestSample()
         val tableTop = if (view == View.CORRELATION) 78 else 56
         val chartHeight = (height / 3).coerceIn(96, 180)
@@ -252,45 +252,53 @@ class PerformanceStatusScreen : Screen(Component.literal("CooParticles Status"))
             ""
         }
         if (outputName.isNotEmpty()) {
-            graphics.drawString(font, outputName, 14, height - 43, 0xFF9DA7B3.toInt(), false)
+            graphics.text(font, outputName, 14, height - 43, 0xFF9DA7B3.toInt(), false)
         }
         hoveredLegend?.let { label ->
-            graphics.renderTooltip(font, font.split(Component.literal(label), (width - 32).coerceAtLeast(1)), mouseX, mouseY)
+            graphics.setTooltipForNextFrame(
+                font,
+                font.split(Component.literal(label), (width - 32).coerceAtLeast(1)),
+                mouseX,
+                mouseY,
+            )
         }
     }
 
     /** 处理输入补全候选的键盘选择。 */
-    override fun keyPressed(keyCode: Int, scanCode: Int, modifiers: Int): Boolean {
+    override fun keyPressed(event: KeyEvent): Boolean {
         val focused = focusedRatioSelector()
         if (view == View.CORRELATION && focused != null && ratioSuggestions(focused).isNotEmpty()) {
-            when (keyCode) {
-                GLFW.GLFW_KEY_TAB, GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> {
+            when (event.key()) {
+                InputConstants.KEY_TAB, InputConstants.KEY_RETURN, InputConstants.KEY_NUMPADENTER -> {
                     return acceptRatioSuggestion(focused)
                 }
-                GLFW.GLFW_KEY_DOWN -> {
+                InputConstants.KEY_DOWN -> {
                     moveRatioSuggestion(focused, 1)
                     return true
                 }
-                GLFW.GLFW_KEY_UP -> {
+                InputConstants.KEY_UP -> {
                     moveRatioSuggestion(focused, -1)
                     return true
                 }
             }
         }
-        return super.keyPressed(keyCode, scanCode, modifiers)
+        return super.keyPressed(event)
     }
 
     /** 点击补全候选后写回规范化的指标名称。 */
-    override fun mouseClicked(mouseX: Double, mouseY: Double, button: Int): Boolean {
-        if (button == 0) {
+    override fun mouseClicked(event: MouseButtonEvent, doubleClick: Boolean): Boolean {
+        val mouseX = event.x()
+        val mouseY = event.y()
+        val button = event.button()
+        if (button == InputConstants.MOUSE_BUTTON_LEFT) {
             ratioSuggestionAt(mouseX.toInt(), mouseY.toInt())?.let { (box, index) ->
                 val metric = ratioSuggestions(box).getOrNull(index) ?: return true
                 acceptRatioMetric(box, metric)
                 return true
             }
         }
-        if (button == 0 && beginRangeDrag(mouseX, mouseY)) return true
-        if (button == 0 && mouseX >= 14.0 && mouseX <= width - 14.0 &&
+        if (button == InputConstants.MOUSE_BUTTON_LEFT && beginRangeDrag(mouseX, mouseY)) return true
+        if (button == InputConstants.MOUSE_BUTTON_LEFT && mouseX >= 14.0 && mouseX <= width - 14.0 &&
             mouseY >= visibleRowsTop && mouseY < visibleRowsBottom
         ) {
             val rowIndex = ((mouseY - visibleRowsTop) / 12.0).toInt()
@@ -304,31 +312,29 @@ class PerformanceStatusScreen : Screen(Component.literal("CooParticles Status"))
                 return true
             }
         }
-        return super.mouseClicked(mouseX, mouseY, button)
+        return super.mouseClicked(event, doubleClick)
     }
 
     /** 拖动左右把手缩放时间范围，拖动中间选区平移范围。 */
     override fun mouseDragged(
-        mouseX: Double,
-        mouseY: Double,
-        button: Int,
+        event: MouseButtonEvent,
         dragX: Double,
         dragY: Double,
     ): Boolean {
-        if (button == 0 && rangeDragMode != RangeDragMode.NONE) {
-            updateRangeDrag(mouseX)
+        if (event.button() == InputConstants.MOUSE_BUTTON_LEFT && rangeDragMode != RangeDragMode.NONE) {
+            updateRangeDrag(event.x())
             return true
         }
-        return super.mouseDragged(mouseX, mouseY, button, dragX, dragY)
+        return super.mouseDragged(event, dragX, dragY)
     }
 
     /** 释放鼠标后结束当前时间范围拖动。 */
-    override fun mouseReleased(mouseX: Double, mouseY: Double, button: Int): Boolean {
-        if (button == 0 && rangeDragMode != RangeDragMode.NONE) {
+    override fun mouseReleased(event: MouseButtonEvent): Boolean {
+        if (event.button() == InputConstants.MOUSE_BUTTON_LEFT && rangeDragMode != RangeDragMode.NONE) {
             rangeDragMode = RangeDragMode.NONE
             return true
         }
-        return super.mouseReleased(mouseX, mouseY, button)
+        return super.mouseReleased(event)
     }
 
     /** 在指标表区域使用鼠标滚轮查看当前分段的全部行。 */
@@ -481,7 +487,7 @@ class PerformanceStatusScreen : Screen(Component.literal("CooParticles Status"))
     }
 
     /** 绘制当前焦点输入框的候选列表。 */
-    private fun renderRatioSuggestions(graphics: GuiGraphics, mouseX: Int, mouseY: Int) {
+    private fun renderRatioSuggestions(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int) {
         if (view != View.CORRELATION) return
         val box = focusedRatioSelector() ?: return
         val suggestions = ratioSuggestions(box)
@@ -499,7 +505,7 @@ class PerformanceStatusScreen : Screen(Component.literal("CooParticles Status"))
                 else -> 0xCC000000.toInt()
             }
             graphics.fill(x, y, x + box.width, y + 13, background)
-            graphics.drawString(font, metric.label, x + 3, y + 3, 0xE0FFE0, true)
+            graphics.text(font, metric.label, x + 3, y + 3, 0xE0FFE0, true)
             y += 13
         }
     }
@@ -591,7 +597,7 @@ class PerformanceStatusScreen : Screen(Component.literal("CooParticles Status"))
 
     /** 绘制当前分段视图的紧凑指标表。 */
     private fun renderTable(
-        graphics: GuiGraphics,
+        graphics: GuiGraphicsExtractor,
         sample: PerformanceStatusSample?,
         top: Int,
         bottom: Int,
@@ -635,8 +641,8 @@ class PerformanceStatusScreen : Screen(Component.literal("CooParticles Status"))
                 )
                 left + 16
             }
-            graphics.drawString(font, row.label, labelX, y + 1, 0xFFBBC4CE.toInt(), false)
-            graphics.drawString(font, row.value, right - 9 - font.width(row.value), y + 1, 0xFFF2F5F7.toInt(), false)
+            graphics.text(font, row.label, labelX, y + 1, 0xFFBBC4CE.toInt(), false)
+            graphics.text(font, row.value, right - 9 - font.width(row.value), y + 1, 0xFFF2F5F7.toInt(), false)
         }
         if (maxRowOffset > 0) {
             val trackTop = top
@@ -747,7 +753,7 @@ class PerformanceStatusScreen : Screen(Component.literal("CooParticles Status"))
     }
 
     /** 绘制最近有限历史中用户选择的多维归一化折线和时间范围条。 */
-    private fun renderChart(graphics: GuiGraphics, top: Int, bottom: Int, mouseX: Int, mouseY: Int) {
+    private fun renderChart(graphics: GuiGraphicsExtractor, top: Int, bottom: Int, mouseX: Int, mouseY: Int) {
         hoveredLegend = null
         val history = PerformanceStatusClientController.historySnapshot()
         timelineLeft = 18
@@ -762,7 +768,7 @@ class PerformanceStatusScreen : Screen(Component.literal("CooParticles Status"))
         )
         graphics.fill(left, top, right, bottom, 0xD014171C.toInt())
         if (selectedMetrics.isEmpty()) {
-            graphics.drawCenteredString(font, Component.literal("未选择曲线"), width / 2, top + 8, 0xFF7B8794.toInt())
+            graphics.centeredText(font, Component.literal("未选择曲线"), width / 2, top + 8, 0xFF7B8794.toInt())
             renderTimeline(graphics, history)
             return
         }
@@ -776,16 +782,14 @@ class PerformanceStatusScreen : Screen(Component.literal("CooParticles Status"))
         val plotBottom = timelineTop - 5
         repeat(3) { index ->
             val y = plotTop + (plotBottom - plotTop) * (index + 1) / 4
-            graphics.hLine(plotLeft, plotRight, y, 0x443E4650)
+            graphics.horizontalLine(plotLeft, plotRight, y, 0x443E4650)
         }
-        graphics.hLine(plotLeft, plotRight, plotBottom, 0xFF59616C.toInt())
+        graphics.horizontalLine(plotLeft, plotRight, plotBottom, 0xFF59616C.toInt())
         if (series.isNotEmpty() && plotBottom > plotTop) {
             graphics.enableScissor(plotLeft, plotTop, plotRight + 1, plotBottom + 1)
-            val vertices = graphics.bufferSource().getBuffer(RenderType.gui())
             series.forEachIndexed { index, curve ->
                 drawSeries(
                     graphics = graphics,
-                    vertices = vertices,
                     points = curve.points,
                     left = plotLeft,
                     right = plotRight,
@@ -795,14 +799,13 @@ class PerformanceStatusScreen : Screen(Component.literal("CooParticles Status"))
                     color = seriesColor(index),
                 )
             }
-            graphics.flush()
             graphics.disableScissor()
         }
         renderTimeline(graphics, history)
     }
 
     /** 绘制完整历史总览线和当前可视范围的左右拖动把手。 */
-    private fun renderTimeline(graphics: GuiGraphics, history: List<PerformanceStatusSample>) {
+    private fun renderTimeline(graphics: GuiGraphicsExtractor, history: List<PerformanceStatusSample>) {
         val y = (timelineTop + timelineBottom) / 2
         graphics.fill(timelineLeft, y - 1, timelineRight, y + 1, 0xFF3E4650.toInt())
         val startX = timelineX(rangeStart)
@@ -816,7 +819,7 @@ class PerformanceStatusScreen : Screen(Component.literal("CooParticles Status"))
             val start = first + ((last - first) * rangeStart).toLong()
             val end = first + ((last - first) * rangeEnd).toLong()
             val text = "${formatDuration(end - start)} / ${formatDuration(last - first)}"
-            graphics.drawString(font, text, timelineLeft, timelineTop - 10, 0xFF9DA7B3.toInt(), false)
+            graphics.text(font, text, timelineLeft, timelineTop - 10, 0xFF9DA7B3.toInt(), false)
         }
     }
 
@@ -831,7 +834,7 @@ class PerformanceStatusScreen : Screen(Component.literal("CooParticles Status"))
 
     /** 绘制缓存图例，明确标出真实峰谷及每条曲线独立的纵轴边界。 */
     private fun renderChartLegend(
-        graphics: GuiGraphics,
+        graphics: GuiGraphicsExtractor,
         series: List<PerformanceStatusChartSeries>,
         left: Int,
         right: Int,
@@ -873,7 +876,7 @@ class PerformanceStatusScreen : Screen(Component.literal("CooParticles Status"))
             val displayed = if (font.width(label) <= availableWidth) label else legendCompactLabels[index]
             val text = font.plainSubstrByWidth(displayed, availableWidth)
             graphics.fill(x, y + 2, x + 7, y + 8, seriesColor(index))
-            graphics.drawString(font, text, x + 10, y, 0xFFE3E8ED.toInt(), false)
+            graphics.text(font, text, x + 10, y, 0xFFE3E8ED.toInt(), false)
             if (mouseX in x until x + cellWidth && mouseY in y until y + 11) hoveredLegend = label
         }
         return top + ((series.size + columns - 1) / columns) * 11
@@ -881,8 +884,7 @@ class PerformanceStatusScreen : Screen(Component.literal("CooParticles Status"))
 
     /** 绘制一条原始指标或比值曲线。 */
     private fun drawSeries(
-        graphics: GuiGraphics,
-        vertices: VertexConsumer,
+        graphics: GuiGraphicsExtractor,
         points: List<PerformanceStatusChartPoint>,
         left: Int,
         right: Int,
@@ -901,9 +903,9 @@ class PerformanceStatusScreen : Screen(Component.literal("CooParticles Status"))
             val startX = previousX
             val startY = previousY
             if (startX != null && startY != null) {
-                drawLineSegment(graphics, vertices, startX, startY, x, y, color)
+                drawLineSegment(graphics, startX, startY, x, y, color)
             } else {
-                drawLineSegment(graphics, vertices, x - 1, y, x + 1, y, color)
+                drawLineSegment(graphics, x - 1, y, x + 1, y, color)
             }
             previousX = x
             previousY = y
@@ -912,26 +914,20 @@ class PerformanceStatusScreen : Screen(Component.literal("CooParticles Status"))
 
     /** 绘制一个两像素粗的任意角度 GUI 线段。 */
     private fun drawLineSegment(
-        graphics: GuiGraphics,
-        vertices: VertexConsumer,
+        graphics: GuiGraphicsExtractor,
         startX: Int,
         startY: Int,
         endX: Int,
         endY: Int,
         color: Int,
     ) {
-        val deltaX = endX - startX
-        val deltaY = endY - startY
-        val length = hypot(deltaX.toDouble(), deltaY.toDouble())
-        if (length == 0.0) return
-        // 垂直于线段的单位向量给出两像素线宽；所有线段写入同一个原版 GUI 批次。
-        val offsetX = (-deltaY / length).toFloat()
-        val offsetY = (deltaX / length).toFloat()
-        val pose = graphics.pose().last().pose()
-        vertices.addVertex(pose, startX + offsetX, startY + offsetY, 0F).setColor(color)
-        vertices.addVertex(pose, endX + offsetX, endY + offsetY, 0F).setColor(color)
-        vertices.addVertex(pose, endX - offsetX, endY - offsetY, 0F).setColor(color)
-        vertices.addVertex(pose, startX - offsetX, startY - offsetY, 0F).setColor(color)
+        val steps = maxOf(kotlin.math.abs(endX - startX), kotlin.math.abs(endY - startY)).coerceAtLeast(1)
+        for (step in 0..steps) {
+            val progress = step.toFloat() / steps
+            val x = (startX + (endX - startX) * progress).roundToInt()
+            val y = (startY + (endY - startY) * progress).roundToInt()
+            graphics.fill(x, y, x + 2, y + 2, color)
+        }
     }
 
     /** 返回选择顺序对应的 12 色高对比度曲线颜色。 */

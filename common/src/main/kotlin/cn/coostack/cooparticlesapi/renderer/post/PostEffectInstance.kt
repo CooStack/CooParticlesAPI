@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi.renderer.post
 
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /**
  * 一次 Pipeline 后处理播放的内部执行快照。
@@ -55,7 +55,7 @@ internal data class PostEffectInstance(
 
 /** 服务端播放包携带的纯数据快照。 */
 internal data class SyncedPostEffectState(
-    val effectType: ResourceLocation,
+    val effectType: Identifier,
     val instanceId: String,
     val binding: PostEffectBinding,
     val lifecycle: PostEffectLifecycle,

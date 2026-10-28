@@ -1,7 +1,7 @@
 package cn.coostack.cooparticlesapi.network.buffer
 
 import cn.coostack.cooparticlesapi.CooParticlesConstants
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 
 class BooleanControlerBuffer() : ParticleControlerDataBuffer<Boolean> {
@@ -9,7 +9,7 @@ class BooleanControlerBuffer() : ParticleControlerDataBuffer<Boolean> {
     companion object {
         @JvmStatic
         val id = ParticleControlerDataBuffer.Id(
-            ResourceLocation.fromNamespaceAndPath(
+            Identifier.fromNamespaceAndPath(
                 CooParticlesConstants.MOD_ID, "boolean"
             )
         )

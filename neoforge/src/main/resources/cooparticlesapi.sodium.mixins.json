@@ -2,7 +2,7 @@
   "required": false,
   "package": "cn.coostack.cooparticlesapi.mixin.compat.sodium",
   "plugin": "cn.coostack.cooparticlesapi.mixin.plugin.CooSodiumMixinPlugin",
-  "compatibilityLevel": "JAVA_21",
+  "compatibilityLevel": "JAVA_25",
   "refmap": "cooparticlesapi.refmap.json",
   "injectors": {
     "defaultRequire": 1
@@ -15,7 +15,6 @@
     "RenderRegionManagerMixin",
     "RenderSectionMixin",
     "RenderSectionManagerMixin",
-    "ShaderChunkRendererMixin",
     "SodiumWorldRendererMixin"
   ]
 }

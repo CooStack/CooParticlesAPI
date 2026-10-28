@@ -1,18 +1,19 @@
 package cn.coostack.cooparticlesapi.datagen
 
 import cn.coostack.cooparticlesapi.items.CooItems
-import net.fabricmc.fabric.api.datagen.v1.FabricDataOutput
+import net.fabricmc.fabric.api.datagen.v1.FabricPackOutput
 import net.fabricmc.fabric.api.datagen.v1.provider.FabricLanguageProvider
 import net.minecraft.core.HolderLookup
 import java.util.concurrent.CompletableFuture
 
+/** 生成内置调试工具的简体中文翻译。 */
 class LanguageProvider(
-    dataOutput: FabricDataOutput?,
+    dataOutput: FabricPackOutput,
     registryLookup: CompletableFuture<HolderLookup.Provider>
 ) : FabricLanguageProvider(dataOutput, "zh_cn", registryLookup) {
 
     override fun generateTranslations(
-        lookup: HolderLookup.Provider?,
+        lookup: HolderLookup.Provider,
         builder: TranslationBuilder
     ) {
         builder.apply {

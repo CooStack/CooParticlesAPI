@@ -9,17 +9,23 @@ import cn.coostack.cooparticlesapi.test.block.BlockTestOptionResult
 import cn.coostack.cooparticlesapi.test.block.BlockTestPlaybackMode
 import cn.coostack.cooparticlesapi.test.block.BlockTestPlayer
 import cn.coostack.cooparticlesapi.test.api.TestOptionParamSpec
+import com.mojang.serialization.Codec
 import net.minecraft.core.BlockPos
 import net.minecraft.core.HolderLookup
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.protocol.Packet
 import net.minecraft.network.protocol.game.ClientGamePacketListener
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.level.storage.ValueInput
+import net.minecraft.world.level.storage.ValueOutput
 import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.Vec3
+import net.minecraft.world.level.storage.TagValueInput
+import net.minecraft.world.level.storage.TagValueOutput
+import net.minecraft.util.ProblemReporter
 
 class TestControllerBlockEntity(
     pos: BlockPos,
@@ -65,7 +71,7 @@ class TestControllerBlockEntity(
     }
 
     /** @return 当前服务端可创建的方块测试组资源 ID */
-    fun registeredGroupIds(): List<ResourceLocation> {
+    fun registeredGroupIds(): List<Identifier> {
         val serverLevel = level as? ServerLevel ?: return emptyList()
         return TestManager.registeredBlockIds(createTestPlayer(serverLevel))
     }
@@ -88,7 +94,7 @@ class TestControllerBlockEntity(
      * @param groupId 待查询的测试组资源 ID
      * @return 该测试组的测试项 ID
      */
-    fun optionIds(groupId: ResourceLocation): List<String> {
+    fun optionIds(groupId: Identifier): List<String> {
         val serverLevel = level as? ServerLevel ?: return emptyList()
         return TestManager.optionIds(groupId, createTestPlayer(serverLevel))
     }
@@ -104,7 +110,7 @@ class TestControllerBlockEntity(
      * @param groupId 待查询的测试组资源 ID
      * @return 该测试组每个测试项的参数定义
      */
-    fun optionParamSpecs(groupId: ResourceLocation): List<List<TestOptionParamSpec<*>>> {
+    fun optionParamSpecs(groupId: Identifier): List<List<TestOptionParamSpec<*>>> {
         val serverLevel = level as? ServerLevel ?: return emptyList()
         return TestManager.optionParamSpecs(groupId, createTestPlayer(serverLevel))
     }
@@ -342,47 +348,48 @@ class TestControllerBlockEntity(
         super.setRemoved()
     }
 
-    override fun loadAdditional(tag: CompoundTag, provider: HolderLookup.Provider) {
-        super.loadAdditional(tag, provider)
-        val savedGroupId = tag.getString("groupId")
+    override fun loadAdditional(input: ValueInput) {
+        super.loadAdditional(input)
+        val savedGroupId = input.getStringOr("groupId", "")
         groupId = if (savedGroupId.isBlank()) {
             defaultTestControllerGroupId().toString()
         } else {
             resolveGroupId(savedGroupId)?.toString().orEmpty()
         }
-        mode = BlockTestMode.fromId(tag.getString("mode"))
-        selectedIndex = tag.getInt("selectedIndex").coerceAtLeast(0)
-        repeatIndex = tag.getBoolean("repeatIndex")
-        repeatDelayTicks = tag.getInt("repeatDelayTicks").coerceAtLeast(0)
-        playerOffset = readVec3(tag, "playerOffset", Vec3.ZERO)
-        playerForward = BlockTestPlayer.normalizeOrDefault(readVec3(tag, "playerForward", BlockTestPlayer.DEFAULT_FORWARD))
-        playerPositionDynamic = tag.getBoolean("playerPositionDynamic")
-        playerForwardDynamic = tag.getBoolean("playerForwardDynamic")
-        playerPositionTrack = BlockTestAnimationTrackCodec.readFrom(tag, "playerPositionTrack", playerOffset)
-        playerForwardTrack = BlockTestAnimationTrackCodec.readFrom(tag, "playerForwardTrack", playerForward)
-        playerBoxWidth = readDimension(tag, "playerBoxWidth", 0.6)
-        playerBoxHeight = readDimension(tag, "playerBoxHeight", 1.8)
-        playerBoxDepth = readDimension(tag, "playerBoxDepth", 0.6)
+        mode = BlockTestMode.fromId(input.getStringOr("mode", ""))
+        selectedIndex = input.getIntOr("selectedIndex", 0).coerceAtLeast(0)
+        repeatIndex = input.getBooleanOr("repeatIndex", false)
+        repeatDelayTicks = input.getIntOr("repeatDelayTicks", 0).coerceAtLeast(0)
+        playerOffset = readVec3(input, "playerOffset", Vec3.ZERO)
+        playerForward = BlockTestPlayer.normalizeOrDefault(readVec3(input, "playerForward", BlockTestPlayer.DEFAULT_FORWARD))
+        playerPositionDynamic = input.getBooleanOr("playerPositionDynamic", false)
+        playerForwardDynamic = input.getBooleanOr("playerForwardDynamic", false)
+        playerPositionTrack = BlockTestAnimationTrackCodec.readFrom(input, "playerPositionTrack", playerOffset)
+        playerForwardTrack = BlockTestAnimationTrackCodec.readFrom(input, "playerForwardTrack", playerForward)
+        playerBoxWidth = readDimension(input, "playerBoxWidth", 0.6)
+        playerBoxHeight = readDimension(input, "playerBoxHeight", 1.8)
+        playerBoxDepth = readDimension(input, "playerBoxDepth", 0.6)
         optionParamValueOverrides.clear()
-        val optionParams = tag.getCompound("optionParams")
-        optionParams.getAllKeys().forEach { indexKey ->
+        val optionParamCodec = Codec.unboundedMap(
+            Codec.STRING,
+            Codec.unboundedMap(Codec.STRING, Codec.STRING)
+        )
+        val optionParams = input.read("optionParams", optionParamCodec).orElse(emptyMap())
+        optionParams.forEach { (indexKey, savedValues) ->
             val index = indexKey.toIntOrNull() ?: return@forEach
-            val valuesTag = optionParams.getCompound(indexKey)
             val values = linkedMapOf<String, String>()
-            valuesTag.getAllKeys().forEach { paramId ->
-                values[paramId] = valuesTag.getString(paramId)
-            }
+            values.putAll(savedValues)
             if (values.isNotEmpty()) {
                 optionParamValueOverrides[index] = values
             }
         }
-        if (tag.contains("positionAnimationEpoch")) {
-            positionAnimationBaseTicks = tag.getLong("positionAnimationBaseTicks").coerceAtLeast(0L)
-            positionAnimationEpoch = tag.getLong("positionAnimationEpoch")
-            positionAnimationAdvancing = tag.getBoolean("positionAnimationAdvancing")
-            forwardAnimationBaseTicks = tag.getLong("forwardAnimationBaseTicks").coerceAtLeast(0L)
-            forwardAnimationEpoch = tag.getLong("forwardAnimationEpoch")
-            forwardAnimationAdvancing = tag.getBoolean("forwardAnimationAdvancing")
+        if (input.read("positionAnimationEpoch", Codec.LONG).isPresent) {
+            positionAnimationBaseTicks = input.getLongOr("positionAnimationBaseTicks", 0L).coerceAtLeast(0L)
+            positionAnimationEpoch = input.getLongOr("positionAnimationEpoch", 0L)
+            positionAnimationAdvancing = input.getBooleanOr("positionAnimationAdvancing", false)
+            forwardAnimationBaseTicks = input.getLongOr("forwardAnimationBaseTicks", 0L).coerceAtLeast(0L)
+            forwardAnimationEpoch = input.getLongOr("forwardAnimationEpoch", 0L)
+            forwardAnimationAdvancing = input.getBooleanOr("forwardAnimationAdvancing", false)
         } else {
             positionAnimationBaseTicks = 0L
             positionAnimationEpoch = 0L
@@ -391,34 +398,35 @@ class TestControllerBlockEntity(
             forwardAnimationEpoch = 0L
             forwardAnimationAdvancing = false
         }
-        runLoop.restore(tag.getBoolean("shouldAutoRun"), tag.getInt("waitTicks"))
+        runLoop.restore(input.getBooleanOr("shouldAutoRun", false), input.getIntOr("waitTicks", 0))
     }
 
-    override fun saveAdditional(tag: CompoundTag, provider: HolderLookup.Provider) {
-        super.saveAdditional(tag, provider)
-        tag.putString("groupId", groupId)
-        tag.putString("mode", mode.id)
-        tag.putInt("selectedIndex", selectedIndex)
-        tag.putBoolean("repeatIndex", repeatIndex)
-        tag.putInt("repeatDelayTicks", repeatDelayTicks)
-        tag.putBoolean("shouldAutoRun", runLoop.shouldAutoRun)
-        tag.putInt("waitTicks", runLoop.waitTicks.coerceAtLeast(0))
-        writeVec3(tag, "playerOffset", playerOffset)
-        writeVec3(tag, "playerForward", playerForward)
-        tag.putBoolean("playerPositionDynamic", playerPositionDynamic)
-        tag.putBoolean("playerForwardDynamic", playerForwardDynamic)
-        BlockTestAnimationTrackCodec.writeTo(tag, "playerPositionTrack", playerPositionTrack)
-        BlockTestAnimationTrackCodec.writeTo(tag, "playerForwardTrack", playerForwardTrack)
-        tag.putDouble("playerBoxWidth", playerBoxWidth)
-        tag.putDouble("playerBoxHeight", playerBoxHeight)
-        tag.putDouble("playerBoxDepth", playerBoxDepth)
-        val optionParams = CompoundTag()
-        optionParamValueOverrides.forEach { (index, values) ->
-            val valuesTag = CompoundTag()
-            values.forEach { (id, value) -> valuesTag.putString(id, value) }
-            optionParams.put(index.toString(), valuesTag)
-        }
-        tag.put("optionParams", optionParams)
+    override fun saveAdditional(output: ValueOutput) {
+        super.saveAdditional(output)
+        output.putString("groupId", groupId)
+        output.putString("mode", mode.id)
+        output.putInt("selectedIndex", selectedIndex)
+        output.putBoolean("repeatIndex", repeatIndex)
+        output.putInt("repeatDelayTicks", repeatDelayTicks)
+        output.putBoolean("shouldAutoRun", runLoop.shouldAutoRun)
+        output.putInt("waitTicks", runLoop.waitTicks.coerceAtLeast(0))
+        writeVec3(output, "playerOffset", playerOffset)
+        writeVec3(output, "playerForward", playerForward)
+        output.putBoolean("playerPositionDynamic", playerPositionDynamic)
+        output.putBoolean("playerForwardDynamic", playerForwardDynamic)
+        BlockTestAnimationTrackCodec.writeTo(output, "playerPositionTrack", playerPositionTrack)
+        BlockTestAnimationTrackCodec.writeTo(output, "playerForwardTrack", playerForwardTrack)
+        output.putDouble("playerBoxWidth", playerBoxWidth)
+        output.putDouble("playerBoxHeight", playerBoxHeight)
+        output.putDouble("playerBoxDepth", playerBoxDepth)
+        val optionParamCodec = Codec.unboundedMap(
+            Codec.STRING,
+            Codec.unboundedMap(Codec.STRING, Codec.STRING)
+        )
+        val optionParams = optionParamValueOverrides
+            .mapKeys { (index, _) -> index.toString() }
+            .mapValues { (_, values) -> values.toMap() }
+        output.store("optionParams", optionParamCodec, optionParams)
     }
 
     override fun getUpdatePacket(): Packet<ClientGamePacketListener> {
@@ -426,7 +434,11 @@ class TestControllerBlockEntity(
     }
 
     override fun getUpdateTag(provider: HolderLookup.Provider): CompoundTag {
-        return saveWithoutMetadata(provider).also(::writeAnimationRuntime)
+        val reporter = ProblemReporter.DISCARDING
+        val output = TagValueOutput.createWithContext(reporter, provider)
+        saveAdditional(output)
+        writeAnimationRuntime(output)
+        return output.buildResult()
     }
 
     private fun buildRuntimeGroup(): BlockTestGroup? {
@@ -452,7 +464,7 @@ class TestControllerBlockEntity(
     }
 
     /** @return 当前配置解析后的测试组资源 ID */
-    private fun resolvedGroupId(): ResourceLocation? {
+    private fun resolvedGroupId(): Identifier? {
         return resolveGroupId(groupId)
     }
 
@@ -462,13 +474,13 @@ class TestControllerBlockEntity(
      * @param value 网络或存档中的测试组 ID
      * @return 有效且无歧义的资源 ID；无法解析时返回 `null`
      */
-    private fun resolveGroupId(value: String): ResourceLocation? {
+    private fun resolveGroupId(value: String): Identifier? {
         val input = value.trim()
         if (input.isBlank()) {
             return null
         }
         if (':' in input) {
-            return ResourceLocation.tryParse(input)
+            return Identifier.tryParse(input)
         }
         return TestManager.registeredIds().singleOrNull { id -> id.path == input }
     }
@@ -493,7 +505,7 @@ class TestControllerBlockEntity(
      * @param partialTick 当前帧的小数 tick
      * @return 位置轨道 elapsed tick
      */
-    fun positionAnimationElapsedTicks(partialTick: Float = 0f): Double {
+    fun positionAnimationElapsedTicks(partialTick: Float = 0F): Double {
         return elapsedTicks(
             positionAnimationBaseTicks,
             positionAnimationEpoch,
@@ -511,7 +523,7 @@ class TestControllerBlockEntity(
      * @param partialTick 当前帧的小数 tick
      * @return forward 轨道 elapsed tick
      */
-    fun forwardAnimationElapsedTicks(partialTick: Float = 0f): Double {
+    fun forwardAnimationElapsedTicks(partialTick: Float = 0F): Double {
         return elapsedTicks(
             forwardAnimationBaseTicks,
             forwardAnimationEpoch,
@@ -582,13 +594,13 @@ class TestControllerBlockEntity(
         )
     }
 
-    private fun writeAnimationRuntime(tag: CompoundTag) {
-        tag.putLong("positionAnimationBaseTicks", positionAnimationBaseTicks)
-        tag.putLong("positionAnimationEpoch", positionAnimationEpoch)
-        tag.putBoolean("positionAnimationAdvancing", positionAnimationAdvancing)
-        tag.putLong("forwardAnimationBaseTicks", forwardAnimationBaseTicks)
-        tag.putLong("forwardAnimationEpoch", forwardAnimationEpoch)
-        tag.putBoolean("forwardAnimationAdvancing", forwardAnimationAdvancing)
+    private fun writeAnimationRuntime(output: ValueOutput) {
+        output.putLong("positionAnimationBaseTicks", positionAnimationBaseTicks)
+        output.putLong("positionAnimationEpoch", positionAnimationEpoch)
+        output.putBoolean("positionAnimationAdvancing", positionAnimationAdvancing)
+        output.putLong("forwardAnimationBaseTicks", forwardAnimationBaseTicks)
+        output.putLong("forwardAnimationEpoch", forwardAnimationEpoch)
+        output.putBoolean("forwardAnimationAdvancing", forwardAnimationAdvancing)
     }
 
     private fun elapsedTicks(baseTicks: Long, epoch: Long, advancing: Boolean, partialTick: Float): Double {
@@ -597,7 +609,7 @@ class TestControllerBlockEntity(
         }
         val currentLevel = level ?: return baseTicks.toDouble()
         val sinceEpoch = (currentLevel.gameTime - epoch).coerceAtLeast(0L)
-        return baseTicks + sinceEpoch.toDouble() + partialTick.coerceIn(0f, 1f)
+        return baseTicks + sinceEpoch.toDouble() + partialTick.coerceIn(0F, 1F)
     }
 
     private fun syncClientState() {
@@ -623,12 +635,15 @@ class TestControllerBlockEntity(
         }
     }
 
-    private fun readVec3(tag: CompoundTag, key: String, fallback: Vec3): Vec3 {
-        if (!tag.contains("${key}X") || !tag.contains("${key}Y") || !tag.contains("${key}Z")) {
+    private fun readVec3(input: ValueInput, key: String, fallback: Vec3): Vec3 {
+        val x = input.read("${key}X", Codec.DOUBLE)
+        val y = input.read("${key}Y", Codec.DOUBLE)
+        val z = input.read("${key}Z", Codec.DOUBLE)
+        if (x.isEmpty || y.isEmpty || z.isEmpty) {
             return fallback
         }
         return finiteVec3(
-            Vec3(tag.getDouble("${key}X"), tag.getDouble("${key}Y"), tag.getDouble("${key}Z")),
+            Vec3(x.get(), y.get(), z.get()),
             fallback
         )
     }
@@ -644,13 +659,13 @@ class TestControllerBlockEntity(
      * @param fallback 字段缺失或异常时的回退值
      * @return 限制到有效范围的尺寸
      */
-    private fun readDimension(tag: CompoundTag, key: String, fallback: Double): Double {
-        return if (tag.contains(key)) finiteDimension(tag.getDouble(key), fallback) else fallback
+    private fun readDimension(input: ValueInput, key: String, fallback: Double): Double {
+        return finiteDimension(input.getDoubleOr(key, fallback), fallback)
     }
 
-    private fun writeVec3(tag: CompoundTag, key: String, value: Vec3) {
-        tag.putDouble("${key}X", value.x)
-        tag.putDouble("${key}Y", value.y)
-        tag.putDouble("${key}Z", value.z)
+    private fun writeVec3(output: ValueOutput, key: String, value: Vec3) {
+        output.putDouble("${key}X", value.x)
+        output.putDouble("${key}Y", value.y)
+        output.putDouble("${key}Z", value.z)
     }
 }

@@ -1,12 +1,14 @@
 package cn.coostack.cooparticlesapi.network.packet.server
 
+import cn.coostack.cooparticlesapi.network.readVec3
+import cn.coostack.cooparticlesapi.network.writeVec3
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import net.minecraft.core.particles.ParticleOptions
 import net.minecraft.core.particles.ParticleTypes
 import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.phys.Vec3
 
 class PacketParticleBatchS2C(
@@ -21,7 +23,7 @@ class PacketParticleBatchS2C(
     companion object {
         const val MAX_PARTICLES = 4096
 
-        private val identifierID = ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "particle_batch")
+        private val identifierID = Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "particle_batch")
         val payloadID = CustomPacketPayload.Type<PacketParticleBatchS2C>(identifierID)
         val CODEC: StreamCodec<RegistryFriendlyByteBuf, PacketParticleBatchS2C> =
             CustomPacketPayload.codec({ packet, buf ->

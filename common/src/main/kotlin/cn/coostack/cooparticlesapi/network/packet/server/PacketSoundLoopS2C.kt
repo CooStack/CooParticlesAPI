@@ -1,16 +1,18 @@
 package cn.coostack.cooparticlesapi.network.packet.server
 
+import cn.coostack.cooparticlesapi.network.readVec3
+import cn.coostack.cooparticlesapi.network.writeVec3
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.sounds.SoundSource
 import net.minecraft.world.phys.Vec3
 
 class PacketSoundLoopS2C(
     val key: String,
-    val sound: ResourceLocation,
+    val sound: Identifier,
     val source: SoundSource,
     val entityId: Int,
     val pos: Vec3,
@@ -20,13 +22,13 @@ class PacketSoundLoopS2C(
     val stopImmediately: Boolean
 ) : CustomPacketPayload {
     companion object {
-        private val identifierID = ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "sound_loop")
+        private val identifierID = Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "sound_loop")
         val payloadID = CustomPacketPayload.Type<PacketSoundLoopS2C>(identifierID)
 
         val CODEC: StreamCodec<FriendlyByteBuf, PacketSoundLoopS2C> = CustomPacketPayload.codec(
             { packet, buf ->
                 buf.writeUtf(packet.key)
-                buf.writeResourceLocation(packet.sound)
+                buf.writeIdentifier(packet.sound)
                 buf.writeEnum(packet.source)
                 buf.writeInt(packet.entityId)
                 buf.writeVec3(packet.pos)
@@ -38,7 +40,7 @@ class PacketSoundLoopS2C(
             { buf ->
                 PacketSoundLoopS2C(
                     key = buf.readUtf(),
-                    sound = buf.readResourceLocation(),
+                    sound = buf.readIdentifier(),
                     source = buf.readEnum(SoundSource::class.java),
                     entityId = buf.readInt(),
                     pos = buf.readVec3(),
@@ -52,7 +54,7 @@ class PacketSoundLoopS2C(
 
         fun start(
             key: String,
-            sound: ResourceLocation,
+            sound: Identifier,
             source: SoundSource,
             entityId: Int,
             pos: Vec3,
@@ -65,12 +67,12 @@ class PacketSoundLoopS2C(
         fun stop(key: String, interrupt: Boolean = true): PacketSoundLoopS2C {
             return PacketSoundLoopS2C(
                 key = key,
-                sound = ResourceLocation.withDefaultNamespace("empty"),
+                sound = Identifier.withDefaultNamespace("empty"),
                 source = SoundSource.MASTER,
                 entityId = -1,
                 pos = Vec3.ZERO,
-                volume = 0f,
-                pitch = 1f,
+                volume = 0F,
+                pitch = 1F,
                 start = false,
                 stopImmediately = interrupt
             )

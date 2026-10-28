@@ -7,7 +7,7 @@ import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlShader
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlShaderType
 import cn.coostack.cooparticlesapi.renderer.shader.buffer.ShaderBufferLayout
 import cn.coostack.cooparticlesapi.renderer.shader.glsl.IdentifierShader
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 class AdvancedShaderProgramBuilder {
     private var vertex: GlShader? = null
@@ -19,7 +19,7 @@ class AdvancedShaderProgramBuilder {
     private val shaderBufferLayouts = mutableListOf<ShaderBufferLayout<*>>()
     private val attributeLocations = linkedMapOf<String, Int>()
     private val transformFeedbackVaryings = mutableListOf<String>()
-    private var managedProgramId: ResourceLocation? = null
+    private var managedProgramId: Identifier? = null
 
     /**
      * 在 `AdvancedShaderProgramBuilder` 中配置 `vertex`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
@@ -198,7 +198,7 @@ class AdvancedShaderProgramBuilder {
      *
      * @return 当前构建器或由其配置生成的结果
      */
-    fun managedId(id: ResourceLocation): AdvancedShaderProgramBuilder {
+    fun managedId(id: Identifier): AdvancedShaderProgramBuilder {
         managedProgramId = id
         return this
     }
@@ -213,7 +213,7 @@ class AdvancedShaderProgramBuilder {
      * @return 当前构建器或由其配置生成的结果
      */
     fun managedId(path: String): AdvancedShaderProgramBuilder {
-        managedProgramId = ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, path)
+        managedProgramId = Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, path)
         return this
     }
 
@@ -307,7 +307,7 @@ class AdvancedShaderProgramBuilder {
 
     private fun identifier(path: String, type: GlShaderType): GlShader {
         return IdentifierShader(
-            ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, path),
+            Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, path),
             type
         )
     }

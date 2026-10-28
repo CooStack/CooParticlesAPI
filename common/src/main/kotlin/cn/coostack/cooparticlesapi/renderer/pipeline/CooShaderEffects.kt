@@ -9,12 +9,12 @@ import cn.coostack.cooparticlesapi.renderer.post.PostEffectRuntimeRegistry
 import cn.coostack.cooparticlesapi.renderer.post.PostEffectType
 import cn.coostack.cooparticlesapi.renderer.post.toPostEffectParamValue
 import cn.coostack.cooparticlesapi.renderer.post.withParamUniforms
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.server.level.ServerPlayer
 
 /** 独立屏幕 ShaderEffect 的注册和播放入口。 */
 object CooShaderEffects {
-    private val effects = LinkedHashMap<ResourceLocation, CooShaderEffect>()
+    private val effects = LinkedHashMap<Identifier, CooShaderEffect>()
 
     /**
      * 把输入对象加入 `CooShaderEffects` 的 `register` 管理范围，后续查询、构建或绘制会使用该绑定。
@@ -27,7 +27,7 @@ object CooShaderEffects {
      *
      * @return 当前操作计算、更新或查询得到的结果
      */
-    fun register(id: ResourceLocation, block: CooShaderEffectBuilder.() -> Unit): CooShaderEffect {
+    fun register(id: Identifier, block: CooShaderEffectBuilder.() -> Unit): CooShaderEffect {
         require(id !in effects) { "Shader effect already registered: $id" }
         val effect = CooShaderEffectBuilder(id).apply(block).build()
         PostEffectRuntimeRegistry.registerType(effect.postType)
@@ -44,7 +44,7 @@ object CooShaderEffects {
      *
      * @return 匹配当前条件的对象或状态；可空返回值表示没有可用结果
      */
-    fun get(id: ResourceLocation): CooShaderEffect? = effects[id]
+    fun get(id: Identifier): CooShaderEffect? = effects[id]
 
     /**
      * 执行 `CooShaderEffects` 定义的 `all` 操作；输入和返回值用于该组件当前的渲染职责。
@@ -71,7 +71,7 @@ class CooShaderEffect internal constructor(
     internal val postType: PostEffectType,
     private val defaultParams: PostEffectParams
 ) {
-    val id: ResourceLocation get() = pipeline.id
+    val id: Identifier get() = pipeline.id
 
     /**
      * 执行 `CooShaderEffect` 定义的 `play` 操作；输入和返回值用于该组件当前的渲染职责。
@@ -255,7 +255,7 @@ class CooShaderEffectPlayBuilder {
      *
      * @param texture 当前操作需要的输入值；其语义由方法名和所属组件共同限定
      */
-    fun texture(name: String, texture: ResourceLocation) = apply {
+    fun texture(name: String, texture: Identifier) = apply {
         params.resource(name, texture)
     }
 
@@ -294,7 +294,7 @@ internal data class CooShaderEffectPlayRequest(
  *
  * @param id 要注册的 shader effect 资源标识
  */
-class CooShaderEffectBuilder internal constructor(id: ResourceLocation) {
+class CooShaderEffectBuilder internal constructor(id: Identifier) {
     private val graph = CooRenderPipelineBuilder<Any>(id, CooPipelineDomain.SCREEN)
     private val main = CooPipelineNodeBuilder<Any>("main", CooPipelineNodeKind.FULLSCREEN)
     private var mainTouched = false
@@ -306,7 +306,7 @@ class CooShaderEffectBuilder internal constructor(id: ResourceLocation) {
      *
      * @param shader 要加载、编译或绑定的 shader 资源
      */
-    fun fragment(shader: ResourceLocation) = apply {
+    fun fragment(shader: Identifier) = apply {
         mainTouched = true
         main.fragment(shader)
     }
@@ -459,7 +459,7 @@ class CooShaderEffectBuilder internal constructor(id: ResourceLocation) {
      *
      * @return 当前构建器或由其配置生成的结果
      */
-    fun texture(texture: ResourceLocation): CooPipelineTextureSource = graph.texture(texture)
+    fun texture(texture: Identifier): CooPipelineTextureSource = graph.texture(texture)
     /**
      * 在 `CooShaderEffectBuilder` 中配置 `framebuffer`；该调用只更新待构建数据，不会单独提交 GPU 绘制。
      *
@@ -471,7 +471,7 @@ class CooShaderEffectBuilder internal constructor(id: ResourceLocation) {
      *
      * @return 当前构建器或由其配置生成的结果
      */
-    fun framebuffer(target: ResourceLocation, attachment: Int = 0): CooPipelineTextureSource =
+    fun framebuffer(target: Identifier, attachment: Int = 0): CooPipelineTextureSource =
         graph.framebuffer(target, attachment)
 
     /**
@@ -517,7 +517,7 @@ class CooShaderEffectBuilder internal constructor(id: ResourceLocation) {
      *
      * @return 当前构建器或由其配置生成的结果
      */
-    fun framebufferTarget(target: ResourceLocation, attachment: Int = 0): CooPipelineTarget =
+    fun framebufferTarget(target: Identifier, attachment: Int = 0): CooPipelineTarget =
         graph.framebufferTarget(target, attachment)
 
     /**

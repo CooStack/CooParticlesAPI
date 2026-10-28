@@ -8,7 +8,7 @@ import cn.coostack.cooparticlesapi.renderer.shader.ShaderReloadListener
 import cn.coostack.cooparticlesapi.renderer.shader.ShaderReloadSignal
 import cn.coostack.cooparticlesapi.renderer.shader.ShaderRefreshResult
 import cn.coostack.cooparticlesapi.renderer.shader.ShaderProgramRegistry
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.server.packs.resources.ResourceManager
 
 object CooShaderReloadSupport {
@@ -29,28 +29,28 @@ object CooShaderReloadSupport {
      * @throws IllegalArgumentException 程序自身或任一 include 在 classpath 上不存在时抛出
      */
     @JvmStatic
-    fun loadShaderSource(source: ResourceLocation): String =
+    fun loadShaderSource(source: Identifier): String =
         CooShaderSourceLoader.loadFromClasspath(source)
 
     @JvmStatic
-    fun refreshProgramsById(ids: Set<ResourceLocation>): Int {
+    fun refreshProgramsById(ids: Set<Identifier>): Int {
         return ShaderProgramRegistry.refreshProgramsById(ids)
     }
 
     @JvmStatic
-    fun refreshProgramsBySource(sources: Set<ResourceLocation>): Int {
+    fun refreshProgramsBySource(sources: Set<Identifier>): Int {
         return ShaderProgramRegistry.refreshProgramsBySource(sources)
     }
 
     @JvmStatic
-    fun refreshProgramsAndBuffersById(ids: Set<ResourceLocation>): ShaderRefreshResult {
+    fun refreshProgramsAndBuffersById(ids: Set<Identifier>): ShaderRefreshResult {
         return handleCompileUpdate(
             ShaderCompileUpdate(updatedProgramIds = ids)
         )
     }
 
     @JvmStatic
-    fun refreshProgramsAndBuffersBySource(sources: Set<ResourceLocation>): ShaderRefreshResult {
+    fun refreshProgramsAndBuffersBySource(sources: Set<Identifier>): ShaderRefreshResult {
         return handleCompileUpdate(
             ShaderCompileUpdate(updatedShaderSources = sources)
         )

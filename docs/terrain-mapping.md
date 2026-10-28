@@ -89,7 +89,7 @@ CooParticlesAPI 2.5.6-SNAPSHOT（当前仓库）
 
 ### 3.2 Gradle 依赖
 
-使用发布版本时，版本号以 Release 为准：
+不包含 Minecraft 版本段的旧坐标对应 Minecraft 1.21.1。Minecraft 26.3 使用带 `-26.3-` 的新 artifactId：
 
 ```kotlin
 repositories {
@@ -97,11 +97,11 @@ repositories {
 }
 
 dependencies {
-    // Fabric 模块
-    implementation("cn.coostack:cooparticlesapi-fabric:<version>")
+    // Fabric 26.3 模块
+    implementation("cn.coostack:cooparticlesapi-26.3-fabric:<version>")
 
-    // NeoForge 模块
-    implementation("cn.coostack:cooparticlesapi-neoforge:<version>")
+    // NeoForge 26.3 模块
+    implementation("cn.coostack:cooparticlesapi-26.3-neoforge:<version>")
 }
 ```
 

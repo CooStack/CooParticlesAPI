@@ -1,17 +1,19 @@
 package cn.coostack.cooparticlesapi.network.packet.server
 
+import cn.coostack.cooparticlesapi.network.readVec3
+import cn.coostack.cooparticlesapi.network.writeVec3
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.sounds.SoundSource
 import net.minecraft.world.phys.Vec3
 
 class PacketSoundInstanceS2C(
     val action: Action,
     val key: String,
-    val sound: ResourceLocation,
+    val sound: Identifier,
     val source: SoundSource,
     val entityId: Int,
     val pos: Vec3,
@@ -22,7 +24,7 @@ class PacketSoundInstanceS2C(
     val stopImmediately: Boolean,
     val duckVolume: Float,
     val duckRange: Double,
-    val whitelistSounds: Set<ResourceLocation>,
+    val whitelistSounds: Set<Identifier>,
     val whitelistSources: Set<SoundSource>,
     val whitelistKeys: Set<String>
 ) : CustomPacketPayload {
@@ -36,16 +38,16 @@ class PacketSoundInstanceS2C(
     }
 
     companion object {
-        private val identifierID = ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "sound_instance")
+        private val identifierID = Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "sound_instance")
         val payloadID = CustomPacketPayload.Type<PacketSoundInstanceS2C>(identifierID)
 
-        private val emptySound = ResourceLocation.withDefaultNamespace("empty")
+        private val emptySound = Identifier.withDefaultNamespace("empty")
 
         val CODEC: StreamCodec<FriendlyByteBuf, PacketSoundInstanceS2C> = CustomPacketPayload.codec(
             { packet, buf ->
                 buf.writeEnum(packet.action)
                 buf.writeUtf(packet.key)
-                buf.writeResourceLocation(packet.sound)
+                buf.writeIdentifier(packet.sound)
                 buf.writeEnum(packet.source)
                 buf.writeInt(packet.entityId)
                 buf.writeVec3(packet.pos)
@@ -56,7 +58,7 @@ class PacketSoundInstanceS2C(
                 buf.writeBoolean(packet.stopImmediately)
                 buf.writeFloat(packet.duckVolume)
                 buf.writeDouble(packet.duckRange)
-                writeResourceLocationSet(buf, packet.whitelistSounds)
+                writeIdentifierSet(buf, packet.whitelistSounds)
                 writeSoundSourceSet(buf, packet.whitelistSources)
                 writeStringSet(buf, packet.whitelistKeys)
             },
@@ -64,7 +66,7 @@ class PacketSoundInstanceS2C(
                 PacketSoundInstanceS2C(
                     action = buf.readEnum(Action::class.java),
                     key = buf.readUtf(),
-                    sound = buf.readResourceLocation(),
+                    sound = buf.readIdentifier(),
                     source = buf.readEnum(SoundSource::class.java),
                     entityId = buf.readInt(),
                     pos = buf.readVec3(),
@@ -75,7 +77,7 @@ class PacketSoundInstanceS2C(
                     stopImmediately = buf.readBoolean(),
                     duckVolume = buf.readFloat(),
                     duckRange = buf.readDouble(),
-                    whitelistSounds = readResourceLocationSet(buf),
+                    whitelistSounds = readIdentifierSet(buf),
                     whitelistSources = readSoundSourceSet(buf),
                     whitelistKeys = readStringSet(buf)
                 )
@@ -84,7 +86,7 @@ class PacketSoundInstanceS2C(
 
         fun play(
             key: String,
-            sound: ResourceLocation,
+            sound: Identifier,
             source: SoundSource,
             entityId: Int,
             pos: Vec3,
@@ -105,7 +107,7 @@ class PacketSoundInstanceS2C(
                 looping,
                 relative,
                 true,
-                1f,
+                1F,
                 -1.0,
                 emptySet(),
                 emptySet(),
@@ -134,7 +136,7 @@ class PacketSoundInstanceS2C(
                 looping,
                 relative,
                 true,
-                1f,
+                1F,
                 -1.0,
                 emptySet(),
                 emptySet(),
@@ -150,12 +152,12 @@ class PacketSoundInstanceS2C(
                 SoundSource.MASTER,
                 -1,
                 Vec3.ZERO,
-                0f,
-                1f,
+                0F,
+                1F,
                 false,
                 false,
                 interrupt,
-                1f,
+                1F,
                 -1.0,
                 emptySet(),
                 emptySet(),
@@ -170,7 +172,7 @@ class PacketSoundInstanceS2C(
             pos: Vec3,
             volumeMultiplier: Float,
             range: Double = -1.0,
-            whitelistSounds: Set<ResourceLocation> = HashSet(),
+            whitelistSounds: Set<Identifier> = HashSet(),
             whitelistSources: Set<SoundSource> = HashSet(),
             whitelistKeys: Set<String> = HashSet()
         ): PacketSoundInstanceS2C {
@@ -184,8 +186,8 @@ class PacketSoundInstanceS2C(
                 SoundSource.MASTER,
                 entityId,
                 pos,
-                0f,
-                1f,
+                0F,
+                1F,
                 false,
                 false,
                 true,
@@ -197,15 +199,15 @@ class PacketSoundInstanceS2C(
             )
         }
 
-        private fun writeResourceLocationSet(buf: FriendlyByteBuf, values: Set<ResourceLocation>) {
+        private fun writeIdentifierSet(buf: FriendlyByteBuf, values: Set<Identifier>) {
             buf.writeVarInt(values.size)
-            values.forEach(buf::writeResourceLocation)
+            values.forEach(buf::writeIdentifier)
         }
 
-        private fun readResourceLocationSet(buf: FriendlyByteBuf): Set<ResourceLocation> {
-            val result = LinkedHashSet<ResourceLocation>()
+        private fun readIdentifierSet(buf: FriendlyByteBuf): Set<Identifier> {
+            val result = LinkedHashSet<Identifier>()
             repeat(buf.readVarInt()) {
-                result.add(buf.readResourceLocation())
+                result.add(buf.readIdentifier())
             }
             return result
         }

@@ -3,7 +3,8 @@ package cn.coostack.cooparticlesapi.entities.structure.editor.client
 import cn.coostack.cooparticlesapi.entities.structure.editor.StructureSelection
 import cn.coostack.cooparticlesapi.entities.structure.editor.StructureSelectionPayload
 import cn.coostack.cooparticlesapi.network.packet.api.CooClientPacketManager
-import net.minecraft.client.gui.GuiGraphics
+import cn.coostack.cooparticlesapi.gui.FilteredEditBox
+import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.minecraft.client.gui.screens.ConfirmScreen
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.client.gui.components.Button
@@ -12,8 +13,9 @@ import net.minecraft.client.gui.components.AbstractWidget
 import net.minecraft.client.gui.components.EditBox
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.chat.Component
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.core.BlockPos
+import net.minecraft.core.UUIDUtil
 
 /**
  * 结构保存界面；字段对应原版保存模式，原点是选区最小角而不是一个额外放置的结构方块。
@@ -21,26 +23,26 @@ import net.minecraft.core.BlockPos
  */
 class StructureSaveScreen(private val data: CompoundTag) : Screen(Component.literal("结构编辑器 · 保存")) {
     /** 本窗口绑定的固定选区，不能用后来改变的选点提交旧配置。 */
-    private val selected = StructureSelection(BlockPos.of(data.getLong("First")), BlockPos.of(data.getLong("Second")))
+    private val selected = StructureSelection(BlockPos.of(data.getLongOr("First", 0L)), BlockPos.of(data.getLongOr("Second", 0L)))
     /** 服务器选区版本，保存结果只由对应窗口处理。 */
-    private val revision = data.getUUID("Revision")
+    private val revision = data.read("Revision", UUIDUtil.CODEC).orElseThrow()
     /** 原版模板名称，未填写命名空间时沿用 minecraft。 */
-    private var name = data.getCompound("Draft").getString("Name")
+    private var name = data.getCompoundOrEmpty("Draft").getStringOr("Name", "")
     /** 相对选区最小角的三个输入字符串，允许编辑中的空值与负号。 */
-    private val offsets = MutableList(3) { axis -> data.getCompound("Draft").getInt("Offset${"XYZ"[axis]}").toString() }
+    private val offsets = MutableList(3) { axis -> data.getCompoundOrEmpty("Draft").getIntOr("Offset${"XYZ"[axis]}", 0).toString() }
     /** 三轴尺寸输入，未保存草稿时使用包含端点的原始尺寸。 */
     private val sizes = MutableList(3) { axis ->
-        val draft = data.getCompound("Draft")
-        if (draft.contains("SizeX")) draft.getInt("Size${"XYZ"[axis]}").toString()
+        val draft = data.getCompoundOrEmpty("Draft")
+        if (draft.contains("SizeX")) draft.getIntOr("Size${"XYZ"[axis]}", 0).toString()
         else listOf(selected.size.x, selected.size.y, selected.size.z)[axis].toString()
     }
     /** 是否将普通实体保存进原版文件，不会在模型实体内运行或复制它们。 */
-    private var includeEntities = data.getCompound("Draft").getBoolean("IncludeEntities")
+    private var includeEntities = data.getCompoundOrEmpty("Draft").getBooleanOr("IncludeEntities", false)
     /** 是否显示空气、结构空位和屏障标记，仅影响客户端。 */
-    var showAir = data.getCompound("Draft").getBoolean("ShowAir")
+    var showAir = data.getCompoundOrEmpty("Draft").getBooleanOr("ShowAir", false)
         private set
     /** 是否显示常驻范围和角点，仅影响客户端。 */
-    var showBox = !data.getCompound("Draft").contains("ShowBox") || data.getCompound("Draft").getBoolean("ShowBox")
+    var showBox = data.getCompoundOrEmpty("Draft").getBooleanOr("ShowBox", true)
         private set
     /** 默认关闭的破坏性转换选项，每次保存前还需确认。 */
     private var convert = false
@@ -86,8 +88,8 @@ class StructureSaveScreen(private val data: CompoundTag) : Screen(Component.lite
         checkbox("清空并替换为实体", left + contentWidth / 2, top + 157, convert) { convert = it }
         saveButton = addRenderableWidget(Button.builder(Component.literal("保存")) {
             if (convert) {
-                minecraft?.setScreen(ConfirmScreen({ accepted ->
-                    minecraft?.setScreen(this)
+                minecraft.setScreenAndShow(ConfirmScreen({ accepted ->
+                    minecraft.setScreenAndShow(this)
                     if (accepted) submit(true)
                 }, Component.literal("替换选区内的方块？"),
                     Component.literal("方块将变成静态结构实体；容器和红石将停止运行，库存不会作为掉落物返还。")))
@@ -103,7 +105,7 @@ class StructureSaveScreen(private val data: CompoundTag) : Screen(Component.lite
 
     /** 创建可保留不完整输入的整数框，范围由提交前统一校验。 */
     private fun number(x: Int, y: Int, size: Int, label: String, values: MutableList<String>, axis: Int) {
-        val field = addRenderableWidget(EditBox(font, x, y, size, 20, Component.literal(label)))
+        val field = addRenderableWidget(FilteredEditBox(font, x, y, size, 20, Component.literal(label)))
         field.setMaxLength(4)
         field.value = values[axis]
         field.setFilter { it.isEmpty() || it == "-" || it.toIntOrNull() != null }
@@ -132,7 +134,7 @@ class StructureSaveScreen(private val data: CompoundTag) : Screen(Component.lite
     /** 使按钮有效性与精确范围、名称和服务端等待状态保持一致。 */
     private fun refresh() {
         val valid = previewSelection() != null
-        saveButton?.active = !pending && valid && ResourceLocation.tryParse(name.trim()) != null && name.isNotBlank()
+        saveButton?.active = !pending && valid && Identifier.tryParse(name.trim()) != null && name.isNotBlank()
         doneButton?.active = !pending && valid
         cancelButton?.active = !pending
         inputs.forEach { it.active = !pending }
@@ -158,7 +160,7 @@ class StructureSaveScreen(private val data: CompoundTag) : Screen(Component.lite
         }
         val request = CompoundTag().apply {
             putString("Action", if (write) "save" else "draft")
-            putUUID("Revision", revision)
+            store("Revision", UUIDUtil.CODEC, revision)
             put("Draft", draft)
         }
         pending = true
@@ -172,36 +174,36 @@ class StructureSaveScreen(private val data: CompoundTag) : Screen(Component.lite
      * @param response 服务端结果标签；必须具有与窗口相同的 Revision
      */
     fun result(response: CompoundTag) {
-        if (!response.hasUUID("Revision") || response.getUUID("Revision") != revision) return
+        if (response.read("Revision", UUIDUtil.CODEC).orElse(null) != revision) return
         pending = false
-        if (response.getBoolean("Success")) {
-            minecraft?.player?.displayClientMessage(Component.literal(response.getString("Message")), true)
+        if (response.getBooleanOr("Success", false)) {
+            minecraft.player?.sendOverlayMessage(Component.literal(response.getStringOr("Message", "")))
             onClose()
         } else {
-            status = response.getString("Message")
+            status = response.getStringOr("Message", "")
             refresh()
         }
     }
 
     /** 使用原版屏幕背景和控件，字段标题按固定三列排列，不让长错误消息挤压按钮。 */
-    override fun render(context: GuiGraphics, mouseX: Int, mouseY: Int, delta: Float) {
-        super.render(context, mouseX, mouseY, delta)
-        context.drawCenteredString(font, title, width / 2, top + 2, 0xFFFFFF)
-        context.drawString(font, "结构名称", left, top + 18, 0xCCCCCC)
+    override fun extractRenderState(context: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, delta: Float) {
+        super.extractRenderState(context, mouseX, mouseY, delta)
+        context.centeredText(font, title, width / 2, top + 2, 0xFFFFFF)
+        context.text(font, "结构名称", left, top + 18, 0xCCCCCC)
         val cell = (contentWidth - 12) / 3
         repeat(3) { axis ->
-            context.drawString(font, "相对位置 ${"XYZ"[axis]}", left + axis * (cell + 6), top + 56, 0xCCCCCC)
-            context.drawString(font, "大小 ${"XYZ"[axis]}", left + axis * (cell + 6), top + 94, 0xCCCCCC)
+            context.text(font, "相对位置 ${"XYZ"[axis]}", left + axis * (cell + 6), top + 56, 0xCCCCCC)
+            context.text(font, "大小 ${"XYZ"[axis]}", left + axis * (cell + 6), top + 94, 0xCCCCCC)
         }
         val message = if (status.isNotEmpty()) status else {
             val origin = previewSelection()?.origin
             if (origin == null) "相对位置 -48…48，大小 1…48" else "原点：${origin.x}, ${origin.y}, ${origin.z}"
         }
-        context.drawString(font, font.plainSubstrByWidth(message, contentWidth), left, top + 186,
+        context.text(font, font.plainSubstrByWidth(message, contentWidth), left, top + 186,
             if (status.isNotEmpty() && !pending) 0xFF7777 else 0xCCCCCC)
     }
 
-    override fun onClose() { if (!pending) minecraft?.setScreen(null) }
+    override fun onClose() { if (!pending) minecraft.gui.setScreen(null) }
     override fun shouldCloseOnEsc(): Boolean = !pending
     override fun isPauseScreen(): Boolean = false
 }

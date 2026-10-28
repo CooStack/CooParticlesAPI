@@ -1,5 +1,7 @@
 package cn.coostack.cooparticlesapi.network.particle.emitters
 
+import cn.coostack.cooparticlesapi.network.readVec3
+import cn.coostack.cooparticlesapi.network.writeVec3
 import cn.coostack.cooparticlesapi.annotations.emitter.handle.ParticleEmittersRegistryHelper
 import cn.coostack.cooparticlesapi.cparticle.CParticleSystemManager
 import cn.coostack.cooparticlesapi.cparticle.compat.TransformableCParticleEmitterBridge

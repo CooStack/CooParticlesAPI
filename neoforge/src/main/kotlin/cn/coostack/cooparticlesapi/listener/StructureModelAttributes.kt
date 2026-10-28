@@ -8,7 +8,7 @@ import net.neoforged.fml.common.EventBusSubscriber
 import net.neoforged.neoforge.event.entity.EntityAttributeCreationEvent
 
 /** 在模组注册总线为结构模型提供生物属性，专用服务器无需加载客户端代码。 */
-@EventBusSubscriber(modid = CooParticlesConstants.MOD_ID, bus = EventBusSubscriber.Bus.MOD)
+@EventBusSubscriber(modid = CooParticlesConstants.MOD_ID)
 object StructureModelAttributes {
     /** 属性创建时登记已注册的实体类型。 */
     @SubscribeEvent

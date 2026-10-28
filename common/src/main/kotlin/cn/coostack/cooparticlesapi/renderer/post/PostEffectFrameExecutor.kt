@@ -6,7 +6,7 @@ import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameContext
 import cn.coostack.cooparticlesapi.renderer.backend.RenderSceneResource
 import cn.coostack.cooparticlesapi.renderer.backend.RenderSceneTargets
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.CooTextureFormat
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /**
  * 一次 frame-post 执行的汇总结果。
@@ -72,7 +72,7 @@ internal data class PostEffectResolvedInput(
     val producedBy: PostEffectOutput? = null,
     val producedByPassName: String? = null,
     val producedByPassAttachment: Int = 0,
-    val sourceResourceId: ResourceLocation? = null,
+    val sourceResourceId: Identifier? = null,
     val sourceResourceAttachment: Int = 0,
     val sourceResourceChannel: PostEffectResourceChannel = PostEffectResourceChannel.COLOR,
     val textureSlot: Int? = null,
@@ -88,7 +88,7 @@ internal data class PostEffectResolvedInput(
  */
 internal data class PostEffectResolvedOutput(
     val output: PostEffectOutput,
-    val targetId: ResourceLocation,
+    val targetId: Identifier,
     val label: String,
     val textureId: Int? = null,
     val targetKey: String = label,
@@ -176,7 +176,7 @@ internal interface PostEffectAttachmentPreparationBackend {
     fun captureInlineAttachments(
         context: RenderFrameContext,
         owner: String,
-        target: ResourceLocation,
+        target: Identifier,
         attachments: List<PostEffectAttachmentSpec>,
         render: () -> Unit
     ): Boolean = false
@@ -201,7 +201,7 @@ internal interface PostEffectAttachmentPreparationBackend {
     fun captureAttachment(
         context: RenderFrameContext,
         owner: String,
-        target: ResourceLocation,
+        target: Identifier,
         attachment: Int,
         render: () -> Unit
     ): Boolean
@@ -210,7 +210,7 @@ internal interface PostEffectAttachmentPreparationBackend {
     fun captureAttachments(
         context: RenderFrameContext,
         owner: String,
-        target: ResourceLocation,
+        target: Identifier,
         attachmentCount: Int,
         render: () -> Unit
     ): Boolean {
@@ -223,7 +223,7 @@ internal interface PostEffectAttachmentPreparationBackend {
     fun captureAttachments(
         context: RenderFrameContext,
         owner: String,
-        target: ResourceLocation,
+        target: Identifier,
         attachments: List<PostEffectAttachmentSpec>,
         render: () -> Unit
     ): Boolean {
@@ -241,7 +241,7 @@ internal interface PostEffectAttachmentPreparationBackend {
      *
      * @return 当前操作计算、更新或查询得到的结果
      */
-    fun hasAttachment(target: ResourceLocation, attachment: Int): Boolean
+    fun hasAttachment(target: Identifier, attachment: Int): Boolean
 }
 
 /** 无 OpenGL 环境下的安全默认 backend，便于测试和服务端侧加载。 */
@@ -363,7 +363,7 @@ internal object PostEffectFrameExecutor {
     internal fun captureInlineAttachments(
         context: RenderFrameContext,
         owner: String,
-        target: ResourceLocation,
+        target: Identifier,
         attachments: List<PostEffectAttachmentSpec>,
         render: () -> Unit
     ): Boolean {
@@ -391,7 +391,7 @@ internal object PostEffectFrameExecutor {
     internal fun captureAttachment(
         context: RenderFrameContext,
         owner: String,
-        target: ResourceLocation,
+        target: Identifier,
         attachment: Int,
         render: () -> Unit
     ): Boolean {
@@ -419,7 +419,7 @@ internal object PostEffectFrameExecutor {
     internal fun captureAttachments(
         context: RenderFrameContext,
         owner: String,
-        target: ResourceLocation,
+        target: Identifier,
         attachmentCount: Int,
         render: () -> Unit
     ): Boolean {
@@ -431,7 +431,7 @@ internal object PostEffectFrameExecutor {
     internal fun captureAttachments(
         context: RenderFrameContext,
         owner: String,
-        target: ResourceLocation,
+        target: Identifier,
         attachments: List<PostEffectAttachmentSpec>,
         render: () -> Unit
     ): Boolean {
@@ -664,7 +664,7 @@ internal object PostEffectFrameExecutor {
     private fun resolveTerrainSnapshotInput(
         context: RenderFrameContext,
         input: PostEffectInput,
-        target: ResourceLocation
+        target: Identifier
     ): PostEffectResolvedInput {
         val resource = context.sceneResources[target]
         val textureId = resource?.depthTextureId
@@ -679,14 +679,14 @@ internal object PostEffectFrameExecutor {
             textureSlot = input.textureSlot
         )
     }
-    private fun hasCapturedAttachment(target: ResourceLocation, attachment: Int): Boolean {
+    private fun hasCapturedAttachment(target: Identifier, attachment: Int): Boolean {
         val attachmentBackend = backend as? PostEffectAttachmentPreparationBackend ?: return false
         return attachmentBackend.hasAttachment(target, attachment)
     }
 
     /** 解析场景资源颜色/深度；coverage 纹理允许在同帧捕获后从 backend 动态读取。 */
     private fun resolveSceneResourceTexture(
-        resourceId: ResourceLocation?,
+        resourceId: Identifier?,
         resource: RenderSceneResource?,
         attachment: Int,
         channel: PostEffectResourceChannel,
@@ -766,7 +766,7 @@ internal object PostEffectFrameExecutor {
         }.toMap()
     }
 
-    private fun targetIdFor(output: PostEffectOutput): ResourceLocation {
+    private fun targetIdFor(output: PostEffectOutput): Identifier {
         return when (output) {
             PostEffectOutput.TEMPORARY -> RenderSceneTargets.TEMPORARY
             PostEffectOutput.MASK -> RenderSceneTargets.MASK

@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi.renderer.terrain
 
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /**
  * 标识一次地形效果批次的维度和组。
@@ -9,6 +9,6 @@ import net.minecraft.resources.ResourceLocation
  * @property groupId 批次所属效果组 ID
  */
 internal data class CooTerrainEffectBatchKey(
-    val dimension: ResourceLocation,
-    val groupId: ResourceLocation
+    val dimension: Identifier,
+    val groupId: Identifier
 )

@@ -3,7 +3,7 @@ package cn.coostack.cooparticlesapi.renderer.post
 import cn.coostack.cooparticlesapi.renderer.effects.RenderEffectDescriptor
 import cn.coostack.cooparticlesapi.renderer.effects.RenderEffectExecutor
 import cn.coostack.cooparticlesapi.renderer.effects.RenderEffectRegistry
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /**
  * 把 post effect 类型接入通用 [RenderEffectRegistry] 的桥。
@@ -17,7 +17,7 @@ import net.minecraft.resources.ResourceLocation
  */
 internal object PostEffectRuntimeRegistry {
     /** 按注册顺序保存类型；所有访问都必须持有当前对象的锁。 */
-    private val types = LinkedHashMap<ResourceLocation, PostEffectType>()
+    private val types = LinkedHashMap<Identifier, PostEffectType>()
     private val genericExecutor = RenderEffectExecutor { context, effects ->
         val instances = effects.mapNotNull { it.toPostEffectInstance() }
         if (instances.isEmpty()) {
@@ -51,7 +51,7 @@ internal object PostEffectRuntimeRegistry {
      * @return 匹配当前条件的对象或状态；可空返回值表示没有可用结果
      */
     @Synchronized
-    internal fun getType(id: ResourceLocation): PostEffectType? = types[id]
+    internal fun getType(id: Identifier): PostEffectType? = types[id]
 
     /**
      * 执行 `PostEffectRuntimeRegistry` 定义的 `containsType` 操作；输入和返回值用于该组件当前的渲染职责。
@@ -63,7 +63,7 @@ internal object PostEffectRuntimeRegistry {
      * @return 当前操作计算、更新或查询得到的结果
      */
     @Synchronized
-    internal fun containsType(id: ResourceLocation): Boolean = id in types
+    internal fun containsType(id: Identifier): Boolean = id in types
 
     private fun RenderEffectDescriptor.toPostEffectInstance(): PostEffectInstance? {
         return payload as? PostEffectInstance

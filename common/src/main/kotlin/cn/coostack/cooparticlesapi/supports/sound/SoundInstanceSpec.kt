@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi.supports.sound
 
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.sounds.SoundSource
 import net.minecraft.world.phys.Vec3
 
@@ -19,12 +19,12 @@ import net.minecraft.world.phys.Vec3
  */
 data class SoundInstanceSpec @JvmOverloads constructor(
     val key: String,
-    val soundId: ResourceLocation,
+    val soundId: Identifier,
     val source: SoundSource,
     val entityId: Int = -1,
     val position: Vec3 = Vec3.ZERO,
-    val volume: Float = 1f,
-    val pitch: Float = 1f,
+    val volume: Float = 1F,
+    val pitch: Float = 1F,
     val looping: Boolean = false,
     val relative: Boolean = false,
     val self: Boolean = true,

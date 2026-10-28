@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi.utils
 
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
 import javax.imageio.ImageIO
@@ -8,7 +8,7 @@ import kotlin.math.roundToInt
 
 object ImageUtil {
 
-    fun loadFromIdentifier(id: ResourceLocation): BufferedImage? {
+    fun loadFromIdentifier(id: Identifier): BufferedImage? {
         val namespace = id.namespace
         val path = "assets/$namespace/${id.path}"
         val stream = this::class.java.classLoader.getResourceAsStream(path) ?: return null

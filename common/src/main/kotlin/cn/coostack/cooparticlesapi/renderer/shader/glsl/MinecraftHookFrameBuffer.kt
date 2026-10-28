@@ -1,5 +1,9 @@
 package cn.coostack.cooparticlesapi.renderer.shader.glsl
 
+import cn.coostack.cooparticlesapi.renderer.backend.colorTextureId
+import cn.coostack.cooparticlesapi.renderer.backend.depthTextureId
+import cn.coostack.cooparticlesapi.renderer.backend.frameBufferId
+
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.renderer.shader.api.glsl.GlFrameBuffer
 import com.mojang.blaze3d.pipeline.RenderTarget
@@ -121,7 +125,7 @@ open class MinecraftHookFrameBuffer(
      * @param bit 当前操作需要的输入值；其语义由方法名和所属组件共同限定
      */
     override fun clear(bit: Int) {
-        glClearColor(0f, 0f, 0f, 0f)
+        glClearColor(0F, 0F, 0F, 0F)
         glClear(bit)
     }
 

@@ -11,6 +11,9 @@ uniform sampler2D TerrainTranslucentDepthBefore;
 uniform sampler2D TerrainTranslucentDepthAfter;
 uniform sampler2D CParticleCoverageMask;
 uniform mat4 cooInverseViewProjection;
+uniform vec2 cooDepthToNdc = vec2(2.0, -1.0);
+uniform float cooDepthClearValue = 0.0;
+uniform bool cooDepthContextValid = false;
 uniform vec4 CooMappingRegion;
 uniform vec3 CooMappingRegionSize;
 uniform int CooMappingRegionType;
@@ -20,9 +23,12 @@ uniform float Blackness = 1.0;
 uniform float Feather = 0.06;
 
 vec3 reconstructRelativePosition(vec2 uv, float depth) {
-    vec4 clip = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+    vec4 clip = vec4(uv * 2.0 - 1.0, depth * cooDepthToNdc.x + cooDepthToNdc.y, 1.0);
     vec4 relative = cooInverseViewProjection * clip;
-    return relative.xyz / max(abs(relative.w), 0.00001);
+    float safeW = relative.w >= 0.0
+        ? max(relative.w, 0.00001)
+        : min(relative.w, -0.00001);
+    return relative.xyz / safeW;
 }
 
 float mappingSignedDistance(vec3 relativePosition, float progress) {
@@ -45,6 +51,10 @@ float mappingSignedDistance(vec3 relativePosition, float progress) {
 
 void main() {
     vec4 scene = texture(SceneColor, screen_uv);
+    if (!cooDepthContextValid) {
+        FragColor = scene;
+        return;
+    }
     vec4 particleSample = CooHasCParticleCoverage != 0
         ? texture(CParticleCoverageMask, screen_uv)
         : vec4(0.0);
@@ -56,11 +66,14 @@ void main() {
     float opaqueDepth = texture(TerrainOpaqueDepth, screen_uv).r;
     float translucentBeforeDepth = texture(TerrainTranslucentDepthBefore, screen_uv).r;
     float translucentAfterDepth = texture(TerrainTranslucentDepthAfter, screen_uv).r;
-    float depthTolerance = max(0.0001, sceneDepth * 0.00005);
+    float depthTolerance = max(0.0001, abs(sceneDepth) * 0.00005);
+    float clearTolerance = max(0.000001, abs(cooDepthClearValue) * 0.00001);
+    bool usableOpaqueDepth = abs(opaqueDepth - cooDepthClearValue) > clearTolerance;
+    bool usableTranslucentAfterDepth = abs(translucentAfterDepth - cooDepthClearValue) > clearTolerance;
     bool handDepthChanged = abs(sceneDepth - sceneDepthNoHand) > depthTolerance;
-    bool visibleOpaqueTerrain = !handDepthChanged && opaqueDepth < 0.999999 &&
+    bool visibleOpaqueTerrain = !handDepthChanged && usableOpaqueDepth &&
         abs(sceneDepth - opaqueDepth) <= depthTolerance;
-    bool visibleTranslucentTerrain = !handDepthChanged && translucentAfterDepth < 0.999999 &&
+    bool visibleTranslucentTerrain = !handDepthChanged && usableTranslucentAfterDepth &&
         abs(translucentAfterDepth - translucentBeforeDepth) > depthTolerance &&
         abs(sceneDepth - translucentAfterDepth) <= depthTolerance;
 

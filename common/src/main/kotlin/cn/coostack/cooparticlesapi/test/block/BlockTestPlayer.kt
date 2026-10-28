@@ -4,6 +4,7 @@ import com.mojang.authlib.GameProfile
 import net.minecraft.core.BlockPos
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.player.Player
+import net.minecraft.world.level.GameType
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import java.nio.charset.StandardCharsets
@@ -26,7 +27,7 @@ class BlockTestPlayer private constructor(
     private val virtualBlockPos: BlockPos,
     private val realPlayer: Player?,
     profile: GameProfile,
-) : Player(virtualLevel, virtualBlockPos, realPlayer?.yRot ?: 0f, profile) {
+) : Player(virtualLevel, profile) {
     var offset: Vec3 = Vec3.ZERO
         set(value) {
             field = value
@@ -39,13 +40,13 @@ class BlockTestPlayer private constructor(
      * 禁止直接保存零向量；默认值由 [BlockTestForward] 提供。
      */
     private var virtualForward: Vec3 = BlockTestForward.DEFAULT
-    private var virtualYaw: Float = 0f
+    private var virtualYaw: Float = realPlayer?.yRot ?: 0F
     var yaw: Float
         get() = realPlayer?.yRot ?: virtualYaw
         set(value) {
             virtualYaw = value
         }
-    private var virtualPitch: Float = 0f
+    private var virtualPitch: Float = 0F
     var pitch: Float
         get() = realPlayer?.xRot ?: virtualPitch
         set(value) {
@@ -76,7 +77,7 @@ class BlockTestPlayer private constructor(
         get() = realPlayer?.blockPosition() ?: virtualBlockPos
 
     val origin: Vec3
-        get() = realPlayer?.position() ?: blockPos.center
+        get() = realPlayer?.position() ?: Vec3.atCenterOf(blockPos)
 
     val position: Vec3
         get() = origin.add(offset)
@@ -137,12 +138,15 @@ class BlockTestPlayer private constructor(
         return realPlayer?.isCreative ?: false
     }
 
+    /** 向原版暴露真实玩家的模式；纯模拟玩家不拥有创造或旁观权限。 */
+    override fun gameMode(): GameType = realPlayer?.gameMode() ?: GameType.SURVIVAL
+
     private fun syncVirtualPose() {
         if (realPlayer != null) {
             return
         }
         val pos = position
-        moveTo(pos.x, pos.y, pos.z, yaw, pitch)
+        snapTo(pos.x, pos.y, pos.z, yaw, pitch)
     }
 
     companion object {
@@ -155,7 +159,7 @@ class BlockTestPlayer private constructor(
         val DEFAULT_FORWARD: Vec3 = BlockTestForward.DEFAULT
 
         private fun virtualProfile(level: ServerLevel, pos: BlockPos): GameProfile {
-            val seed = "coo-block-test:${level.dimension().location()}:${pos.x},${pos.y},${pos.z}"
+            val seed = "coo-block-test:${level.dimension().identifier()}:${pos.x},${pos.y},${pos.z}"
             return GameProfile(UUID.nameUUIDFromBytes(seed.toByteArray(StandardCharsets.UTF_8)), "CooBlockTest")
         }
 

@@ -4,10 +4,14 @@ import cn.coostack.cooparticlesapi.test.block.BlockTestAnimationKeyframe
 import cn.coostack.cooparticlesapi.test.block.BlockTestAnimationTrack
 import cn.coostack.cooparticlesapi.network.packet.testblock.PacketOpenTestControllerScreenS2C
 import cn.coostack.cooparticlesapi.network.packet.testblock.PacketUpdateTestControllerC2S
+import com.mojang.blaze3d.platform.InputConstants
 import net.minecraft.client.Minecraft
-import net.minecraft.client.gui.GuiGraphics
+import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.minecraft.client.gui.components.Button
 import net.minecraft.client.gui.components.EditBox
+import cn.coostack.cooparticlesapi.gui.FilteredEditBox
+import net.minecraft.client.input.CharacterEvent
+import net.minecraft.client.input.KeyEvent
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
 import net.minecraft.world.phys.Vec3
@@ -116,28 +120,29 @@ class TestControllerKeyframeScreen(
         updateHistoryButtons()
     }
 
-    override fun keyPressed(keyCode: Int, scanCode: Int, modifiers: Int): Boolean {
-        if (Screen.hasControlDown()) {
-            if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_Z && Screen.hasShiftDown()) {
+    override fun keyPressed(event: KeyEvent): Boolean {
+        val keyCode = event.key()
+        if (event.hasControlDown()) {
+            if (keyCode == InputConstants.KEY_Z && event.hasShiftDown()) {
                 restoreInput(inputHistory.redo())
                 return true
             }
-            if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_Z) {
+            if (keyCode == InputConstants.KEY_Z) {
                 restoreInput(inputHistory.undo())
                 return true
             }
-            if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_Y) {
+            if (keyCode == InputConstants.KEY_Y) {
                 restoreInput(inputHistory.redo())
                 return true
             }
         }
-        val handled = super.keyPressed(keyCode, scanCode, modifiers)
+        val handled = super.keyPressed(event)
         if (handled) recordInput()
         return handled
     }
 
-    override fun charTyped(codePoint: Char, modifiers: Int): Boolean {
-        val handled = super.charTyped(codePoint, modifiers)
+    override fun charTyped(event: CharacterEvent): Boolean {
+        val handled = super.charTyped(event)
         if (handled) recordInput()
         return handled
     }
@@ -158,20 +163,20 @@ class TestControllerKeyframeScreen(
      * 示例：位置轨道标题会注明相对控制器中心。
      * 禁止在渲染时提交配置包。
      */
-    override fun render(graphics: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
-        renderBackground(graphics, mouseX, mouseY, partialTick)
-        super.render(graphics, mouseX, mouseY, partialTick)
+    override fun extractRenderState(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {
+        extractBackground(graphics, mouseX, mouseY, partialTick)
+        super.extractRenderState(graphics, mouseX, mouseY, partialTick)
         val left = width / 2 - 150
-        graphics.drawString(font, title, left, 22, 0xFFFFFF, true)
-        graphics.drawString(font, "tick", left, 62, 0xE0E0E0, true)
-        graphics.drawString(font, if (kind == TestControllerTrackKind.POSITION) "相对位置" else "forward", left, 94, 0xE0E0E0, true)
-        graphics.drawString(font, "X", left + 96, 78, 0xC0C0C0, false)
-        graphics.drawString(font, "Y", left + 162, 78, 0xC0C0C0, false)
-        graphics.drawString(font, "Z", left + 228, 78, 0xC0C0C0, false)
+        graphics.text(font, title, left, 22, 0xFFFFFF, true)
+        graphics.text(font, "tick", left, 62, 0xE0E0E0, true)
+        graphics.text(font, if (kind == TestControllerTrackKind.POSITION) "相对位置" else "forward", left, 94, 0xE0E0E0, true)
+        graphics.text(font, "X", left + 96, 78, 0xC0C0C0, false)
+        graphics.text(font, "Y", left + 162, 78, 0xC0C0C0, false)
+        graphics.text(font, "Z", left + 228, 78, 0xC0C0C0, false)
     }
 
     private fun input(x: Int, y: Int, width: Int, value: String): EditBox {
-        return EditBox(font, x, y, width, 20, Component.empty()).also {
+        return FilteredEditBox(font, x, y, width, 20, Component.empty()).also {
             it.value = value
             it.setFilter { text -> text.isEmpty() || text.matches(Regex("[-+0-9.eE]*")) }
         }
@@ -223,7 +228,7 @@ class TestControllerKeyframeScreen(
         } else {
             TestControllerPickKind.FORWARD
         }
-        minecraft?.setScreen(null)
+        minecraft.gui.setScreen(null)
         TestControllerPickClient.begin(
             screenPacket = screenPacket,
             packet = draftPacket,
@@ -240,10 +245,10 @@ class TestControllerKeyframeScreen(
                 preservedX = format(picked.x)
                 preservedY = format(picked.y)
                 preservedZ = format(picked.z)
-                minecraft?.setScreen(this)
+                minecraft.setScreenAndShow(this)
             },
             onCancelled = {
-                minecraft?.setScreen(this)
+                minecraft.setScreenAndShow(this)
             }
         )
     }
@@ -268,7 +273,7 @@ class TestControllerKeyframeScreen(
     }
 
     private fun returnToParent() {
-        minecraft?.setScreen(parent)
+        minecraft.setScreenAndShow(parent)
     }
 
     private fun currentInput(): KeyframeInput {

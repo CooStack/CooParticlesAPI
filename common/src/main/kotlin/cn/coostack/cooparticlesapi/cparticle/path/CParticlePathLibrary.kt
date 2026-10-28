@@ -1,5 +1,6 @@
 package cn.coostack.cooparticlesapi.cparticle.path
 
+import cn.coostack.cooparticlesapi.cparticle.CParticleCapabilities
 import cn.coostack.cooparticlesapi.gpudata.CooGpuDataBindingPoints
 import cn.coostack.cooparticlesapi.gpudata.CooGpuDataGlBuffer
 import cn.coostack.cooparticlesapi.gpudata.CooGpuDataHandle
@@ -230,10 +231,10 @@ object CParticlePathLibrary {
     }
 
     /**
-     * 把几何变化同步到图层，并在需要时重建缓冲布局与上传脏区间。
+     * 把几何变化同步到 CPU 图层，并在需要时重建布局。
      *
      * 只有 [CParticlePathDefinition] 修订号变化的槽位才会重新采样并标记脏区间，
-     * 因此静态路径在首次上传后不会再产生采样或 GL 调用。
+     * 因此静态路径同步后不再重复采样；此入口不创建或上传 SSBO，CPU 模拟可在 GL 3.3 使用。
      *
      * 本方法只在客户端渲染线程（持有 GL 上下文）调用。
      */
@@ -250,23 +251,22 @@ object CParticlePathLibrary {
             writeSlotGeometry(target, slot)
             slot.writtenRevision = revision
         }
-        val buffer = glBuffer ?: return
-        if (buffer.prepare(target) || target.needsUpload) {
-            buffer.upload(target)
-        }
-        glResourcesActive = true
     }
 
     /**
      * 绑定图层缓冲到路径绑定点。
      *
      * 由 CParticle 的模拟刷新与粒子渲染阶段调用，使同一渲染帧内的 RenderEntity shader
-     * 也能读到同一份图层。GL 资源尚未创建时不做任何 GL 调用，避免在无上下文环境报错。
+     * 也能读到同一份图层。只在完整 SSBO 能力可用且实际请求 GPU 读取时上传；
+     * GL 3.3 的 CPU 几何继续保留，不尝试绑定不支持的目标。
      */
     fun bind() {
-        if (!glResourcesActive) return
-        val buffer = glBuffer ?: return
-        if (!buffer.initialized) return
+        if (!CParticleCapabilities.detectionComplete || !CParticleCapabilities.computeSupported) return
+        syncLayer()
+        val target = layer ?: return
+        val buffer = glBuffer ?: CooGpuDataGlBuffer().also { glBuffer = it }
+        if (buffer.prepare(target) || target.needsUpload) buffer.upload(target)
+        glResourcesActive = true
         buffer.bindShaderStorage(binding)
     }
 
@@ -277,10 +277,11 @@ object CParticlePathLibrary {
      */
     fun unbind() {
         if (!glResourcesActive) return
+        if (!CParticleCapabilities.computeSupported) return
         GL43.glBindBufferBase(GL43.GL_SHADER_STORAGE_BUFFER, binding, 0)
     }
 
-    /** 释放 GL 资源，保留 CPU 侧路径定义；下一次 [syncLayer] 会重建并整段重传。 */
+    /** 释放 GL 资源，保留 CPU 侧路径定义；下一次 [bind] 会重建并整段重传。 */
     fun invalidateGlResources() {
         glBuffer?.release()
         glResourcesActive = false
@@ -321,7 +322,6 @@ object CParticlePathLibrary {
         data[CooPathLayer.LH_ABI] = CooPathLayer.ABI_VERSION.toFloat()
         data[CooPathLayer.LH_SLOT_COUNT] = CooPathLayer.SLOT_COUNT.toFloat()
         layer = created
-        glBuffer = CooGpuDataGlBuffer()
         layerRebuildRequired = true
         return created
     }

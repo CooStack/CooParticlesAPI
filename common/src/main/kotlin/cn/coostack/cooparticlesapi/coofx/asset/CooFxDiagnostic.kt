@@ -1,6 +1,6 @@
 package cn.coostack.cooparticlesapi.coofx.asset
 
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /**
  * 描述导入诊断对资产加载结果的影响程度。
@@ -35,10 +35,10 @@ enum class CooFxDiagnosticSeverity {
 data class CooFxDiagnostic(
     val severity: CooFxDiagnosticSeverity,
     val code: String,
-    val assetResource: ResourceLocation,
+    val assetResource: Identifier,
     val pointer: String,
     val message: String,
-    val gltfResource: ResourceLocation? = null,
+    val gltfResource: Identifier? = null,
     val objectIndex: Int? = null,
     val accessorIndex: Int? = null,
 )

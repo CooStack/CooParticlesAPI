@@ -12,7 +12,7 @@ import cn.coostack.cooparticlesapi.test.options.renderer.PostEffectDemoOption
 import cn.coostack.cooparticlesapi.test.options.renderer.world.DemoLightOrbRenderEntity
 import cn.coostack.cooparticlesapi.test.options.renderer.world.DemoMaskBloomStraightLaserRenderEntity
 import net.minecraft.core.BlockPos
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.level.levelgen.Heightmap
@@ -24,7 +24,7 @@ class OrbitalRailgunBlockTestOption(
     private val player: Player
 ) : TestOption<OrbitalRailgunBlockTestOption> {
     private val target = player.pick(96.0, 0F, false).location
-    private val terrainGroupId = ResourceLocation.fromNamespaceAndPath(
+    private val terrainGroupId = Identifier.fromNamespaceAndPath(
         CooParticlesConstants.MOD_ID,
         "test/orbital_railgun/${player.uuid.toString().replace("-", "")}"
     )
@@ -135,7 +135,7 @@ class OrbitalRailgunBlockTestOption(
                         worldX,
                         worldZ
                     ) - 1
-                    if (surfaceY < level.minBuildHeight) {
+                    if (surfaceY < level.minY) {
                         put(key, null)
                         continue
                     }

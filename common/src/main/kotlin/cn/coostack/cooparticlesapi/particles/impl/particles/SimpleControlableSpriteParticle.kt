@@ -6,9 +6,14 @@ import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.client.particle.Particle
 import net.minecraft.client.particle.ParticleProvider
 import net.minecraft.client.particle.SpriteSet
+import net.minecraft.util.RandomSource
 import net.minecraft.world.phys.Vec3
 import java.util.UUID
 
+/**
+ * 多种普通粒子选项共用的受控图集动画实现。
+ * @property provider 由原版资源系统维护的动态图集帧集
+ */
 class SimpleControlableSpriteParticle(
     world: ClientLevel,
     pos: Vec3,
@@ -24,7 +29,12 @@ class SimpleControlableSpriteParticle(
         }
     }
 
+    /**
+     * 根据选项身份创建通用受控粒子。
+     * @property provider 原版注册回调提供的动态图集帧集
+     */
     class Factory<T : ControlableParticleEffect>(private val provider: SpriteSet) : ParticleProvider<T> {
+        /** 接受 26.3 引擎随机源；动画帧仍由控制器年龄决定。 */
         override fun createParticle(
             parameters: T,
             world: ClientLevel,
@@ -33,7 +43,8 @@ class SimpleControlableSpriteParticle(
             z: Double,
             velocityX: Double,
             velocityY: Double,
-            velocityZ: Double
+            velocityZ: Double,
+            random: RandomSource,
         ): Particle {
             return SimpleControlableSpriteParticle(
                 world,

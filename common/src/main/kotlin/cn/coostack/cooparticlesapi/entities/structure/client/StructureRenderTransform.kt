@@ -15,8 +15,8 @@ import org.joml.Quaternionf
 fun StructureModelSettings.applyModelTransform(matrices: PoseStack, deathDegrees: Float = 0F) {
     val center = pivotPosition
     matrices.translate(center.x, center.y, center.z)
-    if (deathDegrees != 0F) matrices.mulPose(Axis.ZP.rotationDegrees(deathDegrees))
-    matrices.mulPose(Quaternionf(quaternion()))
+    if (deathDegrees != 0F) matrices.rotateDegrees(Axis.ZP, deathDegrees)
+    matrices.rotate(Quaternionf(quaternion()))
     matrices.scale(scale[0].toFloat(), scale[1].toFloat(), scale[2].toFloat())
     matrices.translate(-pivot[0], -pivot[1], -pivot[2])
 }

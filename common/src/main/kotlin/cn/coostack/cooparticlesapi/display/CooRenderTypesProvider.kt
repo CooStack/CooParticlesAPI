@@ -1,7 +1,7 @@
 package cn.coostack.cooparticlesapi.display
 
-import net.minecraft.client.renderer.RenderType
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.client.renderer.rendertype.RenderType
+import net.minecraft.resources.Identifier
 import net.minecraft.world.level.block.state.BlockState
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooRenderPipeline
 
@@ -25,7 +25,7 @@ interface CooRenderTypesProvider {
      * @param texture 实体纹理资源
      * @return 适用于实体四边形的发光 RenderType
      */
-    fun entityCutoutEmissive(texture: ResourceLocation): RenderType {
+    fun entityCutoutEmissive(texture: Identifier): RenderType {
         return entityCutoutEmissive(texture, 1F)
     }
 
@@ -36,7 +36,7 @@ interface CooRenderTypesProvider {
      * @param brightness 发光亮度倍率；实现会把负值限制为 `0`
      * @return 适用于实体四边形的发光 RenderType
      */
-    fun entityCutoutEmissive(texture: ResourceLocation, brightness: Float): RenderType
+    fun entityCutoutEmissive(texture: Identifier, brightness: Float): RenderType
 
     /**
      * 创建使用指定纹理、亮度倍率和透明度的实体裁剪发光 RenderType。
@@ -48,7 +48,7 @@ interface CooRenderTypesProvider {
      * @param alpha 透明度，平台实现应限制到 `0.0F..1.0F`
      * @return 适用于实体四边形的发光 RenderType
      */
-    fun entityCutoutEmissive(texture: ResourceLocation, brightness: Float, alpha: Float): RenderType {
+    fun entityCutoutEmissive(texture: Identifier, brightness: Float, alpha: Float): RenderType {
         return entityCutoutEmissive(texture, brightness)
     }
 
@@ -65,11 +65,13 @@ interface CooRenderTypesProvider {
      *
      * [batchKey] 在同一批次只更新 uniform 时应保持不变，使实现能够复用 RenderType；
      * 当几何必须进入不同批次时应提供不同键。
+     * 26.3 返回值只描述自有覆盖网格的布局和批次身份，不可直接交给原版 collector 绘制。
+     * 实际地形 shader、uniform、纹理和附件由地形覆盖所有者在绘制作用域内绑定。
      *
      * @param pipeline 为该批次提供 terrain shader、顶点 UV 模式和渲染配置的 Pipeline
      * @param baseLayer 原始方块几何所属的原版 terrain layer
      * @param batchKey 标识可共享 RenderType 的批次，按相等性参与平台缓存
-     * @return 使用地形扩展顶点格式和对应渲染状态的 RenderType
+     * @return 使用地形扩展顶点格式和对应状态描述的覆盖批次身份
      */
     fun terrain(
         pipeline: CooRenderPipeline<BlockState>,
@@ -90,7 +92,7 @@ interface CooRenderTypesProvider {
      * @param id [CooRenderTypeResourceRegistry] 中的描述 ID
      * @return 对应 RenderType；ID 未注册时返回 `null`
      */
-    fun named(id: ResourceLocation): RenderType? {
+    fun named(id: Identifier): RenderType? {
         return CooRenderTypeResourceRegistry.get(id)?.let(::create)
     }
 
@@ -124,7 +126,7 @@ interface CooRenderTypesProvider {
      * @param id [CooRenderTypeResourceRegistry] 中的分层描述 ID
      * @return 对应组合 RenderType；ID 未注册时返回 `null`
      */
-    fun layered(id: ResourceLocation): CooLayeredRenderType? {
+    fun layered(id: Identifier): CooLayeredRenderType? {
         return CooRenderTypeResourceRegistry.getLayered(id)?.let(::layered)
     }
 }

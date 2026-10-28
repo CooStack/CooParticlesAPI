@@ -3,10 +3,12 @@ package cn.coostack.cooparticlesapi.entities.collision.client
 import cn.coostack.cooparticlesapi.entities.collision.IrregularCollisionEntity
 import com.mojang.blaze3d.vertex.PoseStack
 import com.mojang.blaze3d.vertex.VertexConsumer
-import net.minecraft.client.renderer.LevelRenderer
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import org.joml.Quaternionf
+import org.joml.Vector3d
+import net.minecraft.gizmos.Gizmos
+import net.minecraft.gizmos.GizmoStyle
 
 /** 在 F3+B 的原版线段批次绘制真实有向框及支点坐标轴，不触碰全局渲染状态。 */
 object IrregularCollisionDebugRenderer {
@@ -38,17 +40,48 @@ object IrregularCollisionDebugRenderer {
      */
     fun drawCollision(matrices: PoseStack, vertices: VertexConsumer, model: IrregularCollisionEntity,
                       red: Float, green: Float, blue: Float) {
-        val geometry = model.collisionGeometry
         val origin = model.collisionOrigin
         val color = (255 shl 24) or ((red * 255).toInt() shl 16) or ((green * 255).toInt() shl 8) or (blue * 255).toInt()
-        for (box in geometry.parts) {
+        forEachCollisionEdge(model) { first, second ->
+            line(matrices.last(), vertices, first.subtract(origin), second.subtract(origin), color)
+        }
+    }
+
+    /**
+     * 在 26.3 原生调试收集阶段提交碰撞线框与旋转坐标轴，不直接访问 GPU 状态。
+     *
+     * 示例：F3+B 回调使用 `emitGizmos(model, interpolatedOffset, -1)`。
+     * @param model 当前存活的不规则实体能力
+     * @param offset 当前帧插值位置相对逻辑 tick 位置的偏移
+     * @param color 原版客户端或服务端命中框使用的 ARGB 颜色
+     */
+    @JvmStatic
+    fun emitGizmos(model: IrregularCollisionEntity, offset: Vec3, color: Int) {
+        forEachCollisionEdge(model) { first, second -> Gizmos.line(first.add(offset), second.add(offset), color) }
+        val pivot = model.collisionPivot.add(offset)
+        Gizmos.cuboid(AABB.ofSize(pivot, 0.12, 0.12, 0.12), GizmoStyle.stroke(-1))
+        for (axis in 0..2) {
+            val direction = Vector3d(if (axis == 0) 1.0 else 0.0, if (axis == 1) 1.0 else 0.0, if (axis == 2) 1.0 else 0.0)
+            model.collisionRotation.transform(direction)
+            val axisColor = when (axis) {
+                0 -> 0xFFFF4040.toInt()
+                1 -> 0xFF40FF40.toInt()
+                else -> 0xFF4080FF.toInt()
+            }
+            Gizmos.arrow(pivot, pivot.add(direction.x, direction.y, direction.z), axisColor)
+        }
+    }
+
+    /** 两种输出路径共享有向框边枚举，坐标转换和提交时机仍属于各自调用方。 */
+    private inline fun forEachCollisionEdge(model: IrregularCollisionEntity, emit: (Vec3, Vec3) -> Unit) {
+        for (box in model.collisionGeometry.parts) {
             val corners = (0..7).map { mask ->
                 box.point(if (mask and 1 == 0) -box.half[0] else box.half[0],
                     if (mask and 2 == 0) -box.half[1] else box.half[1],
-                    if (mask and 4 == 0) -box.half[2] else box.half[2]).subtract(origin)
+                    if (mask and 4 == 0) -box.half[2] else box.half[2])
             }
             for (corner in 0..7) for (axis in 0..2) {
-                if (corner and (1 shl axis) == 0) line(matrices.last(), vertices, corners[corner], corners[corner or (1 shl axis)], color)
+                if (corner and (1 shl axis) == 0) emit(corners[corner], corners[corner or (1 shl axis)])
             }
         }
     }
@@ -65,8 +98,19 @@ object IrregularCollisionDebugRenderer {
         try {
             val pivot = model.collisionPivot.subtract(origin)
             matrices.translate(pivot.x, pivot.y, pivot.z)
-            matrices.mulPose(Quaternionf(model.collisionRotation))
-            LevelRenderer.renderLineBox(matrices, vertices, AABB(-0.06, -0.06, -0.06, 0.06, 0.06, 0.06), 1F, 1F, 1F, 1F)
+            matrices.rotate(Quaternionf(model.collisionRotation))
+            val corners = (0..7).map { mask ->
+                Vec3(
+                    if (mask and 1 == 0) -0.06 else 0.06,
+                    if (mask and 2 == 0) -0.06 else 0.06,
+                    if (mask and 4 == 0) -0.06 else 0.06,
+                )
+            }
+            for (corner in 0..7) for (axis in 0..2) {
+                if (corner and (1 shl axis) == 0) {
+                    line(matrices.last(), vertices, corners[corner], corners[corner or (1 shl axis)], -1)
+                }
+            }
             axis(matrices.last(), vertices, Vec3(1.0, 0.0, 0.0), Vec3(0.0, 1.0, 0.0), 0xFFFF4040.toInt())
             axis(matrices.last(), vertices, Vec3(0.0, 1.0, 0.0), Vec3(0.0, 0.0, 1.0), 0xFF40FF40.toInt())
             axis(matrices.last(), vertices, Vec3(0.0, 0.0, 1.0), Vec3(1.0, 0.0, 0.0), 0xFF4080FF.toInt())

@@ -1,5 +1,7 @@
 package cn.coostack.cooparticlesapi.network.particle.emitters
 
+import cn.coostack.cooparticlesapi.network.readVec3
+import cn.coostack.cooparticlesapi.network.writeVec3
 import cn.coostack.cooparticlesapi.annotations.emitter.handle.ParticleEmittersRegistryHelper
 import cn.coostack.cooparticlesapi.api.controler.Controlable
 import cn.coostack.cooparticlesapi.api.controler.SerializableData
@@ -215,12 +217,12 @@ abstract class ClassEmitters(
                 val count = res.size
                 res.forEachIndexed { index, relative ->
                     val current = relative.toVector()
-                    val lerpProgress = index / (count - 1f)
+                    val lerpProgress = index / (count - 1F)
                     doSubtick(current, lerpProgress)
                     spawnParticle(current, lerpProgress)
                 }
             } else {
-                spawnParticle(pos, 1f)
+                spawnParticle(pos, 1F)
             }
         }
         increaseTick()
@@ -237,7 +239,7 @@ abstract class ClassEmitters(
         val spawnWorld = world as ClientLevel
         val controls = genControls(lerpProgress)
         val total = controls.size.coerceAtLeast(1).toFloat()
-        var spawnedCount = 0f
+        var spawnedCount = 0F
         controls.forEach { (data, relative) ->
             spawnedCount++
             val spawnPos = pos.add(relative.toVector())
@@ -268,13 +270,13 @@ abstract class ClassEmitters(
         return when (data) {
             is ControlableParticleData -> data.visibleRange
             is DisplayEntityEmittersData -> data.visibleRange
-            else -> -1f
+            else -> -1F
         }
     }
 
     private fun isVisibleToClient(data: SerializableData, spawnPos: Vec3): Boolean {
         val visibleRange = resolveVisibleRange(data)
-        if (visibleRange < 0f) {
+        if (visibleRange < 0F) {
             return true
         }
         val player = Minecraft.getInstance().player ?: return false

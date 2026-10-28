@@ -3,13 +3,11 @@ package cn.coostack.cooparticlesapi.event.events.world.client
 import cn.coostack.cooparticlesapi.event.events.world.ClientWorldEvent
 import cn.coostack.cooparticlesapi.utils.MinecraftRendererUtil
 import com.mojang.blaze3d.vertex.PoseStack
-import net.minecraft.client.Camera
-import net.minecraft.client.DeltaTracker
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.client.renderer.LevelRenderer
-import net.minecraft.client.renderer.MultiBufferSource
+import net.minecraft.client.renderer.SubmitNodeCollector
+import net.minecraft.client.renderer.state.level.CameraRenderState
 import net.minecraft.world.phys.Vec3
-import org.joml.Matrix4f
 
 /**
  * 这里要同时对齐 fabric 和 neoforge的事件线
@@ -18,50 +16,28 @@ import org.joml.Matrix4f
  *
  * 为了更好的兼容性所做的牺牲！
  *
- * @property stage 渲染阶段
- * @property viewMatrix 观察矩阵
- * @property projectMatrix 透视矩阵
- * @property poseStack 变换矩阵stack
- * @property buffer 渲染buffer
+ * @property poseStack 当前提交使用的姿势
+ * @property collector 当前渲染阶段的命令提交收集器
  * @property camera 摄像头
- * @property delta tick插值器
+ * @property delta 当前世界帧的 tick 插值
  * @param world 渲染的世界类型
  */
 class ClientWorldRenderEvent(
     world: ClientLevel,
-    val stage: RenderStage,
-    val viewMatrix: Matrix4f,
-    val projectMatrix: Matrix4f,
     val poseStack: PoseStack,
-    val buffer: MultiBufferSource,
+    val collector: SubmitNodeCollector,
     val worldRenderer: LevelRenderer,
-    val camera: Camera,
-    val delta: DeltaTracker
+    val camera: CameraRenderState,
+    val delta: Float
 ) : ClientWorldEvent(world) {
     /**
-     * 后面会兼容其他的阶段
+     * 在事件持有的姿势栈中将世界位置转换为相机相对位置。
      *
-     * 目前还没找到同时兼容NF 和 Fabric的方案
+     * @param pos 目标世界坐标
+     * @param invoker 在变换范围内追加姿势变换的操作
      */
-    enum class RenderStage {
-        /**
-         * 在渲染实体之后执行
-         * 对标Fabric的 AFTER_ENTITY 和 NeoForged的 AFTER_ENTITY
-         */
-        AFTER_ENTITY,
-
-        /**
-         * 在半透明方块(水等)渲染之后执行
-         * 对标Fabric的 AFTER_TRANSLUCENT 和 NeoForged的 AFTER_PARTICLES
-         *
-         * cparticle GPU 粒子系统在此阶段绘制
-         */
-        AFTER_TRANSLUCENT,
-
-    }
-
     fun transformTo(pos: Vec3, invoker: PoseStack.() -> Unit) {
-        MinecraftRendererUtil.transformTo(camera, pos, poseStack, invoker)
+        MinecraftRendererUtil.transformTo(camera.pos, pos, poseStack, invoker)
     }
 
 }

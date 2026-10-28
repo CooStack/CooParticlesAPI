@@ -5,6 +5,9 @@ import cn.coostack.cooparticlesapi.event.events.client.ClientBlockOutlineEvent;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.renderer.LevelRenderer;
+import net.minecraft.client.renderer.SubmitNodeCollector;
+import net.minecraft.client.renderer.state.level.LevelRenderState;
+import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.block.state.BlockState;
@@ -17,9 +20,14 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(LevelRenderer.class)
 public abstract class StructureBlockOutlineMixin {
     /** 将是否隐藏原版轮廓交给 CooEvent 监听器。 */
-    @Inject(method = "renderHitOutline", at = @At("HEAD"), cancellable = true)
-    private void outline(PoseStack matrices, VertexConsumer vertices, Entity entity,
-                         double x, double y, double z, BlockPos pos, BlockState state, CallbackInfo callback) {
-        if (CooEventBus.call(new ClientBlockOutlineEvent(entity, pos, state)).isCancelled()) callback.cancel();
+    @Inject(method = "submitBlockOutline", at = @At("HEAD"), cancellable = true)
+    private void outline(PoseStack matrices, SubmitNodeCollector collector,
+                         LevelRenderState renderState, CallbackInfo callback) {
+        var outline = renderState.blockOutlineRenderState;
+        var minecraft = Minecraft.getInstance();
+        Entity camera = minecraft.getCameraEntity();
+        if (outline == null || camera == null || minecraft.level == null) return;
+        if (CooEventBus.call(new ClientBlockOutlineEvent(
+                camera, outline.pos(), minecraft.level.getBlockState(outline.pos()))).isCancelled()) callback.cancel();
     }
 }

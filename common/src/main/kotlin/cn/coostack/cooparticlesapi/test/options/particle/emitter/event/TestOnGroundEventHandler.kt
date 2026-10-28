@@ -18,7 +18,7 @@ object TestOnGroundEventHandler : ParticleEventHandler {
         )
         val data = event.particleData
         event.particle.teleportTo(event.intersection)
-        val vec = event.res.direction.normal.asVec3()
+        val vec = event.res.direction.unitVec3
 
         data.velocity = data.velocity.asAbs() * vec + movement
     }

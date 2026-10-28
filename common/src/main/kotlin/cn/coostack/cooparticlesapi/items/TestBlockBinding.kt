@@ -4,7 +4,6 @@ import net.minecraft.core.BlockPos
 import net.minecraft.core.component.DataComponents
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
-import net.minecraft.nbt.Tag
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.component.CustomData
 
@@ -22,18 +21,15 @@ object TestBlockBindings {
 
     fun read(stack: ItemStack): List<TestBlockBinding> {
         val tag = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag()
-        if (!tag.contains(ROOT, Tag.TAG_LIST.toInt())) {
-            return emptyList()
-        }
-        val list = tag.getList(ROOT, Tag.TAG_COMPOUND.toInt())
+        val list = tag.getListOrEmpty(ROOT)
         val result = ArrayList<TestBlockBinding>(list.size)
         for (index in 0 until list.size) {
-            val entry = list.getCompound(index)
-            val dimension = entry.getString(DIMENSION)
+            val entry = list.getCompound(index).orElse(null) ?: continue
+            val dimension = entry.getStringOr(DIMENSION, "")
             if (dimension.isBlank()) continue
             result += TestBlockBinding(
                 dimension = dimension,
-                pos = BlockPos(entry.getInt(X), entry.getInt(Y), entry.getInt(Z))
+                pos = BlockPos(entry.getIntOr(X, 0), entry.getIntOr(Y, 0), entry.getIntOr(Z, 0))
             )
         }
         return result.distinct()

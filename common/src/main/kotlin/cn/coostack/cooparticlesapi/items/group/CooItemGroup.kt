@@ -8,7 +8,7 @@ import cn.coostack.cooparticlesapi.platform.registry.CommonDeferredRegistry
 import cn.coostack.cooparticlesapi.platform.CooParticlesServices
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.network.chat.Component
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.item.CreativeModeTab
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.Items
@@ -19,9 +19,9 @@ object CooItemGroup {
         .register(
             CommonDeferredRegistry(
                 BuiltInRegistries.CREATIVE_MODE_TAB,
-                ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "coo_group")
+                Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "coo_group")
             ) {
-                CreativeModeTab.Builder(null, -1)
+                CreativeModeTab.Builder(CreativeModeTab.Row.TOP, 0)
                     .title(Component.translatable("item.coo_group"))
                     .icon { ItemStack(Items.BOW) }
                     .displayItems { _, entries ->

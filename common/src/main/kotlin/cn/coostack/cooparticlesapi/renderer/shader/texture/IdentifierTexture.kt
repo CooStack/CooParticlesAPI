@@ -1,19 +1,33 @@
 package cn.coostack.cooparticlesapi.renderer.shader.texture
 
 import cn.coostack.cooparticlesapi.renderer.shader.api.texture.GlTexture
+import cn.coostack.cooparticlesapi.renderer.backend.glTextureId
+import cn.coostack.cooparticlesapi.renderer.backend.glSamplerId
 import net.minecraft.client.Minecraft
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import org.lwjgl.opengl.GL33.GL_TEXTURE_2D
 import org.lwjgl.opengl.GL33.GL_TEXTURE_BINDING_2D
 import org.lwjgl.opengl.GL33.glBindTexture
 import org.lwjgl.opengl.GL33.glGetInteger
+import org.lwjgl.opengl.GL33.GL_ACTIVE_TEXTURE
+import org.lwjgl.opengl.GL33.GL_TEXTURE0
+import org.lwjgl.opengl.GL33.GL_SAMPLER_BINDING
+import org.lwjgl.opengl.GL33.glBindSampler
+import org.lwjgl.opengl.GL33.glGetIntegeri
 
-class IdentifierTexture(val id: ResourceLocation) : GlTexture {
+class IdentifierTexture(val id: Identifier) : GlTexture {
     var textureID = 0
     var lastTextureID = 0
+    /** 原版纹理拥有的采样器对象名，本包装只借用而不释放。 */
+    var samplerID = 0
+        private set
+    /** 进入绑定作用域时活动纹理单元原先的采样器。 */
+    private var lastSamplerID = 0
+    /** 当前绑定作用域使用的纹理单元。 */
+    private var activeUnit = 0
 
-    private val textureResourceLocation: ResourceLocation =
-        ResourceLocation.fromNamespaceAndPath(id.namespace, "textures/${id.path}")
+    private val textureIdentifier: Identifier =
+        Identifier.fromNamespaceAndPath(id.namespace, "textures/${id.path}")
     /**
      * 执行 `IdentifierTexture` 定义的 `textureID` 操作；输入和返回值用于该组件当前的渲染职责。
      *
@@ -32,10 +46,9 @@ class IdentifierTexture(val id: ResourceLocation) : GlTexture {
      */
     override fun init() {
         val textureManager = Minecraft.getInstance().textureManager
-        val previousTexture = glGetInteger(GL_TEXTURE_BINDING_2D)
-        textureManager.bindForSetup(textureResourceLocation)
-        textureID = glGetInteger(GL_TEXTURE_BINDING_2D)
-        glBindTexture(GL_TEXTURE_2D, previousTexture)
+        val texture = textureManager.getTexture(textureIdentifier)
+        textureID = texture.texture.glTextureId
+        samplerID = texture.sampler.glSamplerId
     }
 
     /**
@@ -45,6 +58,7 @@ class IdentifierTexture(val id: ResourceLocation) : GlTexture {
      */
     override fun release() {
         textureID = 0
+        samplerID = 0
     }
 
     /**
@@ -54,7 +68,10 @@ class IdentifierTexture(val id: ResourceLocation) : GlTexture {
      */
     override fun useOnCurrent() {
         lastTextureID = glGetInteger(GL_TEXTURE_BINDING_2D)
+        activeUnit = glGetInteger(GL_ACTIVE_TEXTURE) - GL_TEXTURE0
+        lastSamplerID = glGetIntegeri(GL_SAMPLER_BINDING, activeUnit)
         glBindTexture(GL_TEXTURE_2D, textureID)
+        glBindSampler(activeUnit, samplerID)
     }
 
     /**
@@ -64,5 +81,6 @@ class IdentifierTexture(val id: ResourceLocation) : GlTexture {
      */
     override fun reset() {
         glBindTexture(GL_TEXTURE_2D, lastTextureID)
+        glBindSampler(activeUnit, lastSamplerID)
     }
 }

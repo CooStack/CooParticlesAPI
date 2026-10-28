@@ -7,7 +7,7 @@ import cn.coostack.cooparticlesapi.particles.control.ControlType
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import java.util.UUID
 
 class PacketParticleStyleS2C(
@@ -16,7 +16,7 @@ class PacketParticleStyleS2C(
     val args: Map<String, ParticleControlerDataBuffer<*>>
 ) : CustomPacketPayload {
     companion object {
-        private val identifierID = ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "particle_style")
+        private val identifierID = Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "particle_style")
         val payloadID = CustomPacketPayload.Type<PacketParticleStyleS2C>(identifierID)
         val CODEC: StreamCodec<FriendlyByteBuf, PacketParticleStyleS2C> =
             CustomPacketPayload.codec({ packet, buf ->
@@ -51,7 +51,7 @@ class PacketParticleStyleS2C(
 
     }
 
-    override fun type(): CustomPacketPayload.Type<out CustomPacketPayload?> {
+    override fun type(): CustomPacketPayload.Type<out CustomPacketPayload> {
         return payloadID
     }
 }

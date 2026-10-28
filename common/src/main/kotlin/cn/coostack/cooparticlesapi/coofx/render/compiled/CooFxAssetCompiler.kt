@@ -18,7 +18,7 @@ import cn.coostack.cooparticlesapi.coofx.playback.track.CooFxTrackInterpolation
 import cn.coostack.cooparticlesapi.coofx.render.batch.CooFxBatchTemplate
 import cn.coostack.cooparticlesapi.coofx.render.batch.CooFxMeshBatchKey
 import cn.coostack.cooparticlesapi.coofx.render.instance.CooFxMeshInstanceLayout
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import org.joml.Matrix4f
 import org.joml.Quaternionf
 import org.joml.Vector3f
@@ -243,7 +243,7 @@ class CooFxAssetCompiler {
             val material = materials[primitive.materialIndex]
             val key = CooFxMeshBatchKey(
                 generation = 1L,
-                pipelineId = ResourceLocation.fromNamespaceAndPath(source.resource.namespace, "coofx/world"),
+                pipelineId = Identifier.fromNamespaceAndPath(source.resource.namespace, "coofx/world"),
                 worldNodeId = "world",
                 primitiveId = primitive.id,
                 vertexLayoutVersion = primitive.vertexLayout.version,
@@ -483,7 +483,7 @@ class CooFxAssetCompiler {
         digest.updateInt(source.deformationMetadata.skinCount)
         digest.updateInt(source.deformationMetadata.morphTargetCount)
         digest.updateBoolean(source.deformationMetadata.hasAnimatedWeights)
-        digest.updateStringList(source.deformationMetadata.vatExtensionIds.map(ResourceLocation::toString).sorted())
+        digest.updateStringList(source.deformationMetadata.vatExtensionIds.map(Identifier::toString).sorted())
 
         primitives.forEach { primitive ->
             digest.updateString(primitive.id)

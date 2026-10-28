@@ -1,13 +1,14 @@
 package cn.coostack.cooparticlesapi.datagen
 
 import cn.coostack.cooparticlesapi.items.CooItems
-import net.fabricmc.fabric.api.datagen.v1.FabricDataOutput
-import net.fabricmc.fabric.api.datagen.v1.provider.FabricModelProvider
-import net.minecraft.data.models.BlockModelGenerators
-import net.minecraft.data.models.ItemModelGenerators
-import net.minecraft.data.models.model.ModelTemplates
+import net.fabricmc.fabric.api.datagen.v1.FabricPackOutput
+import net.fabricmc.fabric.api.client.datagen.v1.provider.FabricModelProvider
+import net.minecraft.client.data.models.BlockModelGenerators
+import net.minecraft.client.data.models.ItemModelGenerators
+import net.minecraft.client.data.models.model.ModelTemplates
 
-class ItemModelProvider(output: FabricDataOutput?) : FabricModelProvider(output) {
+/** 生成调试物品的 26.3 客户端物品模型及对应资产定义。 */
+class ItemModelProvider(output: FabricPackOutput) : FabricModelProvider(output) {
 
 
     override fun generateBlockStateModels(gen: BlockModelGenerators) {

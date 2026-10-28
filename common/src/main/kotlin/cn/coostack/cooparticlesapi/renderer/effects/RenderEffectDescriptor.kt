@@ -2,7 +2,7 @@ package cn.coostack.cooparticlesapi.renderer.effects
 
 import cn.coostack.cooparticlesapi.renderer.backend.RenderBackendCapability
 import cn.coostack.cooparticlesapi.renderer.backend.RenderFrameContext
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /**
  * RenderEntity V2 当前标准的帧效果描述符。
@@ -12,7 +12,7 @@ import net.minecraft.resources.ResourceLocation
  */
 internal data class RenderEffectDescriptor(
     /** 该效果的类型 id，用于查找对应 executor。 */
-    val effectType: ResourceLocation,
+    val effectType: Identifier,
     /** 当前效果实例的逻辑 id。 */
     val effectId: String = effectType.toString(),
     /** 数值越小越先进入执行排序。 */

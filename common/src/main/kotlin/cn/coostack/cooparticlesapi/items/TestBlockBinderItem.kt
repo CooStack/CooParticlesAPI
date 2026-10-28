@@ -7,7 +7,10 @@ import net.minecraft.network.chat.Component
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResult
-import net.minecraft.world.InteractionResultHolder
+import net.minecraft.world.entity.player.Player
+import net.minecraft.core.BlockPos
+import net.minecraft.world.item.component.TooltipDisplay
+import java.util.function.Consumer
 import net.minecraft.world.item.Item
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.TooltipFlag
@@ -22,11 +25,12 @@ class TestBlockBinderItem(properties: Properties) : Item(properties) {
     override fun appendHoverText(
         stack: ItemStack,
         context: TooltipContext,
-        tooltipComponents: MutableList<Component>,
+        display: TooltipDisplay,
+        tooltipComponents: Consumer<Component>,
         tooltipFlag: TooltipFlag
     ) {
-        tooltipComponents.add(Component.literal("右键测试方块: 绑定或解绑").withStyle(ChatFormatting.GRAY))
-        tooltipComponents.add(Component.literal("Shift + 右键: 开启或者取消测试").withStyle(ChatFormatting.GRAY))
+        tooltipComponents.accept(Component.literal("右键测试方块: 绑定或解绑").withStyle(ChatFormatting.GRAY))
+        tooltipComponents.accept(Component.literal("Shift + 右键: 开启或者取消测试").withStyle(ChatFormatting.GRAY))
     }
 
     override fun useOn(context: UseOnContext): InteractionResult {
@@ -73,7 +77,7 @@ class TestBlockBinderItem(properties: Properties) : Item(properties) {
         return InteractionResult.SUCCESS
     }
 
-    override fun use(level: Level, player: net.minecraft.world.entity.player.Player, hand: InteractionHand): InteractionResultHolder<ItemStack> {
+    override fun use(level: Level, player: Player, hand: InteractionHand): InteractionResult {
         val stack = player.getItemInHand(hand)
         if (!level.isClientSide && player is ServerPlayer) {
             if (player.isShiftKeyDown) {
@@ -96,10 +100,10 @@ class TestBlockBinderItem(properties: Properties) : Item(properties) {
                 TestControllerBlockAccess.openBoundSelection(player, stack)
             }
         }
-        return InteractionResultHolder.success(stack)
+        return InteractionResult.SUCCESS
     }
 
-    private fun formatPos(pos: net.minecraft.core.BlockPos): String {
+    private fun formatPos(pos: BlockPos): String {
         return "${pos.x}, ${pos.y}, ${pos.z}"
     }
 }

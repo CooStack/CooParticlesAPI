@@ -10,8 +10,19 @@ pluginManagement {
                 }
             }
             filter {
-                includeGroup('net.fabricmc')
+                includeGroupAndSubgroups('net.fabricmc')
                 includeGroup('fabric-loom')
+            }
+        }
+        exclusiveContent {
+            forRepository {
+                maven {
+                    name = 'NeoForge'
+                    url = uri('https://maven.neoforged.net/releases')
+                }
+            }
+            filter {
+                includeGroupAndSubgroups('net.neoforged')
             }
         }
         exclusiveContent {
@@ -38,7 +49,7 @@ pluginManagement {
         }
     }
     plugins {
-        id "org.jetbrains.kotlin.kapt" version '2.2.0'
+    id "org.jetbrains.kotlin.kapt" version '2.4.21'
     }
 }
 

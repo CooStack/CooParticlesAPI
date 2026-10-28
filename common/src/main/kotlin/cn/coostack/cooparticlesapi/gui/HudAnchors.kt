@@ -1,7 +1,7 @@
 package cn.coostack.cooparticlesapi.gui
 
 import net.minecraft.client.Minecraft
-import net.minecraft.client.gui.GuiGraphics
+import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.minecraft.world.phys.Vec2
 
 /**
@@ -14,7 +14,7 @@ import net.minecraft.world.phys.Vec2
  * 让你一行代码拿到任意一栏的坐标。
  *
  * 【坐标系说明】
- * 这里返回的全部是 "GUI 逻辑坐标"(已经过 GUI Scale 换算), 也就是 GuiGraphics 里直接能用的坐标。
+ * 这里返回的全部是 "GUI 逻辑坐标"(已经过 GUI Scale 换算), 也就是 GuiGraphicsExtractor 里直接能用的坐标。
  * 你拿到坐标后直接 blit/drawString 即可, 不需要自己再乘 guiScale。
  *
  * 【数字怎么来的 (1.21.1)】
@@ -93,12 +93,12 @@ object HudAnchors {
     fun hungerTopRight(): Vec2 = Vec2((centerX() + HALF_WIDTH).toFloat(), (screenHeight() - 39).toFloat())
 
     // -----------------------------------------------------------------
-    // 便捷: 也可以从 GuiGraphics 取屏幕尺寸(HUD 渲染回调里更直接)
+    // 便捷: 也可以从 GuiGraphicsExtractor 取屏幕尺寸(HUD 渲染回调里更直接)
     // -----------------------------------------------------------------
 
-    /** 从 GuiGraphics 取屏幕宽度 */
-    fun screenWidth(g: GuiGraphics): Int = g.guiWidth()
+    /** 从 GuiGraphicsExtractor 取屏幕宽度 */
+    fun screenWidth(g: GuiGraphicsExtractor): Int = g.guiWidth()
 
-    /** 从 GuiGraphics 取屏幕高度 */
-    fun screenHeight(g: GuiGraphics): Int = g.guiHeight()
+    /** 从 GuiGraphicsExtractor 取屏幕高度 */
+    fun screenHeight(g: GuiGraphicsExtractor): Int = g.guiHeight()
 }

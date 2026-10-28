@@ -13,7 +13,7 @@ import cn.coostack.cooparticlesapi.renderer.pipeline.CooUniformProvider
 import cn.coostack.cooparticlesapi.renderer.pipeline.CooUniformValue
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderEntityRenderer
 import cn.coostack.cooparticlesapi.renderer.runtime.RenderInput
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import org.joml.Vector2f
 import org.joml.Vector3f
 import org.joml.Vector4f
@@ -124,7 +124,7 @@ class DemoPathLayerRenderEntityRenderer : RenderEntityRenderer<DemoPathLayerRend
         /** 折线的两侧偏移；两条线合起来给路径一点视觉宽度。 */
         val SIDES = floatArrayOf(-1F, 1F)
 
-        fun id(path: String): ResourceLocation =
-            ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, path)
+        fun id(path: String): Identifier =
+            Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, path)
     }
 }

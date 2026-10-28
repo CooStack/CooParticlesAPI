@@ -1,10 +1,12 @@
 package cn.coostack.cooparticlesapi.network.packet.server
 
+import cn.coostack.cooparticlesapi.network.readVec3
+import cn.coostack.cooparticlesapi.network.writeVec3
 import cn.coostack.cooparticlesapi.CooParticlesConstants
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.phys.Vec3
 
 class PacketCameraShakeS2C(
@@ -29,8 +31,8 @@ class PacketCameraShakeS2C(
         1.0,
         false,
         Vec3.ZERO,
-        0f,
-        0f,
+        0F,
+        0F,
         false
     )
 
@@ -44,7 +46,7 @@ class PacketCameraShakeS2C(
     }
 
     companion object {
-        private val identifierID = ResourceLocation.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "camara_shake")
+        private val identifierID = Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "camara_shake")
         val payloadID = CustomPacketPayload.Type<PacketCameraShakeS2C>(identifierID)
 
         val CODEC: StreamCodec<FriendlyByteBuf, PacketCameraShakeS2C> =
@@ -108,16 +110,16 @@ class PacketCameraShakeS2C(
                 frequency,
                 attenuateByDistance,
                 Vec3.ZERO,
-                0f,
-                0f,
+                0F,
+                0F,
                 false
             )
         }
 
         fun setOffset(
             positionOffset: Vec3,
-            yawOffset: Float = 0f,
-            pitchOffset: Float = 0f,
+            yawOffset: Float = 0F,
+            pitchOffset: Float = 0F,
             instant: Boolean = false
         ): PacketCameraShakeS2C {
             return PacketCameraShakeS2C(
@@ -145,8 +147,8 @@ class PacketCameraShakeS2C(
                 1.0,
                 false,
                 Vec3.ZERO,
-                0f,
-                0f,
+                0F,
+                0F,
                 instant
             )
         }
@@ -161,8 +163,8 @@ class PacketCameraShakeS2C(
                 1.0,
                 false,
                 position,
-                0f,
-                0f,
+                0F,
+                0F,
                 instant
             )
         }
@@ -177,8 +179,8 @@ class PacketCameraShakeS2C(
                 1.0,
                 false,
                 Vec3.ZERO,
-                0f,
-                0f,
+                0F,
+                0F,
                 instant
             )
         }
@@ -193,8 +195,8 @@ class PacketCameraShakeS2C(
                 1.0,
                 false,
                 Vec3.ZERO,
-                0f,
-                0f,
+                0F,
+                0F,
                 instant
             )
         }

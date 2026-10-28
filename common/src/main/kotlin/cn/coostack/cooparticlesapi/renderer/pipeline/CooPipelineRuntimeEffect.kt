@@ -12,11 +12,11 @@ import cn.coostack.cooparticlesapi.renderer.post.PostEffectInstance
 import cn.coostack.cooparticlesapi.renderer.post.PostEffectParamValue
 import cn.coostack.cooparticlesapi.renderer.post.PostEffectParams
 import cn.coostack.cooparticlesapi.renderer.post.PostEffectType
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 
 /** RenderEntity 的 world attachment 捕获与 fullscreen graph 执行桥。 */
 internal object CooPipelineRuntimeEffect {
-    private val effectType = ResourceLocation.fromNamespaceAndPath(
+    private val effectType = Identifier.fromNamespaceAndPath(
         CooParticlesConstants.MOD_ID,
         "effect/pipeline"
     )
@@ -210,7 +210,7 @@ internal object CooPipelineRuntimeEffect {
 
     /** Pipeline ID、参数快照和 fullscreen uniform 的不可变合批键。 */
     private data class PipelineBatchKey(
-        val pipelineId: ResourceLocation,
+        val pipelineId: Identifier,
         val shaderPackHandled: Boolean,
         val params: PostEffectParams,
         val uniforms: List<PassUniformValues>
@@ -226,7 +226,7 @@ internal object CooPipelineRuntimeEffect {
     private fun PostEffectInstance.withBatchUniforms(
         key: PipelineBatchKey,
         batchOwner: String,
-        batchTargets: Map<ResourceLocation, ResourceLocation>
+        batchTargets: Map<Identifier, Identifier>
     ): PostEffectInstance {
         val overrides = key.uniforms.flatMap { pass ->
             pass.values.map { (name, value) -> (pass.passName to name) to value }
@@ -244,13 +244,13 @@ internal object CooPipelineRuntimeEffect {
     }
 
     /** 为同一 pipeline 的不同 batch 隔离命名 framebuffer。 */
-    private fun ResourceLocation.batchTarget(batchId: Int): ResourceLocation {
-        return ResourceLocation.fromNamespaceAndPath(namespace, "$path/batch_$batchId")
+    private fun Identifier.batchTarget(batchId: Int): Identifier {
+        return Identifier.fromNamespaceAndPath(namespace, "$path/batch_$batchId")
     }
 
     /** 把 world attachment 的资源 id 重写为当前参数 batch 的独立目标。 */
     private fun PostEffectType.withBatchTargets(
-        targets: Map<ResourceLocation, ResourceLocation>
+        targets: Map<Identifier, Identifier>
     ): PostEffectType {
         if (targets.isEmpty()) return this
         val remappedPasses = chain.passes.map { pass ->

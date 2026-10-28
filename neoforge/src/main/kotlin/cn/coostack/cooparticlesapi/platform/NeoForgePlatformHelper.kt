@@ -16,11 +16,11 @@ class NeoForgePlatformHelper : IPlatformHelper {
     }
 
     override fun isDevelopmentEnvironment(): Boolean {
-        return !FMLLoader.isProduction()
+        return !FMLLoader.getCurrent().isProduction
     }
 
     override fun getDistType(): DistType {
-        return when (FMLLoader.getDist()) {
+        return when (FMLLoader.getCurrent().dist) {
             Dist.CLIENT -> DistType.CLIENT
             Dist.DEDICATED_SERVER -> DistType.SERVER
         }
