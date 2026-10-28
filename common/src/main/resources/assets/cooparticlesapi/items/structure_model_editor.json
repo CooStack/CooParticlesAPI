@@ -1,0 +1,6 @@
+{
+  "model": {
+    "type": "minecraft:model",
+    "model": "cooparticlesapi:item/structure_model_editor"
+  }
+}
