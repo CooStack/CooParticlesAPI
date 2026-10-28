@@ -6,6 +6,7 @@ import cn.coostack.cooparticlesapi.renderer.backend.glTextureId
 import cn.coostack.cooparticlesapi.renderer.backend.glSamplerId
 import net.minecraft.client.renderer.texture.AbstractTexture
 import cn.coostack.cooparticlesapi.mixin.ParticleEngineAccessor
+import cn.coostack.cooparticlesapi.mixin.ParticleResourcesAccessor
 import net.minecraft.client.Minecraft
 import net.minecraft.client.multiplayer.ClientLevel
 import net.minecraft.client.particle.SpriteSet
@@ -21,6 +22,8 @@ import net.minecraft.resources.Identifier
 import net.minecraft.world.item.ItemDisplayContext
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.alchemy.PotionContents
+import net.minecraft.world.level.block.state.BlockState
+import net.minecraft.world.phys.Vec3
 import net.minecraft.util.RandomSource
 import org.joml.Vector3f
 import java.util.concurrent.ConcurrentHashMap
@@ -45,7 +48,7 @@ object CParticleTextureResolver {
 
     private data class EffectKey(val typeId: Identifier, val animation: Boolean)
 
-    private data class BlockKey(val state: net.minecraft.world.level.block.state.BlockState)
+    private data class BlockKey(val state: BlockState)
 
     private data class CustomKey(val bindingKey: CParticleTextureBindingKey, val uv: CParticleUv)
 
@@ -117,7 +120,7 @@ object CParticleTextureResolver {
      * @return 可直接写入实例数据的统一描述
      */
     @JvmStatic
-    fun resolve(source: CParticleTextureSource, position: net.minecraft.world.phys.Vec3): CParticleResolvedTexture {
+    fun resolve(source: CParticleTextureSource, position: Vec3): CParticleResolvedTexture {
         val minecraft = Minecraft.getInstance()
         val blockPos = BlockPos.containing(position)
         return when (source) {
@@ -420,7 +423,8 @@ object CParticleTextureResolver {
     private fun effectSet(typeId: Identifier): SpriteSet? {
         effectSetCache[typeId]?.let { return it }
         val engine = Minecraft.getInstance().particleEngine as? ParticleEngineAccessor ?: return null
-        val loaded = engine.spriteSets[typeId] ?: return null
+        val resources = engine.particleResources as ParticleResourcesAccessor
+        val loaded = resources.spriteSets[typeId] ?: return null
         return effectSetCache.putIfAbsent(typeId, loaded) ?: loaded
     }
 

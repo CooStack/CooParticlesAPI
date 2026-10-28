@@ -6,14 +6,5 @@
   "injectors": {
     "defaultRequire": 1
   },
-  "client": [
-    "BlockRendererMixin",
-    "ChunkBuilderMeshingTaskMixin",
-    "ChunkBuildOutputMixin",
-    "GameRendererMixin",
-    "RenderRegionManagerMixin",
-    "RenderSectionMixin",
-    "RenderSectionManagerMixin",
-    "SodiumWorldRendererMixin"
-  ]
+  "client": []
 }

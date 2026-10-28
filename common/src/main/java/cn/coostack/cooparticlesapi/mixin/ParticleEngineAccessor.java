@@ -6,10 +6,8 @@ import net.minecraft.client.particle.ParticleEngine;
 import net.minecraft.client.particle.ParticleGroup;
 import net.minecraft.client.particle.ParticleRenderType;
 import net.minecraft.client.particle.ParticleResources;
-import net.minecraft.client.particle.SpriteSet;
 import net.minecraft.client.particle.TrackingEmitter;
 import net.minecraft.core.particles.ParticleLimit;
-import net.minecraft.resources.Identifier;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
 
@@ -18,6 +16,8 @@ import java.util.Queue;
 
 /**
  * 暴露粒子队列、限额与资源管理器，供客户端回收和图集解析使用。
+ *
+ * <p>这里只声明 Accessor；资源管理器上的二次查询由调用方执行，避免接口被识别为普通接口 Mixin。
  */
 @Mixin(ParticleEngine.class)
 public interface ParticleEngineAccessor {
@@ -44,12 +44,4 @@ public interface ParticleEngineAccessor {
     @Accessor("resourceManager")
     ParticleResources getParticleResources();
 
-    /**
-     * 保留图集消费者的旧入口，实际数据由 26.3 的资源管理器持有。
-     *
-     * @return 资源重载后更新的粒子类型到精灵集映射；调用方不得修改
-     */
-    default Map<Identifier, ? extends SpriteSet> getSpriteSets() {
-        return ((ParticleResourcesAccessor) getParticleResources()).getSpriteSets();
-    }
 }
