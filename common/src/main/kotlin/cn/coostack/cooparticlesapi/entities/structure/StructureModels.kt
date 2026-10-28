@@ -26,6 +26,7 @@ import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.ListTag
 import net.minecraft.nbt.StringTag
 import net.minecraft.core.registries.BuiltInRegistries
+import net.minecraft.core.registries.Registries
 import net.minecraft.core.Registry
 import net.minecraft.world.inventory.ChestMenu
 import net.minecraft.world.SimpleMenuProvider
@@ -33,6 +34,7 @@ import net.minecraft.server.level.ServerPlayer
 import net.minecraft.server.permissions.Permissions
 import net.minecraft.network.chat.Component
 import net.minecraft.resources.Identifier
+import net.minecraft.resources.ResourceKey
 import net.minecraft.world.InteractionResult
 import net.minecraft.world.InteractionHand
 import net.minecraft.core.BlockPos
@@ -57,7 +59,12 @@ object StructureModels {
     /** 右键后选择结构的占位方块。 */
     private val blockEntry = CooParticlesServices.COO_REGISTRY.register(CommonDeferredRegistry(
         BuiltInRegistries.BLOCK, Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, MODEL_ID)
-    ) { ModelBlock(BlockBehaviour.Properties.of().strength(1F).noOcclusion()) })
+    ) {
+        ModelBlock(BlockBehaviour.Properties.of()
+            .setId(ResourceKey.create(Registries.BLOCK,
+                Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, MODEL_ID)))
+            .strength(1F).noOcclusion())
+    })
     /** 模型占位方块，在平台注册完成后读取。 */
     val BLOCK: Block get() = blockEntry.get()
     /** 模型方块的持久化存储类型，与方块共享注册标识。 */
@@ -70,19 +77,28 @@ object StructureModels {
     /** 占位方块对应的物品。 */
     private val blockItemEntry = CooParticlesServices.COO_REGISTRY.register(CommonDeferredRegistry(
         BuiltInRegistries.ITEM, Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, MODEL_ID)
-    ) { BlockItem(BLOCK, Item.Properties()) })
+    ) {
+        BlockItem(BLOCK, Item.Properties().setId(ResourceKey.create(Registries.ITEM,
+            Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, MODEL_ID))))
+    })
     /** 模型方块物品的平台注册实例。 */
     val BLOCK_ITEM: Item get() = blockItemEntry.get()
     /** 唯一允许打开实体属性与掉落库存的工具。 */
-    private val editorEntry = CooParticlesServices.COO_REGISTRY.register(CommonDeferredRegistry(
-        BuiltInRegistries.ITEM, Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "structure_model_editor")
-    ) { Item(Item.Properties().stacksTo(1)) })
+    private val editorEntry = run {
+        val id = Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "structure_model_editor")
+        CooParticlesServices.COO_REGISTRY.register(CommonDeferredRegistry(BuiltInRegistries.ITEM, id) {
+            Item(Item.Properties().setId(ResourceKey.create(Registries.ITEM, id)).stacksTo(1))
+        })
+    }
     /** 编辑已有模型的工具。 */
     val EDITOR: Item get() = editorEntry.get()
     /** 收起后的结构载体，不提供空白创造物品，名称由编辑器设置。 */
-    private val heldEntry = CooParticlesServices.COO_REGISTRY.register(CommonDeferredRegistry(
-        BuiltInRegistries.ITEM, Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "held_structure_model")
-    ) { HeldStructureModelItem(Item.Properties().stacksTo(1)) })
+    private val heldEntry = run {
+        val id = Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "held_structure_model")
+        CooParticlesServices.COO_REGISTRY.register(CommonDeferredRegistry(BuiltInRegistries.ITEM, id) {
+            HeldStructureModelItem(Item.Properties().setId(ResourceKey.create(Registries.ITEM, id)).stacksTo(1))
+        })
+    }
     /** 带完整快照的模型物品，不注册空白创造栏物品。 */
     val HELD_MODEL: HeldStructureModelItem get() = heldEntry.get() as HeldStructureModelItem
     /** 单一结构模型实体类型；几何来自每个实例的快照。 */

@@ -21,6 +21,7 @@ import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.ItemDisplayContext
+import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.Items
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.AABB
@@ -32,8 +33,9 @@ import kotlin.math.abs
 
 @CooAutoRegister
 class BarrageItemDisplayEntity(pos: Vec3, world: Level?) : DisplayEntity(pos, world) {
+    /** 无世界的注册样本不读取尚未绑定的物品组件；网络解码会覆盖该字段。 */
     @CodecField
-    var item = Items.DIAMOND_SWORD.defaultInstance
+    var item = if (world == null) ItemStack.EMPTY else Items.DIAMOND_SWORD.defaultInstance
 
     @CodecField
     var isBlock = false

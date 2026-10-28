@@ -30,6 +30,7 @@ import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate
 import net.minecraft.network.chat.Component
 import net.minecraft.resources.Identifier
+import net.minecraft.resources.ResourceKey
 import net.minecraft.world.phys.HitResult
 import net.minecraft.core.BlockPos
 import net.minecraft.world.phys.Vec3
@@ -42,9 +43,12 @@ object StructureEditor {
     /** 客户端预览与服务器射线共用的选点距离，单位为格。 */
     const val SELECTION_REACH = 3.0
     /** 独立于结构模型编辑器的选点工具，注册及所有输入入口共享实例。 */
-    private val itemEntry = CooParticlesServices.COO_REGISTRY.register(CommonDeferredRegistry(
-        BuiltInRegistries.ITEM, Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "structure_editor")
-    ) { Item(Item.Properties().stacksTo(1)) })
+    private val itemEntry = run {
+        val id = Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, "structure_editor")
+        CooParticlesServices.COO_REGISTRY.register(CommonDeferredRegistry(BuiltInRegistries.ITEM, id) {
+            Item(Item.Properties().setId(ResourceKey.create(Registries.ITEM, id)).stacksTo(1))
+        })
+    }
     /** 平台延迟注册后的选点工具实例。 */
     val ITEM: Item get() = itemEntry.get()
     /** 仅服务器线程读写；退出、复活、切换维度和关闭服务器时清理。 */

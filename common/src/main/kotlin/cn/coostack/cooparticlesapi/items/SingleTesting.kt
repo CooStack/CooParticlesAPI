@@ -1,6 +1,7 @@
 package cn.coostack.cooparticlesapi.items
 
 import cn.coostack.cooparticlesapi.barrages.BarrageManager
+import cn.coostack.cooparticlesapi.CooParticlesConstants
 import cn.coostack.cooparticlesapi.barrages.BarrageOption
 import cn.coostack.cooparticlesapi.barrages.HitBox
 import cn.coostack.cooparticlesapi.display.DisplayEntityManager
@@ -14,6 +15,9 @@ import cn.coostack.cooparticlesapi.test.options.particle.emitter.TestPlusBlendEm
 import cn.coostack.cooparticlesapi.test.options.particle.server.BarrierSwordGroupServer
 import cn.coostack.cooparticlesapi.utils.Math3DUtil
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.core.registries.Registries
+import net.minecraft.resources.Identifier
+import net.minecraft.resources.ResourceKey
 import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResult
 import net.minecraft.world.entity.LivingEntity
@@ -24,7 +28,18 @@ import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
 import java.util.function.Predicate
 
-class SingleTesting : Item(Properties().stacksTo(1)) {
+/** 提供单项粒子效果的服务端测试入口，构造时使用固定注册身份。 */
+class SingleTesting : Item(createProperties()) {
+
+    companion object {
+        /** 注册声明与构造属性共用的稳定物品路径。 */
+        const val ID = "single_testing"
+
+        /** 为无参构造器创建带注册键的独立属性。 */
+        private fun createProperties(): Properties = Properties()
+            .setId(ResourceKey.create(Registries.ITEM, Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, ID)))
+            .stacksTo(1)
+    }
 
     override fun use(world: Level, user: Player, hand: InteractionHand): InteractionResult {
         val res = InteractionResult.SUCCESS

@@ -3,8 +3,10 @@ package cn.coostack.cooparticlesapi
 import cn.coostack.cooparticlesapi.commands.APICommand
 import cn.coostack.cooparticlesapi.entities.CooModEntityTypes
 import cn.coostack.cooparticlesapi.entities.structure.StructureModelEntity
+import cn.coostack.cooparticlesapi.entities.structure.StructureModels
 import cn.coostack.cooparticlesapi.listener.StructureInteractionEvents
 import net.fabricmc.fabric.api.`object`.builder.v1.entity.FabricDefaultAttributeRegistry
+import net.fabricmc.fabric.api.`object`.builder.v1.entity.FabricEntityDataRegistry
 import cn.coostack.cooparticlesapi.event.CooEventBus
 import cn.coostack.cooparticlesapi.event.events.entity.EntityPrePlaceBlockEvent
 import cn.coostack.cooparticlesapi.event.events.entity.player.ServerPlayerDeathEvent
@@ -56,7 +58,7 @@ import net.minecraft.core.Registry
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.server.MinecraftServer
 import net.minecraft.world.InteractionResult
-import net.minecraft.network.syncher.EntityDataSerializers
+import net.minecraft.resources.Identifier
 
 object CooParticlesAPIFabric : ModInitializer {
     lateinit var server: MinecraftServer
@@ -104,7 +106,10 @@ object CooParticlesAPIFabric : ModInitializer {
     }
 
     private fun initRegistries() {
-        EntityDataSerializers.registerSerializer(StructureModelEntity.MODEL_DATA_SERIALIZER)
+        FabricEntityDataRegistry.register(
+            Identifier.fromNamespaceAndPath(CooParticlesConstants.MOD_ID, StructureModels.MODEL_ID),
+            StructureModelEntity.MODEL_DATA_SERIALIZER,
+        )
         CooItemFabric.reg()
         CooItemGroup.reg()
         CooModParticles.reg()
