@@ -36,6 +36,21 @@ interface ParticleEmitters : ServerControler<ParticleEmitters>, NetworkDirtyMark
     var playing: Boolean
 
     /**
+     * 服务端向玩家同步此发射器的最大距离，单位为方块，以玩家位置到 [pos] 的三维距离计算。
+     *
+     * 默认保持 `256.0`。实现类可覆写 getter，三种内置发射器基类提供可赋值的属性。
+     * 值必须为有限非负数；`0.0` 只允许同位置玩家追踪，非法的自定义 getter 值不会同步给玩家。
+     * 管理器在创建时和每个服务端 tick 读取，因此运行时赋值无需调用 [markDirty]。
+     *
+     * 此属性只供服务端使用，不参与基础 codec，也不限制客户端本地发射器。
+     * 它不替代粒子数据的 [ControlableParticleData.visibleRange]，也不修改原版实体追踪距离。
+     * 例如在模板初始化后设置 `trackingRange = template.visibleRange.toDouble()`，
+     * 或在直接实现本接口时覆写 `val trackingRange get() = template.visibleRange.toDouble()`。
+     */
+    val trackingRange: Double
+        get() = 256.0
+
+    /**
      * @param innerClass 是否在类内添加
      * 在类内添加的event handler不会参与codec传输
      */

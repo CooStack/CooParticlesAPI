@@ -219,7 +219,7 @@ object ParticleEmittersManager {
                 }
                 return@forEach
             }
-            val shouldView = p.position().distanceTo(emitters.pos) <= 256.0
+            val shouldView = isWithinTrackingRange(emitters, p.position())
             if (!shouldView) {
                 if (emitters in visibleSet) {
                     removeView(p, emitters)
@@ -233,6 +233,18 @@ object ParticleEmittersManager {
             addView(p, emitters)
             visibleSet.add(emitters)
         }
+    }
+
+    /**
+     * 判断玩家位置是否位于发射器的服务端同步范围内，边界位置包含在内。
+     *
+     * @param emitters 提供当前位置和同步距离的发射器
+     * @param playerPosition 玩家所在世界中的坐标；维度和存活状态由调用方检查
+     * @return 距离配置合法且玩家位于范围内时为真
+     */
+    internal fun isWithinTrackingRange(emitters: ParticleEmitters, playerPosition: Vec3): Boolean {
+        val range = emitters.trackingRange
+        return range.isFinite() && range >= 0.0 && playerPosition.distanceTo(emitters.pos) <= range
     }
 
     internal fun enqueueDirty(emitters: ParticleEmitters) {

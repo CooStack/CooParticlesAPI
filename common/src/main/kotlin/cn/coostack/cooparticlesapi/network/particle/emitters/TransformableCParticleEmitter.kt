@@ -67,6 +67,13 @@ abstract class TransformableCParticleEmitter(
     /** 是否已经启动。 */
     override var playing: Boolean = false
 
+    /** 服务端同步距离，单位为方块；仅接受有限非负数，运行时赋值在下次可见性检查生效。 */
+    override var trackingRange: Double = 256.0
+        set(value) {
+            require(value.isFinite() && value >= 0.0) { "trackingRange must be finite and non-negative" }
+            field = value
+        }
+
     /** 新粒子使用的坐标空间。切换不会改变已经生成的粒子。 */
     var space: CParticleEmitterSpace = CParticleEmitterSpace.LOCAL
 

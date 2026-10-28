@@ -51,6 +51,14 @@ abstract class ClassEmitters(
     override var uuid: UUID = UUID.randomUUID()
     override var canceled: Boolean = false
     override var playing: Boolean = false
+
+    /** 服务端同步距离，单位为方块；仅接受有限非负数，运行时赋值在下次可见性检查生效。 */
+    override var trackingRange: Double = 256.0
+        set(value) {
+            require(value.isFinite() && value >= 0.0) { "trackingRange must be finite and non-negative" }
+            field = value
+        }
+
     var airDensity = 0.0
     var gravity: Double = 0.0
     val handlerList = ConcurrentHashMap<String, SortedMap<ParticleEventHandler, Boolean>>()

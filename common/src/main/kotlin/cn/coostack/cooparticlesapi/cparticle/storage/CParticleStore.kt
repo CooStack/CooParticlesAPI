@@ -112,8 +112,6 @@ class CParticleStore(capacity: Int) {
         const val OFF_AXIS = 16
         const val OFF_ROLL = 19
         const val OFF_ANIMATION = 20
-        @Deprecated("The UV slot now stores GPU animation metadata")
-        const val OFF_UV = OFF_ANIMATION
         const val OFF_COLOR = 24
         const val OFF_ANGULAR_VELOCITY = 28
         const val OFF_EPOCH_TICK = 31
